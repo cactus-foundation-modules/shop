@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping, reviews.",
   "publicBasePath": "shop",
@@ -21,6 +21,7 @@
     { "label": "Orders", "path": "/m/shop/orders", "icon": "<path d=\"M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z\"/><path d=\"M3 6h18M16 10a4 4 0 0 1-8 0\"/>", "permission": "shop.access" },
     { "label": "Customers", "path": "/m/shop/customers", "icon": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21a8 8 0 0 1 16 0\"/>", "permission": "shop.access" },
     { "label": "Discounts", "path": "/m/shop/discounts", "icon": "<circle cx=\"7\" cy=\"7\" r=\"2\"/><circle cx=\"17\" cy=\"17\" r=\"2\"/><path d=\"M17 7 7 17\"/>", "permission": "shop.access" },
+    { "label": "Tax & shipping", "path": "/m/shop/tax-shipping", "icon": "<rect x=\"1\" y=\"3\" width=\"15\" height=\"13\"/><path d=\"M16 8h4l3 3v5h-7V8Z\"/><circle cx=\"5.5\" cy=\"18.5\" r=\"2.5\"/><circle cx=\"18.5\" cy=\"18.5\" r=\"2.5\"/>", "permission": "shop.access" },
     { "label": "Reviews", "path": "/m/shop/reviews", "icon": "<path d=\"m12 2 3.09 6.26L21 9.27l-4.5 4.39L17.82 21 12 17.77 6.18 21l1.32-7.34L3 9.27l5.91-1.01Z\"/>", "permission": "shop.access" },
     { "label": "Reports", "path": "/m/shop/reports", "icon": "<path d=\"M3 3v18h18\"/><path d=\"M7 15l4-6 4 3 5-8\"/>", "permission": "shop.reports" }
   ],
