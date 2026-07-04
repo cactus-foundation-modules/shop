@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "publicBasePath": "shop",
@@ -56,32 +56,44 @@
     "shp_related_products",
     "shp_upsell_products",
     "shp_auto_exclude_products",
-    "shp_settings",
-    "shp_page_layouts"
+    "shp_settings"
   ],
   "cronJobs": [
     { "path": "/api/m/shop/cron/low-stock-alerts", "schedule": "0 7 * * *" }
   ],
   "puckBlocks": [
-    { "type": "ShopProductGrid", "import": "./components/puck/ShopProductGrid", "component": "shopProductGridPuckComponent", "rscComponent": "shopProductGridPuckRscComponent" },
-    { "type": "ShopProductCard", "import": "./components/puck/ShopProductCard", "component": "shopProductCardPuckComponent", "rscComponent": "shopProductCardPuckRscComponent" },
-    { "type": "ShopFeaturedCollection", "import": "./components/puck/ShopFeaturedCollection", "component": "shopFeaturedCollectionPuckComponent", "rscComponent": "shopFeaturedCollectionPuckRscComponent" },
-    { "type": "ShopCategoryBrowser", "import": "./components/puck/ShopCategoryBrowser", "component": "shopCategoryBrowserPuckComponent", "rscComponent": "shopCategoryBrowserPuckRscComponent" },
-    { "type": "ShopPromoBanner", "import": "./components/puck/ShopPromoBanner", "component": "shopPromoBannerPuckComponent", "rscComponent": "shopPromoBannerPuckRscComponent" },
+    { "type": "ShopProductGrid", "import": "./components/puck/ShopProductGrid", "component": "shopProductGridPuckComponent", "rscComponent": "shopProductGridPuckRscComponent", "layoutTypes": ["shopIndex", "shopCategory", "shopCollection"] },
+    { "type": "ShopProductCard", "import": "./components/puck/ShopProductCard", "component": "shopProductCardPuckComponent", "rscComponent": "shopProductCardPuckRscComponent", "layoutTypes": ["shopIndex", "shopCategory", "shopCollection"] },
+    { "type": "ShopFeaturedCollection", "import": "./components/puck/ShopFeaturedCollection", "component": "shopFeaturedCollectionPuckComponent", "rscComponent": "shopFeaturedCollectionPuckRscComponent", "layoutTypes": ["shopIndex"] },
+    { "type": "ShopCategoryBrowser", "import": "./components/puck/ShopCategoryBrowser", "component": "shopCategoryBrowserPuckComponent", "rscComponent": "shopCategoryBrowserPuckRscComponent", "layoutTypes": ["shopIndex"] },
+    { "type": "ShopPromoBanner", "import": "./components/puck/ShopPromoBanner", "component": "shopPromoBannerPuckComponent", "rscComponent": "shopPromoBannerPuckRscComponent", "layoutTypes": ["shopIndex"] },
     { "type": "ShopCartSummary", "import": "./components/puck/ShopCartSummary", "component": "shopCartSummaryPuckComponent", "rscComponent": "shopCartSummaryPuckRscComponent" },
-    { "type": "ShopCheckoutContact", "import": "./components/puck/ShopCheckoutContact", "component": "shopCheckoutContactPuckComponent", "rscComponent": "shopCheckoutContactPuckRscComponent" },
-    { "type": "ShopCheckoutShipping", "import": "./components/puck/ShopCheckoutShipping", "component": "shopCheckoutShippingPuckComponent", "rscComponent": "shopCheckoutShippingPuckRscComponent" },
-    { "type": "ShopCheckoutPayment", "import": "./components/puck/ShopCheckoutPayment", "component": "shopCheckoutPaymentPuckComponent", "rscComponent": "shopCheckoutPaymentPuckRscComponent" },
-    { "type": "ShopCheckoutReview", "import": "./components/puck/ShopCheckoutReview", "component": "shopCheckoutReviewPuckComponent", "rscComponent": "shopCheckoutReviewPuckRscComponent" },
-    { "type": "ShopOrderConfirmation", "import": "./components/puck/ShopOrderConfirmation", "component": "shopOrderConfirmationPuckComponent", "rscComponent": "shopOrderConfirmationPuckRscComponent" },
-    { "type": "ShopProductDetail", "import": "./components/puck/ShopProductDetail", "component": "shopProductDetailPuckComponent", "rscComponent": "shopProductDetailPuckRscComponent" },
-    { "type": "ShopBackInStockForm", "import": "./components/puck/ShopBackInStockForm", "component": "shopBackInStockFormPuckComponent", "rscComponent": "shopBackInStockFormPuckRscComponent" },
-    { "type": "ShopRelatedProducts", "import": "./components/puck/ShopRelatedProducts", "component": "shopRelatedProductsPuckComponent", "rscComponent": "shopRelatedProductsPuckRscComponent" },
-    { "type": "ShopUpsellProducts", "import": "./components/puck/ShopUpsellProducts", "component": "shopUpsellProductsPuckComponent", "rscComponent": "shopUpsellProductsPuckRscComponent" }
+    { "type": "ShopCheckoutContact", "import": "./components/puck/ShopCheckoutContact", "component": "shopCheckoutContactPuckComponent", "rscComponent": "shopCheckoutContactPuckRscComponent", "layoutTypes": ["shopCheckout"] },
+    { "type": "ShopCheckoutShipping", "import": "./components/puck/ShopCheckoutShipping", "component": "shopCheckoutShippingPuckComponent", "rscComponent": "shopCheckoutShippingPuckRscComponent", "layoutTypes": ["shopCheckout"] },
+    { "type": "ShopCheckoutPayment", "import": "./components/puck/ShopCheckoutPayment", "component": "shopCheckoutPaymentPuckComponent", "rscComponent": "shopCheckoutPaymentPuckRscComponent", "layoutTypes": ["shopCheckout"] },
+    { "type": "ShopCheckoutReview", "import": "./components/puck/ShopCheckoutReview", "component": "shopCheckoutReviewPuckComponent", "rscComponent": "shopCheckoutReviewPuckRscComponent", "layoutTypes": ["shopCheckout"] },
+    { "type": "ShopOrderConfirmation", "import": "./components/puck/ShopOrderConfirmation", "component": "shopOrderConfirmationPuckComponent", "rscComponent": "shopOrderConfirmationPuckRscComponent", "layoutTypes": ["shopConfirmation"] },
+    { "type": "ShopProductDetail", "import": "./components/puck/ShopProductDetail", "component": "shopProductDetailPuckComponent", "rscComponent": "shopProductDetailPuckRscComponent", "layoutTypes": ["shopProduct"] },
+    { "type": "ShopBackInStockForm", "import": "./components/puck/ShopBackInStockForm", "component": "shopBackInStockFormPuckComponent", "rscComponent": "shopBackInStockFormPuckRscComponent", "layoutTypes": ["shopProduct"] },
+    { "type": "ShopRelatedProducts", "import": "./components/puck/ShopRelatedProducts", "component": "shopRelatedProductsPuckComponent", "rscComponent": "shopRelatedProductsPuckRscComponent", "layoutTypes": ["shopProduct"] },
+    { "type": "ShopUpsellProducts", "import": "./components/puck/ShopUpsellProducts", "component": "shopUpsellProductsPuckComponent", "rscComponent": "shopUpsellProductsPuckRscComponent", "layoutTypes": ["shopProduct", "shopCheckout"] },
+    { "type": "ShopCategoryHeader", "import": "./components/puck/ShopCategoryHeader", "component": "shopCategoryHeaderPuckComponent", "rscComponent": "shopCategoryHeaderPuckRscComponent", "layoutTypes": ["shopCategory"] },
+    { "type": "ShopCollectionHeader", "import": "./components/puck/ShopCollectionHeader", "component": "shopCollectionHeaderPuckComponent", "rscComponent": "shopCollectionHeaderPuckRscComponent", "layoutTypes": ["shopCollection"] }
   ],
   "settingsTabs": [
     { "id": "shop", "label": "Shop", "permission": "shop.manage", "import": "./components/admin/ShopSettingsTab", "component": "ShopSettingsTab" }
   ],
+  "layoutTypes": {
+    "groupLabel": "Shop",
+    "types": [
+      { "key": "shopIndex", "label": "Shop Home", "starterImport": "./lib/starterLayouts", "starterExport": "shopIndexStarters" },
+      { "key": "shopCategory", "label": "Category", "starterImport": "./lib/starterLayouts", "starterExport": "shopCategoryStarters" },
+      { "key": "shopCollection", "label": "Collection", "starterImport": "./lib/starterLayouts", "starterExport": "shopCollectionStarters" },
+      { "key": "shopProduct", "label": "Product", "starterImport": "./lib/starterLayouts", "starterExport": "shopProductStarters" },
+      { "key": "shopCheckout", "label": "Checkout", "starterImport": "./lib/starterLayouts", "starterExport": "shopCheckoutStarters" },
+      { "key": "shopConfirmation", "label": "Confirmation", "starterImport": "./lib/starterLayouts", "starterExport": "shopConfirmationStarters" }
+    ]
+  },
   "extensionPoints": [
     { "point": "core.admin-dashboard-widgets", "id": "shop-summary", "permission": "shop.access", "import": "./components/admin/ShopDashboardWidget", "component": "shopDashboardWidget" },
     { "point": "members.account-section", "id": "shop-orders", "import": "./components/public/ShopAccountSection", "component": "ShopAccountSection" }

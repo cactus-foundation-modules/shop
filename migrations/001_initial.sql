@@ -653,25 +653,3 @@ CREATE TABLE IF NOT EXISTS "shp_settings" (
 );
 
 INSERT INTO "shp_settings" ("id") VALUES ('singleton') ON CONFLICT ("id") DO NOTHING;
-
--- ---------------------------------------------------------------------------
--- Page layouts (Q4) - per-page Puck data for the four editable storefront pages
--- ---------------------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS "shp_page_layouts" (
-    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
-    -- 'index' | 'product' | 'checkout' | 'confirmation'
-    "key" TEXT NOT NULL,
-    "builder_data" JSONB NOT NULL,
-    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "shp_page_layouts_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "shp_page_layouts_key_key" UNIQUE ("key")
-);
-
-INSERT INTO "shp_page_layouts" ("key", "builder_data") VALUES
-    ('index', '{"root":{"props":{}},"content":[{"type":"ShopProductGrid","props":{"id":"shop-index-grid","columns":3,"limit":12,"showFilters":"yes"}}],"zones":{}}'::jsonb),
-    ('product', '{"root":{"props":{}},"content":[{"type":"ShopProductDetail","props":{"id":"shop-product-detail"}},{"type":"ShopBackInStockForm","props":{"id":"shop-product-backinstock","buttonLabel":"Notify me"}},{"type":"ShopRelatedProducts","props":{"id":"shop-product-related","heading":"You might also like"}}],"zones":{}}'::jsonb),
-    ('checkout', '{"root":{"props":{}},"content":[{"type":"ShopCheckoutContact","props":{"id":"shop-checkout-contact"}},{"type":"ShopCheckoutShipping","props":{"id":"shop-checkout-shipping"}},{"type":"ShopCheckoutPayment","props":{"id":"shop-checkout-payment"}},{"type":"ShopCheckoutReview","props":{"id":"shop-checkout-review"}},{"type":"ShopUpsellProducts","props":{"id":"shop-checkout-upsells","heading":"You might also like"}}],"zones":{}}'::jsonb),
-    ('confirmation', '{"root":{"props":{}},"content":[{"type":"ShopOrderConfirmation","props":{"id":"shop-order-confirmation"}}],"zones":{}}'::jsonb)
-ON CONFLICT ("key") DO NOTHING;

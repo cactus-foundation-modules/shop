@@ -302,6 +302,3 @@ export type ShpImportJob = {
   completedAt: Date | null
   createdAt: Date
 }
-
-export type ShpPageLayoutKey = 'index' | 'product' | 'checkout' | 'confirmation'
-export type ShpPageLayout = { id: string; key: ShpPageLayoutKey; builderData: PuckData; updatedAt: Date }

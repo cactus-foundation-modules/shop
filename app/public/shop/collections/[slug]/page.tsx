@@ -1,7 +1,12 @@
 import { notFound } from 'next/navigation'
+import { Render } from '@puckeditor/core/rsc'
 import { getCollectionBySlug } from '@/modules/shop/lib/db/catalogue'
 import { listProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
+import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config'
+import { injectCollectionContext } from '@/modules/shop/lib/inject-collection-context'
+import type { PuckData } from '@/modules/shop/lib/types'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
@@ -14,6 +19,12 @@ export default async function ShopCollectionPage({ params }: { params: Promise<{
   const { slug } = await params
   const collection = await getCollectionBySlug(slug)
   if (!collection) notFound()
+
+  const layout = await resolveThemeLayout('shopCollection', { moduleName: 'shop', slug: collection.slug })
+  if (layout?.builderData) {
+    const data = injectCollectionContext(layout.builderData as PuckData, { collectionSlug: collection.slug })
+    return <Render config={getModuleLayoutPuckRscConfig('shopCollection') as any} data={data as any} />
+  }
 
   const [{ products }, config] = await Promise.all([
     listProducts({ status: 'ACTIVE', collectionSlug: slug, perPage: 60 }),

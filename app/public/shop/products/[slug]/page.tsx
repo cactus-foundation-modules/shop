@@ -1,10 +1,11 @@
 import { notFound } from 'next/navigation'
 import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
-import { puckRscConfig } from '@/lib/puck/config'
-import { getPageLayout } from '@/modules/shop/lib/db/page-layouts'
+import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config'
+import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getProductBySlug } from '@/modules/shop/lib/db/products'
 import { injectProductContext } from '@/modules/shop/lib/inject-product-context'
+import type { PuckData } from '@/modules/shop/lib/types'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
@@ -21,15 +22,15 @@ export default async function ShopProductPage({ params }: { params: Promise<{ sl
   const product = await getProductBySlug(slug)
   if (!product || product.status !== 'ACTIVE') notFound()
 
-  const layout = await getPageLayout('product')
-  if (!layout) notFound()
+  const layout = await resolveThemeLayout('shopProduct', { moduleName: 'shop', slug })
+  if (!layout?.builderData) notFound()
 
   const inStock = !product.trackInventory || (product.stockCount ?? 0) > 0 || product.outOfStockBehaviour === 'BACKORDER' || product.isPreOrder
-  const data = injectProductContext(layout.builderData, slug, product.id, inStock)
+  const data = injectProductContext(layout.builderData as PuckData, slug, product.id, inStock)
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
-      <Render config={puckRscConfig as any} data={data as Data} />
+      <Render config={getModuleLayoutPuckRscConfig('shopProduct') as any} data={data as Data} />
     </div>
   )
 }
