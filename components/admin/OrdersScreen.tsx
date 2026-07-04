@@ -22,7 +22,7 @@ export function OrdersScreen() {
       <div className="page-header"><h1 className="page-title">Orders</h1></div>
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
         {TABS.map((t) => (
-          <button key={t} onClick={() => setTab(t)} style={{ background: tab === t ? 'var(--color-primary)' : 'var(--color-surface-muted)', color: tab === t ? 'var(--color-primary-contrast, #fff)' : 'inherit', border: 'none', borderRadius: 999, padding: '0.375rem 0.875rem', cursor: 'pointer', fontSize: '0.8125rem' }}>
+          <button key={t} onClick={() => setTab(t)} style={{ background: tab === t ? 'var(--color-primary)' : 'var(--color-surface-muted)', color: tab === t ? 'var(--color-on-primary)' : 'inherit', border: 'none', borderRadius: 999, padding: '0.375rem 0.875rem', cursor: 'pointer', fontSize: '0.8125rem' }}>
             {t.replace('_', '-')}
           </button>
         ))}

@@ -39,7 +39,7 @@ export function OrderLookupClient({ orderNumber }: { orderNumber: string }) {
       <p>Enter the email address used for order <strong>{orderNumber}</strong> to view its status.</p>
       {error && <p style={{ color: 'var(--color-danger, #c00)' }}>{error}</p>}
       <input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
-      <button onClick={lookup} disabled={loading} style={{ background: 'var(--color-primary)', color: 'var(--color-primary-contrast, #fff)', border: 'none', borderRadius: 8, padding: '0.625rem 1.25rem', fontWeight: 600, cursor: 'pointer', justifySelf: 'start' }}>
+      <button onClick={lookup} disabled={loading} style={{ background: 'var(--color-primary)', color: 'var(--color-on-primary)', border: 'none', borderRadius: 8, padding: '0.625rem 1.25rem', fontWeight: 600, cursor: 'pointer', justifySelf: 'start' }}>
         {loading ? 'Looking up…' : 'View order'}
       </button>
     </div>

@@ -47,7 +47,7 @@ async function ProductCard({ product, currencySymbol }: { product: ShpProduct; c
           <img src={primary.url} alt={primary.altText ?? product.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
         )}
         {product.isPreOrder && (
-          <span style={{ position: 'absolute', top: 8, left: 8, background: 'var(--color-primary)', color: 'var(--color-primary-contrast, #fff)', fontSize: '0.6875rem', padding: '0.125rem 0.5rem', borderRadius: 999 }}>
+          <span style={{ position: 'absolute', top: 8, left: 8, background: 'var(--color-primary)', color: 'var(--color-on-primary)', fontSize: '0.6875rem', padding: '0.125rem 0.5rem', borderRadius: 999 }}>
             Pre-order
           </span>
         )}

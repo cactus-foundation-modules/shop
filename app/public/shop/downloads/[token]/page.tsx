@@ -29,7 +29,7 @@ export default async function ShopDownloadPage({ params }: { params: Promise<{ t
       <p>Your file is ready.</p>
       <a
         href={`/api/m/shop/public/downloads/${token}`}
-        style={{ display: 'inline-block', marginTop: '1rem', background: 'var(--color-primary)', color: 'var(--color-primary-contrast, #fff)', borderRadius: 8, padding: '0.75rem 1.5rem', fontWeight: 600, textDecoration: 'none' }}
+        style={{ display: 'inline-block', marginTop: '1rem', background: 'var(--color-primary)', color: 'var(--color-on-primary)', borderRadius: 8, padding: '0.75rem 1.5rem', fontWeight: 600, textDecoration: 'none' }}
       >
         Download now
       </a>

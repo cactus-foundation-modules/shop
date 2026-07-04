@@ -90,7 +90,7 @@ export function CartPageClient() {
         <span>Subtotal</span><span>{currencySymbol}{subtotal.toFixed(2)}</span>
       </div>
 
-      <Link href="/shop/checkout" style={{ background: 'var(--color-primary)', color: 'var(--color-primary-contrast, #fff)', textAlign: 'center', borderRadius: 8, padding: '0.75rem', fontWeight: 600, textDecoration: 'none' }}>
+      <Link href="/shop/checkout" style={{ background: 'var(--color-primary)', color: 'var(--color-on-primary)', textAlign: 'center', borderRadius: 8, padding: '0.75rem', fontWeight: 600, textDecoration: 'none' }}>
         Proceed to checkout
       </Link>
     </div>

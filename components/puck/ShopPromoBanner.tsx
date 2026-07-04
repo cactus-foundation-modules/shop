@@ -22,7 +22,7 @@ export function ShopPromoBanner(props: ShopPromoBannerProps) {
         {props.heading && <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.5rem' }}>{props.heading}</h2>}
         {props.body && <p style={{ margin: '0 0 1rem', color: 'var(--color-text-muted)' }}>{props.body}</p>}
         {props.ctaLabel && props.ctaHref && (
-          <a href={props.ctaHref} style={{ display: 'inline-block', background: 'var(--color-primary)', color: 'var(--color-primary-contrast, #fff)', padding: '0.625rem 1.25rem', borderRadius: 8, textDecoration: 'none', fontWeight: 600 }}>
+          <a href={props.ctaHref} style={{ display: 'inline-block', background: 'var(--color-primary)', color: 'var(--color-on-primary)', padding: '0.625rem 1.25rem', borderRadius: 8, textDecoration: 'none', fontWeight: 600 }}>
             {props.ctaLabel}
           </a>
         )}

@@ -139,5 +139,5 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   )
 }
 
-const buttonPrimary: React.CSSProperties = { background: 'var(--color-primary)', color: 'var(--color-primary-contrast, #fff)', border: 'none', borderRadius: 8, padding: '0.625rem 1.25rem', fontWeight: 600, cursor: 'pointer', justifySelf: 'start' }
+const buttonPrimary: React.CSSProperties = { background: 'var(--color-primary)', color: 'var(--color-on-primary)', border: 'none', borderRadius: 8, padding: '0.625rem 1.25rem', fontWeight: 600, cursor: 'pointer', justifySelf: 'start' }
 const buttonSecondary: React.CSSProperties = { background: 'var(--color-surface-muted)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 1rem', cursor: 'pointer' }

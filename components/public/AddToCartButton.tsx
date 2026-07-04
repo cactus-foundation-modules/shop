@@ -16,7 +16,7 @@ export function AddToCartButton({ productId }: { productId: string }) {
       />
       <button
         onClick={() => { addToCart(productId, quantity); setAdded(true); setTimeout(() => setAdded(false), 2000) }}
-        style={{ background: 'var(--color-primary)', color: 'var(--color-primary-contrast, #fff)', border: 'none', borderRadius: 8, padding: '0.625rem 1.25rem', fontWeight: 600, cursor: 'pointer' }}
+        style={{ background: 'var(--color-primary)', color: 'var(--color-on-primary)', border: 'none', borderRadius: 8, padding: '0.625rem 1.25rem', fontWeight: 600, cursor: 'pointer' }}
       >
         {added ? 'Added!' : 'Add to cart'}
       </button>

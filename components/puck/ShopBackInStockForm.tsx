@@ -24,7 +24,7 @@ function BackInStockForm({ productId, buttonLabel }: { productId?: string; butto
   return (
     <div style={{ display: 'flex', gap: '0.5rem' }}>
       <input type="email" placeholder="Your email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)', flex: 1 }} />
-      <button onClick={submit} disabled={status === 'submitting'} style={{ background: 'var(--color-primary)', color: 'var(--color-primary-contrast, #fff)', border: 'none', borderRadius: 8, padding: '0.5rem 1rem', fontWeight: 600, cursor: 'pointer' }}>
+      <button onClick={submit} disabled={status === 'submitting'} style={{ background: 'var(--color-primary)', color: 'var(--color-on-primary)', border: 'none', borderRadius: 8, padding: '0.5rem 1rem', fontWeight: 600, cursor: 'pointer' }}>
         {buttonLabel || 'Notify me'}
       </button>
     </div>

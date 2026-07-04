@@ -62,7 +62,7 @@ function ReviewForm() {
       <button
         onClick={placeOrder}
         disabled={placing}
-        style={{ background: 'var(--color-primary)', color: 'var(--color-primary-contrast, #fff)', border: 'none', borderRadius: 8, padding: '0.75rem 1.25rem', fontWeight: 600, cursor: 'pointer' }}
+        style={{ background: 'var(--color-primary)', color: 'var(--color-on-primary)', border: 'none', borderRadius: 8, padding: '0.75rem 1.25rem', fontWeight: 600, cursor: 'pointer' }}
       >
         {placing ? 'Placing order…' : 'Place order'}
       </button>
