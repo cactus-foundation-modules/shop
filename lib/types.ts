@@ -52,8 +52,6 @@ export type ShpProduct = {
   metaTitle: string | null
   metaDescription: string | null
   ogImageId: string | null
-  ratingAverage: string | null
-  ratingCount: number
   isPreOrder: boolean
   preOrderDispatchDate: Date | null
   preOrderNote: string | null
@@ -262,21 +260,6 @@ export type ShpSavedAddress = {
   label: string | null
   isDefault: boolean
   address: ShpAddress
-  createdAt: Date
-  updatedAt: Date
-}
-
-export type ShpReviewStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
-export type ShpReview = {
-  id: string
-  productId: string
-  memberId: string | null
-  authorName: string
-  rating: number
-  title: string | null
-  body: string | null
-  isVerified: boolean
-  status: ShpReviewStatus
   createdAt: Date
   updatedAt: Date
 }

@@ -32,7 +32,7 @@ export async function getAutoExcludedIds(productId: string): Promise<string[]> {
 
 // Automatic-selection resolver (addendum D.3): primary category, active
 // products only, excluding self + any per-product auto-exclusions, ordered by
-// rating then recency, capped at `limit`. No category = no fallback results.
+// recency, capped at `limit`. No category = no fallback results.
 export async function resolveAutomaticRecommendations(productId: string, limit: number): Promise<ShpProduct[]> {
   const categoryId = await getPrimaryCategoryId(productId)
   if (!categoryId) return []
@@ -43,7 +43,7 @@ export async function resolveAutomaticRecommendations(productId: string, limit: 
     SELECT p."id" FROM "shp_products" p
     JOIN "shp_product_categories" pc ON pc."product_id" = p."id"
     WHERE pc."category_id" = ${categoryId} AND p."status" = 'ACTIVE' AND p."id" NOT IN (${Prisma.join(excludeList)})
-    ORDER BY p."rating_average" DESC NULLS LAST, p."created_at" DESC
+    ORDER BY p."created_at" DESC
     LIMIT ${limit}
   `
   return mapProductRows(rows)

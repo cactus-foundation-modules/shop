@@ -128,10 +128,6 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
     -- No FK - core Media table (same convention as dir_entries images/gz_posts featured_image_id)
     "og_image_id" TEXT,
 
-    -- Aggregate rating (populated by reviews)
-    "rating_average" NUMERIC(3,2),
-    "rating_count" INTEGER NOT NULL DEFAULT 0,
-
     -- Dedupe marker for the daily low-stock cron - cleared whenever stock is
     -- topped back up above the threshold, so the next dip re-alerts.
     "low_stock_alerted_at" TIMESTAMP(3),
@@ -530,32 +526,6 @@ CREATE TABLE IF NOT EXISTS "shp_saved_addresses" (
 );
 
 CREATE INDEX IF NOT EXISTS "shp_saved_addresses_member_id_idx" ON "shp_saved_addresses" ("member_id");
-
--- ---------------------------------------------------------------------------
--- Reviews
--- ---------------------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS "shp_reviews" (
-    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
-    "product_id" TEXT NOT NULL,
-    -- Nullable, no FK - from Members module; null = anonymous (never shown)
-    "member_id" TEXT,
-    "author_name" TEXT NOT NULL,
-    "rating" INTEGER NOT NULL,
-    "title" TEXT,
-    "body" TEXT,
-    "is_verified" BOOLEAN NOT NULL DEFAULT false,
-    "status" TEXT NOT NULL DEFAULT 'PENDING',
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "shp_reviews_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "shp_reviews_rating_check" CHECK ("rating" BETWEEN 1 AND 5),
-    CONSTRAINT "shp_reviews_status_check" CHECK ("status" IN ('PENDING', 'APPROVED', 'REJECTED')),
-    CONSTRAINT "shp_reviews_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "shp_products"("id") ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS "shp_reviews_product_id_status_idx" ON "shp_reviews" ("product_id", "status");
 
 -- ---------------------------------------------------------------------------
 -- Email templates (seeded below)

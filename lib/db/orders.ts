@@ -252,18 +252,6 @@ export async function listOrdersByMemberId(memberId: string): Promise<ShpOrder[]
   return rows.map(mapOrder)
 }
 
-// Has this email completed a purchase of this product before? (verified-purchase badge, coupon per-customer limit)
-export async function hasCompletedOrderForProduct(email: string, productId: string): Promise<boolean> {
-  const rows = await prisma.$queryRaw<{ exists: boolean }[]>`
-    SELECT EXISTS(
-      SELECT 1 FROM "shp_orders" o JOIN "shp_order_items" oi ON oi."order_id" = o."id"
-      WHERE lower(o."customer_email") = lower(${email}) AND oi."product_id" = ${productId}
-        AND o."status" IN ('COMPLETED', 'SHIPPED', 'PROCESSING') AND o."payment_status" = 'PAID'
-    ) AS "exists"
-  `
-  return rows[0]?.exists ?? false
-}
-
 export async function countPriorOrdersByEmail(email: string, excludeOrderId?: string): Promise<number> {
   const rows = await prisma.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*)::bigint AS count FROM "shp_orders"

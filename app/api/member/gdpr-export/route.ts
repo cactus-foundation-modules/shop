@@ -16,8 +16,7 @@ export async function GET(request: NextRequest) {
   const orders = await listOrdersByMemberId(memberId)
   const ordersWithItems = await Promise.all(orders.map(async (order) => ({ order, items: await getOrderItems(order.id) })))
   const addresses = await listSavedAddresses(memberId)
-  const reviews = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_reviews" WHERE "member_id" = ${memberId}`
   const subscriptions = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_back_in_stock_subscriptions" WHERE "member_id" = ${memberId}`
 
-  return NextResponse.json({ orders: ordersWithItems, addresses, reviews, backInStockSubscriptions: subscriptions })
+  return NextResponse.json({ orders: ordersWithItems, addresses, backInStockSubscriptions: subscriptions })
 }

@@ -1,7 +1,7 @@
 // In-memory IP rate limiter for the shop module's public mutating routes
-// (reviews, back-in-stock, coupon apply). Deliberately not table-backed like
+// (back-in-stock, coupon apply). Deliberately not table-backed like
 // contact-form's - those tables carry a natural IP column already; adding one
-// purely for rate-limiting to shp_reviews/shp_back_in_stock_subscriptions
+// purely for rate-limiting to shp_back_in_stock_subscriptions
 // would be a schema change for a non-critical last line of defence. Per-instance
 // only (resets on cold start, not shared across serverless instances) - an
 // acceptable tradeoff for a secondary guard behind normal validation.

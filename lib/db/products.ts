@@ -33,8 +33,6 @@ function mapProduct(r: Record<string, unknown>): ShpProduct {
     metaTitle: (r.meta_title as string | null) ?? null,
     metaDescription: (r.meta_description as string | null) ?? null,
     ogImageId: (r.og_image_id as string | null) ?? null,
-    ratingAverage: r.rating_average != null ? (r.rating_average as { toString(): string }).toString() : null,
-    ratingCount: r.rating_count as number,
     isPreOrder: r.is_pre_order as boolean,
     preOrderDispatchDate: (r.pre_order_dispatch_date as Date | null) ?? null,
     preOrderNote: (r.pre_order_note as string | null) ?? null,
@@ -362,21 +360,6 @@ export async function setProductCollections(productId: string, collectionIds: st
       `
     ),
   ])
-}
-
-// Recomputes rating_average/rating_count from APPROVED reviews - called after
-// a review is approved, rejected, or deleted.
-export async function recomputeProductRating(productId: string): Promise<void> {
-  await prisma.$executeRaw`
-    UPDATE "shp_products" p SET
-      "rating_average" = sub.avg_rating,
-      "rating_count" = sub.review_count
-    FROM (
-      SELECT AVG("rating")::numeric(3,2) AS avg_rating, COUNT(*)::int AS review_count
-      FROM "shp_reviews" WHERE "product_id" = ${productId} AND "status" = 'APPROVED'
-    ) sub
-    WHERE p."id" = ${productId}
-  `
 }
 
 export async function getBackInStockSubscriberCounts(productIds: string[]): Promise<Record<string, { pending: number; fulfilled: number }>> {

@@ -1,9 +1,7 @@
 import { connection } from 'next/server'
 import { getProductBySlug, getProductMedia } from '@/modules/shop/lib/db'
-import { listApprovedReviewsForProduct } from '@/modules/shop/lib/db/reviews'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { AddToCartButton } from '@/modules/shop/components/public/AddToCartButton'
-import { ReviewForm } from '@/modules/shop/components/public/ReviewForm'
 
 // [ANCHOR] - add-to-cart button is a non-removable core field. productSlug is
 // injected by the product detail page (lib/inject-product-context.ts) since
@@ -28,8 +26,8 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   const product = await getProductBySlug(props.productSlug)
   if (!product) return null
 
-  const [media, reviews, config] = await Promise.all([
-    getProductMedia(product.id), listApprovedReviewsForProduct(product.id), getShopConfigCached(),
+  const [media, config] = await Promise.all([
+    getProductMedia(product.id), getShopConfigCached(),
   ])
   const primary = media.find((m) => m.isPrimary) ?? media[0]
 
@@ -49,7 +47,6 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
         ? 'https://schema.org/PreOrder'
         : outOfStock ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock',
     },
-    ...(product.ratingCount > 0 ? { aggregateRating: { '@type': 'AggregateRating', ratingValue: product.ratingAverage, reviewCount: product.ratingCount } } : {}),
   }
 
   return (
@@ -90,22 +87,6 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
           <p style={{ whiteSpace: 'pre-wrap' }}>{product.description}</p>
         </div>
       )}
-
-      <div style={{ marginTop: '2rem', maxWidth: 700 }}>
-        <h2 style={{ fontSize: '1.125rem' }}>Reviews {product.ratingCount > 0 && `(${product.ratingAverage} avg, ${product.ratingCount})`}</h2>
-        {reviews.length === 0 && <p style={{ color: 'var(--color-text-muted)' }}>No reviews yet.</p>}
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '1rem' }}>
-          {reviews.map((r) => (
-            <li key={r.id} style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
-              <div style={{ fontWeight: 600 }}>{r.authorName} {r.isVerified && <span style={{ fontWeight: 400, fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Verified purchase</span>}</div>
-              <div>{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</div>
-              {r.title && <div style={{ fontWeight: 600 }}>{r.title}</div>}
-              {r.body && <p style={{ margin: '0.25rem 0 0' }}>{r.body}</p>}
-            </li>
-          ))}
-        </ul>
-        <ReviewForm productId={product.id} />
-      </div>
     </div>
   )
 }
