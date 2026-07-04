@@ -4,7 +4,7 @@ import { getCollectionBySlug } from '@/modules/shop/lib/db/catalogue'
 import { listProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
-import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config'
+import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { injectCollectionContext } from '@/modules/shop/lib/inject-collection-context'
 import type { PuckData } from '@/modules/shop/lib/types'
 

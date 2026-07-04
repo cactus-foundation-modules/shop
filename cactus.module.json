@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "publicBasePath": "shop",
@@ -87,7 +87,7 @@
     "groupLabel": "Shop",
     "types": [
       { "key": "shopIndex", "label": "Shop Home", "starterImport": "./lib/starterLayouts", "starterExport": "shopIndexStarters" },
-      { "key": "shopCategory", "label": "Category", "starterImport": "./lib/starterLayouts", "starterExport": "shopCategoryStarters" },
+      { "key": "shopCategory", "label": "Category", "starterImport": "./lib/starterLayouts", "starterExport": "shopCategoryStarters", "embedOptions": [ { "key": "categorySlug", "label": "Category slug", "type": "text", "placeholder": "e.g. furniture", "default": "" }, { "key": "limit", "label": "Number of products", "type": "number", "default": 3 } ], "embedInjectImport": "./lib/inject-embed-context", "embedInjectExport": "injectShopCategoryEmbed" },
       { "key": "shopCollection", "label": "Collection", "starterImport": "./lib/starterLayouts", "starterExport": "shopCollectionStarters" },
       { "key": "shopProduct", "label": "Product", "starterImport": "./lib/starterLayouts", "starterExport": "shopProductStarters" },
       { "key": "shopCheckout", "label": "Checkout", "starterImport": "./lib/starterLayouts", "starterExport": "shopCheckoutStarters" },

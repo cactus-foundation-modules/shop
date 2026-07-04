@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
-import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config'
+import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getProductBySlug } from '@/modules/shop/lib/db/products'
 import { injectProductContext } from '@/modules/shop/lib/inject-product-context'
