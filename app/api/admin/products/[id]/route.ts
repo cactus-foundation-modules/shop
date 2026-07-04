@@ -1,0 +1,99 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { requireShopUser } from '@/modules/shop/lib/access'
+import {
+  getProductById, updateProduct, deleteProduct, getProductMedia, getProductCategoryIds, getProductTagIds, getProductCollectionIds,
+  setProductMedia, setProductCategories, setProductTags, setProductCollections,
+} from '@/modules/shop/lib/db'
+import { slugify, ensureUniqueProductSlug } from '@/modules/shop/lib/slug'
+import { maybeTriggerBackInStock } from '@/modules/shop/lib/back-in-stock-trigger'
+
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const gate = await requireShopUser('shop.products', { allowAccess: true })
+  if (gate.error) return gate.error
+
+  const { id } = await params
+  const product = await getProductById(id)
+  if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
+
+  const [media, categoryIds, tagIds, collectionIds] = await Promise.all([
+    getProductMedia(id), getProductCategoryIds(id), getProductTagIds(id), getProductCollectionIds(id),
+  ])
+  return NextResponse.json({ product, media, categoryIds, tagIds, collectionIds })
+}
+
+const MediaItem = z.object({ type: z.enum(['IMAGE', 'VIDEO_FILE', 'VIDEO_URL']), url: z.string(), altText: z.string().nullable().optional(), isPrimary: z.boolean().optional() })
+
+const Body = z.object({
+  name: z.string().min(1).optional(),
+  status: z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED']).optional(),
+  description: z.string().nullable().optional(),
+  shortDescription: z.string().nullable().optional(),
+  sku: z.string().nullable().optional(),
+  barcode: z.string().nullable().optional(),
+  price: z.number().nonnegative().optional(),
+  compareAtPrice: z.number().nonnegative().nullable().optional(),
+  costPrice: z.number().nonnegative().nullable().optional(),
+  taxClassId: z.string().nullable().optional(),
+  trackInventory: z.boolean().optional(),
+  stockCount: z.number().int().nullable().optional(),
+  lowStockThreshold: z.number().int().nullable().optional(),
+  outOfStockBehaviour: z.enum(['BLOCK', 'BACKORDER']).optional(),
+  weight: z.number().nonnegative().nullable().optional(),
+  weightUnit: z.enum(['kg', 'lb']).nullable().optional(),
+  dimensionL: z.number().nonnegative().nullable().optional(),
+  dimensionW: z.number().nonnegative().nullable().optional(),
+  dimensionH: z.number().nonnegative().nullable().optional(),
+  dimensionUnit: z.enum(['cm', 'in']).nullable().optional(),
+  digitalFileId: z.string().nullable().optional(),
+  downloadLimit: z.number().int().nullable().optional(),
+  downloadExpiry: z.number().int().nullable().optional(),
+  metaTitle: z.string().nullable().optional(),
+  metaDescription: z.string().nullable().optional(),
+  ogImageId: z.string().nullable().optional(),
+  isPreOrder: z.boolean().optional(),
+  preOrderDispatchDate: z.coerce.date().nullable().optional(),
+  preOrderNote: z.string().nullable().optional(),
+  preOrderMaxQuantity: z.number().int().nullable().optional(),
+  regenerateSlug: z.boolean().optional(),
+  media: z.array(MediaItem).optional(),
+  categoryIds: z.array(z.string()).optional(),
+  tagIds: z.array(z.string()).optional(),
+  collectionIds: z.array(z.string()).optional(),
+})
+
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const gate = await requireShopUser('shop.products')
+  if (gate.error) return gate.error
+
+  const { id } = await params
+  const before = await getProductById(id)
+  if (!before) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
+
+  const parsed = Body.safeParse(await request.json())
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid product' }, { status: 400 })
+  const { media, categoryIds, tagIds, collectionIds, regenerateSlug, ...fields } = parsed.data
+
+  const slug = regenerateSlug && fields.name ? await ensureUniqueProductSlug(slugify(fields.name), id) : undefined
+  await updateProduct(id, { ...fields, ...(slug ? { slug } : {}) })
+
+  if (media) await setProductMedia(id, media)
+  if (categoryIds) await setProductCategories(id, categoryIds)
+  if (tagIds) await setProductTags(id, tagIds)
+  if (collectionIds) await setProductCollections(id, collectionIds)
+
+  const after = await getProductById(id)
+  if (after) {
+    await maybeTriggerBackInStock(after, { stockCount: before.stockCount, outOfStockBehaviour: before.outOfStockBehaviour })
+  }
+
+  return NextResponse.json({ product: after })
+}
+
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const gate = await requireShopUser('shop.products')
+  if (gate.error) return gate.error
+  const { id } = await params
+  await deleteProduct(id)
+  return NextResponse.json({ success: true })
+}

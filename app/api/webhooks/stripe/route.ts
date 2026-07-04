@@ -1,0 +1,25 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { stripeProvider } from '@/modules/shop/lib/payments/stripe'
+import { markOrderPaid, markOrderPaymentFailed, setOrderPaymentReference, updateOrderStatus } from '@/modules/shop/lib/db/orders'
+import { fulfillPaidOrder } from '@/modules/shop/lib/order-fulfillment'
+
+// PROTECTED - unauthenticated, signature-verified webhook receiver (spec 7.1).
+// Idempotent: markOrderPaid()'s WHERE clause makes a replayed event a no-op.
+export async function POST(request: NextRequest) {
+  const result = await stripeProvider.handleWebhook!(request)
+  if (result.error) return NextResponse.json({ error: result.error }, { status: 400 })
+  if (!result.orderId) return NextResponse.json({ received: true })
+
+  if (result.status === 'PAID') {
+    const reference = result.providerReference ?? result.orderId
+    await setOrderPaymentReference(result.orderId, reference)
+    const justPaid = await markOrderPaid(result.orderId, reference)
+    if (justPaid) await fulfillPaidOrder(result.orderId)
+  } else if (result.status === 'FAILED') {
+    await markOrderPaymentFailed(result.orderId)
+  } else if (result.status === 'REFUNDED' || result.status === 'PARTIALLY_REFUNDED') {
+    await updateOrderStatus(result.orderId, result.status === 'REFUNDED' ? 'REFUNDED' : 'PARTIALLY_REFUNDED')
+  }
+
+  return NextResponse.json({ received: true })
+}

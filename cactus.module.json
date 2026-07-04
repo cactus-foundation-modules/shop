@@ -1,0 +1,97 @@
+{
+  "name": "shop",
+  "version": "0.1.0",
+  "tablePrefix": "shp_",
+  "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping, reviews.",
+  "publicBasePath": "shop",
+  "permissions": [
+    "shop.access",
+    "shop.manage",
+    "shop.products",
+    "shop.orders",
+    "shop.customers",
+    "shop.discounts",
+    "shop.reports"
+  ],
+  "navGroupLabel": "Shop",
+  "navEntries": [
+    { "label": "Products", "path": "/m/shop/products", "icon": "<path d=\"M20 7 12 3 4 7v10l8 4 8-4Z\"/><path d=\"M4 7l8 4 8-4M12 11v10\"/>", "permission": "shop.access" },
+    { "label": "Categories", "path": "/m/shop/categories", "icon": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/>", "permission": "shop.access" },
+    { "label": "Collections", "path": "/m/shop/collections", "icon": "<path d=\"M4 6h16M4 12h16M4 18h10\"/>", "permission": "shop.access" },
+    { "label": "Orders", "path": "/m/shop/orders", "icon": "<path d=\"M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z\"/><path d=\"M3 6h18M16 10a4 4 0 0 1-8 0\"/>", "permission": "shop.access" },
+    { "label": "Customers", "path": "/m/shop/customers", "icon": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21a8 8 0 0 1 16 0\"/>", "permission": "shop.access" },
+    { "label": "Discounts", "path": "/m/shop/discounts", "icon": "<circle cx=\"7\" cy=\"7\" r=\"2\"/><circle cx=\"17\" cy=\"17\" r=\"2\"/><path d=\"M17 7 7 17\"/>", "permission": "shop.access" },
+    { "label": "Reviews", "path": "/m/shop/reviews", "icon": "<path d=\"m12 2 3.09 6.26L21 9.27l-4.5 4.39L17.82 21 12 17.77 6.18 21l1.32-7.34L3 9.27l5.91-1.01Z\"/>", "permission": "shop.access" },
+    { "label": "Reports", "path": "/m/shop/reports", "icon": "<path d=\"M3 3v18h18\"/><path d=\"M7 15l4-6 4 3 5-8\"/>", "permission": "shop.reports" }
+  ],
+  "requiredEnvVars": [],
+  "cookieCategories": [],
+  "teardown": [
+    "shp_products",
+    "shp_product_media",
+    "shp_categories",
+    "shp_product_categories",
+    "shp_tags",
+    "shp_product_tags",
+    "shp_collections",
+    "shp_product_collections",
+    "shp_tax_classes",
+    "shp_shipping_zones",
+    "shp_tax_zone_rates",
+    "shp_shipping_rates",
+    "shp_digital_files",
+    "shp_digital_downloads",
+    "shp_coupons",
+    "shp_automatic_discounts",
+    "shp_orders",
+    "shp_order_items",
+    "shp_refunds",
+    "shp_refund_items",
+    "shp_order_notes",
+    "shp_order_emails",
+    "shp_saved_addresses",
+    "shp_reviews",
+    "shp_email_templates",
+    "shp_back_in_stock_subscriptions",
+    "shp_import_jobs",
+    "shp_related_products",
+    "shp_upsell_products",
+    "shp_auto_exclude_products",
+    "shp_settings",
+    "shp_page_layouts"
+  ],
+  "cronJobs": [
+    { "path": "/api/m/shop/cron/low-stock-alerts", "schedule": "0 7 * * *" }
+  ],
+  "puckBlocks": [
+    { "type": "ShopProductGrid", "import": "./components/puck/ShopProductGrid", "component": "shopProductGridPuckComponent", "rscComponent": "shopProductGridPuckRscComponent" },
+    { "type": "ShopProductCard", "import": "./components/puck/ShopProductCard", "component": "shopProductCardPuckComponent", "rscComponent": "shopProductCardPuckRscComponent" },
+    { "type": "ShopFeaturedCollection", "import": "./components/puck/ShopFeaturedCollection", "component": "shopFeaturedCollectionPuckComponent", "rscComponent": "shopFeaturedCollectionPuckRscComponent" },
+    { "type": "ShopCategoryBrowser", "import": "./components/puck/ShopCategoryBrowser", "component": "shopCategoryBrowserPuckComponent", "rscComponent": "shopCategoryBrowserPuckRscComponent" },
+    { "type": "ShopPromoBanner", "import": "./components/puck/ShopPromoBanner", "component": "shopPromoBannerPuckComponent", "rscComponent": "shopPromoBannerPuckRscComponent" },
+    { "type": "ShopCartSummary", "import": "./components/puck/ShopCartSummary", "component": "shopCartSummaryPuckComponent", "rscComponent": "shopCartSummaryPuckRscComponent" },
+    { "type": "ShopCheckoutContact", "import": "./components/puck/ShopCheckoutContact", "component": "shopCheckoutContactPuckComponent", "rscComponent": "shopCheckoutContactPuckRscComponent" },
+    { "type": "ShopCheckoutShipping", "import": "./components/puck/ShopCheckoutShipping", "component": "shopCheckoutShippingPuckComponent", "rscComponent": "shopCheckoutShippingPuckRscComponent" },
+    { "type": "ShopCheckoutPayment", "import": "./components/puck/ShopCheckoutPayment", "component": "shopCheckoutPaymentPuckComponent", "rscComponent": "shopCheckoutPaymentPuckRscComponent" },
+    { "type": "ShopCheckoutReview", "import": "./components/puck/ShopCheckoutReview", "component": "shopCheckoutReviewPuckComponent", "rscComponent": "shopCheckoutReviewPuckRscComponent" },
+    { "type": "ShopOrderConfirmation", "import": "./components/puck/ShopOrderConfirmation", "component": "shopOrderConfirmationPuckComponent", "rscComponent": "shopOrderConfirmationPuckRscComponent" },
+    { "type": "ShopProductDetail", "import": "./components/puck/ShopProductDetail", "component": "shopProductDetailPuckComponent", "rscComponent": "shopProductDetailPuckRscComponent" },
+    { "type": "ShopBackInStockForm", "import": "./components/puck/ShopBackInStockForm", "component": "shopBackInStockFormPuckComponent", "rscComponent": "shopBackInStockFormPuckRscComponent" },
+    { "type": "ShopRelatedProducts", "import": "./components/puck/ShopRelatedProducts", "component": "shopRelatedProductsPuckComponent", "rscComponent": "shopRelatedProductsPuckRscComponent" },
+    { "type": "ShopUpsellProducts", "import": "./components/puck/ShopUpsellProducts", "component": "shopUpsellProductsPuckComponent", "rscComponent": "shopUpsellProductsPuckRscComponent" }
+  ],
+  "settingsTabs": [
+    { "id": "shop", "label": "Shop", "permission": "shop.manage", "import": "./components/admin/ShopSettingsTab", "component": "ShopSettingsTab" }
+  ],
+  "extensionPoints": [
+    { "point": "core.admin-dashboard-widgets", "id": "shop-summary", "permission": "shop.access", "import": "./components/admin/ShopDashboardWidget", "component": "shopDashboardWidget" },
+    { "point": "members.account-section", "id": "shop-orders", "import": "./components/public/ShopAccountSection", "component": "ShopAccountSection" }
+  ],
+  "memberExtensions": {
+    "activityTypes": [],
+    "notificationCategories": [],
+    "dataExportPath": "/api/m/shop/member/gdpr-export",
+    "routeTiers": []
+  },
+  "requiresModules": []
+}
