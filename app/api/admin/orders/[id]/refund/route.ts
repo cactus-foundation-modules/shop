@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getOrderById, getOrderItemById, getOrderItems, updateOrderStatus } from '@/modules/shop/lib/db/orders'
-import { createRefund } from '@/modules/shop/lib/db/refunds'
+import { createRefund, listRefundsForOrder } from '@/modules/shop/lib/db/refunds'
 import { paymentProviders } from '@/modules/shop/lib/payments/registry'
 
 const Body = z.object({
@@ -32,9 +32,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (orderItem.refundedQty + item.quantity > orderItem.quantity) {
       return NextResponse.json({ error: `Cannot refund more than the ${orderItem.quantity} units purchased for ${orderItem.productName}` }, { status: 400 })
     }
+    // Money cap: the requested amount can't exceed this line's tax-inclusive
+    // value for the units being refunded (a quantity cap alone let an operator
+    // refund an arbitrary amount against a cheap line).
+    const perUnit = orderItem.quantity > 0 ? Number(orderItem.total) / orderItem.quantity : Number(orderItem.unitPrice)
+    const maxLineRefund = perUnit * item.quantity + 0.01 // penny tolerance for rounding
+    if (item.amount > maxLineRefund) {
+      return NextResponse.json({ error: `Refund amount for ${orderItem.productName} exceeds the value of the units being refunded` }, { status: 400 })
+    }
   }
 
   const totalAmount = parsed.data.items.reduce((sum, i) => sum + i.amount, 0)
+
+  // Cumulative cap: prior completed refunds plus this one must not exceed the
+  // order total, so a run of partial refunds can't sum past what was charged.
+  const alreadyRefunded = (await listRefundsForOrder(id))
+    .filter((r) => r.status === 'COMPLETED')
+    .reduce((sum, r) => sum + Number(r.amount), 0)
+  if (alreadyRefunded + totalAmount > Number(order.total) + 0.01) {
+    return NextResponse.json({ error: 'This refund would exceed the amount paid for the order.' }, { status: 400 })
+  }
+
   const provider = paymentProviders[order.paymentMethod]
   const result = await provider.refundOrder({
     providerReference: order.paymentReference ?? '',

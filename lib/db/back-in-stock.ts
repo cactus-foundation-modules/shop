@@ -42,8 +42,8 @@ export async function markSubscribersNotified(ids: string[]): Promise<void> {
 }
 
 export async function listSubscriptions(filter: { productId?: string; page?: number; perPage?: number }): Promise<{ subscriptions: ShpBackInStockSubscription[]; total: number }> {
-  const page = filter.page ?? 1
-  const perPage = filter.perPage ?? 50
+  const page = Math.max(1, Math.floor(Number(filter.page)) || 1)
+  const perPage = Math.min(100, Math.max(1, Math.floor(Number(filter.perPage)) || 50))
   const offset = (page - 1) * perPage
   const where = filter.productId ? Prisma.sql`WHERE "product_id" = ${filter.productId}` : Prisma.empty
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`

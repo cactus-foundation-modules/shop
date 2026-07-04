@@ -42,17 +42,17 @@ export async function shopDashboardWidget() {
       </div>
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
         {lowStockCount > 0 && (
-          <a href={`/${adminPath}/m/shop/products?lowStock=true`} style={{ fontSize: '0.8125rem', background: 'var(--color-surface-muted)', borderRadius: 999, padding: '0.25rem 0.625rem', textDecoration: 'none', color: 'var(--color-text)' }}>
+          <a href={`/${adminPath}/m/shop/products?lowStock=true`} style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 999, padding: '0.25rem 0.625rem', textDecoration: 'none', color: 'var(--color-text)' }}>
             {lowStockCount} low stock
           </a>
         )}
         {pendingManualCount > 0 && (
-          <a href={`/${adminPath}/m/shop/orders?paymentStatus=AWAITING_CONFIRMATION`} style={{ fontSize: '0.8125rem', background: 'var(--color-surface-muted)', borderRadius: 999, padding: '0.25rem 0.625rem', textDecoration: 'none', color: 'var(--color-text)' }}>
+          <a href={`/${adminPath}/m/shop/orders?paymentStatus=AWAITING_CONFIRMATION`} style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 999, padding: '0.25rem 0.625rem', textDecoration: 'none', color: 'var(--color-text)' }}>
             {pendingManualCount} awaiting payment confirmation
           </a>
         )}
         {preOrderCount > 0 && (
-          <a href={`/${adminPath}/m/shop/orders?preOrder=true`} style={{ fontSize: '0.8125rem', background: 'var(--color-surface-muted)', borderRadius: 999, padding: '0.25rem 0.625rem', textDecoration: 'none', color: 'var(--color-text)' }}>
+          <a href={`/${adminPath}/m/shop/orders?preOrder=true`} style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 999, padding: '0.25rem 0.625rem', textDecoration: 'none', color: 'var(--color-text)' }}>
             {preOrderCount} active pre-orders
           </a>
         )}

@@ -11,7 +11,7 @@ export type ShopPromoBannerProps = {
 // No live data to fetch - editor and RSC render identically (parity invariant
 // is trivial here). backgroundColour is a semantic token name, never a hex value.
 export function ShopPromoBanner(props: ShopPromoBannerProps) {
-  const bg = `var(--color-${props.backgroundColour || 'surface-muted'})`
+  const bg = `var(--color-${props.backgroundColour || 'bg-subtle'})`
   return (
     <section style={{ background: bg, borderRadius: 12, padding: '2rem', display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
       {props.imageUrl && (
@@ -41,14 +41,14 @@ export const shopPromoBannerPuckComponent = {
     backgroundColour: {
       type: 'select' as const, label: 'Background',
       options: [
-        { value: 'surface-muted', label: 'Muted surface' },
+        { value: 'bg-subtle', label: 'Muted surface' },
         { value: 'surface', label: 'Surface' },
-        { value: 'primary-muted', label: 'Primary (muted)' },
+        { value: 'primary-subtle', label: 'Primary (muted)' },
       ],
     },
     imageUrl: { type: 'text' as const, label: 'Image URL (optional)' },
   },
-  defaultProps: { heading: 'Sale', body: '', ctaLabel: 'Shop now', ctaHref: '/shop', backgroundColour: 'surface-muted' },
+  defaultProps: { heading: 'Sale', body: '', ctaLabel: 'Shop now', ctaHref: '/shop', backgroundColour: 'bg-subtle' },
   render: ShopPromoBanner,
 }
 

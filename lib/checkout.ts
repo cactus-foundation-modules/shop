@@ -4,10 +4,17 @@
 import { getProductById } from '@/modules/shop/lib/db/products'
 import { getTaxRateForZoneAndClass, listShippingRatesForZone, resolveWeightBasedRate, getShippingRateById } from '@/modules/shop/lib/db/tax-shipping'
 import { getCouponByCode, listAutomaticDiscounts } from '@/modules/shop/lib/db/discounts'
-import { countPriorOrdersByEmail } from '@/modules/shop/lib/db/orders'
+import { countPriorCouponOrdersByEmail } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import type { CartLine } from '@/modules/shop/components/public/cart'
 import type { ShpProduct } from '@/modules/shop/lib/types'
+
+// Money is held as floating-point pounds throughout; round every figure that
+// gets persisted or charged to 2dp so the stored/charged total can't drift a
+// rounding penny from the amounts shown to the shopper.
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100
+}
 
 export type ResolvedCartLine = {
   product: ShpProduct
@@ -43,7 +50,11 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
         availabilityReason = `Only ${stock} left in stock`
       }
     }
-    if (product.isPreOrder && product.preOrderMaxQuantity != null && product.preOrderCount >= product.preOrderMaxQuantity) {
+    if (
+      product.isPreOrder &&
+      product.preOrderMaxQuantity != null &&
+      product.preOrderCount + line.quantity > product.preOrderMaxQuantity
+    ) {
       available = false
       availabilityReason = 'Pre-order is no longer available'
     }
@@ -88,9 +99,10 @@ export async function resolveDiscounts(subtotal: number, couponCode: string | nu
     if (coupon.minimumOrderValue != null && subtotal < Number(coupon.minimumOrderValue)) {
       return { discountAmount: 0, freeShipping: false, couponId: null, couponCode: null, error: `Minimum order value for this coupon is ${coupon.minimumOrderValue}` }
     }
-    // Q14: per-customer limit enforced by customerEmail match on prior PAID orders
+    // Q14: per-customer limit enforced by prior PAID orders BY THIS EMAIL THAT
+    // USED THIS COUPON - not every order the customer has ever placed.
     if (coupon.perCustomerLimit != null && customerEmail) {
-      const priorUses = await countPriorOrdersByEmail(customerEmail)
+      const priorUses = await countPriorCouponOrdersByEmail(customerEmail, coupon.code)
       if (priorUses >= coupon.perCustomerLimit) return { discountAmount: 0, freeShipping: false, couponId: null, couponCode: null, error: 'You have already used this coupon' }
     }
 
@@ -101,17 +113,23 @@ export async function resolveDiscounts(subtotal: number, couponCode: string | nu
     else if (coupon.type === 'FREE_SHIPPING') freeShipping = true
   }
 
-  const remainingSubtotal = Math.max(subtotal - discountAmount, 0)
+  // Track the remaining (post-discount) subtotal as we go so each stacked
+  // discount only bites into what's actually left - a FIXED_AMOUNT discount
+  // must never exceed the remainder, and later discounts see the reduced base.
+  let remainingSubtotal = Math.max(subtotal - discountAmount, 0)
   const autoDiscounts = await listAutomaticDiscounts(true)
   for (const disc of autoDiscounts) {
     if (disc.minimumOrderValue != null && remainingSubtotal < Number(disc.minimumOrderValue)) continue
-    if (disc.type === 'PERCENTAGE') discountAmount += remainingSubtotal * (Number(disc.value ?? 0) / 100)
-    else if (disc.type === 'FIXED_AMOUNT') discountAmount += Number(disc.value ?? 0)
+    let applied = 0
+    if (disc.type === 'PERCENTAGE') applied = remainingSubtotal * (Number(disc.value ?? 0) / 100)
+    else if (disc.type === 'FIXED_AMOUNT') applied = Math.min(Number(disc.value ?? 0), remainingSubtotal)
     else if (disc.type === 'FREE_SHIPPING') freeShipping = true
+    discountAmount += applied
+    remainingSubtotal = Math.max(remainingSubtotal - applied, 0)
     if (disc.freeShippingThreshold != null && subtotal >= Number(disc.freeShippingThreshold)) freeShipping = true
   }
 
-  return { discountAmount: Math.min(discountAmount, subtotal), freeShipping, couponId, couponCode: resolvedCode }
+  return { discountAmount: Math.min(round2(discountAmount), subtotal), freeShipping, couponId, couponCode: resolvedCode }
 }
 
 export type ShippingResolution = { rateId: string | null; rateName: string | null; amount: number }
@@ -119,7 +137,11 @@ export type ShippingResolution = { rateId: string | null; rateName: string | nul
 export async function resolveShipping(zoneId: string, rateId: string | null, totalWeightKg: number, freeShipping: boolean): Promise<ShippingResolution> {
   if (freeShipping) return { rateId: null, rateName: 'Free shipping', amount: 0 }
 
-  const rate = rateId ? await getShippingRateById(rateId) : (await listShippingRatesForZone(zoneId))[0]
+  let rate = rateId ? await getShippingRateById(rateId) : (await listShippingRatesForZone(zoneId))[0]
+  // Never price a rate that belongs to a different zone (a rateId can arrive
+  // stale if the shopper changed postcode after selecting) - fall back to the
+  // resolved zone's default rate instead.
+  if (rate && rate.zoneId !== zoneId) rate = (await listShippingRatesForZone(zoneId))[0]
   if (!rate) return { rateId: null, rateName: null, amount: 0 }
 
   let amount = 0
@@ -140,6 +162,7 @@ export type OrderTotals = {
   taxAmount: number
   total: number
   taxMode: 'INCLUSIVE' | 'EXCLUSIVE'
+  couponId: string | null
   lineItems: Array<ResolvedCartLine & { taxRate: number; taxAmount: number; lineTotal: number }>
 }
 
@@ -191,12 +214,13 @@ export async function resolveOrderTotals(params: {
     : subtotal - discounts.discountAmount + shippingAmount + taxAmount
 
   return {
-    subtotal,
-    discountAmount: discounts.discountAmount,
-    shippingAmount,
-    taxAmount,
-    total: Math.max(total, 0),
+    subtotal: round2(subtotal),
+    discountAmount: round2(discounts.discountAmount),
+    shippingAmount: round2(shippingAmount),
+    taxAmount: round2(taxAmount),
+    total: round2(Math.max(total, 0)),
     taxMode: config.taxMode,
+    couponId: discounts.couponId,
     lineItems,
   }
 }

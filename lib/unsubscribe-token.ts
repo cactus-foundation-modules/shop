@@ -16,9 +16,16 @@ export function signUnsubscribeToken(productId: string, email: string): string {
 export function verifyUnsubscribeToken(token: string): { productId: string; email: string } | null {
   try {
     const decoded = Buffer.from(token, 'base64url').toString('utf8')
-    const parts = decoded.split(':')
-    if (parts.length !== 3) return null
-    const [productId, email, signature] = parts as [string, string, string]
+    // payload is `productId:email:signature`. Split on the FIRST and LAST colon
+    // only, so an email containing a colon (valid per RFC 5321) still verifies -
+    // a naive split(':') mis-parses those and permanently breaks the link.
+    const firstColon = decoded.indexOf(':')
+    const lastColon = decoded.lastIndexOf(':')
+    if (firstColon === -1 || lastColon === firstColon) return null
+    const productId = decoded.slice(0, firstColon)
+    const email = decoded.slice(firstColon + 1, lastColon)
+    const signature = decoded.slice(lastColon + 1)
+    if (!productId || !email || !signature) return null
     const expected = createHmac('sha256', getKey()).update(`${productId}:${email}`).digest('hex')
     const a = Buffer.from(signature)
     const b = Buffer.from(expected)

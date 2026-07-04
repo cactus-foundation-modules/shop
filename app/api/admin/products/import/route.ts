@@ -4,6 +4,9 @@ import { requireShopUser } from '@/modules/shop/lib/access'
 import { createImportJob, markImportJobStarted, listRecentImportJobs } from '@/modules/shop/lib/db/import-jobs'
 import { processImportJob } from '@/modules/shop/lib/import-engine'
 import { parseCsv } from '@/modules/shop/lib/csv'
+import { z } from 'zod'
+
+const ColumnMapSchema = z.record(z.string(), z.string())
 
 // Recent imports log for the products list header (spec addendum C.7).
 export async function GET() {
@@ -24,7 +27,16 @@ export async function POST(request: NextRequest) {
   if (!(file instanceof File)) return NextResponse.json({ error: 'Missing file' }, { status: 400 })
 
   const columnMapRaw = formData.get('columnMap')
-  const columnMap = typeof columnMapRaw === 'string' ? (JSON.parse(columnMapRaw) as Record<string, string>) : null
+  let columnMap: Record<string, string> | null = null
+  if (typeof columnMapRaw === 'string' && columnMapRaw.length > 0) {
+    try {
+      const parsed = ColumnMapSchema.safeParse(JSON.parse(columnMapRaw))
+      if (!parsed.success) return NextResponse.json({ error: 'Invalid column mapping' }, { status: 400 })
+      columnMap = parsed.data
+    } catch {
+      return NextResponse.json({ error: 'Invalid column mapping' }, { status: 400 })
+    }
+  }
 
   const csvText = await file.text()
   const rows = parseCsv(csvText)

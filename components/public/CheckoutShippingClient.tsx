@@ -33,10 +33,16 @@ export function CheckoutShippingClient() {
       })
       if (!res.ok) return
       const data = await res.json()
-      setRates(data.shippingRates ?? [])
-      if (!selectedRateId && data.shippingRates?.[0]) {
-        setSelectedRateId(data.shippingRates[0].id)
-        updateCheckoutState({ shippingRateId: data.shippingRates[0].id })
+      const newRates: ShippingRateOption[] = data.shippingRates ?? []
+      setRates(newRates)
+      // If the postcode changed to a different zone, the previously selected
+      // rate may no longer be offered - drop it and fall back to the first
+      // available (or none) so we never carry a rate from the wrong zone.
+      const stillValid = selectedRateId != null && newRates.some((r) => r.id === selectedRateId)
+      if (!stillValid) {
+        const fallback = newRates[0]?.id ?? null
+        setSelectedRateId(fallback)
+        updateCheckoutState({ shippingRateId: fallback })
       }
     }, 500)
     return () => clearTimeout(timeout)

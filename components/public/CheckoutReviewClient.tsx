@@ -48,7 +48,7 @@ export function CheckoutReviewClient() {
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Order review</h2>
       {summary.hasPreOrderItems && (
-        <p style={{ background: 'var(--color-surface-muted)', borderRadius: 6, padding: '0.5rem 0.75rem', fontSize: '0.875rem' }}>
+        <p style={{ background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem', fontSize: '0.875rem' }}>
           This order contains a pre-order item.
         </p>
       )}

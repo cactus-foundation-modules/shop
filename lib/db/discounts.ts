@@ -82,8 +82,17 @@ export async function deleteCoupon(id: string): Promise<void> {
   await prisma.$executeRaw`DELETE FROM "shp_coupons" WHERE "id" = ${id}`
 }
 
-export async function incrementCouponUsage(id: string): Promise<void> {
-  await prisma.$executeRaw`UPDATE "shp_coupons" SET "usage_count" = "usage_count" + 1 WHERE "id" = ${id}`
+// Atomic, limit-guarded increment. The pre-checkout check in resolveDiscounts is
+// advisory (TOCTOU-racy under concurrent checkouts); this single conditional
+// UPDATE is the real enforcement - it can never push usage_count past
+// usage_limit. Returns false when the coupon was already exhausted, so callers
+// can tell a redemption lost the race.
+export async function incrementCouponUsage(id: string): Promise<boolean> {
+  const result = await prisma.$executeRaw`
+    UPDATE "shp_coupons" SET "usage_count" = "usage_count" + 1
+    WHERE "id" = ${id} AND ("usage_limit" IS NULL OR "usage_count" < "usage_limit")
+  `
+  return result > 0
 }
 
 export async function listAutomaticDiscounts(activeOnly = false): Promise<ShpAutomaticDiscount[]> {

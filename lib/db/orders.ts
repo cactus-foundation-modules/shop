@@ -181,11 +181,15 @@ export async function markOrderAwaitingConfirmation(id: string): Promise<void> {
   `
 }
 
-export async function confirmManualPayment(id: string): Promise<void> {
-  await prisma.$executeRaw`
+// Idempotent like markOrderPaid: the `payment_status != 'PAID'` guard makes a
+// second confirm a no-op and returns false, so callers only run the exactly-once
+// fulfilment side-effects when this returns true.
+export async function confirmManualPayment(id: string): Promise<boolean> {
+  const result = await prisma.$executeRaw`
     UPDATE "shp_orders" SET "payment_status" = 'PAID', "paid_at" = CURRENT_TIMESTAMP, "status" = 'PROCESSING', "updated_at" = CURRENT_TIMESTAMP
-    WHERE "id" = ${id}
+    WHERE "id" = ${id} AND "payment_status" != 'PAID'
   `
+  return result > 0
 }
 
 export async function setOrderPaymentReference(id: string, reference: string): Promise<void> {
@@ -212,8 +216,8 @@ export type ListOrdersFilter = {
 }
 
 export async function listOrders(filter: ListOrdersFilter): Promise<{ orders: ShpOrder[]; total: number }> {
-  const page = filter.page ?? 1
-  const perPage = filter.perPage ?? 25
+  const page = Math.max(1, Math.floor(Number(filter.page)) || 1)
+  const perPage = Math.min(100, Math.max(1, Math.floor(Number(filter.perPage)) || 25))
   const offset = (page - 1) * perPage
 
   const conditions: Prisma.Sql[] = []
@@ -257,6 +261,18 @@ export async function countPriorOrdersByEmail(email: string, excludeOrderId?: st
     SELECT COUNT(*)::bigint AS count FROM "shp_orders"
     WHERE lower("customer_email") = lower(${email}) AND "payment_status" = 'PAID'
       AND "id" != ${excludeOrderId ?? ''}
+  `
+  return Number(rows[0]?.count ?? 0)
+}
+
+// Counts prior PAID orders by this email that actually used the given coupon -
+// the correct basis for a coupon's per-customer limit (countPriorOrdersByEmail
+// counts every order regardless of coupon, which both over- and under-counts).
+export async function countPriorCouponOrdersByEmail(email: string, couponCode: string): Promise<number> {
+  const rows = await prisma.$queryRaw<{ count: bigint }[]>`
+    SELECT COUNT(*)::bigint AS count FROM "shp_orders"
+    WHERE lower("customer_email") = lower(${email}) AND "payment_status" = 'PAID'
+      AND lower("coupon_code") = lower(${couponCode})
   `
   return Number(rows[0]?.count ?? 0)
 }

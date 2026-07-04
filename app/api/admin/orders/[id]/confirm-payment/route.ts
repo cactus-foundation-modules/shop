@@ -16,7 +16,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   }
   if (order.paymentStatus === 'PAID') return NextResponse.json({ success: true })
 
-  await confirmManualPayment(id)
-  await fulfillPaidOrder(id)
+  // Gate fulfilment on the atomic flip so two overlapping confirm clicks can't
+  // both run the exactly-once side-effects (stock/coupon/downloads/emails).
+  const justPaid = await confirmManualPayment(id)
+  if (justPaid) await fulfillPaidOrder(id)
   return NextResponse.json({ success: true })
 }

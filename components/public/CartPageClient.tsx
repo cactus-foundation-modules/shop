@@ -82,7 +82,7 @@ export function CartPageClient() {
 
       <div style={{ display: 'flex', gap: '0.5rem' }}>
         <input placeholder="Coupon code" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
-        <button onClick={applyCoupon} style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 1rem', cursor: 'pointer' }}>Apply</button>
+        <button onClick={applyCoupon} style={{ background: 'var(--color-bg-subtle)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 1rem', cursor: 'pointer' }}>Apply</button>
       </div>
       {couponMessage && <p style={{ fontSize: '0.875rem' }}>{couponMessage}</p>}
 

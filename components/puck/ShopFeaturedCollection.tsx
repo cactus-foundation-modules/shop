@@ -35,7 +35,7 @@ export async function ShopFeaturedCollectionRsc(props: ShopFeaturedCollectionPro
       }}>
         {products.map((p) => (
           <a key={p.id} href={`/shop/products/${p.slug}`} style={{ textDecoration: 'none', color: 'inherit', minWidth: layout === 'Carousel' ? 200 : undefined, border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', display: 'block' }}>
-            <div style={{ aspectRatio: '1/1', background: 'var(--color-surface-muted)' }} />
+            <div style={{ aspectRatio: '1/1', background: 'var(--color-bg-subtle)' }} />
             <div style={{ padding: '0.75rem' }}>
               <h3 style={{ margin: '0 0 0.25rem', fontSize: '0.9375rem' }}>{p.name}</h3>
               <span style={{ fontWeight: 600 }}>{config.currencySymbol}{p.price}</span>

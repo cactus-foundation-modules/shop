@@ -70,11 +70,12 @@ async function confirmPayment(order: ShpOrderDraft, payload: unknown): Promise<S
   const customId = data.purchase_units[0]?.custom_id
   if (customId !== order.orderId) return { success: false, error: 'PayPal order does not match this order' }
   const capture = data.purchase_units[0]?.payments?.captures?.[0]
-  if (capture?.amount) {
-    if (Number(capture.amount.value) !== Number(order.amount.toFixed(2))) return { success: false, error: 'Payment amount does not match this order' }
-    if (capture.amount.currency_code !== order.currency) return { success: false, error: 'Payment currency does not match this order' }
-  }
-  return { success: true, providerReference: capture?.id ?? paypalOrderId }
+  // Never confirm without validating the captured amount - a missing amount
+  // object must fail closed, not skip the check and mark the order paid.
+  if (!capture?.amount) return { success: false, error: 'Capture amount missing - cannot verify payment' }
+  if (Number(capture.amount.value) !== Number(order.amount.toFixed(2))) return { success: false, error: 'Payment amount does not match this order' }
+  if (capture.amount.currency_code !== order.currency) return { success: false, error: 'Payment currency does not match this order' }
+  return { success: true, providerReference: capture.id ?? paypalOrderId }
 }
 
 async function refundOrder(refund: ShpRefundRequest): Promise<ShpRefundResult> {

@@ -7,6 +7,7 @@ import { generateOrderNumber } from '@/modules/shop/lib/order-number'
 import { getShopConfigCached, getAvailablePaymentMethods } from '@/modules/shop/lib/config'
 import { paymentProviders } from '@/modules/shop/lib/payments/registry'
 import { getMemberFromCookie } from '@/lib/members/session'
+import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 import type { ShpAddress } from '@/modules/shop/lib/types'
 
 const AddressSchema = z.object({
@@ -30,6 +31,14 @@ const Body = z.object({
 // PROTECTED - creates the PENDING order (Q8) then the provider intent. Stock
 // is not decremented here (only on ship/paid, see product PUT and confirm route).
 export async function POST(request: NextRequest) {
+  // This endpoint creates a real DB order row AND a live provider intent (Stripe
+  // PaymentIntent / PayPal order) on every call, so it is the most expensive
+  // public mutating route - rate-limit it per IP like apply-coupon/back-in-stock.
+  const ip = getClientIpFromRequest(request)
+  if (!checkInMemoryRateLimit(`payment-intent:${ip}`, 10, 15 * 60 * 1000)) {
+    return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
+  }
+
   const parsed = Body.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 })
   const data = parsed.data
@@ -73,7 +82,7 @@ export async function POST(request: NextRequest) {
     total: totals.total,
     taxMode: totals.taxMode,
     currency: config.currency,
-    couponId: null, // set on confirm, once payment actually succeeds
+    couponId: totals.couponId, // the coupon actually resolved server-side, if any
     couponCode: data.couponCode ?? null,
     paymentMethod: data.paymentMethod,
     shippingRateId: shippingRate?.id ?? null,

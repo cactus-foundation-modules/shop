@@ -24,7 +24,7 @@ export async function ShopProductCardRsc(props: ShopProductCardProps) {
 
   return (
     <a href={`/shop/products/${product.slug}`} style={{ textDecoration: 'none', color: 'inherit', border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', display: 'block', maxWidth: 240 }}>
-      <div style={{ aspectRatio: '1/1', background: 'var(--color-surface-muted)' }}>
+      <div style={{ aspectRatio: '1/1', background: 'var(--color-bg-subtle)' }}>
         {primary && primary.type !== 'VIDEO_URL' && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={primary.url} alt={primary.altText ?? product.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />

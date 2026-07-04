@@ -9,6 +9,15 @@ import { sendShopEmail } from '@/modules/shop/lib/email'
 
 type RowError = { row: number; reason: string }
 
+// Parse an optional numeric CSV cell: empty or non-numeric -> null, so a stray
+// "lots" in stock_count doesn't write NaN and abort the row with an opaque DB
+// error (only `price` was guarded before).
+function numOrNull(raw: string): number | null {
+  if (!raw) return null
+  const n = Number(raw)
+  return Number.isNaN(n) ? null : n
+}
+
 async function resolveTermIds(
   values: string[],
   getBySlug: (slug: string) => Promise<{ id: string } | null>,
@@ -85,14 +94,14 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
         description: cell(row, 'description') || null,
         shortDescription: cell(row, 'short_description') || null,
         price,
-        compareAtPrice: cell(row, 'compare_at_price') ? Number(cell(row, 'compare_at_price')) : null,
-        costPrice: cell(row, 'cost_price') ? Number(cell(row, 'cost_price')) : null,
+        compareAtPrice: numOrNull(cell(row, 'compare_at_price')),
+        costPrice: numOrNull(cell(row, 'cost_price')),
         taxClassId: taxClass?.id ?? null,
         trackInventory: cell(row, 'track_inventory').toLowerCase() === 'true',
-        stockCount: cell(row, 'stock_count') ? Number(cell(row, 'stock_count')) : null,
-        lowStockThreshold: cell(row, 'low_stock_threshold') ? Number(cell(row, 'low_stock_threshold')) : null,
+        stockCount: numOrNull(cell(row, 'stock_count')),
+        lowStockThreshold: numOrNull(cell(row, 'low_stock_threshold')),
         outOfStockBehaviour: (cell(row, 'out_of_stock_behaviour').toUpperCase() || 'BLOCK') as 'BLOCK' | 'BACKORDER',
-        weight: cell(row, 'weight') ? Number(cell(row, 'weight')) : null,
+        weight: numOrNull(cell(row, 'weight')),
         weightUnit: cell(row, 'weight_unit') || null,
         metaTitle: cell(row, 'meta_title') || null,
         metaDescription: cell(row, 'meta_description') || null,

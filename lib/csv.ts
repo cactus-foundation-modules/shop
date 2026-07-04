@@ -8,8 +8,14 @@ export const CSV_COLUMNS = [
 export type CsvColumn = (typeof CSV_COLUMNS)[number]
 
 export function toCsvField(value: string): string {
-  if (/[",\n\r]/.test(value)) return `"${value.replace(/"/g, '""')}"`
-  return value
+  // CSV formula-injection guard: a cell starting with = + - @ (or tab/CR) is
+  // executed as a formula by Excel/Sheets. Prefix with a single quote so it's
+  // read as text - but leave plain numbers (incl. negatives) untouched so a
+  // round-trip export/import keeps numeric columns intact.
+  let field = value
+  if (/^[=+\-@\t\r]/.test(field) && !/^-?\d+(\.\d+)?$/.test(field)) field = `'${field}`
+  if (/[",\n\r]/.test(field)) return `"${field.replace(/"/g, '""')}"`
+  return field
 }
 
 export function toCsvRow(values: string[]): string {

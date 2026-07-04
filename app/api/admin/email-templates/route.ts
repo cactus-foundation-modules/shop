@@ -10,7 +10,11 @@ export async function GET() {
   return NextResponse.json({ templates })
 }
 
-const Body = z.object({ trigger: z.string(), subject: z.string().optional(), bodyHtml: z.string().optional(), isActive: z.boolean().optional() })
+const TRIGGERS = [
+  'ORDER_CONFIRMED', 'STATUS_PROCESSING', 'STATUS_SHIPPED', 'STATUS_COMPLETED', 'STATUS_CANCELLED',
+  'ADMIN_NEW_ORDER', 'LOW_STOCK', 'BACK_IN_STOCK', 'IMPORT_COMPLETE',
+] as const
+const Body = z.object({ trigger: z.enum(TRIGGERS), subject: z.string().optional(), bodyHtml: z.string().optional(), isActive: z.boolean().optional() })
 
 export async function PUT(request: NextRequest) {
   const gate = await requireShopUser('shop.manage')
@@ -18,6 +22,6 @@ export async function PUT(request: NextRequest) {
   const parsed = Body.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: 'Invalid template' }, { status: 400 })
   const { trigger, ...fields } = parsed.data
-  await updateEmailTemplate(trigger as never, fields)
+  await updateEmailTemplate(trigger, fields)
   return NextResponse.json({ success: true })
 }

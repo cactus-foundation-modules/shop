@@ -56,7 +56,7 @@ export function ProductPicker({
     <div style={{ display: 'grid', gap: '0.375rem' }}>
       <span style={{ fontSize: '0.8125rem', fontWeight: 600 }}>{label}</span>
       {value.map((p, i) => (
-        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--color-surface-muted)', borderRadius: 6, padding: '0.375rem 0.5rem' }}>
+        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.375rem 0.5rem' }}>
           <span style={{ flex: 1, fontSize: '0.875rem' }}>{p.name}</span>
           {reorderable && (
             <>

@@ -199,7 +199,7 @@ export function ProductEditor({ productId }: { productId: string }) {
                 type="button"
                 onClick={() => setMedia((prev) => prev.filter((_, j) => j !== i))}
                 aria-label="Remove image"
-                style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,.6)', color: '#fff', border: 'none', borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', lineHeight: 1 }}
+                style={{ position: 'absolute', top: 4, right: 4, background: 'var(--color-overlay)', color: 'var(--color-text-inverse)', border: 'none', borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', lineHeight: 1 }}
               >
                 ×
               </button>
@@ -279,4 +279,4 @@ export function ProductEditor({ productId }: { productId: string }) {
 
 const inputStyle: React.CSSProperties = { display: 'block', width: '100%', padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)', marginTop: '0.25rem' }
 const buttonPrimary: React.CSSProperties = { background: 'var(--color-primary)', color: 'var(--color-on-primary)', border: 'none', borderRadius: 8, padding: '0.625rem 1.25rem', fontWeight: 600, cursor: 'pointer', justifySelf: 'start' }
-const buttonSecondary: React.CSSProperties = { background: 'var(--color-surface-muted)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 1rem', cursor: 'pointer' }
+const buttonSecondary: React.CSSProperties = { background: 'var(--color-bg-subtle)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 1rem', cursor: 'pointer' }

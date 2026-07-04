@@ -120,8 +120,10 @@ export type ListProductsFilter = {
 }
 
 export async function listProducts(filter: ListProductsFilter): Promise<{ products: ShpProduct[]; total: number }> {
-  const page = filter.page ?? 1
-  const perPage = filter.perPage ?? 24
+  // Clamp pagination centrally: guards against NaN/negative/huge perPage from
+  // the unauthenticated public list (LIMIT NaN 500s; perPage=1e9 is a DoS).
+  const page = Math.max(1, Math.floor(Number(filter.page)) || 1)
+  const perPage = Math.min(100, Math.max(1, Math.floor(Number(filter.perPage)) || 24))
   const offset = (page - 1) * perPage
 
   const conditions: Prisma.Sql[] = []

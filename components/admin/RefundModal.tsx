@@ -54,7 +54,7 @@ export function RefundModal({ orderId, items, paymentMethod, onClose, onDone }: 
         </div>
         <div style={{ padding: '1.25rem', overflowY: 'auto', display: 'grid', gap: '0.75rem' }}>
           {MANUAL_METHOD_COPY[paymentMethod] && (
-            <p style={{ fontSize: '0.8125rem', background: 'var(--color-surface-muted)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>{MANUAL_METHOD_COPY[paymentMethod]}</p>
+            <p style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>{MANUAL_METHOD_COPY[paymentMethod]}</p>
           )}
           {!MANUAL_METHOD_COPY[paymentMethod] && (
             <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>This will be refunded automatically via {paymentMethod === 'STRIPE' ? 'Stripe' : 'PayPal'}.</p>
