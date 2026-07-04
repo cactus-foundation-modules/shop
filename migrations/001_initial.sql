@@ -701,7 +701,7 @@ CREATE TABLE IF NOT EXISTS "shp_page_layouts" (
 
 INSERT INTO "shp_page_layouts" ("key", "builder_data") VALUES
     ('index', '{"root":{"props":{}},"content":[{"type":"ShopProductGrid","props":{"id":"shop-index-grid","columns":3,"limit":12,"showFilters":"yes"}}],"zones":{}}'::jsonb),
-    ('product', '{"root":{"props":{}},"content":[{"type":"ShopProductDetail","props":{"id":"shop-product-detail"}},{"type":"ShopRelatedProducts","props":{"id":"shop-product-related","heading":"You might also like"}}],"zones":{}}'::jsonb),
-    ('checkout', '{"root":{"props":{}},"content":[{"type":"ShopCheckoutContact","props":{"id":"shop-checkout-contact"}},{"type":"ShopCheckoutShipping","props":{"id":"shop-checkout-shipping"}},{"type":"ShopCheckoutPayment","props":{"id":"shop-checkout-payment"}},{"type":"ShopCheckoutReview","props":{"id":"shop-checkout-review"}}],"zones":{}}'::jsonb),
+    ('product', '{"root":{"props":{}},"content":[{"type":"ShopProductDetail","props":{"id":"shop-product-detail"}},{"type":"ShopBackInStockForm","props":{"id":"shop-product-backinstock","buttonLabel":"Notify me"}},{"type":"ShopRelatedProducts","props":{"id":"shop-product-related","heading":"You might also like"}}],"zones":{}}'::jsonb),
+    ('checkout', '{"root":{"props":{}},"content":[{"type":"ShopCheckoutContact","props":{"id":"shop-checkout-contact"}},{"type":"ShopCheckoutShipping","props":{"id":"shop-checkout-shipping"}},{"type":"ShopCheckoutPayment","props":{"id":"shop-checkout-payment"}},{"type":"ShopCheckoutReview","props":{"id":"shop-checkout-review"}},{"type":"ShopUpsellProducts","props":{"id":"shop-checkout-upsells","heading":"You might also like"}}],"zones":{}}'::jsonb),
     ('confirmation', '{"root":{"props":{}},"content":[{"type":"ShopOrderConfirmation","props":{"id":"shop-order-confirmation"}}],"zones":{}}'::jsonb)
 ON CONFLICT ("key") DO NOTHING;

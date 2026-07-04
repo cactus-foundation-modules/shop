@@ -4,6 +4,7 @@ import { requireShopUser } from '@/modules/shop/lib/access'
 import {
   getProductById, updateProduct, deleteProduct, getProductMedia, getProductCategoryIds, getProductTagIds, getProductCollectionIds,
   setProductMedia, setProductCategories, setProductTags, setProductCollections,
+  getManualRelatedProducts, getManualUpsellProducts, getAutoExcludedIds,
 } from '@/modules/shop/lib/db'
 import { slugify, ensureUniqueProductSlug } from '@/modules/shop/lib/slug'
 import { maybeTriggerBackInStock } from '@/modules/shop/lib/back-in-stock-trigger'
@@ -16,10 +17,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const product = await getProductById(id)
   if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
 
-  const [media, categoryIds, tagIds, collectionIds] = await Promise.all([
+  const [media, categoryIds, tagIds, collectionIds, relatedProducts, upsellProducts, excludedIds] = await Promise.all([
     getProductMedia(id), getProductCategoryIds(id), getProductTagIds(id), getProductCollectionIds(id),
+    getManualRelatedProducts(id), getManualUpsellProducts(id), getAutoExcludedIds(id),
   ])
-  return NextResponse.json({ product, media, categoryIds, tagIds, collectionIds })
+  const excludedProducts = (await Promise.all(excludedIds.map((eid) => getProductById(eid)))).filter((p): p is NonNullable<typeof p> => !!p)
+  return NextResponse.json({
+    product, media, categoryIds, tagIds, collectionIds,
+    relatedProducts: relatedProducts.map((p) => ({ id: p.id, name: p.name })),
+    upsellProducts: upsellProducts.map((p) => ({ id: p.id, name: p.name })),
+    excludedProducts: excludedProducts.map((p) => ({ id: p.id, name: p.name })),
+  })
 }
 
 const MediaItem = z.object({ type: z.enum(['IMAGE', 'VIDEO_FILE', 'VIDEO_URL']), url: z.string(), altText: z.string().nullable().optional(), isPrimary: z.boolean().optional() })

@@ -21,6 +21,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   const file = await getDigitalFileById(download.fileId)
   if (!file) return errorResponse('File not found.', 404)
 
+  // Stream the bytes through this gated endpoint rather than redirecting -
+  // a redirect hands the browser the permanent underlying file URL, which
+  // can then be reused directly to bypass the expiry/limit checks above.
+  const upstream = await fetch(file.url)
+  if (!upstream.ok || !upstream.body) return errorResponse('The file could not be retrieved.', 502)
+
   await incrementDownloadCount(download.id)
-  return NextResponse.redirect(file.url)
+  return new NextResponse(upstream.body, {
+    headers: {
+      'Content-Type': file.mimeType,
+      'Content-Disposition': `attachment; filename="${file.filename}"`,
+      'Content-Length': String(file.size),
+    },
+  })
 }

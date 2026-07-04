@@ -6,7 +6,7 @@ async function createIntent(_order: ShpOrderDraft): Promise<ShpPaymentIntent> {
   return { instructions: config.cashInstructions }
 }
 
-async function confirmPayment(): Promise<ShpPaymentResult> {
+async function confirmPayment(_order: ShpOrderDraft, _payload: unknown): Promise<ShpPaymentResult> {
   return { success: false, error: 'Cash payments are confirmed manually by an admin.' }
 }
 

@@ -14,7 +14,9 @@ export interface ShpPaymentProvider {
   id: ShpPaymentMethod
   label: string
   createIntent(order: ShpOrderDraft): Promise<ShpPaymentIntent>
-  confirmPayment(orderId: string, payload: unknown): Promise<ShpPaymentResult>
+  // order carries amount/currency so providers can re-validate what was actually
+  // charged against what the order costs - never trust payload alone (spec 7).
+  confirmPayment(order: ShpOrderDraft, payload: unknown): Promise<ShpPaymentResult>
   refundOrder(refund: ShpRefundRequest): Promise<ShpRefundResult>
   handleWebhook?(req: Request): Promise<ShpWebhookResult>
 }

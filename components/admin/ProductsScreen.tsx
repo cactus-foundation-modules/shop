@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { ImportModal } from '@/modules/shop/components/admin/ImportModal'
 
 type ProductRow = {
   id: string; name: string; slug: string; type: string; status: string; price: string; stockCount: number | null; sku: string | null
@@ -12,6 +13,7 @@ export function ProductsScreen() {
   const [subscriberCounts, setSubscriberCounts] = useState<Record<string, { pending: number; fulfilled: number }>>({})
   const [search, setSearch] = useState('')
   const [importJobs, setImportJobs] = useState<Array<{ id: string; status: string; createdCount: number; updatedCount: number; skippedCount: number }>>([])
+  const [importOpen, setImportOpen] = useState(false)
 
   function refresh() {
     const params = new URLSearchParams()
@@ -47,9 +49,12 @@ export function ProductsScreen() {
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <Link href="/api/m/shop/admin/products/export" className="btn btn-secondary">Export CSV</Link>
           <Link href="/api/m/shop/admin/products/import-template" className="btn btn-secondary">Import template</Link>
+          <button onClick={() => setImportOpen(true)} className="btn btn-secondary">Import CSV</button>
           <button onClick={createProduct} className="btn btn-primary">New product</button>
         </div>
       </div>
+
+      {importOpen && <ImportModal onClose={() => setImportOpen(false)} onDone={refresh} />}
 
       <input placeholder="Search products…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)', marginBottom: '1rem', width: 300 }} />
 

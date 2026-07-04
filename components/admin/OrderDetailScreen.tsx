@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { RefundModal } from '@/modules/shop/components/admin/RefundModal'
 
 type OrderItem = { id: string; productName: string; quantity: number; unitPrice: string; total: string; refundedQty: number; isPreOrder: boolean }
 type OrderDetail = {
@@ -21,6 +22,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   const [data, setData] = useState<OrderDetail | null>(null)
   const [note, setNote] = useState('')
   const [sendEmailOnChange, setSendEmailOnChange] = useState(true)
+  const [refundOpen, setRefundOpen] = useState(false)
 
   function refresh() {
     fetch(`/api/m/shop/admin/orders/${orderId}`).then(async (r) => { if (r.ok) setData(await r.json()) })
@@ -46,20 +48,8 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
     refresh()
   }
 
-  async function refundItem(item: OrderItem) {
-    const qtyStr = prompt(`Refund how many of ${item.productName}? (max ${item.quantity - item.refundedQty})`, '1')
-    if (!qtyStr) return
-    const quantity = Number(qtyStr)
-    const amount = (Number(item.unitPrice) * quantity).toFixed(2)
-    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/refund`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: [{ orderItemId: item.id, quantity, amount: Number(amount) }] }),
-    })
-    if (!res.ok) alert((await res.json()).error)
-    refresh()
-  }
-
   const { order } = data
+  const hasRefundableItems = data.items.some((i) => i.refundedQty < i.quantity)
 
   return (
     <div style={{ display: 'grid', gap: '1.5rem', maxWidth: 700 }}>
@@ -84,7 +74,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}>
-            <th style={{ padding: '0.5rem' }}>Item</th><th>Qty</th><th>Total</th><th>Refunded</th><th></th>
+            <th style={{ padding: '0.5rem' }}>Item</th><th>Qty</th><th>Total</th><th>Refunded</th>
           </tr>
         </thead>
         <tbody>
@@ -94,11 +84,23 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
               <td>{item.quantity}</td>
               <td>{item.total}</td>
               <td>{item.refundedQty}</td>
-              <td>{item.refundedQty < item.quantity && <button onClick={() => refundItem(item)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary)' }}>Refund</button>}</td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      {hasRefundableItems && (
+        <button onClick={() => setRefundOpen(true)} style={{ ...buttonSecondary, justifySelf: 'start' }}>Refund items</button>
+      )}
+      {refundOpen && (
+        <RefundModal
+          orderId={orderId}
+          items={data.items}
+          paymentMethod={order.paymentMethod}
+          onClose={() => setRefundOpen(false)}
+          onDone={() => { setRefundOpen(false); refresh() }}
+        />
+      )}
 
       <dl style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.25rem 1rem' }}>
         <dt>Subtotal</dt><dd style={{ margin: 0 }}>{order.subtotal}</dd>

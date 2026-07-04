@@ -52,7 +52,7 @@ async function createIntent(order: ShpOrderDraft): Promise<ShpPaymentIntent> {
 }
 
 // Captures the approved PayPal Order server-side.
-async function confirmPayment(orderId: string, payload: unknown): Promise<ShpPaymentResult> {
+async function confirmPayment(order: ShpOrderDraft, payload: unknown): Promise<ShpPaymentResult> {
   const body = payload as { paypalOrderId?: string } | null
   const paypalOrderId = body?.paypalOrderId
   if (!paypalOrderId) return { success: false, error: 'Missing paypalOrderId' }
@@ -61,13 +61,20 @@ async function confirmPayment(orderId: string, payload: unknown): Promise<ShpPay
   if (!res.ok) return { success: false, error: `PayPal capture failed: ${res.status}` }
   const data = (await res.json()) as {
     status: string
-    purchase_units: Array<{ custom_id?: string; payments?: { captures?: Array<{ id: string }> } }>
+    purchase_units: Array<{
+      custom_id?: string
+      payments?: { captures?: Array<{ id: string; amount?: { value: string; currency_code: string } }> }
+    }>
   }
   if (data.status !== 'COMPLETED') return { success: false, error: `Capture not completed (status: ${data.status})` }
   const customId = data.purchase_units[0]?.custom_id
-  if (customId !== orderId) return { success: false, error: 'PayPal order does not match this order' }
-  const captureId = data.purchase_units[0]?.payments?.captures?.[0]?.id
-  return { success: true, providerReference: captureId ?? paypalOrderId }
+  if (customId !== order.orderId) return { success: false, error: 'PayPal order does not match this order' }
+  const capture = data.purchase_units[0]?.payments?.captures?.[0]
+  if (capture?.amount) {
+    if (Number(capture.amount.value) !== Number(order.amount.toFixed(2))) return { success: false, error: 'Payment amount does not match this order' }
+    if (capture.amount.currency_code !== order.currency) return { success: false, error: 'Payment currency does not match this order' }
+  }
+  return { success: true, providerReference: capture?.id ?? paypalOrderId }
 }
 
 async function refundOrder(refund: ShpRefundRequest): Promise<ShpRefundResult> {

@@ -32,16 +32,19 @@ async function createIntent(order: ShpOrderDraft): Promise<ShpPaymentIntent> {
 }
 
 // Re-fetches the PaymentIntent from Stripe and validates its own reported
-// status - the client payload is only used to know which intent to check.
-async function confirmPayment(orderId: string, payload: unknown): Promise<ShpPaymentResult> {
+// status, amount and currency - the client payload is only used to know
+// which intent to check.
+async function confirmPayment(order: ShpOrderDraft, payload: unknown): Promise<ShpPaymentResult> {
   const body = payload as { paymentIntentId?: string } | null
   const paymentIntentId = body?.paymentIntentId
   if (!paymentIntentId) return { success: false, error: 'Missing paymentIntentId' }
 
   const stripe = await getStripe()
   const intent = await stripe.paymentIntents.retrieve(paymentIntentId)
-  if (intent.metadata?.shpOrderId !== orderId) return { success: false, error: 'Payment intent does not match this order' }
+  if (intent.metadata?.shpOrderId !== order.orderId) return { success: false, error: 'Payment intent does not match this order' }
   if (intent.status !== 'succeeded') return { success: false, error: `Payment not completed (status: ${intent.status})` }
+  if (intent.amount !== toMinorUnits(order.amount)) return { success: false, error: 'Payment amount does not match this order' }
+  if (intent.currency !== order.currency.toLowerCase()) return { success: false, error: 'Payment currency does not match this order' }
 
   return { success: true, providerReference: intent.id }
 }

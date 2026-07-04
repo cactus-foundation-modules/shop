@@ -8,7 +8,7 @@ async function createIntent(_order: ShpOrderDraft): Promise<ShpPaymentIntent> {
 
 // No-op - admin manually confirms via the order detail page once the
 // transfer clears (POST /admin/orders/[id]/confirm-payment).
-async function confirmPayment(): Promise<ShpPaymentResult> {
+async function confirmPayment(_order: ShpOrderDraft, _payload: unknown): Promise<ShpPaymentResult> {
   return { success: false, error: 'Bank transfer payments are confirmed manually by an admin.' }
 }
 

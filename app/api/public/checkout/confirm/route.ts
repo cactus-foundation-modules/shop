@@ -23,7 +23,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ orderNumber: order.orderNumber, status: 'AWAITING_CONFIRMATION' })
   }
 
-  const result = await provider.confirmPayment(order.id, parsed.data.payload)
+  const result = await provider.confirmPayment(
+    {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      amount: Number(order.total),
+      currency: order.currency,
+      customerEmail: order.customerEmail,
+      customerName: order.customerName,
+    },
+    parsed.data.payload
+  )
   if (!result.success) {
     await markOrderPaymentFailed(order.id)
     return NextResponse.json({ error: result.error ?? 'Payment could not be confirmed' }, { status: 402 })
