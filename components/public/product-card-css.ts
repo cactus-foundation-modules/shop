@@ -1,9 +1,13 @@
+import type { Breakpoints } from '@/modules/shop/lib/breakpoints'
+
 // Shared product-card styling for the cross-sell / related grids on the
 // product page. Same visual language as the RANGE grid's `.sr-*` cards in
 // ShopProductGrid (hover lift, 4/3 cover, teal price, "View" affordance) so
 // the whole shop reads as one system. Class prefix `spc-` (shop product card).
-// Kept inside the module - never a core globals.css edit.
-export const PRODUCT_CARD_CSS = `
+// Kept inside the module - never a core globals.css edit. Breakpoints come from
+// the site's Styles setting (4 cols -> 2 at tablet -> 1 at mobile).
+export function productCardCss({ tabletBp, mobileBp }: Breakpoints): string {
+  return `
 .spc-head{display:flex;align-items:baseline;gap:16px;margin:8px 0 20px;flex-wrap:wrap}
 .spc-head h2{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:26px;margin:0;color:var(--color-fg);line-height:1.2}
 .spc-head span{font-size:13px;color:var(--color-text-muted)}
@@ -21,6 +25,7 @@ export const PRODUCT_CARD_CSS = `
 .spc-view{margin-top:auto;display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;color:var(--color-primary)}
 .spc-view svg{transition:transform .2s ease}
 .spc-card:hover .spc-view svg{transform:translateX(3px)}
-@media (max-width:1020px){.spc-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:620px){.spc-grid{grid-template-columns:1fr}}
+@media (max-width:${tabletBp}){.spc-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:${mobileBp}){.spc-grid{grid-template-columns:1fr}}
 `
+}

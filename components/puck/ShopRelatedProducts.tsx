@@ -2,7 +2,8 @@ import { connection } from 'next/server'
 import { getProductBySlug, getProductMedia } from '@/modules/shop/lib/db'
 import { resolveRelatedProducts } from '@/modules/shop/lib/db/recommendations'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { PRODUCT_CARD_CSS } from '@/modules/shop/components/public/product-card-css'
+import { productCardCss } from '@/modules/shop/components/public/product-card-css'
+import { DEFAULT_BREAKPOINTS, getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 
 // productSlug is injected by the product detail page (lib/inject-product-context.ts).
 export type ShopRelatedProductsProps = { productSlug?: string; heading?: string; subheading?: string; layout?: string }
@@ -19,7 +20,7 @@ function ViewArrow() {
 export function ShopRelatedProducts(props: ShopRelatedProductsProps) {
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: PRODUCT_CARD_CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: productCardCss(DEFAULT_BREAKPOINTS) }} />
       <div className="spc-head">
         <h2>{props.heading || 'Completes the setup'}</h2>
         {props.subheading && <span>{props.subheading}</span>}
@@ -46,14 +47,15 @@ export async function ShopRelatedProductsRsc(props: ShopRelatedProductsProps) {
   if (!product) return null
   const related = await resolveRelatedProducts(product)
   if (related.length === 0) return null
-  const [config, withMedia] = await Promise.all([
+  const [config, bp, withMedia] = await Promise.all([
     getShopConfigCached(),
+    getShopBreakpoints(),
     Promise.all(related.map(async (p) => ({ p, media: await getProductMedia(p.id) }))),
   ])
 
   return (
     <section>
-      <style dangerouslySetInnerHTML={{ __html: PRODUCT_CARD_CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: productCardCss(bp) }} />
       <div className="spc-head">
         <h2>{props.heading || 'Completes the setup'}</h2>
         {props.subheading && <span>{props.subheading}</span>}

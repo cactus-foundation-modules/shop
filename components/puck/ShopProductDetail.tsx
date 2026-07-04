@@ -2,6 +2,7 @@ import { connection } from 'next/server'
 import { getProductBySlug, getProductMedia, getProductTagIds, getDigitalFileById } from '@/modules/shop/lib/db'
 import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { DEFAULT_BREAKPOINTS, getShopBreakpoints, type Breakpoints } from '@/modules/shop/lib/breakpoints'
 import { AddToCartButton } from '@/modules/shop/components/public/AddToCartButton'
 import { ProductGallery, ProductTabs, type ProductTab } from '@/modules/shop/components/public/ProductDetailIslands'
 import type { ShpProduct } from '@/modules/shop/lib/types'
@@ -20,8 +21,10 @@ export type ShopProductDetailProps = {
 
 // Two-column PDP: sticky image stage + buy column, then a tabbed detail area.
 // Scoped CSS lives here inside the module (no core globals.css edit), class
-// prefix `spd-` (shop product detail). Colours are tokens only.
-const SPD_CSS = `
+// prefix `spd-` (shop product detail). Colours are tokens only. The PDP stacks
+// to one column at the site's tablet breakpoint (Styles setting).
+function spdCss({ tabletBp }: Breakpoints): string {
+  return `
 .spd-pdp{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:start;padding:8px 0}
 .spd-stage-col{position:sticky;top:96px}
 .spd-stage{position:relative;border:1px solid var(--color-border);border-radius:16px;background:var(--color-bg-subtle);overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center}
@@ -79,8 +82,9 @@ const SPD_CSS = `
 .spd-dl b{font-size:15px;display:block}
 .spd-dl small{font-size:12px;color:var(--color-text-muted)}
 .spd-dl .get{margin-left:auto;color:var(--color-text-muted);font-weight:600;font-size:13px;white-space:nowrap}
-@media (max-width:1020px){.spd-pdp{grid-template-columns:1fr;gap:28px}.spd-stage-col{position:static}}
+@media (max-width:${tabletBp}){.spd-pdp{grid-template-columns:1fr;gap:28px}.spd-stage-col{position:static}}
 `
+}
 
 const TYPE_LABEL: Record<ShpProduct['type'], string> = {
   PHYSICAL: 'Physical product',
@@ -117,7 +121,7 @@ function FactsTable({ rows }: { rows: Array<[string, string]> }) {
 export function ShopProductDetail(_props: ShopProductDetailProps) {
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: SPD_CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: spdCss(DEFAULT_BREAKPOINTS) }} />
       <div className="spd-pdp" style={{ opacity: 0.6 }}>
         <div className="spd-stage-col">
           <div className="spd-stage spd-stage-empty" />
@@ -160,9 +164,10 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   const product = await getProductBySlug(props.productSlug)
   if (!product) return null
 
-  const [media, config, tags, tagIds] = await Promise.all([
+  const [media, config, bp, tags, tagIds] = await Promise.all([
     getProductMedia(product.id),
     getShopConfigCached(),
+    getShopBreakpoints(),
     listTags(),
     getProductTagIds(product.id),
   ])
@@ -263,7 +268,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   return (
     <div>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <style dangerouslySetInnerHTML={{ __html: SPD_CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: spdCss(bp) }} />
       <div className="spd-pdp">
         <ProductGallery images={images} productName={product.name} />
         <div>

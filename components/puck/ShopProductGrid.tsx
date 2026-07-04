@@ -2,6 +2,7 @@ import { connection } from 'next/server'
 import { listProducts, getProductMedia, getProductTagIds } from '@/modules/shop/lib/db'
 import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { getShopBreakpoints, type Breakpoints } from '@/modules/shop/lib/breakpoints'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
 export type ShopProductGridProps = {
@@ -15,8 +16,10 @@ export type ShopProductGridProps = {
 
 // RANGE-style card grid. Scoped CSS (hover lift, image shimmer, badge
 // variants, responsive collapse) lives here inside the module - no core
-// globals.css edit. Class prefix `sr-` (shop range).
-const RANGE_CSS = `
+// globals.css edit. Class prefix `sr-` (shop range). Breakpoints come from the
+// site's Styles setting (default 3 cols -> 2 at tablet -> 1 at mobile).
+function rangeCss({ tabletBp, mobileBp }: Breakpoints): string {
+  return `
 .sr-grid{display:grid;grid-template-columns:repeat(var(--sr-cols,3),minmax(0,1fr));gap:24px;margin-top:8px}
 .sr-card{position:relative;display:flex;flex-direction:column;background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;box-shadow:0 1px 3px rgba(0,0,0,.06);transition:box-shadow .25s ease,transform .25s ease}
 .sr-card:hover{transform:translateY(-4px);box-shadow:0 8px 30px rgba(0,0,0,.10)}
@@ -40,9 +43,10 @@ const RANGE_CSS = `
 .sr-spec{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;color:var(--color-primary)}
 .sr-card:hover .sr-spec svg{transform:translateX(3px)}
 .sr-spec svg{transition:transform .2s ease}
-@media (max-width:900px){.sr-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:640px){.sr-grid{grid-template-columns:1fr}}
+@media (max-width:${tabletBp}){.sr-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:${mobileBp}){.sr-grid{grid-template-columns:1fr}}
 `
+}
 
 function GridSkeleton({ columns }: { columns: number }) {
   return (
@@ -137,8 +141,9 @@ async function ProductCard({
 export async function ShopProductGridRsc(props: ShopProductGridProps) {
   await connection()
   const columns = props.columns ?? 3
-  const [config, tags, listed] = await Promise.all([
+  const [config, bp, tags, listed] = await Promise.all([
     getShopConfigCached(),
+    getShopBreakpoints(),
     listTags(),
     listProducts({
       status: 'ACTIVE',
@@ -157,7 +162,7 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: RANGE_CSS }} />
+      <style dangerouslySetInnerHTML={{ __html: rangeCss(bp) }} />
       <div className="sr-grid" style={{ ['--sr-cols' as string]: String(columns) } as React.CSSProperties}>
         {products.map((p) => (
           <ProductCard key={p.id} product={p} currencySymbol={config.currencySymbol} tagById={tagById} />
