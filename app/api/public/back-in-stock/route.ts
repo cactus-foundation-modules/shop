@@ -37,3 +37,23 @@ export async function DELETE(request: NextRequest) {
   await unsubscribeBackInStock(verified.productId, verified.email)
   return NextResponse.json({ unsubscribed: true })
 }
+
+// Email clients follow links with GET, not DELETE - this is the handler the unsubscribe link in
+// the back-in-stock email actually hits. Same signed-token verification, HTML response instead of JSON.
+export async function GET(request: NextRequest) {
+  const token = request.nextUrl.searchParams.get('token')
+  const verified = token ? verifyUnsubscribeToken(token) : null
+
+  const message = verified
+    ? "You've been unsubscribed from back-in-stock alerts for this product."
+    : 'This unsubscribe link is invalid or has expired.'
+
+  if (verified) {
+    await unsubscribeBackInStock(verified.productId, verified.email)
+  }
+
+  return new NextResponse(
+    `<!doctype html><html><head><meta charset="utf-8"><title>Unsubscribe</title></head><body style="font-family:sans-serif;max-width:32rem;margin:4rem auto;text-align:center;padding:0 1rem;"><p>${message}</p></body></html>`,
+    { status: verified ? 200 : 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+  )
+}
