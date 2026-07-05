@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react'
 type OrderStatusResponse = {
   order: { orderNumber: string; total: string; paymentMethod: string; paymentStatus: string }
   items: Array<{ productName: string; quantity: number; total: string }>
+  instructions: string | null
+  currencySymbol: string
 }
 
 // Client island for the order-confirmation view (reads order from the URL query).
@@ -46,13 +48,18 @@ export function OrderConfirmationClient() {
         {data.items.map((item, i) => (
           <li key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>{item.productName} x{item.quantity}</span>
-            <span>{item.total}</span>
+            <span>{data.currencySymbol}{item.total}</span>
           </li>
         ))}
       </ul>
       {isManual && data.order.paymentStatus === 'AWAITING_CONFIRMATION' && (
         <p style={{ background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.75rem' }}>
           Your order is awaiting payment confirmation. We&apos;ll be in touch once it clears.
+        </p>
+      )}
+      {isManual && data.instructions && (
+        <p style={{ whiteSpace: 'pre-wrap', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.75rem' }}>
+          {data.instructions}
         </p>
       )}
     </section>

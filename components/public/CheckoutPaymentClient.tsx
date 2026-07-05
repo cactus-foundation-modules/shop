@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
-import { getCheckoutState, updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
+import { getCheckoutState, updateCheckoutState, isContactAndShippingComplete } from '@/modules/shop/components/public/checkout-state'
 
 type ShopClientConfig = { enabledPaymentMethods: string[]; stripePublishableKey: string | null; currencySymbol: string }
 
@@ -45,11 +45,16 @@ export function CheckoutPaymentClient() {
   }, [])
 
   async function chooseMethod(next: string) {
+    const state = getCheckoutState()
+    if (!isContactAndShippingComplete(state)) {
+      setError('Please fill in your contact and shipping details above before choosing a payment method.')
+      return
+    }
+
     setMethod(next)
     setError(null)
     updateCheckoutState({ paymentMethod: next as never })
 
-    const state = getCheckoutState()
     const lines = getCart()
     setLoading(true)
     try {
@@ -112,11 +117,13 @@ export function CheckoutPaymentClient() {
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? 'Payment could not be confirmed')
 
+        const customerEmail = getCheckoutState().customerEmail
+
         const { clearCart } = await import('@/modules/shop/components/public/cart')
-        const { clearCheckoutState } = await import('@/modules/shop/components/public/checkout-state')
+        const { clearOrderSpecificState } = await import('@/modules/shop/components/public/checkout-state')
         clearCart()
-        clearCheckoutState()
-        window.location.href = `/shop/checkout/confirmation?orderNumber=${encodeURIComponent(orderNumber ?? '')}&email=${encodeURIComponent(getCheckoutState().customerEmail)}`
+        clearOrderSpecificState()
+        window.location.href = `/shop/checkout/confirmation?orderNumber=${encodeURIComponent(orderNumber ?? '')}&email=${encodeURIComponent(customerEmail)}`
       } catch (err) {
         window.dispatchEvent(new CustomEvent('cactus-shop-order-error', { detail: err instanceof Error ? err.message : 'Payment failed' }))
       }

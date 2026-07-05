@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
-import { getCheckoutState } from '@/modules/shop/components/public/checkout-state'
+import { getCheckoutState, isContactAndShippingComplete, subscribeCheckoutState } from '@/modules/shop/components/public/checkout-state'
 
 type SessionSummary = {
   subtotal: number; discountAmount: number; shippingAmount: number; taxAmount: number; total: number
@@ -16,24 +16,35 @@ type SessionSummary = {
 export function CheckoutReviewClient() {
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [incomplete, setIncomplete] = useState(true)
   const [placing, setPlacing] = useState(false)
 
   useEffect(() => {
-    const state = getCheckoutState()
-    const lines = getCart()
-    if (lines.length === 0) return
-    fetch('/api/m/shop/public/checkout/session', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lines, postcode: state.shippingAddress.postcode, shippingRateId: state.shippingRateId, couponCode: state.couponCode, customerEmail: state.customerEmail }),
-    }).then(async (res) => {
-      const data = await res.json()
-      if (res.ok) setSummary(data)
-      else setError(data.error ?? 'Could not load order summary')
-    })
+    function loadSummary() {
+      const state = getCheckoutState()
+      const lines = getCart()
+      if (lines.length === 0 || !isContactAndShippingComplete(state)) {
+        setIncomplete(true)
+        setSummary(null)
+        return
+      }
+      setIncomplete(false)
+      fetch('/api/m/shop/public/checkout/session', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lines, postcode: state.shippingAddress.postcode, shippingRateId: state.shippingRateId, couponCode: state.couponCode, customerEmail: state.customerEmail }),
+      }).then(async (res) => {
+        const data = await res.json()
+        if (res.ok) { setSummary(data); setError(null) }
+        else setError(data.error ?? 'Could not load order summary')
+      })
+    }
+
+    loadSummary()
+    const unsubscribe = subscribeCheckoutState(loadSummary)
 
     function onError(e: Event) { setPlacing(false); setError((e as CustomEvent).detail) }
     window.addEventListener('cactus-shop-order-error', onError)
-    return () => window.removeEventListener('cactus-shop-order-error', onError)
+    return () => { unsubscribe(); window.removeEventListener('cactus-shop-order-error', onError) }
   }, [])
 
   function placeOrder() {
@@ -42,7 +53,15 @@ export function CheckoutReviewClient() {
     window.dispatchEvent(new CustomEvent('cactus-shop-place-order'))
   }
 
-  if (!summary) return null
+  if (incomplete) {
+    return (
+      <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
+        <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Order review</h2>
+        <p style={{ color: 'var(--color-text-muted)' }}>Fill in your contact and shipping details above to see your order total.</p>
+      </section>
+    )
+  }
+  if (!summary) return error ? <p style={{ color: 'var(--color-danger, #c00)' }}>{error}</p> : null
 
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>

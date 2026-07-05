@@ -62,7 +62,30 @@ export function clearCheckoutState(): void {
   window.dispatchEvent(new CustomEvent(EVENT))
 }
 
+// Called once an order is placed. Contact + shipping address are kept so a
+// shopper placing a second order in the same session doesn't have to retype
+// them - only the bits specific to the order just placed are reset.
+export function clearOrderSpecificState(): void {
+  updateCheckoutState({ paymentMethod: null, couponCode: null })
+}
+
 export function subscribeCheckoutState(callback: () => void): () => void {
   window.addEventListener(EVENT, callback)
   return () => window.removeEventListener(EVENT, callback)
+}
+
+// Contact + shipping are separate Puck blocks with no step gating between them,
+// so Payment/Review can mount (and fire their network calls) before those fields
+// are filled in. Both check this before hitting an endpoint that requires them.
+export function isContactAndShippingComplete(state: CheckoutState): boolean {
+  const a = state.shippingAddress
+  return (
+    /\S+@\S+\.\S+/.test(state.customerEmail) &&
+    state.customerName.trim().length > 0 &&
+    a.firstName.trim().length > 0 &&
+    a.lastName.trim().length > 0 &&
+    a.line1.trim().length > 0 &&
+    a.city.trim().length > 0 &&
+    a.postcode.trim().length > 0
+  )
 }
