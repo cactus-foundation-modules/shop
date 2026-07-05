@@ -1,6 +1,10 @@
 import { connection } from 'next/server'
-import { getCollectionBySlug, listProducts } from '@/modules/shop/lib/db'
+import { getCollectionBySlug, listProducts, getProductMedia, getProductTagIds } from '@/modules/shop/lib/db'
+import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
+import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
+import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 
 export type ShopFeaturedCollectionProps = { collectionSlug?: string; layout?: string; limit?: number }
 
@@ -9,7 +13,7 @@ export function ShopFeaturedCollection(props: ShopFeaturedCollectionProps) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(limit, 4)}, 1fr)`, gap: '1rem', opacity: 0.6 }}>
       {Array.from({ length: Math.min(limit, 4) }).map((_, i) => (
-        <div key={i} style={{ aspectRatio: '1/1', background: 'var(--color-border)', borderRadius: 8 }} />
+        <div key={i} style={{ aspectRatio: '4/3', background: 'var(--color-border)', borderRadius: 8 }} />
       ))}
     </div>
   )
@@ -20,29 +24,42 @@ export async function ShopFeaturedCollectionRsc(props: ShopFeaturedCollectionPro
   if (!props.collectionSlug) return null
   const collection = await getCollectionBySlug(props.collectionSlug)
   if (!collection) return null
-  const config = await getShopConfigCached()
-  const { products } = await listProducts({ status: 'ACTIVE', collectionSlug: props.collectionSlug, perPage: props.limit ?? 4 })
-  if (products.length === 0) return null
 
-  const layout = props.layout ?? 'Grid'
+  const [config, bp, tags, listed, template] = await Promise.all([
+    getShopConfigCached(),
+    getShopBreakpoints(),
+    listTags(),
+    listProducts({ status: 'ACTIVE', collectionSlug: props.collectionSlug, perPage: props.limit ?? 4 }),
+    resolveCardTemplate(),
+  ])
+  const { products } = listed
+  if (products.length === 0) return null
+  const tagById = new Map(tags.map((t) => [t.id, t.slug]))
+
+  const items: CardItem[] = await Promise.all(
+    products.map(async (p) => {
+      const [media, tagIds] = await Promise.all([getProductMedia(p.id), getProductTagIds(p.id)])
+      return { product: p, ctx: buildCardContext(p, media, tagById, tagIds, config.currencySymbol) }
+    }),
+  )
+
+  const carousel = (props.layout ?? 'Grid') === 'Carousel'
+  const columns = Math.min(products.length, 4)
+  const cards = template ? await renderCards(template, items) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)
+
   return (
     <section>
-      <h2 style={{ fontSize: '1.25rem', margin: '0 0 1rem' }}>{collection.name}</h2>
-      <div style={{
-        display: layout === 'Carousel' ? 'flex' : 'grid',
-        gridTemplateColumns: layout === 'Carousel' ? undefined : `repeat(${Math.min(products.length, 4)}, 1fr)`,
-        gap: '1rem', overflowX: layout === 'Carousel' ? 'auto' : undefined,
-      }}>
-        {products.map((p) => (
-          <a key={p.id} href={`/shop/products/${p.slug}`} style={{ textDecoration: 'none', color: 'inherit', minWidth: layout === 'Carousel' ? 200 : undefined, border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', display: 'block' }}>
-            <div style={{ aspectRatio: '1/1', background: 'var(--color-bg-subtle)' }} />
-            <div style={{ padding: '0.75rem' }}>
-              <h3 style={{ margin: '0 0 0.25rem', fontSize: '0.9375rem' }}>{p.name}</h3>
-              <span style={{ fontWeight: 600 }}>{config.currencySymbol}{p.price}</span>
-            </div>
-          </a>
-        ))}
+      <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
+      <div className="shop-sec-head">
+        <h2>{collection.name}</h2>
       </div>
+      {carousel ? (
+        <div className="shop-scroller">{cards}</div>
+      ) : (
+        <div className="shop-grid" style={{ ['--shop-cols' as string]: String(columns) } as React.CSSProperties}>
+          {cards}
+        </div>
+      )}
     </section>
   )
 }

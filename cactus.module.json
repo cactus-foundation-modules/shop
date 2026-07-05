@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "publicBasePath": "shop",
@@ -78,7 +78,23 @@
     { "type": "ShopRelatedProducts", "import": "./components/puck/ShopRelatedProducts", "component": "shopRelatedProductsPuckComponent", "rscComponent": "shopRelatedProductsPuckRscComponent", "layoutTypes": ["shopProduct"] },
     { "type": "ShopUpsellProducts", "import": "./components/puck/ShopUpsellProducts", "component": "shopUpsellProductsPuckComponent", "rscComponent": "shopUpsellProductsPuckRscComponent", "layoutTypes": ["shopProduct", "shopCheckout"] },
     { "type": "ShopCategoryHeader", "import": "./components/puck/ShopCategoryHeader", "component": "shopCategoryHeaderPuckComponent", "rscComponent": "shopCategoryHeaderPuckRscComponent", "layoutTypes": ["shopCategory"] },
-    { "type": "ShopCollectionHeader", "import": "./components/puck/ShopCollectionHeader", "component": "shopCollectionHeaderPuckComponent", "rscComponent": "shopCollectionHeaderPuckRscComponent", "layoutTypes": ["shopCollection"] }
+    { "type": "ShopCollectionHeader", "import": "./components/puck/ShopCollectionHeader", "component": "shopCollectionHeaderPuckComponent", "rscComponent": "shopCollectionHeaderPuckRscComponent", "layoutTypes": ["shopCollection"] },
+    { "type": "ShopDetailGallery", "import": "./components/puck/parts/detail-parts", "component": "shopDetailGalleryPuckComponent", "rscComponent": "shopDetailGalleryPuckRscComponent", "layoutTypes": ["shopProductDetail"] },
+    { "type": "ShopDetailBadges", "import": "./components/puck/parts/detail-parts", "component": "shopDetailBadgesPuckComponent", "rscComponent": "shopDetailBadgesPuckRscComponent", "layoutTypes": ["shopProductDetail"] },
+    { "type": "ShopDetailTitle", "import": "./components/puck/parts/detail-parts", "component": "shopDetailTitlePuckComponent", "rscComponent": "shopDetailTitlePuckRscComponent", "layoutTypes": ["shopProductDetail"] },
+    { "type": "ShopDetailSku", "import": "./components/puck/parts/detail-parts", "component": "shopDetailSkuPuckComponent", "rscComponent": "shopDetailSkuPuckRscComponent", "layoutTypes": ["shopProductDetail"] },
+    { "type": "ShopDetailPrice", "import": "./components/puck/parts/detail-parts", "component": "shopDetailPricePuckComponent", "rscComponent": "shopDetailPricePuckRscComponent", "layoutTypes": ["shopProductDetail"] },
+    { "type": "ShopDetailBlurb", "import": "./components/puck/parts/detail-parts", "component": "shopDetailBlurbPuckComponent", "rscComponent": "shopDetailBlurbPuckRscComponent", "layoutTypes": ["shopProductDetail"] },
+    { "type": "ShopDetailPreorder", "import": "./components/puck/parts/detail-parts", "component": "shopDetailPreorderPuckComponent", "rscComponent": "shopDetailPreorderPuckRscComponent", "layoutTypes": ["shopProductDetail"] },
+    { "type": "ShopDetailAddToCart", "import": "./components/puck/parts/detail-parts", "component": "shopDetailAddToCartPuckComponent", "rscComponent": "shopDetailAddToCartPuckRscComponent", "layoutTypes": ["shopProductDetail"] },
+    { "type": "ShopDetailReassure", "import": "./components/puck/parts/detail-parts", "component": "shopDetailReassurePuckComponent", "rscComponent": "shopDetailReassurePuckRscComponent", "layoutTypes": ["shopProductDetail"] },
+    { "type": "ShopDetailTabs", "import": "./components/puck/parts/detail-parts", "component": "shopDetailTabsPuckComponent", "rscComponent": "shopDetailTabsPuckRscComponent", "layoutTypes": ["shopProductDetail"] },
+    { "type": "ShopCardImage", "import": "./components/puck/parts/card-parts", "component": "shopCardImagePuckComponent", "rscComponent": "shopCardImagePuckRscComponent", "layoutTypes": ["shopProductCard"] },
+    { "type": "ShopCardBadge", "import": "./components/puck/parts/card-parts", "component": "shopCardBadgePuckComponent", "rscComponent": "shopCardBadgePuckRscComponent", "layoutTypes": ["shopProductCard"] },
+    { "type": "ShopCardName", "import": "./components/puck/parts/card-parts", "component": "shopCardNamePuckComponent", "rscComponent": "shopCardNamePuckRscComponent", "layoutTypes": ["shopProductCard"] },
+    { "type": "ShopCardPrice", "import": "./components/puck/parts/card-parts", "component": "shopCardPricePuckComponent", "rscComponent": "shopCardPricePuckRscComponent", "layoutTypes": ["shopProductCard"] },
+    { "type": "ShopCardBlurb", "import": "./components/puck/parts/card-parts", "component": "shopCardBlurbPuckComponent", "rscComponent": "shopCardBlurbPuckRscComponent", "layoutTypes": ["shopProductCard"] },
+    { "type": "ShopCardCta", "import": "./components/puck/parts/card-parts", "component": "shopCardCtaPuckComponent", "rscComponent": "shopCardCtaPuckRscComponent", "layoutTypes": ["shopProductCard"] }
   ],
   "settingsTabs": [
     { "id": "shop", "label": "Shop", "permission": "shop.manage", "import": "./components/admin/ShopSettingsTab", "component": "ShopSettingsTab" }
@@ -91,7 +107,9 @@
       { "key": "shopCollection", "label": "Collection", "starterImport": "./lib/starterLayouts", "starterExport": "shopCollectionStarters" },
       { "key": "shopProduct", "label": "Product", "starterImport": "./lib/starterLayouts", "starterExport": "shopProductStarters" },
       { "key": "shopCheckout", "label": "Checkout", "starterImport": "./lib/starterLayouts", "starterExport": "shopCheckoutStarters" },
-      { "key": "shopConfirmation", "label": "Confirmation", "starterImport": "./lib/starterLayouts", "starterExport": "shopConfirmationStarters" }
+      { "key": "shopConfirmation", "label": "Confirmation", "starterImport": "./lib/starterLayouts", "starterExport": "shopConfirmationStarters" },
+      { "key": "shopProductDetail", "label": "Product Detail", "starterImport": "./lib/starterLayouts", "starterExport": "shopProductDetailStarters" },
+      { "key": "shopProductCard", "label": "Product Card", "starterImport": "./lib/starterLayouts", "starterExport": "shopProductCardStarters" }
     ]
   },
   "extensionPoints": [

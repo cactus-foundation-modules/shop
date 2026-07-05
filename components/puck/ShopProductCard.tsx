@@ -1,14 +1,23 @@
 import { connection } from 'next/server'
-import { getProductBySlug, getProductMedia } from '@/modules/shop/lib/db'
+import { getProductBySlug, getProductMedia, getProductTagIds } from '@/modules/shop/lib/db'
+import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
+import type { LayoutRef } from '@/lib/puck/LayoutPickerField'
+import { ShopLayoutPicker } from '@/modules/shop/components/public/ShopLayoutPicker'
+import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard } from '@/modules/shop/lib/card-template'
+import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 
-export type ShopProductCardProps = { productSlug?: string }
+export type ShopProductCardProps = { productSlug?: string; layoutRef?: LayoutRef | null }
 
 export function ShopProductCard(_props: ShopProductCardProps) {
   return (
-    <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.75rem', opacity: 0.6, maxWidth: 240 }}>
-      <div style={{ aspectRatio: '1/1', background: 'var(--color-border)', borderRadius: 6, marginBottom: '0.5rem' }} />
-      <div style={{ height: 12, width: '70%', background: 'var(--color-border)', borderRadius: 4 }} />
+    <div style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', opacity: 0.6, maxWidth: 280 }}>
+      <div style={{ aspectRatio: '4/3', background: 'var(--color-bg-subtle)' }} />
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ height: 14, width: '70%', background: 'var(--color-border)', borderRadius: 4 }} />
+        <div style={{ height: 14, width: '35%', background: 'var(--color-border)', borderRadius: 4 }} />
+      </div>
     </div>
   )
 }
@@ -18,30 +27,40 @@ export async function ShopProductCardRsc(props: ShopProductCardProps) {
   if (!props.productSlug) return null
   const product = await getProductBySlug(props.productSlug)
   if (!product || product.status !== 'ACTIVE') return null
-  const media = await getProductMedia(product.id)
-  const primary = media.find((m) => m.isPrimary) ?? media[0]
-  const config = await getShopConfigCached()
+
+  const [media, tagIds, config, bp, tags, template] = await Promise.all([
+    getProductMedia(product.id),
+    getProductTagIds(product.id),
+    getShopConfigCached(),
+    getShopBreakpoints(),
+    listTags(),
+    resolveCardTemplate(props.layoutRef),
+  ])
+  const tagById = new Map(tags.map((t) => [t.id, t.slug]))
+  const item = { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol) }
+  const cards = template ? await renderCards(template, [item]) : [<MinimalCard key={product.id} {...item} />]
 
   return (
-    <a href={`/shop/products/${product.slug}`} style={{ textDecoration: 'none', color: 'inherit', border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', display: 'block', maxWidth: 240 }}>
-      <div style={{ aspectRatio: '1/1', background: 'var(--color-bg-subtle)' }}>
-        {primary && primary.type !== 'VIDEO_URL' && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={primary.url} alt={primary.altText ?? product.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-        )}
-      </div>
-      <div style={{ padding: '0.75rem' }}>
-        <h3 style={{ margin: '0 0 0.25rem', fontSize: '0.9375rem' }}>{product.name}</h3>
-        <span style={{ fontWeight: 600 }}>{config.currencySymbol}{product.price}</span>
-      </div>
-    </a>
+    <div style={{ maxWidth: 280 }}>
+      <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
+      {cards}
+    </div>
   )
+}
+
+const layoutField = {
+  type: 'custom' as const,
+  label: 'Card layout',
+  render: ({ value, onChange }: any) => <ShopLayoutPicker type="shopProductCard" value={value} onChange={onChange} />,
 }
 
 export const shopProductCardPuckComponent = {
   label: 'Shop: Single Product',
-  fields: { productSlug: { type: 'text' as const, label: 'Product slug' } },
-  defaultProps: { productSlug: '' },
+  fields: {
+    productSlug: { type: 'text' as const, label: 'Product slug' },
+    layoutRef: layoutField,
+  },
+  defaultProps: { productSlug: '', layoutRef: null },
   render: ShopProductCard,
 }
 

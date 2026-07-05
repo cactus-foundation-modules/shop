@@ -11,13 +11,22 @@ import { useState, type ReactNode } from 'react'
 
 export type GalleryImage = { url: string; alt: string }
 
-export function ProductGallery({ images, productName }: { images: GalleryImage[]; productName: string }) {
+// shape sets the stage aspect ratio (square/portrait/landscape); thumbPosition
+// puts the thumbnail strip below (default) or beside the stage. Both are set
+// per-instance on the Gallery part in the Product Detail layout editor.
+function stageAspect(shape?: string): string {
+  return shape === 'portrait' ? '3 / 4' : shape === 'landscape' ? '4 / 3' : '1 / 1'
+}
+
+export function ProductGallery({ images, productName, shape, thumbPosition }: { images: GalleryImage[]; productName: string; shape?: string; thumbPosition?: string }) {
   const [active, setActive] = useState(0)
+  const colClass = `spd-stage-col${thumbPosition === 'beside' ? ' beside' : ''}`
+  const aspect = stageAspect(shape)
 
   if (images.length === 0) {
     return (
-      <div className="spd-stage-col">
-        <div className="spd-stage spd-stage-empty" aria-hidden="true" />
+      <div className={colClass}>
+        <div className="spd-stage spd-stage-empty" style={{ aspectRatio: aspect }} aria-hidden="true" />
       </div>
     )
   }
@@ -26,8 +35,8 @@ export function ProductGallery({ images, productName }: { images: GalleryImage[]
   if (!current) return null
 
   return (
-    <div className="spd-stage-col">
-      <div className="spd-stage">
+    <div className={colClass}>
+      <div className="spd-stage" style={{ aspectRatio: aspect }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="spd-stage-img" src={current.url} alt={current.alt || productName} />
       </div>

@@ -1,35 +1,29 @@
 import { connection } from 'next/server'
-import { getProductBySlug, getProductMedia } from '@/modules/shop/lib/db'
+import { getProductBySlug, getProductMedia, getProductTagIds } from '@/modules/shop/lib/db'
+import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { resolveRelatedProducts } from '@/modules/shop/lib/db/recommendations'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { productCardCss } from '@/modules/shop/components/public/product-card-css'
-import { DEFAULT_BREAKPOINTS, getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
+import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
+import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
+import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 
 // productSlug is injected by the product detail page (lib/inject-product-context.ts).
+// The cards are stamped from the shared Product Card layout, same as the grid.
 export type ShopRelatedProductsProps = { productSlug?: string; heading?: string; subheading?: string; layout?: string }
-
-function ViewArrow() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
 
 // Editor canvas: static card-grid skeleton (Gazette pattern).
 export function ShopRelatedProducts(props: ShopRelatedProductsProps) {
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: productCardCss(DEFAULT_BREAKPOINTS) }} />
-      <div className="spc-head">
+      <style dangerouslySetInnerHTML={{ __html: '.shop-sec-head{display:flex;align-items:baseline;gap:16px;margin:8px 0 20px;flex-wrap:wrap}.shop-sec-head h2{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:26px;margin:0;color:var(--color-fg)}' }} />
+      <div className="shop-sec-head">
         <h2>{props.heading || 'Completes the setup'}</h2>
-        {props.subheading && <span>{props.subheading}</span>}
       </div>
-      <div className="spc-grid" style={{ opacity: 0.6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 20, opacity: 0.6 }}>
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="spc-card">
-            <div className="spc-img" />
-            <div className="spc-body">
+          <div key={i} style={{ border: '1px solid var(--color-border)', borderRadius: 12, overflow: 'hidden', background: 'var(--color-surface)' }}>
+            <div style={{ aspectRatio: '4/3', background: 'var(--color-bg-subtle)' }} />
+            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ height: 14, width: '70%', background: 'var(--color-border)', borderRadius: 4 }} />
               <div style={{ height: 14, width: '35%', background: 'var(--color-border)', borderRadius: 4 }} />
             </div>
@@ -47,52 +41,34 @@ export async function ShopRelatedProductsRsc(props: ShopRelatedProductsProps) {
   if (!product) return null
   const related = await resolveRelatedProducts(product)
   if (related.length === 0) return null
-  const [config, bp, withMedia] = await Promise.all([
+
+  const [config, bp, tags, template] = await Promise.all([
     getShopConfigCached(),
     getShopBreakpoints(),
-    Promise.all(related.map(async (p) => ({ p, media: await getProductMedia(p.id) }))),
+    listTags(),
+    resolveCardTemplate(),
   ])
+  const tagById = new Map(tags.map((t) => [t.id, t.slug]))
+
+  const items: CardItem[] = await Promise.all(
+    related.map(async (p) => {
+      const [media, tagIds] = await Promise.all([getProductMedia(p.id), getProductTagIds(p.id)])
+      return { product: p, ctx: buildCardContext(p, media, tagById, tagIds, config.currencySymbol) }
+    }),
+  )
+
+  const columns = Math.min(items.length, 4)
+  const cards = template ? await renderCards(template, items) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)
 
   return (
     <section>
-      <style dangerouslySetInnerHTML={{ __html: productCardCss(bp) }} />
-      <div className="spc-head">
+      <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
+      <div className="shop-sec-head">
         <h2>{props.heading || 'Completes the setup'}</h2>
         {props.subheading && <span>{props.subheading}</span>}
       </div>
-      <div className="spc-grid">
-        {withMedia.map(({ p, media }) => {
-          const primary = media.find((m) => m.isPrimary) ?? media[0]
-          return (
-            <a key={p.id} href={`/shop/products/${p.slug}`} className="spc-card">
-              <div className="spc-img">
-                {primary && primary.type !== 'VIDEO_URL' && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={primary.url} alt={primary.altText ?? p.name} />
-                )}
-              </div>
-              <div className="spc-body">
-                <h3 className="spc-name">{p.name}</h3>
-                <div className="spc-pricerow">
-                  <span className="spc-price">
-                    {config.currencySymbol}
-                    {p.price}
-                  </span>
-                  {p.compareAtPrice && (
-                    <span className="spc-compare">
-                      {config.currencySymbol}
-                      {p.compareAtPrice}
-                    </span>
-                  )}
-                </div>
-                <span className="spc-view">
-                  View
-                  <ViewArrow />
-                </span>
-              </div>
-            </a>
-          )
-        })}
+      <div className="shop-grid" style={{ ['--shop-cols' as string]: String(columns) } as React.CSSProperties}>
+        {cards}
       </div>
     </section>
   )

@@ -339,3 +339,149 @@ export function shopConfirmationStarters() {
     },
   ]
 }
+
+// ---------------------------------------------------------------------------
+// Product Detail templates (3) - shopProductDetail (block-internal layout)
+// ---------------------------------------------------------------------------
+// The parts (Gallery/Badges/Title/Price/Add to Cart/Tabs...) are the draggable
+// pieces of the product detail area; the two-column structure comes from a
+// Split, not a hardcoded grid. Add to Cart cannot be deleted (it's the anchor).
+
+const detailSplit = (id: string, ratio: string) => ({ type: 'Split', props: { id, ratio, align: 'start', gap: 'lg', padding: 'none' } })
+
+export function shopProductDetailStarters() {
+  return [
+    {
+      id: 'starter-shop-detail-default',
+      name: 'Default',
+      description: 'The classic two-column product page: gallery on the left, buy column on the right, tabs below.',
+      publishByDefault: true,
+      data: {
+        content: [detailSplit('pdp-cols', '50/50'), block('ShopDetailTabs', 'pdp-tabs')],
+        root: { props: {} },
+        zones: {
+          'pdp-cols:left': [block('ShopDetailGallery', 'pdp-gallery', { shape: 'square', thumbPosition: 'below' })],
+          'pdp-cols:right': [
+            block('ShopDetailBadges', 'pdp-badges'),
+            block('ShopDetailTitle', 'pdp-title'),
+            block('ShopDetailSku', 'pdp-sku'),
+            block('ShopDetailPrice', 'pdp-price', { showCompare: 'yes', showSave: 'yes' }),
+            block('ShopDetailBlurb', 'pdp-blurb'),
+            block('ShopDetailPreorder', 'pdp-preorder'),
+            block('ShopDetailAddToCart', 'pdp-add', { showStepper: 'yes' }),
+            block('ShopDetailReassure', 'pdp-reassure', { reassure1: 'Free delivery over £50', reassure2: '30-day returns', reassure3: '2-year guarantee' }),
+          ],
+        },
+      },
+    },
+    {
+      id: 'starter-shop-detail-editorial',
+      name: 'Editorial',
+      description: 'Image-led: a wide gallery up top with thumbnails beside it, the buy details in a boxed column below, then tabs.',
+      data: {
+        content: [
+          block('ShopDetailGallery', 'gallery-1', { shape: 'landscape', thumbPosition: 'beside' }),
+          section('section-1', {
+            maxWidth: 'narrow',
+            content: [
+              block('ShopDetailBadges', 'badges-1'),
+              block('ShopDetailTitle', 'title-1'),
+              block('ShopDetailPrice', 'price-1', { showCompare: 'yes', showSave: 'yes' }),
+              block('ShopDetailBlurb', 'blurb-1'),
+              block('ShopDetailPreorder', 'preorder-1'),
+              block('ShopDetailAddToCart', 'add-1', { showStepper: 'yes' }),
+              block('ShopDetailReassure', 'reassure-1', { reassure1: 'Free delivery over £50', reassure2: '30-day returns', reassure3: '2-year guarantee' }),
+            ],
+          }),
+          block('ShopDetailTabs', 'tabs-1'),
+        ],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+    {
+      id: 'starter-shop-detail-compact',
+      name: 'Compact',
+      description: 'Single narrow column, everything stacked, a full-width buy button - built for a fast, focused decision.',
+      data: {
+        content: [
+          section('section-1', {
+            maxWidth: 'narrow',
+            content: [
+              block('ShopDetailGallery', 'gallery-1', { shape: 'square', thumbPosition: 'below' }),
+              block('ShopDetailBadges', 'badges-1'),
+              block('ShopDetailTitle', 'title-1'),
+              block('ShopDetailPrice', 'price-1', { showCompare: 'yes', showSave: 'yes' }),
+              block('ShopDetailAddToCart', 'add-1', { showStepper: 'no' }),
+              block('ShopDetailBlurb', 'blurb-1'),
+              block('ShopDetailTabs', 'tabs-1'),
+            ],
+          }),
+        ],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+  ]
+}
+
+// ---------------------------------------------------------------------------
+// Product Card templates (3) - shopProductCard (block-internal layout)
+// ---------------------------------------------------------------------------
+// A card is a flat list of parts; the overall look (image on top / beside /
+// filling the card) follows from the Image part's own display option, so it
+// survives a re-save. Every card surface stamps this template per product.
+
+export function shopProductCardStarters() {
+  return [
+    {
+      id: 'starter-shop-card-standard',
+      name: 'Standard',
+      description: 'Image on top, then name, price and a spec link - the familiar catalogue card.',
+      publishByDefault: true,
+      data: {
+        content: [
+          block('ShopCardImage', 'card-img', { display: 'standard', shape: 'landscape' }),
+          block('ShopCardBadge', 'card-badge'),
+          block('ShopCardName', 'card-name'),
+          block('ShopCardPrice', 'card-price', { showCompare: 'yes' }),
+          block('ShopCardBlurb', 'card-blurb'),
+          block('ShopCardCta', 'card-cta', { label: 'Full spec' }),
+        ],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+    {
+      id: 'starter-shop-card-overlay',
+      name: 'Overlay',
+      description: 'A tall image fills the card, with the name and price floating over the bottom.',
+      data: {
+        content: [
+          block('ShopCardImage', 'card-img', { display: 'fill' }),
+          block('ShopCardBadge', 'card-badge'),
+          block('ShopCardName', 'card-name'),
+          block('ShopCardPrice', 'card-price', { showCompare: 'yes' }),
+        ],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+    {
+      id: 'starter-shop-card-horizontal',
+      name: 'Horizontal',
+      description: 'Image on the left, details on the right - a list-style row that reads well in tight spaces.',
+      data: {
+        content: [
+          block('ShopCardImage', 'card-img', { display: 'beside', shape: 'square' }),
+          block('ShopCardName', 'card-name'),
+          block('ShopCardPrice', 'card-price', { showCompare: 'yes' }),
+          block('ShopCardBlurb', 'card-blurb'),
+          block('ShopCardCta', 'card-cta', { label: 'View' }),
+        ],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+  ]
+}

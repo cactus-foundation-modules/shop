@@ -1,0 +1,567 @@
+import { AddToCartButton } from '@/modules/shop/components/public/AddToCartButton'
+import { ProductGallery, ProductTabs, type ProductTab } from '@/modules/shop/components/public/ProductDetailIslands'
+import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints'
+import type { ShpProduct } from '@/modules/shop/lib/types'
+import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
+
+// Product Detail part-blocks. Each is a small draggable piece of a Product
+// Detail layout (admin > Layouts > Shop > Product Detail). The markup and class
+// names are carved straight out of the old hardcoded ShopProductDetail so the
+// live look is unchanged; the two-column structure now comes from the layout's
+// own Split/Section blocks, not a `.spd-pdp` grid. Each part renders a labelled
+// skeleton in the editor canvas (no product there) and its real slice on the
+// live page, reading the injected `_ctx`. Colours are tokens only.
+
+const yesNo = [
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
+]
+
+function Style({ css }: { css: string }) {
+  return <style dangerouslySetInnerHTML={{ __html: css }} />
+}
+
+// ---------------------------------------------------------------------------
+// Gallery (main image + thumbnails)
+// ---------------------------------------------------------------------------
+
+const galleryCss = ({ tabletBp }: Breakpoints) => `
+.spd-stage-col{position:sticky;top:96px}
+.spd-stage-col.beside{display:flex;flex-direction:row-reverse;gap:12px;align-items:flex-start}
+.spd-stage-col.beside .spd-stage{flex:1;min-width:0}
+.spd-stage-col.beside .spd-thumbs{flex-direction:column;margin-top:0;flex:none}
+.spd-stage{position:relative;border:1px solid var(--color-border);border-radius:16px;background:var(--color-bg-subtle);overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center}
+.spd-stage-img{width:100%;height:100%;object-fit:cover;display:block}
+.spd-thumbs{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+.spd-thumb{width:64px;height:64px;border:1px solid var(--color-border);border-radius:8px;overflow:hidden;background:var(--color-bg-subtle);cursor:pointer;padding:0;transition:border-color .12s ease,box-shadow .12s ease}
+.spd-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.spd-thumb.on{border-color:var(--color-primary);box-shadow:0 0 0 1px var(--color-primary)}
+.spd-thumb:hover{border-color:var(--color-primary)}
+@media (max-width:${tabletBp}){.spd-stage-col{position:static}}
+`
+
+type GalleryProps = { _ctx?: DetailPartContext; shape?: string; thumbPosition?: string }
+
+export function ShopDetailGallery(props: GalleryProps) {
+  const aspect = props.shape === 'portrait' ? '3 / 4' : props.shape === 'landscape' ? '4 / 3' : '1 / 1'
+  return (
+    <>
+      <Style css={galleryCss(DEFAULT_BREAKPOINTS)} />
+      <div className={`spd-stage-col${props.thumbPosition === 'beside' ? ' beside' : ''}`} style={{ opacity: 0.6 }}>
+        <div className="spd-stage spd-stage-empty" style={{ aspectRatio: aspect }} />
+        <div className="spd-thumbs">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="spd-thumb" />
+          ))}
+        </div>
+      </div>
+    </>
+  )
+}
+
+export function ShopDetailGalleryRsc(props: GalleryProps) {
+  const ctx = props._ctx
+  if (!ctx) return null
+  return (
+    <>
+      <Style css={galleryCss(ctx.bp)} />
+      <ProductGallery images={ctx.images} productName={ctx.product.name} shape={props.shape} thumbPosition={props.thumbPosition} />
+    </>
+  )
+}
+
+export const shopDetailGalleryPuckComponent = {
+  label: 'Product: Gallery',
+  fields: {
+    shape: { type: 'select' as const, label: 'Image shape', options: [{ value: 'square', label: 'Square' }, { value: 'portrait', label: 'Portrait' }, { value: 'landscape', label: 'Landscape' }] },
+    thumbPosition: { type: 'select' as const, label: 'Thumbnails', options: [{ value: 'below', label: 'Below image' }, { value: 'beside', label: 'Beside image' }] },
+  },
+  defaultProps: { shape: 'square', thumbPosition: 'below' },
+  render: ShopDetailGallery,
+}
+export const shopDetailGalleryPuckRscComponent = { ...shopDetailGalleryPuckComponent, render: ShopDetailGalleryRsc }
+
+// ---------------------------------------------------------------------------
+// Badges (new / trade / stock / low / out)
+// ---------------------------------------------------------------------------
+
+const badgesCss = `
+.spd-badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.spd-badge{display:inline-block;font-size:12px;font-weight:600;padding:4px 9px;border-radius:6px;line-height:1.35}
+.spd-badge-new{background:var(--color-primary);color:var(--color-on-primary)}
+.spd-badge-trade{background:var(--color-fg);color:var(--color-bg)}
+.spd-badge-stock{background:var(--color-success-subtle);color:var(--color-success)}
+.spd-badge-low{background:var(--color-warning-subtle);color:var(--color-warning);border:1px solid var(--color-warning-border)}
+.spd-badge-out{background:var(--color-surface);color:var(--color-text-muted);border:1px solid var(--color-border)}
+`
+
+type PartProps = { _ctx?: DetailPartContext }
+
+export function ShopDetailBadges(_props: PartProps) {
+  return (
+    <>
+      <Style css={badgesCss} />
+      <div className="spd-badges" style={{ opacity: 0.6 }}>
+        <span className="spd-badge spd-badge-new">New</span>
+        <span className="spd-badge spd-badge-stock">In stock</span>
+      </div>
+    </>
+  )
+}
+
+export function ShopDetailBadgesRsc({ _ctx }: PartProps) {
+  if (!_ctx) return null
+  const { tagSlugs, outOfStock, lowStock, product } = _ctx
+  return (
+    <>
+      <Style css={badgesCss} />
+      <div className="spd-badges">
+        {tagSlugs.includes('new') && <span className="spd-badge spd-badge-new">New</span>}
+        {tagSlugs.includes('trade') && <span className="spd-badge spd-badge-trade">Trade price</span>}
+        {outOfStock ? (
+          <span className="spd-badge spd-badge-out">Out of stock</span>
+        ) : product.isPreOrder ? (
+          <span className="spd-badge spd-badge-new">Pre-order</span>
+        ) : lowStock ? (
+          <span className="spd-badge spd-badge-low">Low stock</span>
+        ) : (
+          <span className="spd-badge spd-badge-stock">In stock</span>
+        )}
+      </div>
+    </>
+  )
+}
+
+export const shopDetailBadgesPuckComponent = { label: 'Product: Badges', fields: {}, defaultProps: {}, render: ShopDetailBadges }
+export const shopDetailBadgesPuckRscComponent = { ...shopDetailBadgesPuckComponent, render: ShopDetailBadgesRsc }
+
+// ---------------------------------------------------------------------------
+// Title
+// ---------------------------------------------------------------------------
+
+const titleCss = `.spd-title{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:34px;line-height:1.2;margin:6px 0;color:var(--color-fg)}`
+
+export function ShopDetailTitle(_props: PartProps) {
+  return (
+    <>
+      <Style css={titleCss} />
+      <div style={{ height: 30, width: '70%', background: 'var(--color-border)', borderRadius: 6, margin: '8px 0', opacity: 0.6 }} />
+    </>
+  )
+}
+
+export function ShopDetailTitleRsc({ _ctx }: PartProps) {
+  if (!_ctx) return null
+  return (
+    <>
+      <Style css={titleCss} />
+      <h1 className="spd-title">{_ctx.product.name}</h1>
+    </>
+  )
+}
+
+export const shopDetailTitlePuckComponent = { label: 'Product: Title', fields: {}, defaultProps: {}, render: ShopDetailTitle }
+export const shopDetailTitlePuckRscComponent = { ...shopDetailTitlePuckComponent, render: ShopDetailTitleRsc }
+
+// ---------------------------------------------------------------------------
+// SKU
+// ---------------------------------------------------------------------------
+
+const skuCss = `.spd-sku{font-size:13px;color:var(--color-text-muted)}`
+
+export function ShopDetailSku(_props: PartProps) {
+  return (
+    <>
+      <Style css={skuCss} />
+      <div style={{ height: 13, width: '35%', background: 'var(--color-border)', borderRadius: 4, opacity: 0.6 }} />
+    </>
+  )
+}
+
+export function ShopDetailSkuRsc({ _ctx }: PartProps) {
+  if (!_ctx || !_ctx.product.sku) return null
+  return (
+    <>
+      <Style css={skuCss} />
+      <div className="spd-sku">SKU {_ctx.product.sku}</div>
+    </>
+  )
+}
+
+export const shopDetailSkuPuckComponent = { label: 'Product: SKU', fields: {}, defaultProps: {}, render: ShopDetailSku }
+export const shopDetailSkuPuckRscComponent = { ...shopDetailSkuPuckComponent, render: ShopDetailSkuRsc }
+
+// ---------------------------------------------------------------------------
+// Price (now / was / save)
+// ---------------------------------------------------------------------------
+
+const priceCss = `
+.spd-price-block{margin:18px 0 4px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.spd-price-now{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:34px;color:var(--color-primary)}
+.spd-price-was{font-size:15px;color:var(--color-text-muted);text-decoration:line-through}
+.spd-save{background:var(--color-success-subtle);color:var(--color-success);font-size:12px;font-weight:600;border-radius:9999px;padding:4px 11px}
+`
+
+type PriceProps = { _ctx?: DetailPartContext; showCompare?: string; showSave?: string }
+
+export function ShopDetailPrice(_props: PriceProps) {
+  return (
+    <>
+      <Style css={priceCss} />
+      <div className="spd-price-block" style={{ opacity: 0.6 }}>
+        <div style={{ height: 30, width: 110, background: 'var(--color-border)', borderRadius: 6 }} />
+      </div>
+    </>
+  )
+}
+
+export function ShopDetailPriceRsc(props: PriceProps) {
+  const ctx = props._ctx
+  if (!ctx) return null
+  const { product, currencySymbol, hasWas, savePct } = ctx
+  const showCompare = props.showCompare !== 'no'
+  const showSave = props.showSave !== 'no'
+  return (
+    <>
+      <Style css={priceCss} />
+      <div className="spd-price-block">
+        <span className="spd-price-now">
+          {currencySymbol}
+          {product.price}
+        </span>
+        {showCompare && hasWas && (
+          <span className="spd-price-was">
+            {currencySymbol}
+            {product.compareAtPrice}
+          </span>
+        )}
+        {showSave && savePct != null && savePct > 0 && <span className="spd-save">Save {savePct}%</span>}
+      </div>
+    </>
+  )
+}
+
+export const shopDetailPricePuckComponent = {
+  label: 'Product: Price',
+  fields: {
+    showCompare: { type: 'select' as const, label: 'Show "was" price', options: yesNo },
+    showSave: { type: 'select' as const, label: 'Show "Save X%" badge', options: yesNo },
+  },
+  defaultProps: { showCompare: 'yes', showSave: 'yes' },
+  render: ShopDetailPrice,
+}
+export const shopDetailPricePuckRscComponent = { ...shopDetailPricePuckComponent, render: ShopDetailPriceRsc }
+
+// ---------------------------------------------------------------------------
+// Blurb (short description)
+// ---------------------------------------------------------------------------
+
+const blurbCss = `.spd-blurb{margin-top:14px;color:var(--color-text-muted);max-width:52ch}`
+
+export function ShopDetailBlurb(_props: PartProps) {
+  return (
+    <>
+      <Style css={blurbCss} />
+      <div className="spd-blurb" style={{ opacity: 0.6 }}>
+        <div style={{ height: 12, width: '90%', background: 'var(--color-border)', borderRadius: 4, marginBottom: 6 }} />
+        <div style={{ height: 12, width: '75%', background: 'var(--color-border)', borderRadius: 4 }} />
+      </div>
+    </>
+  )
+}
+
+export function ShopDetailBlurbRsc({ _ctx }: PartProps) {
+  if (!_ctx || !_ctx.product.shortDescription) return null
+  return (
+    <>
+      <Style css={blurbCss} />
+      <p className="spd-blurb">{_ctx.product.shortDescription}</p>
+    </>
+  )
+}
+
+export const shopDetailBlurbPuckComponent = { label: 'Product: Short description', fields: {}, defaultProps: {}, render: ShopDetailBlurb }
+export const shopDetailBlurbPuckRscComponent = { ...shopDetailBlurbPuckComponent, render: ShopDetailBlurbRsc }
+
+// ---------------------------------------------------------------------------
+// Pre-order notice
+// ---------------------------------------------------------------------------
+
+const preorderCss = `.spd-preorder{margin-top:14px;background:var(--color-bg-subtle);border:1px solid var(--color-border);border-radius:8px;padding:10px 12px;font-size:14px;color:var(--color-fg)}`
+
+export function ShopDetailPreorder(_props: PartProps) {
+  return (
+    <>
+      <Style css={preorderCss} />
+      <p className="spd-preorder" style={{ opacity: 0.6 }}>Pre-order notice (shows only for pre-order products).</p>
+    </>
+  )
+}
+
+export function ShopDetailPreorderRsc({ _ctx }: PartProps) {
+  if (!_ctx || !_ctx.product.isPreOrder) return null
+  const { product } = _ctx
+  return (
+    <>
+      <Style css={preorderCss} />
+      <p className="spd-preorder">
+        Pre-order
+        {product.preOrderDispatchDate
+          ? ` - expected dispatch ${new Date(product.preOrderDispatchDate).toLocaleDateString('en-GB')}`
+          : ''}
+        {product.preOrderNote ? `. ${product.preOrderNote}` : ''}
+      </p>
+    </>
+  )
+}
+
+export const shopDetailPreorderPuckComponent = { label: 'Product: Pre-order notice', fields: {}, defaultProps: {}, render: ShopDetailPreorder }
+export const shopDetailPreorderPuckRscComponent = { ...shopDetailPreorderPuckComponent, render: ShopDetailPreorderRsc }
+
+// ---------------------------------------------------------------------------
+// Add to Cart (ANCHOR - not removable)
+// ---------------------------------------------------------------------------
+
+const buyCss = `
+.spd-buy-row{display:flex;gap:14px;align-items:center;margin-top:22px;flex-wrap:wrap}
+.spd-stepper{display:inline-flex;align-items:center;border:1px solid var(--color-border);border-radius:9999px;height:52px;overflow:hidden;background:var(--color-surface)}
+.spd-stepper button{width:46px;height:52px;border:none;background:transparent;color:var(--color-primary);font-size:20px;font-weight:600;cursor:pointer;transition:background .12s ease}
+/* !important beats the site theme's own !important button:hover fill so the stepper stays a subtle teal control */
+.spd-stepper button:hover:not(:disabled){background:var(--color-bg-subtle) !important;color:var(--color-primary) !important}
+.spd-stepper button:disabled{color:var(--color-border);cursor:not-allowed}
+.spd-stepper input{width:52px;border:none;text-align:center;font:inherit;font-weight:600;font-size:16px;background:transparent;color:var(--color-fg)}
+.spd-stepper input:focus{outline:none}
+/* Add-to-basket intentionally inherits the site's primary button fill - matches the concept's CTA - so no background here */
+.spd-add{flex:1;min-width:200px;height:52px;border:none;border-radius:9999px;font:inherit;font-weight:600;font-size:16px;cursor:pointer;transition:transform .06s ease}
+.spd-add:active{transform:scale(.99)}
+.spd-oos{margin-top:16px;color:var(--color-text-muted);font-weight:600}
+`
+
+type AddProps = { _ctx?: DetailPartContext; showStepper?: string }
+
+export function ShopDetailAddToCart(props: AddProps) {
+  const showStepper = props.showStepper !== 'no'
+  return (
+    <>
+      <Style css={buyCss} />
+      <div className="spd-buy-row" style={{ opacity: 0.6 }}>
+        {showStepper && <div className="spd-stepper" style={{ width: 148 }} />}
+        <div className="spd-add" style={{ maxWidth: 240, background: 'var(--color-border)' }} />
+      </div>
+    </>
+  )
+}
+
+export function ShopDetailAddToCartRsc(props: AddProps) {
+  const ctx = props._ctx
+  if (!ctx) return null
+  const { product, outOfStock } = ctx
+  const showStepper = props.showStepper !== 'no'
+  return (
+    <>
+      <Style css={buyCss} />
+      {outOfStock ? (
+        <p className="spd-oos">Out of stock</p>
+      ) : (
+        <AddToCartButton
+          productId={product.id}
+          label={product.isPreOrder ? 'Pre-order now' : 'Add to basket'}
+          showStepper={showStepper}
+        />
+      )}
+    </>
+  )
+}
+
+export const shopDetailAddToCartPuckComponent = {
+  label: 'Product: Add to Cart [Anchor]',
+  fields: {
+    showStepper: { type: 'select' as const, label: 'Quantity stepper', options: [{ value: 'yes', label: 'Show stepper' }, { value: 'no', label: 'Button only' }] },
+  },
+  defaultProps: { showStepper: 'yes' },
+  permissions: { delete: false },
+  render: ShopDetailAddToCart,
+}
+export const shopDetailAddToCartPuckRscComponent = { ...shopDetailAddToCartPuckComponent, render: ShopDetailAddToCartRsc }
+
+// ---------------------------------------------------------------------------
+// Reassurance lines (absorbs the old reassure1..3 fields)
+// ---------------------------------------------------------------------------
+
+const reassureCss = `
+.spd-reassure{margin-top:18px;display:flex;gap:20px;flex-wrap:wrap;font-size:13px;color:var(--color-text-muted)}
+.spd-reassure span{display:inline-flex;gap:7px;align-items:center}
+.spd-reassure svg{color:var(--color-primary);flex:none}
+`
+
+function ReassureCheck() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+type ReassureProps = { reassure1?: string; reassure2?: string; reassure3?: string }
+
+function ReassureLines({ lines }: { lines: string[] }) {
+  if (lines.length === 0) return null
+  return (
+    <>
+      <Style css={reassureCss} />
+      <div className="spd-reassure">
+        {lines.map((r, i) => (
+          <span key={i}>
+            <ReassureCheck />
+            {r}
+          </span>
+        ))}
+      </div>
+    </>
+  )
+}
+
+export function ShopDetailReassure(props: ReassureProps) {
+  const lines = [props.reassure1, props.reassure2, props.reassure3].filter((s): s is string => Boolean(s && s.trim()))
+  return <ReassureLines lines={lines.length > 0 ? lines : ['Free delivery', '30-day returns', '2-year guarantee']} />
+}
+
+export function ShopDetailReassureRsc(props: ReassureProps) {
+  const lines = [props.reassure1, props.reassure2, props.reassure3].filter((s): s is string => Boolean(s && s.trim()))
+  return <ReassureLines lines={lines} />
+}
+
+export const shopDetailReassurePuckComponent = {
+  label: 'Product: Reassurance lines',
+  fields: {
+    reassure1: { type: 'text' as const, label: 'Reassurance line 1' },
+    reassure2: { type: 'text' as const, label: 'Reassurance line 2' },
+    reassure3: { type: 'text' as const, label: 'Reassurance line 3' },
+  },
+  defaultProps: { reassure1: '', reassure2: '', reassure3: '' },
+  render: ShopDetailReassure,
+}
+export const shopDetailReassurePuckRscComponent = { ...shopDetailReassurePuckComponent, render: ShopDetailReassureRsc }
+
+// ---------------------------------------------------------------------------
+// Tabs (description / specification / dimensions / downloads)
+// ---------------------------------------------------------------------------
+
+const tabsCss = `
+.spd-tabs{border-top:1px solid var(--color-border);margin-top:40px}
+.spd-tab-nav{display:flex;gap:6px;overflow-x:auto;padding:16px 0}
+.spd-tab-btn{border:1px solid var(--color-border);background:var(--color-surface);border-radius:9999px;padding:9px 18px;font:inherit;font-size:14px;font-weight:600;color:var(--color-text-muted);cursor:pointer;white-space:nowrap;transition:background .12s ease,color .12s ease,border-color .12s ease}
+/* !important on hover/active so the site theme's !important button fill can't turn tabs mustard */
+.spd-tab-btn:hover{background:var(--color-surface) !important;border-color:var(--color-primary);color:var(--color-primary) !important}
+.spd-tab-btn.on{background:var(--color-primary) !important;border-color:var(--color-primary);color:var(--color-on-primary) !important}
+.spd-panel{padding:20px 0 8px;max-width:900px}
+.spd-panel h3{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:24px;margin:0 0 14px;color:var(--color-fg)}
+.spd-panel p{color:var(--color-text-muted);max-width:70ch;margin:0 0 14px;white-space:pre-wrap}
+.spd-facts{width:100%;border-collapse:collapse;font-size:14px}
+.spd-facts td{padding:11px 14px;border-bottom:1px solid var(--color-border);vertical-align:top}
+.spd-facts td:first-child{color:var(--color-text-muted);width:38%}
+.spd-facts td:last-child{color:var(--color-fg)}
+.spd-dl{display:flex;align-items:center;gap:16px;border:1px solid var(--color-border);border-radius:10px;padding:16px 18px;color:var(--color-fg)}
+.spd-dl .fico{width:42px;height:42px;border-radius:6px;background:var(--color-bg-subtle);color:var(--color-primary);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex:none}
+.spd-dl b{font-size:15px;display:block}
+.spd-dl small{font-size:12px;color:var(--color-text-muted)}
+.spd-dl .get{margin-left:auto;color:var(--color-text-muted);font-weight:600;font-size:13px;white-space:nowrap}
+`
+
+const TYPE_LABEL: Record<ShpProduct['type'], string> = {
+  PHYSICAL: 'Physical product',
+  DIGITAL: 'Digital download',
+  SERVICE: 'Service',
+}
+
+function FactsTable({ rows }: { rows: Array<[string, string]> }) {
+  return (
+    <table className="spd-facts">
+      <tbody>
+        {rows.map(([label, value]) => (
+          <tr key={label}>
+            <td>{label}</td>
+            <td>{value}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+export function ShopDetailTabs(_props: PartProps) {
+  return (
+    <>
+      <Style css={tabsCss} />
+      <div className="spd-tabs">
+        <div className="spd-tab-nav">
+          {['Description', 'Specification', 'Dimensions'].map((t, i) => (
+            <span key={t} className={`spd-tab-btn${i === 0 ? ' on' : ''}`}>{t}</span>
+          ))}
+        </div>
+      </div>
+    </>
+  )
+}
+
+export function ShopDetailTabsRsc({ _ctx }: PartProps) {
+  if (!_ctx) return null
+  const { product, digitalFile } = _ctx
+
+  const weightStr = product.weight ? `${product.weight}${product.weightUnit ? ` ${product.weightUnit}` : ''}` : null
+  const dimUnit = product.dimensionUnit ? ` ${product.dimensionUnit}` : ''
+  const dimsCombined =
+    product.dimensionL && product.dimensionW && product.dimensionH
+      ? `${product.dimensionL} × ${product.dimensionW} × ${product.dimensionH}${dimUnit}`
+      : null
+
+  const specRows: Array<[string, string]> = []
+  if (product.sku) specRows.push(['SKU', product.sku])
+  specRows.push(['Type', TYPE_LABEL[product.type]])
+  if (weightStr) specRows.push(['Weight', weightStr])
+  if (dimsCombined) specRows.push(['Dimensions (L × W × H)', dimsCombined])
+
+  const dimRows: Array<[string, string]> = []
+  if (weightStr) dimRows.push(['Weight', weightStr])
+  if (product.dimensionL) dimRows.push(['Length', `${product.dimensionL}${dimUnit}`])
+  if (product.dimensionW) dimRows.push(['Width', `${product.dimensionW}${dimUnit}`])
+  if (product.dimensionH) dimRows.push(['Height', `${product.dimensionH}${dimUnit}`])
+
+  const tabs: ProductTab[] = []
+  if (product.description) {
+    tabs.push({ id: 'desc', label: 'Description', content: <p>{product.description}</p> })
+  }
+  tabs.push({ id: 'spec', label: 'Specification', content: <FactsTable rows={specRows} /> })
+  if (dimRows.length > 0) {
+    tabs.push({ id: 'dims', label: 'Dimensions', content: <FactsTable rows={dimRows} /> })
+  }
+  if (digitalFile) {
+    const ext = (digitalFile.filename.split('.').pop() ?? 'FILE').toUpperCase().slice(0, 4)
+    const sizeMb = `${(digitalFile.size / 1048576).toFixed(1)}MB`
+    tabs.push({
+      id: 'downloads',
+      label: 'Downloads',
+      content: (
+        <div className="spd-dl">
+          <span className="fico">{ext}</span>
+          <span>
+            <b>{digitalFile.filename}</b>
+            <small>{sizeMb}</small>
+          </span>
+          <span className="get">Available after purchase</span>
+        </div>
+      ),
+    })
+  }
+
+  if (tabs.length === 0) return null
+  return (
+    <>
+      <Style css={tabsCss} />
+      <ProductTabs tabs={tabs} />
+    </>
+  )
+}
+
+export const shopDetailTabsPuckComponent = { label: 'Product: Tabs (spec/dimensions/downloads)', fields: {}, defaultProps: {}, render: ShopDetailTabs }
+export const shopDetailTabsPuckRscComponent = { ...shopDetailTabsPuckComponent, render: ShopDetailTabsRsc }

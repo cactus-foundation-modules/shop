@@ -4,33 +4,36 @@ import { useState } from 'react'
 import { addToCart } from '@/modules/shop/components/public/cart'
 
 // Quantity stepper + primary add button. Styling comes from the scoped
-// `spd-*` <style> emitted by ShopProductDetail on the same page.
-export function AddToCartButton({ productId, label }: { productId: string; label?: string }) {
+// `spd-*` <style> emitted by the Add to Cart part on the same page. The stepper
+// can be hidden per-part (plain button only) via `showStepper`.
+export function AddToCartButton({ productId, label, showStepper = true }: { productId: string; label?: string; showStepper?: boolean }) {
   const [quantity, setQuantity] = useState(1)
   const [added, setAdded] = useState(false)
 
   return (
     <div className="spd-buy-row">
-      <div className="spd-stepper" role="group" aria-label="Quantity">
-        <button
-          type="button"
-          aria-label="Decrease quantity"
-          onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-          disabled={quantity <= 1}
-        >
-          &minus;
-        </button>
-        <input
-          type="text"
-          inputMode="numeric"
-          value={quantity}
-          aria-label="Quantity"
-          onChange={(e) => setQuantity(Math.max(1, Number(e.target.value.replace(/\D/g, '')) || 1))}
-        />
-        <button type="button" aria-label="Increase quantity" onClick={() => setQuantity((q) => q + 1)}>
-          +
-        </button>
-      </div>
+      {showStepper && (
+        <div className="spd-stepper" role="group" aria-label="Quantity">
+          <button
+            type="button"
+            aria-label="Decrease quantity"
+            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+            disabled={quantity <= 1}
+          >
+            &minus;
+          </button>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={quantity}
+            aria-label="Quantity"
+            onChange={(e) => setQuantity(Math.max(1, Number(e.target.value.replace(/\D/g, '')) || 1))}
+          />
+          <button type="button" aria-label="Increase quantity" onClick={() => setQuantity((q) => q + 1)}>
+            +
+          </button>
+        </div>
+      )}
       <button
         type="button"
         className="spd-add"
