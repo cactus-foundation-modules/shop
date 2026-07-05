@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "publicBasePath": "shop",
@@ -67,7 +67,7 @@
     { "type": "ShopFeaturedCollection", "import": "./components/puck/ShopFeaturedCollection", "component": "shopFeaturedCollectionPuckComponent", "rscComponent": "shopFeaturedCollectionPuckRscComponent", "rscImport": "./components/puck/ShopFeaturedCollection.rsc", "layoutTypes": ["shopIndex"] },
     { "type": "ShopCategoryBrowser", "import": "./components/puck/ShopCategoryBrowser", "component": "shopCategoryBrowserPuckComponent", "rscComponent": "shopCategoryBrowserPuckRscComponent", "rscImport": "./components/puck/ShopCategoryBrowser.rsc", "layoutTypes": ["shopIndex"] },
     { "type": "ShopPromoBanner", "import": "./components/puck/ShopPromoBanner", "component": "shopPromoBannerPuckComponent", "rscComponent": "shopPromoBannerPuckRscComponent", "layoutTypes": ["shopIndex"] },
-    { "type": "ShopCartSummary", "import": "./components/puck/ShopCartSummary", "component": "shopCartSummaryPuckComponent", "rscComponent": "shopCartSummaryPuckRscComponent" },
+    { "type": "ShopCartSummary", "import": "./components/puck/ShopCartSummary", "component": "shopCartSummaryPuckComponent", "rscComponent": "shopCartSummaryPuckRscComponent", "layoutTypes": ["header"] },
     { "type": "ShopCartFull", "import": "./components/puck/ShopCartFull", "component": "shopCartFullPuckComponent", "rscComponent": "shopCartFullPuckRscComponent", "layoutTypes": ["shopCart"] },
     { "type": "ShopCheckoutContact", "import": "./components/puck/ShopCheckoutContact", "component": "shopCheckoutContactPuckComponent", "rscComponent": "shopCheckoutContactPuckRscComponent", "layoutTypes": ["shopCheckout"] },
     { "type": "ShopCheckoutShipping", "import": "./components/puck/ShopCheckoutShipping", "component": "shopCheckoutShippingPuckComponent", "rscComponent": "shopCheckoutShippingPuckRscComponent", "layoutTypes": ["shopCheckout"] },
