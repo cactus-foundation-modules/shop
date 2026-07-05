@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react'
 import type { ShpTaxClass, ShpShippingZone, ShpTaxZoneRate, ShpShippingRate, ShpShippingRateType } from '@/modules/shop/lib/types'
 
-const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.5rem 0' }
+const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.25rem 0' }
 const sectionHeading: React.CSSProperties = { margin: '0 0 0.5rem', fontSize: '0.9375rem', fontWeight: 600 }
-const headerCellStyle: React.CSSProperties = { padding: '0.5rem 0.75rem', fontSize: '0.75rem', fontWeight: 500, color: 'var(--color-text-muted)', background: 'var(--color-bg-subtle)', borderBottom: '1px solid var(--color-border)' }
-const cellStyle: React.CSSProperties = { padding: '0.5rem 0.75rem', background: 'var(--color-surface)', display: 'flex', alignItems: 'center' }
+const detailsStyle: React.CSSProperties = { marginBottom: '0.75rem' }
+const summaryStyle: React.CSSProperties = { cursor: 'pointer', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }
+const panelStyle: React.CSSProperties = { border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.75rem', marginTop: '0.75rem' }
 
 const RATE_TYPE_LABELS: Record<ShpShippingRateType, string> = { FLAT: 'Flat rate', WEIGHT_BASED: 'Weight-based', FREE: 'Free shipping' }
 
@@ -26,20 +27,24 @@ function slugifyTaxClassCode(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
 
+function zoneSummary(z: ShpShippingZone): string {
+  return z.postcodes.length === 0 ? 'All postcodes (catch-all)' : `${z.postcodes.length} postcode prefix${z.postcodes.length === 1 ? '' : 'es'}`
+}
+
 export function TaxShippingScreen() {
   const [taxClasses, setTaxClasses] = useState<ShpTaxClass[]>([])
   const [newClassName, setNewClassName] = useState('')
-  const [newClassCode, setNewClassCode] = useState('')
-  const [newClassCodeEditable, setNewClassCodeEditable] = useState(false)
+  const [classEdits, setClassEdits] = useState<Record<string, { name: string; code: string }>>({})
+  const [classErrors, setClassErrors] = useState<Record<string, string>>({})
 
   const [zones, setZones] = useState<ShpShippingZone[]>([])
-  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null)
+  const [openZoneId, setOpenZoneId] = useState<string | null>(null)
   const [zoneName, setZoneName] = useState('')
   const [zonePostcodesText, setZonePostcodesText] = useState('')
   const [zoneMessage, setZoneMessage] = useState('')
 
-  const [taxRates, setTaxRates] = useState<ShpTaxZoneRate[]>([])
   const [taxRateInputs, setTaxRateInputs] = useState<Record<string, string>>({})
+  const [taxSavedClassId, setTaxSavedClassId] = useState<string | null>(null)
 
   const [shippingRates, setShippingRates] = useState<ShpShippingRate[]>([])
   const [editingRateId, setEditingRateId] = useState<string | 'new' | null>(null)
@@ -52,7 +57,14 @@ export function TaxShippingScreen() {
   }, [])
 
   function loadTaxClasses() {
-    fetch('/api/m/shop/admin/tax-classes').then(async (r) => { if (r.ok) setTaxClasses((await r.json()).taxClasses) })
+    fetch('/api/m/shop/admin/tax-classes').then(async (r) => {
+      if (!r.ok) return
+      const classes: ShpTaxClass[] = (await r.json()).taxClasses
+      setTaxClasses(classes)
+      const edits: Record<string, { name: string; code: string }> = {}
+      classes.forEach((tc) => { edits[tc.id] = { name: tc.name, code: tc.code } })
+      setClassEdits(edits)
+    })
   }
 
   function loadZones() {
@@ -60,19 +72,32 @@ export function TaxShippingScreen() {
   }
 
   async function addTaxClass() {
-    if (!newClassName.trim() || !newClassCode.trim()) return
+    const name = newClassName.trim()
+    const code = slugifyTaxClassCode(name)
+    if (!name || !code) return
     await fetch('/api/m/shop/admin/tax-classes', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newClassName.trim(), code: newClassCode.trim() }),
+      body: JSON.stringify({ name, code }),
     })
     setNewClassName('')
-    setNewClassCode('')
-    setNewClassCodeEditable(false)
     loadTaxClasses()
   }
 
-  async function renameTaxClass(id: string, fields: Partial<{ name: string; code: string }>) {
-    await fetch(`/api/m/shop/admin/tax-classes/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) })
+  async function saveTaxClassEdit(id: string) {
+    const edit = classEdits[id]
+    const tc = taxClasses.find((c) => c.id === id)
+    if (!edit || !tc) return
+    const fields: Partial<{ name: string; code: string }> = {}
+    if (edit.name.trim() && edit.name.trim() !== tc.name) fields.name = edit.name.trim()
+    if (edit.code.trim() && edit.code.trim() !== tc.code) fields.code = edit.code.trim()
+    if (Object.keys(fields).length === 0) return
+    setClassErrors((prev) => ({ ...prev, [id]: '' }))
+    const res = await fetch(`/api/m/shop/admin/tax-classes/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) })
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)
+      setClassErrors((prev) => ({ ...prev, [id]: body?.error ?? 'Save failed - that code may already be in use.' }))
+      return
+    }
     loadTaxClasses()
   }
 
@@ -89,11 +114,11 @@ export function TaxShippingScreen() {
     })
     const { id } = await res.json()
     loadZones()
-    selectZone(id, 'New zone', [])
+    openZone(id, 'New zone', [])
   }
 
-  function selectZone(id: string, name: string, postcodes: string[]) {
-    setSelectedZoneId(id)
+  function openZone(id: string, name: string, postcodes: string[]) {
+    setOpenZoneId(id)
     setZoneName(name)
     setZonePostcodesText(postcodes.join('\n'))
     setZoneMessage('')
@@ -101,19 +126,23 @@ export function TaxShippingScreen() {
     fetch(`/api/m/shop/admin/tax-zone-rates?zoneId=${id}`).then(async (r) => {
       if (!r.ok) return
       const rates: ShpTaxZoneRate[] = (await r.json()).rates
-      setTaxRates(rates)
       const inputs: Record<string, string> = {}
-      rates.forEach((r) => { inputs[r.taxClassId] = String(Math.round(Number(r.rate) * 10000) / 100) })
+      rates.forEach((rate) => { inputs[rate.taxClassId] = String(Math.round(Number(rate.rate) * 10000) / 100) })
       setTaxRateInputs(inputs)
     })
     fetch(`/api/m/shop/admin/shipping-zones/${id}`).then(async (r) => { if (r.ok) setShippingRates((await r.json()).rates) })
   }
 
+  function toggleZone(z: ShpShippingZone) {
+    if (openZoneId === z.id) setOpenZoneId(null)
+    else openZone(z.id, z.name, z.postcodes)
+  }
+
   async function saveZone() {
-    if (!selectedZoneId) return
+    if (!openZoneId) return
     setZoneMessage('')
     const postcodes = zonePostcodesText.split('\n').map((s) => s.trim()).filter(Boolean)
-    await fetch(`/api/m/shop/admin/shipping-zones/${selectedZoneId}`, {
+    await fetch(`/api/m/shop/admin/shipping-zones/${openZoneId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: zoneName, postcodes }),
     })
@@ -122,21 +151,23 @@ export function TaxShippingScreen() {
   }
 
   async function deleteZone() {
-    if (!selectedZoneId) return
+    if (!openZoneId) return
     if (!confirm('Delete this zone? Its tax rates and shipping rates are deleted too.')) return
-    await fetch(`/api/m/shop/admin/shipping-zones/${selectedZoneId}`, { method: 'DELETE' })
-    setSelectedZoneId(null)
+    await fetch(`/api/m/shop/admin/shipping-zones/${openZoneId}`, { method: 'DELETE' })
+    setOpenZoneId(null)
     loadZones()
   }
 
   async function saveTaxRate(taxClassId: string, percentValue: string) {
-    if (!selectedZoneId) return
+    if (!openZoneId) return
     const percent = Number(percentValue)
     if (Number.isNaN(percent) || percent < 0 || percent > 100) return
     await fetch('/api/m/shop/admin/tax-zone-rates', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ zoneId: selectedZoneId, taxClassId, rate: percent / 100 }),
+      body: JSON.stringify({ zoneId: openZoneId, taxClassId, rate: percent / 100 }),
     })
+    setTaxSavedClassId(taxClassId)
+    setTimeout(() => setTaxSavedClassId((cur) => (cur === taxClassId ? null : cur)), 2000)
   }
 
   function startNewRate() {
@@ -160,7 +191,7 @@ export function TaxShippingScreen() {
   }
 
   async function saveRate() {
-    if (!selectedZoneId || !editingRateId) return
+    if (!openZoneId || !editingRateId) return
     if (!rateForm.name.trim()) { setRateError('Name is required.'); return }
     setRateError('')
 
@@ -177,20 +208,20 @@ export function TaxShippingScreen() {
     }
 
     const res = editingRateId === 'new'
-      ? await fetch('/api/m/shop/admin/shipping-rates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, zoneId: selectedZoneId }) })
+      ? await fetch('/api/m/shop/admin/shipping-rates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, zoneId: openZoneId }) })
       : await fetch(`/api/m/shop/admin/shipping-rates/${editingRateId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 
     if (!res.ok) { setRateError((await res.json()).error ?? 'Save failed'); return }
 
     setEditingRateId(null)
-    fetch(`/api/m/shop/admin/shipping-zones/${selectedZoneId}`).then(async (r) => { if (r.ok) setShippingRates((await r.json()).rates) })
+    fetch(`/api/m/shop/admin/shipping-zones/${openZoneId}`).then(async (r) => { if (r.ok) setShippingRates((await r.json()).rates) })
   }
 
   async function deleteRate(id: string) {
-    if (!selectedZoneId) return
+    if (!openZoneId) return
     if (!confirm('Delete this shipping rate?')) return
     await fetch(`/api/m/shop/admin/shipping-rates/${id}`, { method: 'DELETE' })
-    fetch(`/api/m/shop/admin/shipping-zones/${selectedZoneId}`).then(async (r) => { if (r.ok) setShippingRates((await r.json()).rates) })
+    fetch(`/api/m/shop/admin/shipping-zones/${openZoneId}`).then(async (r) => { if (r.ok) setShippingRates((await r.json()).rates) })
   }
 
   function addWeightBand() {
@@ -205,6 +236,8 @@ export function TaxShippingScreen() {
     setRateForm((f) => ({ ...f, weightRates: f.weightRates.filter((_, i) => i !== index) }))
   }
 
+  const newCodePreview = slugifyTaxClassCode(newClassName)
+
   return (
     <div>
       <div className="page-header">
@@ -214,123 +247,115 @@ export function TaxShippingScreen() {
       <div className="card">
         <h3 className="card-title" style={{ fontSize: '1rem' }}>Tax classes</h3>
         <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-          Every product is assigned a tax class (e.g. Standard, Reduced, Zero-rated). Each zone below sets its own rate for each class.
+          Every product gets a tax class (e.g. Standard, Reduced, Zero-rated). Each zone below sets its own rate for each class.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', marginBottom: '0.75rem' }}>
-          <div style={headerCellStyle}>Name</div>
-          <div style={headerCellStyle}>Code</div>
-          <div style={headerCellStyle}></div>
-          {taxClasses.map((tc) => (
-            <div key={tc.id} style={{ display: 'contents' }}>
-              <div className="field" style={{ margin: 0, ...cellStyle }}>
-                <input defaultValue={tc.name} onBlur={(e) => e.target.value.trim() && e.target.value !== tc.name && renameTaxClass(tc.id, { name: e.target.value.trim() })} style={{ width: '100%' }} />
+        {taxClasses.map((tc) => {
+          const edit = classEdits[tc.id] ?? { name: tc.name, code: tc.code }
+          const dirty = edit.name.trim() !== tc.name || edit.code.trim() !== tc.code
+          return (
+            <div key={tc.id} style={{ marginBottom: '0.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <div className="field" style={{ margin: 0, flex: 2 }}>
+                  <input value={edit.name} aria-label="Tax class name" onChange={(e) => setClassEdits((prev) => ({ ...prev, [tc.id]: { ...edit, name: e.target.value } }))} style={{ width: '100%' }} />
+                </div>
+                <div className="field" style={{ margin: 0, flex: 1 }}>
+                  <input value={edit.code} aria-label="Tax class code" onChange={(e) => setClassEdits((prev) => ({ ...prev, [tc.id]: { ...edit, code: e.target.value } }))} style={{ width: '100%' }} />
+                </div>
+                {dirty && (
+                  <button className="btn btn-secondary btn-sm" onClick={() => saveTaxClassEdit(tc.id)} disabled={!edit.name.trim() || !edit.code.trim()} style={{ flexShrink: 0 }}>Save</button>
+                )}
+                <button className="btn btn-ghost btn-sm" onClick={() => removeTaxClass(tc.id)} style={{ color: 'var(--color-destructive)', flexShrink: 0 }}>Delete</button>
               </div>
-              <div className="field" style={{ margin: 0, ...cellStyle }}>
-                <input defaultValue={tc.code} onBlur={(e) => e.target.value.trim() && e.target.value !== tc.code && renameTaxClass(tc.id, { code: e.target.value.trim() })} style={{ width: '100%' }} />
-              </div>
-              <div style={cellStyle}>
-                <button className="btn btn-ghost btn-sm" onClick={() => removeTaxClass(tc.id)} style={{ color: 'var(--color-destructive)' }}>Delete</button>
-              </div>
+              {classErrors[tc.id] && <p className="field-hint" style={{ color: 'var(--color-destructive)', margin: '0.25rem 0 0' }}>{classErrors[tc.id]}</p>}
             </div>
-          ))}
-          <div className="field" style={{ margin: 0, ...cellStyle }}>
+          )
+        })}
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: taxClasses.length ? '0.75rem' : 0 }}>
+          <div className="field" style={{ margin: 0, flex: 1 }}>
             <input
               value={newClassName}
-              onChange={(e) => {
-                const name = e.target.value
-                setNewClassName(name)
-                if (!newClassCodeEditable) setNewClassCode(slugifyTaxClassCode(name))
-              }}
-              placeholder="e.g. Reduced rate"
+              onChange={(e) => setNewClassName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') addTaxClass() }}
+              placeholder="New class, e.g. Reduced rate"
+              aria-label="New tax class name"
               style={{ width: '100%' }}
             />
           </div>
-          <div className="field" style={{ margin: 0, ...cellStyle, flexDirection: 'row', gap: '0.375rem' }}>
-            <input
-              value={newClassCode}
-              onChange={(e) => setNewClassCode(e.target.value)}
-              disabled={!newClassCodeEditable}
-              placeholder="auto from name"
-              aria-label="Tax class code"
-              style={{ flex: 1, minWidth: 0 }}
-            />
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              aria-label={newClassCodeEditable ? 'Lock code' : 'Edit code'}
-              title={newClassCodeEditable ? 'Lock code' : 'Edit code'}
-              onClick={() => setNewClassCodeEditable((v) => !v)}
-              style={{ padding: '0.25rem 0.5rem', flexShrink: 0, display: 'inline-flex', alignItems: 'center' }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M12 20h9" />
-                <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-              </svg>
-            </button>
-          </div>
-          <div style={cellStyle}>
-            <button className="btn btn-secondary btn-sm" onClick={addTaxClass} disabled={!newClassName.trim() || !newClassCode.trim()}>+ Add</button>
-          </div>
+          <button className="btn btn-secondary btn-sm" onClick={addTaxClass} disabled={!newCodePreview} style={{ flexShrink: 0 }}>+ Add</button>
         </div>
+        <p className="field-hint" style={{ marginTop: '0.5rem', marginBottom: 0, fontSize: '0.75rem' }}>
+          {newCodePreview ? `Code will be "${newCodePreview}" - generated for you, editable on the row afterwards.` : 'The code is generated for you and can be edited on the row afterwards.'}
+        </p>
       </div>
 
       <div className="card">
-        <h3 className="card-title" style={{ fontSize: '1rem' }}>Zones</h3>
-        <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-          A zone groups postcodes that share the same tax rate and shipping options. For one flat rate covering your whole country (e.g. 20% UK VAT everywhere), create a single zone and leave its postcode list empty - no need to list every postcode. Only add prefixes if you need different rates for different regions (e.g. a zone per US state for state sales tax); the longest matching prefix wins, so a shopper is only ever placed in one zone.
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <h3 className="card-title" style={{ fontSize: '1rem' }}>Zones</h3>
+          <button className="btn btn-secondary btn-sm" onClick={createZone}>+ New zone</button>
+        </div>
+        <p className="field-hint" style={{ marginBottom: '0.5rem' }}>
+          A zone groups postcodes that share the same tax rates and shipping options. Most shops only need one.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 'var(--space-5)' }}>
-          <div>
-            {zones.map((z) => (
-              <button
-                key={z.id}
-                onClick={() => selectZone(z.id, z.name, z.postcodes)}
-                className={`btn ${selectedZoneId === z.id ? 'btn-secondary' : 'btn-ghost'}`}
-                style={{ display: 'block', width: '100%', textAlign: 'left', marginBottom: 'var(--space-1)' }}
-              >
-                {z.name}
-                <span className="field-hint" style={{ display: 'block', fontSize: '0.75rem' }}>
-                  {z.postcodes.length === 0 ? 'All postcodes (catch-all)' : `${z.postcodes.length} postcode${z.postcodes.length === 1 ? '' : 's'}`}
-                </span>
-              </button>
-            ))}
-            <button className="btn btn-secondary btn-sm" onClick={createZone} style={{ marginTop: 'var(--space-2)' }}>+ New zone</button>
-          </div>
+        <details style={detailsStyle}>
+          <summary style={summaryStyle}>How zones work</summary>
+          <p className="field-hint" style={{ marginTop: '0.5rem' }}>
+            For one flat rate covering your whole country (e.g. 20% UK VAT everywhere), create a single zone and leave its postcode list empty - no need to list every postcode. Only add prefixes if you need different rates for different regions (e.g. a zone per US state for state sales tax). A prefix matches anything starting with it - &quot;SW&quot; covers all London SW postcodes, &quot;9&quot; covers US ZIP codes starting with 9. The longest matching prefix wins, so a shopper is only ever placed in one zone.
+          </p>
+        </details>
 
-          <div>
-            {!selectedZoneId && <p style={{ color: 'var(--color-text-muted)' }}>Select a zone to edit, or create a new one.</p>}
-            {selectedZoneId && (
-              <div>
+        {zones.length === 0 && <p style={{ color: 'var(--color-text-muted)' }}>No zones yet. Create one to set tax and shipping rates.</p>}
+
+        {zones.map((z) => (
+          <div key={z.id} style={{ border: '1px solid var(--color-border)', borderRadius: 8, marginBottom: '0.5rem', overflow: 'hidden' }}>
+            <button
+              onClick={() => toggleZone(z)}
+              aria-expanded={openZoneId === z.id}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '0.75rem', background: openZoneId === z.id ? 'var(--color-bg-subtle)' : 'var(--color-surface)', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--color-text)' }}
+            >
+              <span>
+                <strong>{z.name}</strong>
+                <span className="field-hint" style={{ display: 'block', fontSize: '0.75rem' }}>{zoneSummary(z)}</span>
+              </span>
+              <span aria-hidden="true" style={{ color: 'var(--color-text-muted)', transform: openZoneId === z.id ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>&#9656;</span>
+            </button>
+
+            {openZoneId === z.id && (
+              <div style={{ padding: '0.75rem', borderTop: '1px solid var(--color-border)' }}>
                 {zoneMessage && <div className="alert alert-success">{zoneMessage}</div>}
-                <div className="field">
-                  <label>Zone name</label>
-                  <input value={zoneName} onChange={(e) => setZoneName(e.target.value)} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label>Zone name</label>
+                    <input value={zoneName} onChange={(e) => setZoneName(e.target.value)} />
+                  </div>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label>Postcode prefixes (one per line, optional)</label>
+                    <textarea rows={3} value={zonePostcodesText} onChange={(e) => setZonePostcodesText(e.target.value)} placeholder={'Leave blank to cover every postcode'} />
+                  </div>
                 </div>
-                <div className="field">
-                  <label>Postcodes (one prefix per line, optional)</label>
-                  <textarea rows={4} value={zonePostcodesText} onChange={(e) => setZonePostcodesText(e.target.value)} placeholder={'Leave blank to cover every postcode\n(or list prefixes for a regional zone, e.g.)\nSW\nEC\n90210'} />
-                  <span className="field-hint">Leave this empty to make the zone a catch-all covering every postcode not claimed by another zone - the simplest setup for a single-country shop. To split rates by region instead, list prefixes: a prefix matches anything starting with it - &quot;SW&quot; covers all London SW postcodes, &quot;9&quot; covers US ZIP codes starting with 9.</span>
-                </div>
-                <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
-                  <button className="btn btn-primary" onClick={saveZone}>Save zone</button>
-                  <button className="btn btn-secondary" style={{ color: 'var(--color-destructive)' }} onClick={deleteZone}>Delete zone</button>
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
+                  <button className="btn btn-primary btn-sm" onClick={saveZone}>Save zone</button>
+                  <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-destructive)' }} onClick={deleteZone}>Delete zone</button>
                 </div>
 
                 <hr style={hr} />
                 <h4 style={sectionHeading}>Tax rates</h4>
                 {taxClasses.length === 0 && <p className="field-hint">Add a tax class above first.</p>}
                 {taxClasses.map((tc) => (
-                  <div key={tc.id} className="field" style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '0.75rem', alignItems: 'center', margin: 0, marginBottom: 'var(--space-2)' }}>
+                  <div key={tc.id} className="field" style={{ display: 'grid', gridTemplateColumns: '1fr 100px 60px', gap: '0.75rem', alignItems: 'center', margin: 0, marginBottom: 'var(--space-2)' }}>
                     <label style={{ margin: 0 }}>{tc.name}</label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                       <input
                         type="number" min={0} max={100} step="0.01"
+                        aria-label={`${tc.name} tax rate`}
                         value={taxRateInputs[tc.id] ?? '0'}
                         onChange={(e) => setTaxRateInputs((prev) => ({ ...prev, [tc.id]: e.target.value }))}
                         onBlur={(e) => saveTaxRate(tc.id, e.target.value)}
                       />
                       <span className="field-hint">%</span>
                     </div>
+                    <span className="field-hint" style={{ fontSize: '0.75rem', color: 'var(--color-success)' }}>
+                      {taxSavedClassId === tc.id ? 'Saved' : ''}
+                    </span>
                   </div>
                 ))}
 
@@ -361,9 +386,9 @@ export function TaxShippingScreen() {
                 )}
 
                 {editingRateId !== null && (
-                  <div className="card" style={{ marginTop: '0.75rem' }}>
+                  <div style={panelStyle}>
                     {rateError && <div className="alert alert-danger">{rateError}</div>}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                       <div className="field" style={{ margin: 0 }}>
                         <label>Name</label>
                         <input value={rateForm.name} onChange={(e) => setRateForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Standard delivery" />
@@ -407,7 +432,7 @@ export function TaxShippingScreen() {
                       </div>
                     )}
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                       <div className="field" style={{ margin: 0 }}>
                         <label>Estimated delivery (optional)</label>
                         <input value={rateForm.estimatedDays} onChange={(e) => setRateForm((f) => ({ ...f, estimatedDays: e.target.value }))} placeholder="e.g. 3-5 business days" />
@@ -427,7 +452,7 @@ export function TaxShippingScreen() {
               </div>
             )}
           </div>
-        </div>
+        ))}
       </div>
     </div>
   )
