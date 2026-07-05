@@ -341,6 +341,57 @@ export function shopConfirmationStarters() {
 }
 
 // ---------------------------------------------------------------------------
+// Cart templates (3) - shopCart
+// ---------------------------------------------------------------------------
+// The cart page (/shop/cart) keeps its original hardcoded cart as a fallback,
+// so like category/collection it would be safe to seed all-draft. But the whole
+// point of the Cart block is to make the basket designable out of the box, so
+// exactly one template is publishByDefault: it publishes the full Cart block +
+// an upsell row, matching the old hardcoded look closely while being editable.
+
+export function shopCartStarters() {
+  return [
+    {
+      id: 'starter-shop-cart-classic',
+      name: 'Classic Cart',
+      description: 'The full cart - items, quantity, coupon and totals - with a row of suggestions underneath.',
+      publishByDefault: true,
+      data: {
+        content: [
+          block('ShopCartFull', 'shop-cart-full'),
+          block('ShopUpsellProducts', 'shop-cart-upsells', { heading: 'You might also like', layout: 'Grid' }),
+        ],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+    {
+      id: 'starter-shop-cart-sidebar',
+      name: 'Two Column',
+      description: 'Your items on the left (70%), suggested extras in a sidebar on the right (30%).',
+      data: {
+        content: [split('columns-1', '70/30')],
+        root: { props: {} },
+        zones: {
+          'columns-1:left': [block('ShopCartFull', 'cart-1', { maxWidth: 0 })],
+          'columns-1:right': [block('ShopUpsellProducts', 'upsells-1', { heading: 'Add to your order', layout: 'Grid' })],
+        },
+      },
+    },
+    {
+      id: 'starter-shop-cart-cards',
+      name: 'Card List',
+      description: 'Each item in its own card, centred in a narrow column - clean and uncluttered, no upsells.',
+      data: {
+        content: [section('section-1', { maxWidth: 'narrow', content: [block('ShopCartFull', 'cart-1', { layoutStyle: 'cards', maxWidth: 0 })] })],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+  ]
+}
+
+// ---------------------------------------------------------------------------
 // Product Detail templates (3) - shopProductDetail (block-internal layout)
 // ---------------------------------------------------------------------------
 // The parts (Gallery/Badges/Title/Price/Add to Cart/Tabs...) are the draggable
