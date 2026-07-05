@@ -1,27 +1,9 @@
-import { connection } from 'next/server'
-import { getCategoryBySlug } from '@/modules/shop/lib/db/catalogue'
-
 // [ANCHOR] - categorySlug is injected by the category page (lib/inject-category-context.ts)
+//
+// EDITOR half only: placeholder + Puck field config. The server render lives in
+// ShopCategoryHeader.rsc.tsx (wired by `rscImport` in the manifest) so
+// next/server + db imports never land in the client editor bundle.
 export type ShopCategoryHeaderProps = { categorySlug?: string }
-
-const EYEBROW: React.CSSProperties = {
-  display: 'block',
-  fontSize: 12,
-  fontWeight: 600,
-  letterSpacing: '0.16em',
-  textTransform: 'uppercase',
-  color: 'var(--color-primary)',
-  marginBottom: '0.75rem',
-}
-
-const HEADING: React.CSSProperties = {
-  margin: 0,
-  fontFamily: 'var(--display-family, Georgia, serif)',
-  fontSize: 'clamp(30px, 4vw, 44px)',
-  fontWeight: 600,
-  lineHeight: 1.1,
-  color: 'var(--color-fg)',
-}
 
 export function ShopCategoryHeader() {
   return (
@@ -33,25 +15,6 @@ export function ShopCategoryHeader() {
   )
 }
 
-export async function ShopCategoryHeaderRsc(props: ShopCategoryHeaderProps) {
-  await connection()
-  if (!props.categorySlug) return null
-  const category = await getCategoryBySlug(props.categorySlug)
-  if (!category) return null
-
-  return (
-    <div>
-      <span style={EYEBROW}>The range</span>
-      <h1 style={HEADING}>{category.name}</h1>
-      {category.description && (
-        <p style={{ margin: '0.75rem 0 0', fontSize: '1.0625rem', maxWidth: '60ch', color: 'var(--color-text-muted)' }}>
-          {category.description}
-        </p>
-      )}
-    </div>
-  )
-}
-
 export const shopCategoryHeaderPuckComponent = {
   label: 'Shop: Category Header [Anchor]',
   fields: {},
@@ -59,5 +22,3 @@ export const shopCategoryHeaderPuckComponent = {
   permissions: { delete: false, duplicate: false },
   render: ShopCategoryHeader,
 }
-
-export const shopCategoryHeaderPuckRscComponent = { ...shopCategoryHeaderPuckComponent, render: ShopCategoryHeaderRsc }

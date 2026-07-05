@@ -1,15 +1,13 @@
-import { connection } from 'next/server'
-import { listProducts, getProductMedia, getProductTagIds } from '@/modules/shop/lib/db'
-import { listTags } from '@/modules/shop/lib/db/catalogue'
-import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import type { LayoutRef } from '@/lib/puck/LayoutPickerField'
 import { ShopLayoutPicker } from '@/modules/shop/components/public/ShopLayoutPicker'
-import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
-import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 
 // Grid-level props (data source + layout) stay here; the card-internal design
 // now comes entirely from the Product Card layout, stamped once per product.
+//
+// EDITOR half only: placeholder + Puck field config. The server render (db
+// access and card rendering via lib/card-template, which dynamically pulls the
+// next/headers-tainted RSC Puck config) lives in ShopProductGrid.rsc.tsx, wired
+// by `rscImport` in the manifest so it never lands in the client editor bundle.
 export type ShopProductGridProps = {
   categorySlug?: string
   collectionSlug?: string
@@ -42,51 +40,6 @@ export function ShopProductGrid(props: ShopProductGridProps) {
   return <GridSkeleton columns={props.columns ?? 3} />
 }
 
-// RSC: real products, per-request via connection() (stock/pricing must never be stale-cached).
-export async function ShopProductGridRsc(props: ShopProductGridProps) {
-  await connection()
-  const columns = props.columns ?? 3
-  const [config, bp, tags, listed, template] = await Promise.all([
-    getShopConfigCached(),
-    getShopBreakpoints(),
-    listTags(),
-    listProducts({
-      status: 'ACTIVE',
-      categorySlug: props.categorySlug || undefined,
-      collectionSlug: props.collectionSlug || undefined,
-      tagSlug: props.tagSlug || undefined,
-      perPage: props.limit ?? 12,
-    }),
-    resolveCardTemplate(props.layoutRef),
-  ])
-  const { products } = listed
-  const tagById = new Map(tags.map((t) => [t.id, t.slug]))
-
-  if (products.length === 0) {
-    return <p style={{ color: 'var(--color-text-muted)' }}>No products to show yet.</p>
-  }
-
-  // Load each product's media + tags once, up front - the injected context
-  // carries them into the card so no part re-queries.
-  const items: CardItem[] = await Promise.all(
-    products.map(async (product) => {
-      const [media, tagIds] = await Promise.all([getProductMedia(product.id), getProductTagIds(product.id)])
-      return { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol) }
-    }),
-  )
-
-  const cards = template ? await renderCards(template, items) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)
-
-  return (
-    <>
-      <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
-      <div className="shop-grid" style={{ ['--shop-cols' as string]: String(columns) } as React.CSSProperties}>
-        {cards}
-      </div>
-    </>
-  )
-}
-
 const layoutField = {
   type: 'custom' as const,
   label: 'Card layout',
@@ -106,9 +59,4 @@ export const shopProductGridPuckComponent = {
   },
   defaultProps: { categorySlug: '', collectionSlug: '', tagSlug: '', limit: 12, columns: 3, showFilters: 'no', layoutRef: null },
   render: ShopProductGrid,
-}
-
-export const shopProductGridPuckRscComponent = {
-  ...shopProductGridPuckComponent,
-  render: ShopProductGridRsc,
 }

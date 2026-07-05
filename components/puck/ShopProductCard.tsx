@@ -1,13 +1,10 @@
-import { connection } from 'next/server'
-import { getProductBySlug, getProductMedia, getProductTagIds } from '@/modules/shop/lib/db'
-import { listTags } from '@/modules/shop/lib/db/catalogue'
-import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import type { LayoutRef } from '@/lib/puck/LayoutPickerField'
 import { ShopLayoutPicker } from '@/modules/shop/components/public/ShopLayoutPicker'
-import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard } from '@/modules/shop/lib/card-template'
-import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 
+// EDITOR half only: placeholder + Puck field config. The server render lives in
+// ShopProductCard.rsc.tsx (wired by `rscImport` in the manifest) so its
+// lib/card-template dependency - which dynamically pulls the next/headers-tainted
+// RSC Puck config - never lands in the client editor bundle.
 export type ShopProductCardProps = { productSlug?: string; layoutRef?: LayoutRef | null }
 
 export function ShopProductCard(_props: ShopProductCardProps) {
@@ -18,32 +15,6 @@ export function ShopProductCard(_props: ShopProductCardProps) {
         <div style={{ height: 14, width: '70%', background: 'var(--color-border)', borderRadius: 4 }} />
         <div style={{ height: 14, width: '35%', background: 'var(--color-border)', borderRadius: 4 }} />
       </div>
-    </div>
-  )
-}
-
-export async function ShopProductCardRsc(props: ShopProductCardProps) {
-  await connection()
-  if (!props.productSlug) return null
-  const product = await getProductBySlug(props.productSlug)
-  if (!product || product.status !== 'ACTIVE') return null
-
-  const [media, tagIds, config, bp, tags, template] = await Promise.all([
-    getProductMedia(product.id),
-    getProductTagIds(product.id),
-    getShopConfigCached(),
-    getShopBreakpoints(),
-    listTags(),
-    resolveCardTemplate(props.layoutRef),
-  ])
-  const tagById = new Map(tags.map((t) => [t.id, t.slug]))
-  const item = { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol) }
-  const cards = template ? await renderCards(template, [item]) : [<MinimalCard key={product.id} {...item} />]
-
-  return (
-    <div style={{ maxWidth: 280 }}>
-      <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
-      {cards}
     </div>
   )
 }
@@ -63,5 +34,3 @@ export const shopProductCardPuckComponent = {
   defaultProps: { productSlug: '', layoutRef: null },
   render: ShopProductCard,
 }
-
-export const shopProductCardPuckRscComponent = { ...shopProductCardPuckComponent, render: ShopProductCardRsc }
