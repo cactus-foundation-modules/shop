@@ -22,10 +22,15 @@ type RateForm = {
 
 const BLANK_RATE_FORM: RateForm = { name: '', type: 'FLAT', flatRate: '', weightRates: [], freeThreshold: '', estimatedDays: '', isActive: true }
 
+function slugifyTaxClassCode(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
 export function TaxShippingScreen() {
   const [taxClasses, setTaxClasses] = useState<ShpTaxClass[]>([])
   const [newClassName, setNewClassName] = useState('')
   const [newClassCode, setNewClassCode] = useState('')
+  const [newClassCodeEditable, setNewClassCodeEditable] = useState(false)
 
   const [zones, setZones] = useState<ShpShippingZone[]>([])
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null)
@@ -62,6 +67,7 @@ export function TaxShippingScreen() {
     })
     setNewClassName('')
     setNewClassCode('')
+    setNewClassCodeEditable(false)
     loadTaxClasses()
   }
 
@@ -228,10 +234,39 @@ export function TaxShippingScreen() {
             </div>
           ))}
           <div className="field" style={{ margin: 0, ...cellStyle }}>
-            <input value={newClassName} onChange={(e) => setNewClassName(e.target.value)} placeholder="e.g. Reduced rate" style={{ width: '100%' }} />
+            <input
+              value={newClassName}
+              onChange={(e) => {
+                const name = e.target.value
+                setNewClassName(name)
+                if (!newClassCodeEditable) setNewClassCode(slugifyTaxClassCode(name))
+              }}
+              placeholder="e.g. Reduced rate"
+              style={{ width: '100%' }}
+            />
           </div>
-          <div className="field" style={{ margin: 0, ...cellStyle }}>
-            <input value={newClassCode} onChange={(e) => setNewClassCode(e.target.value)} placeholder="e.g. reduced" style={{ width: '100%' }} />
+          <div className="field" style={{ margin: 0, ...cellStyle, flexDirection: 'row', gap: '0.375rem' }}>
+            <input
+              value={newClassCode}
+              onChange={(e) => setNewClassCode(e.target.value)}
+              disabled={!newClassCodeEditable}
+              placeholder="auto from name"
+              aria-label="Tax class code"
+              style={{ flex: 1, minWidth: 0 }}
+            />
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              aria-label={newClassCodeEditable ? 'Lock code' : 'Edit code'}
+              title={newClassCodeEditable ? 'Lock code' : 'Edit code'}
+              onClick={() => setNewClassCodeEditable((v) => !v)}
+              style={{ padding: '0.25rem 0.5rem', flexShrink: 0, display: 'inline-flex', alignItems: 'center' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+            </button>
           </div>
           <div style={cellStyle}>
             <button className="btn btn-secondary btn-sm" onClick={addTaxClass} disabled={!newClassName.trim() || !newClassCode.trim()}>+ Add</button>
@@ -242,7 +277,7 @@ export function TaxShippingScreen() {
       <div className="card">
         <h3 className="card-title" style={{ fontSize: '1rem' }}>Zones</h3>
         <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-          A zone groups postcodes that share the same tax rate and shipping options - one zone for your whole country, or one per region (e.g. a zone per US state for state sales tax). The longest matching postcode prefix wins, so a shopper is only ever placed in one zone.
+          A zone groups postcodes that share the same tax rate and shipping options. For one flat rate covering your whole country (e.g. 20% UK VAT everywhere), create a single zone and leave its postcode list empty - no need to list every postcode. Only add prefixes if you need different rates for different regions (e.g. a zone per US state for state sales tax); the longest matching prefix wins, so a shopper is only ever placed in one zone.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 'var(--space-5)' }}>
           <div>
@@ -254,7 +289,9 @@ export function TaxShippingScreen() {
                 style={{ display: 'block', width: '100%', textAlign: 'left', marginBottom: 'var(--space-1)' }}
               >
                 {z.name}
-                <span className="field-hint" style={{ display: 'block', fontSize: '0.75rem' }}>{z.postcodes.length} postcode{z.postcodes.length === 1 ? '' : 's'}</span>
+                <span className="field-hint" style={{ display: 'block', fontSize: '0.75rem' }}>
+                  {z.postcodes.length === 0 ? 'All postcodes (catch-all)' : `${z.postcodes.length} postcode${z.postcodes.length === 1 ? '' : 's'}`}
+                </span>
               </button>
             ))}
             <button className="btn btn-secondary btn-sm" onClick={createZone} style={{ marginTop: 'var(--space-2)' }}>+ New zone</button>
@@ -270,9 +307,9 @@ export function TaxShippingScreen() {
                   <input value={zoneName} onChange={(e) => setZoneName(e.target.value)} />
                 </div>
                 <div className="field">
-                  <label>Postcodes (one prefix per line)</label>
-                  <textarea rows={4} value={zonePostcodesText} onChange={(e) => setZonePostcodesText(e.target.value)} placeholder={'SW\nEC\n90210'} />
-                  <span className="field-hint">A prefix matches anything starting with it - &quot;SW&quot; covers all London SW postcodes, &quot;9&quot; covers US ZIP codes starting with 9.</span>
+                  <label>Postcodes (one prefix per line, optional)</label>
+                  <textarea rows={4} value={zonePostcodesText} onChange={(e) => setZonePostcodesText(e.target.value)} placeholder={'Leave blank to cover every postcode\n(or list prefixes for a regional zone, e.g.)\nSW\nEC\n90210'} />
+                  <span className="field-hint">Leave this empty to make the zone a catch-all covering every postcode not claimed by another zone - the simplest setup for a single-country shop. To split rates by region instead, list prefixes: a prefix matches anything starting with it - &quot;SW&quot; covers all London SW postcodes, &quot;9&quot; covers US ZIP codes starting with 9.</span>
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
                   <button className="btn btn-primary" onClick={saveZone}>Save zone</button>

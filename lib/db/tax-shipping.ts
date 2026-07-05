@@ -79,12 +79,17 @@ export async function deleteShippingZone(id: string): Promise<void> {
 }
 
 // Longest matching postcode prefix (case-insensitive) wins - a shopper's full
-// postcode is checked against each zone's prefix list.
+// postcode is checked against each zone's prefix list. A zone with no prefixes
+// listed is a catch-all, matched only when no other zone's prefix matches -
+// this is how a single "United Kingdom" zone can cover the whole country
+// without an admin listing every postcode.
 export async function findShippingZoneForPostcode(postcode: string): Promise<ShpShippingZone | null> {
   const zones = await listShippingZones()
   const normalised = postcode.replace(/\s+/g, '').toUpperCase()
   let best: { zone: ShpShippingZone; prefixLen: number } | null = null
+  let catchAll: ShpShippingZone | null = null
   for (const zone of zones) {
+    if (zone.postcodes.length === 0) { catchAll = catchAll ?? zone; continue }
     for (const raw of zone.postcodes) {
       const prefix = raw.replace(/\s+/g, '').toUpperCase()
       if (prefix && normalised.startsWith(prefix) && (!best || prefix.length > best.prefixLen)) {
@@ -92,7 +97,7 @@ export async function findShippingZoneForPostcode(postcode: string): Promise<Shp
       }
     }
   }
-  return best?.zone ?? null
+  return best?.zone ?? catchAll
 }
 
 // ---------------------------------------------------------------------------
