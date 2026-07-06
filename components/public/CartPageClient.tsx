@@ -16,16 +16,18 @@ export function CartPageClient() {
   const [currencySymbol, setCurrencySymbol] = useState('£')
   const [couponCode, setCouponCode] = useState('')
   const [couponMessage, setCouponMessage] = useState<string | null>(null)
+  const [hasLoaded, setHasLoaded] = useState(false)
 
   async function refresh() {
     const cart = getCart()
-    if (cart.length === 0) { setLines([]); return }
+    if (cart.length === 0) { setLines([]); setHasLoaded(true); return }
     const [validateRes, configRes] = await Promise.all([
       fetch('/api/m/shop/public/cart/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines: cart }) }),
       fetch('/api/m/shop/public/config'),
     ])
     if (validateRes.ok) setLines((await validateRes.json()).lines)
     if (configRes.ok) setCurrencySymbol((await configRes.json()).currencySymbol)
+    setHasLoaded(true)
   }
 
   useEffect(() => {
@@ -50,6 +52,8 @@ export function CartPageClient() {
   }
 
   const subtotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
+
+  if (!hasLoaded) return null
 
   if (lines.length === 0) {
     return <p style={{ color: 'var(--color-text-muted)' }}>Your cart is empty. <Link href="/shop">Continue shopping</Link>.</p>

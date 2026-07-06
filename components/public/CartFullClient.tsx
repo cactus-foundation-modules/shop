@@ -74,6 +74,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   const [currencySymbol, setCurrencySymbol] = useState('£')
   const [couponCode, setCouponCode] = useState('')
   const [couponMessage, setCouponMessage] = useState<string | null>(null)
+  const [hasLoaded, setHasLoaded] = useState(preview ?? false)
 
   useEffect(() => {
     if (preview) return // editor: static sample, never fetch
@@ -81,7 +82,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
     let cancelled = false
     async function refresh() {
       const cart = getCart()
-      if (cart.length === 0) { if (!cancelled) setLines([]); return }
+      if (cart.length === 0) { if (!cancelled) { setLines([]); setHasLoaded(true) } return }
       const [validateRes, configRes] = await Promise.all([
         fetch('/api/m/shop/public/cart/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines: cart }) }),
         fetch('/api/m/shop/public/config'),
@@ -89,6 +90,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
       if (cancelled) return
       if (validateRes.ok) setLines((await validateRes.json()).lines)
       if (configRes.ok) setCurrencySymbol((await configRes.json()).currencySymbol)
+      setHasLoaded(true)
     }
     refresh()
     const unsubscribe = subscribeCart(refresh)
@@ -139,6 +141,8 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   const subtotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
   const itemCount = lines.reduce((sum, l) => sum + l.quantity, 0)
   const money = (n: number) => `${currencySymbol}${n.toFixed(2)}`
+
+  if (!hasLoaded) return null
 
   // Empty cart (live only - preview always seeds samples)
   if (lines.length === 0) {
