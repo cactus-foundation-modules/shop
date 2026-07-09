@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { ImportModal } from '@/modules/shop/components/admin/ImportModal'
 
 type ProductRow = {
@@ -9,6 +10,7 @@ type ProductRow = {
 }
 
 export function ProductsScreen() {
+  const adminPath = useAdminPath()
   const [products, setProducts] = useState<ProductRow[]>([])
   const [subscriberCounts, setSubscriberCounts] = useState<Record<string, { pending: number; fulfilled: number }>>({})
   const [search, setSearch] = useState('')
@@ -38,7 +40,7 @@ export function ProductsScreen() {
     })
     if (res.ok) {
       const { id } = await res.json()
-      window.location.href = `/cactus-admin/m/shop/products/${id}`
+      window.location.href = `/${adminPath}/m/shop/products/${id}`
     }
   }
 
@@ -72,14 +74,14 @@ export function ProductsScreen() {
         <tbody>
           {products.map((p) => (
             <tr key={p.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-              <td style={{ padding: '0.5rem' }}><a href={`/cactus-admin/m/shop/products/${p.id}`}>{p.name}</a></td>
+              <td style={{ padding: '0.5rem' }}><a href={`/${adminPath}/m/shop/products/${p.id}`}>{p.name}</a></td>
               <td style={{ padding: '0.5rem' }}>{p.type}</td>
               <td style={{ padding: '0.5rem' }}>{p.status}</td>
               <td style={{ padding: '0.5rem' }}>{p.price}</td>
               <td style={{ padding: '0.5rem' }}>{p.stockCount ?? '—'}</td>
               <td style={{ padding: '0.5rem' }}>
                 {subscriberCounts[p.id]
-                  ? <a href={`/cactus-admin/m/shop/back-in-stock?productId=${p.id}`}>{subscriberCounts[p.id]!.pending} pending</a>
+                  ? <a href={`/${adminPath}/m/shop/back-in-stock?productId=${p.id}`}>{subscriberCounts[p.id]!.pending} pending</a>
                   : '—'}
               </td>
             </tr>

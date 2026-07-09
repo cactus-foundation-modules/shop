@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useAdminPath } from '@/components/admin/AdminPathContext'
 
 type Customer = { email: string; name: string; memberId: string | null; orderCount: number; totalSpent: string }
 
 export function CustomersScreen() {
+  const adminPath = useAdminPath()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [search, setSearch] = useState('')
 
@@ -27,7 +29,7 @@ export function CustomersScreen() {
         <tbody>
           {customers.map((c) => (
             <tr key={c.email} style={{ borderBottom: '1px solid var(--color-border)' }}>
-              <td style={{ padding: '0.5rem' }}><a href={`/cactus-admin/m/shop/customers/${encodeURIComponent(c.email)}`}>{c.name}</a></td>
+              <td style={{ padding: '0.5rem' }}><a href={`/${adminPath}/m/shop/customers/${encodeURIComponent(c.email)}`}>{c.name}</a></td>
               <td>{c.email}</td>
               <td>{c.orderCount}</td>
               <td>{c.totalSpent}</td>

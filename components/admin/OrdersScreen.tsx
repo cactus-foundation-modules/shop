@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useAdminPath } from '@/components/admin/AdminPathContext'
 
 type OrderRow = { id: string; orderNumber: string; status: string; paymentStatus: string; customerName: string; total: string; createdAt: string }
 
 const TABS = ['ALL', 'PENDING', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED', 'PRE_ORDER'] as const
 
 export function OrdersScreen() {
+  const adminPath = useAdminPath()
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [tab, setTab] = useState<(typeof TABS)[number]>('ALL')
 
@@ -40,7 +42,7 @@ export function OrdersScreen() {
         <tbody>
           {orders.map((o) => (
             <tr key={o.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-              <td style={{ padding: '0.5rem' }}><a href={`/cactus-admin/m/shop/orders/${o.id}`}>{o.orderNumber}</a></td>
+              <td style={{ padding: '0.5rem' }}><a href={`/${adminPath}/m/shop/orders/${o.id}`}>{o.orderNumber}</a></td>
               <td style={{ padding: '0.5rem' }}>{o.customerName}</td>
               <td style={{ padding: '0.5rem' }}>{o.status}</td>
               <td style={{ padding: '0.5rem' }}>{o.paymentStatus}</td>
