@@ -79,7 +79,8 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
     async function refresh() {
       const lines = getCart()
       setCount(lines.reduce((sum, l) => sum + l.quantity, 0))
-      if (lines.length === 0) { setSubtotal(0); setHasLoaded(true); return }
+      setHasLoaded(true)
+      if (lines.length === 0) { setSubtotal(0); return }
 
       const [validateRes, configRes] = await Promise.all([
         fetch('/api/m/shop/public/cart/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines }) }),
@@ -94,7 +95,6 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
         const config = await configRes.json()
         setCurrencySymbol(config.currencySymbol)
       }
-      setHasLoaded(true)
     }
 
     refresh()
@@ -102,8 +102,7 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
     return () => { cancelled = true; unsubscribe() }
   }, [preview])
 
-  if (!preview && !hasLoaded) return null
-  if (!preview && o.hideWhenEmpty === 'yes' && count === 0) return null
+  if (!preview && hasLoaded && o.hideWhenEmpty === 'yes' && count === 0) return null
 
   const showBadge = o.showCount === 'yes' && o.countStyle === 'badge' && o.icon !== 'none'
     && !(count === 0 && o.hideBadgeWhenZero === 'yes')
