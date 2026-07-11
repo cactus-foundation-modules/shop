@@ -83,7 +83,7 @@ export function ProductEditor({ productId }: { productId: string }) {
   async function save() {
     if (!product) return
     setSaving(true)
-    await fetch(`/api/m/shop/admin/products/${productId}`, {
+    const res = await fetch(`/api/m/shop/admin/products/${productId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: product.name, status: product.status, description: product.description, shortDescription: product.shortDescription,
@@ -96,6 +96,7 @@ export function ProductEditor({ productId }: { productId: string }) {
         downloadExpiry: product.downloadExpiry, media, categoryIds, masterCategoryId, tagIds, collectionIds,
       }),
     })
+    if (!res.ok) { alert((await res.json()).error ?? 'Save failed'); setSaving(false); return }
     const excludedIds = excludedProducts.map((p) => p.id)
     await Promise.all([
       fetch(`/api/m/shop/admin/products/${productId}/related`, {

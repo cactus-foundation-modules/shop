@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { listProducts, createProduct, getBackInStockSubscriberCounts } from '@/modules/shop/lib/db'
@@ -47,6 +48,15 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid product' }, { status: 400 })
 
   const slug = await ensureUniqueProductSlug(slugify(parsed.data.name))
-  const { id } = await createProduct({ ...parsed.data, slug })
-  return NextResponse.json({ id, slug }, { status: 201 })
+  try {
+    const { id } = await createProduct({ ...parsed.data, slug })
+    return NextResponse.json({ id, slug }, { status: 201 })
+  } catch (err) {
+    const isUniqueViolation = err instanceof Prisma.PrismaClientKnownRequestError
+      && (err.code === 'P2002' || (err.code === 'P2010' && String(err.meta?.message ?? '').includes('unique constraint')))
+    if (isUniqueViolation) {
+      return NextResponse.json({ error: 'That SKU is already used by another product.' }, { status: 409 })
+    }
+    throw err
+  }
 }

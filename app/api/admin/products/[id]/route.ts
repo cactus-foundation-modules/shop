@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import {
@@ -92,7 +93,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     : categoryIds
 
   const slug = regenerateSlug && fields.name ? await ensureUniqueProductSlug(slugify(fields.name), id) : undefined
-  await updateProduct(id, { ...fields, ...(slug ? { slug } : {}), ...(masterProvided ? { masterCategoryId: masterCategoryId ?? null } : {}) })
+  try {
+    await updateProduct(id, { ...fields, ...(slug ? { slug } : {}), ...(masterProvided ? { masterCategoryId: masterCategoryId ?? null } : {}) })
+  } catch (err) {
+    const isUniqueViolation = err instanceof Prisma.PrismaClientKnownRequestError
+      && (err.code === 'P2002' || (err.code === 'P2010' && String(err.meta?.message ?? '').includes('unique constraint')))
+    if (isUniqueViolation) {
+      return NextResponse.json({ error: 'That SKU is already used by another product.' }, { status: 409 })
+    }
+    throw err
+  }
 
   if (media) await setProductMedia(id, media)
   if (finalCategoryIds) await setProductCategories(id, finalCategoryIds)
