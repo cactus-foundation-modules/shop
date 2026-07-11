@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { MediaPickerModal } from '@/modules/shop/components/admin/MediaPickerModal'
 import { ProductPicker } from '@/modules/shop/components/admin/ProductPicker'
 
@@ -9,7 +9,7 @@ type ProductData = {
   description: string | null; shortDescription: string | null; sku: string | null; barcode: string | null
   price: string; compareAtPrice: string | null; costPrice: string | null; taxClassId: string | null
   trackInventory: boolean; stockCount: number | null; lowStockThreshold: number | null; outOfStockBehaviour: string
-  metaTitle: string | null; metaDescription: string | null
+  metaTitle: string | null; metaDescription: string | null; masterCategoryId: string | null
   isPreOrder: boolean; preOrderDispatchDate: string | null; preOrderNote: string | null; preOrderMaxQuantity: number | null; preOrderCount: number
   digitalFileId: string | null; downloadLimit: number | null; downloadExpiry: number | null
   relatedMode: 'MANUAL' | 'AUTOMATIC'; relatedLimit: number; upsellMode: 'MANUAL' | 'AUTOMATIC'; upsellLimit: number
@@ -22,6 +22,7 @@ export function ProductEditor({ productId }: { productId: string }) {
   const [product, setProduct] = useState<ProductData | null>(null)
   const [media, setMedia] = useState<Array<{ type: 'IMAGE' | 'VIDEO_FILE' | 'VIDEO_URL'; url: string; altText?: string | null; isPrimary?: boolean }>>([])
   const [categoryIds, setCategoryIds] = useState<string[]>([])
+  const [masterCategoryId, setMasterCategoryId] = useState<string | null>(null)
   const [tagIds, setTagIds] = useState<string[]>([])
   const [collectionIds, setCollectionIds] = useState<string[]>([])
   const [categories, setCategories] = useState<Term[]>([])
@@ -36,24 +37,30 @@ export function ProductEditor({ productId }: { productId: string }) {
   const [upsellProducts, setUpsellProducts] = useState<PickedProduct[]>([])
   const [excludedProducts, setExcludedProducts] = useState<PickedProduct[]>([])
 
+  const applyProductData = useCallback((data: {
+    product: ProductData
+    media: Array<{ type: string; url: string; altText: string | null; isPrimary: boolean }>
+    categoryIds: string[]; tagIds: string[]; collectionIds: string[]
+    relatedProducts: PickedProduct[]; upsellProducts: PickedProduct[]; excludedProducts: PickedProduct[]
+  }) => {
+    setProduct(data.product)
+    setMedia(data.media.map((m) => ({ type: m.type as 'IMAGE' | 'VIDEO_FILE' | 'VIDEO_URL', url: m.url, altText: m.altText, isPrimary: m.isPrimary })))
+    setCategoryIds(data.categoryIds)
+    setMasterCategoryId(data.product.masterCategoryId ?? null)
+    setTagIds(data.tagIds)
+    setCollectionIds(data.collectionIds)
+    setRelatedProducts(data.relatedProducts)
+    setUpsellProducts(data.upsellProducts)
+    setExcludedProducts(data.excludedProducts)
+  }, [])
+
   useEffect(() => {
-    fetch(`/api/m/shop/admin/products/${productId}`).then(async (r) => {
-      if (!r.ok) return
-      const data = await r.json()
-      setProduct(data.product)
-      setMedia(data.media.map((m: { type: string; url: string; altText: string | null; isPrimary: boolean }) => ({ type: m.type, url: m.url, altText: m.altText, isPrimary: m.isPrimary })))
-      setCategoryIds(data.categoryIds)
-      setTagIds(data.tagIds)
-      setCollectionIds(data.collectionIds)
-      setRelatedProducts(data.relatedProducts)
-      setUpsellProducts(data.upsellProducts)
-      setExcludedProducts(data.excludedProducts)
-    })
+    fetch(`/api/m/shop/admin/products/${productId}`).then(async (r) => { if (r.ok) applyProductData(await r.json()) })
     fetch('/api/m/shop/admin/categories').then(async (r) => { if (r.ok) setCategories((await r.json()).categories) })
     fetch('/api/m/shop/admin/tags').then(async (r) => { if (r.ok) setTags((await r.json()).tags) })
     fetch('/api/m/shop/admin/collections').then(async (r) => { if (r.ok) setCollections((await r.json()).collections) })
     fetch('/api/m/shop/admin/tax-classes').then(async (r) => { if (r.ok) setTaxClasses((await r.json()).taxClasses) })
-  }, [productId])
+  }, [productId, applyProductData])
 
   if (!product) return null
 
@@ -86,7 +93,7 @@ export function ProductEditor({ productId }: { productId: string }) {
         outOfStockBehaviour: product.outOfStockBehaviour, metaTitle: product.metaTitle, metaDescription: product.metaDescription,
         isPreOrder: product.isPreOrder, preOrderDispatchDate: product.preOrderDispatchDate, preOrderNote: product.preOrderNote,
         preOrderMaxQuantity: product.preOrderMaxQuantity, digitalFileId: product.digitalFileId, downloadLimit: product.downloadLimit,
-        downloadExpiry: product.downloadExpiry, media, categoryIds, tagIds, collectionIds,
+        downloadExpiry: product.downloadExpiry, media, categoryIds, masterCategoryId, tagIds, collectionIds,
       }),
     })
     const excludedIds = excludedProducts.map((p) => p.id)
@@ -100,6 +107,10 @@ export function ProductEditor({ productId }: { productId: string }) {
         body: JSON.stringify({ mode: product.upsellMode, limit: product.upsellLimit, upsellIds: upsellProducts.map((p) => p.id), excludedIds }),
       }),
     ])
+    // Images may have been re-filed server-side (new folder + names); pull the
+    // canonical state back so thumbnails don't point at the deleted originals.
+    const refreshed = await fetch(`/api/m/shop/admin/products/${productId}`)
+    if (refreshed.ok) applyProductData(await refreshed.json())
     setSaving(false)
   }
 
@@ -249,9 +260,34 @@ export function ProductEditor({ productId }: { productId: string }) {
         <h3 style={{ margin: 0, fontSize: '0.9375rem' }}>Categories</h3>
         {categories.map((c) => (
           <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <input type="checkbox" checked={categoryIds.includes(c.id)} onChange={() => setCategoryIds((prev) => toggle(prev, c.id))} /> {c.name}
+            <input
+              type="checkbox"
+              checked={categoryIds.includes(c.id)}
+              onChange={() => setCategoryIds((prev) => {
+                const next = toggle(prev, c.id)
+                // Unticking the master category clears the master selection.
+                if (masterCategoryId === c.id && !next.includes(c.id)) setMasterCategoryId(null)
+                return next
+              })}
+            /> {c.name}
           </label>
         ))}
+        <label style={{ display: 'grid', gap: '0.25rem' }}>
+          <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Master category</span>
+          <select
+            value={masterCategoryId ?? ''}
+            onChange={(e) => setMasterCategoryId(e.target.value || null)}
+            style={{ padding: '0.375rem 0.5rem', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: '0.875rem', fontFamily: 'inherit', background: 'var(--color-bg)', color: 'var(--color-text)' }}
+          >
+            <option value="">No master category</option>
+            {categories.filter((c) => categoryIds.includes(c.id)).map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+            The lead category. Uploaded images are filed under shop / {(categories.find((c) => c.id === masterCategoryId)?.name) ?? 'uncategorised'} / {product.slug || 'product'}.
+          </span>
+        </label>
         <h3 style={{ margin: 0, fontSize: '0.9375rem' }}>Tags</h3>
         {tags.map((t) => (
           <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

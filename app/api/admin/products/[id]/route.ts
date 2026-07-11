@@ -8,6 +8,7 @@ import {
 } from '@/modules/shop/lib/db'
 import { slugify, ensureUniqueProductSlug } from '@/modules/shop/lib/slug'
 import { maybeTriggerBackInStock } from '@/modules/shop/lib/back-in-stock-trigger'
+import { reorganiseProductMedia } from '@/modules/shop/lib/media/product-media'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireShopUser('shop.products', { allowAccess: true })
@@ -66,6 +67,7 @@ const Body = z.object({
   regenerateSlug: z.boolean().optional(),
   media: z.array(MediaItem).optional(),
   categoryIds: z.array(z.string()).optional(),
+  masterCategoryId: z.string().nullable().optional(),
   tagIds: z.array(z.string()).optional(),
   collectionIds: z.array(z.string()).optional(),
 })
@@ -80,15 +82,27 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
   const parsed = Body.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid product' }, { status: 400 })
-  const { media, categoryIds, tagIds, collectionIds, regenerateSlug, ...fields } = parsed.data
+  const { media, categoryIds, tagIds, collectionIds, regenerateSlug, masterCategoryId, ...fields } = parsed.data
+  const masterProvided = 'masterCategoryId' in parsed.data
+
+  // The master must be one of the product's categories - fold it in if the
+  // editor sent a master that isn't in the category list.
+  const finalCategoryIds = masterCategoryId && categoryIds && !categoryIds.includes(masterCategoryId)
+    ? [...categoryIds, masterCategoryId]
+    : categoryIds
 
   const slug = regenerateSlug && fields.name ? await ensureUniqueProductSlug(slugify(fields.name), id) : undefined
-  await updateProduct(id, { ...fields, ...(slug ? { slug } : {}) })
+  await updateProduct(id, { ...fields, ...(slug ? { slug } : {}), ...(masterProvided ? { masterCategoryId: masterCategoryId ?? null } : {}) })
 
   if (media) await setProductMedia(id, media)
-  if (categoryIds) await setProductCategories(id, categoryIds)
+  if (finalCategoryIds) await setProductCategories(id, finalCategoryIds)
   if (tagIds) await setProductTags(id, tagIds)
   if (collectionIds) await setProductCollections(id, collectionIds)
+
+  // File the product's images into Shop / <master category> / <slug><n>. Runs
+  // after the media and category writes so it sees the final state; no-op when
+  // nothing moved.
+  if (media || finalCategoryIds || masterProvided) await reorganiseProductMedia(id)
 
   const after = await getProductById(id)
   if (after) {

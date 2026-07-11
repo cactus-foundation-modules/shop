@@ -128,6 +128,12 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
     -- No FK - core Media table (same convention as dir_entries images/gz_posts featured_image_id)
     "og_image_id" TEXT,
 
+    -- Master (primary) category. One per product; the product still belongs to
+    -- any number of categories via shp_product_categories - this just marks the
+    -- lead one. Drives the media folder path (shop/<master category>/<slug>N).
+    -- FK added at the end of this file (shp_categories is created further down).
+    "master_category_id" TEXT,
+
     -- Dedupe marker for the daily low-stock cron - cleared whenever stock is
     -- topped back up above the threshold, so the next dip re-alerts.
     "low_stock_alerted_at" TIMESTAMP(3),
@@ -653,3 +659,17 @@ CREATE TABLE IF NOT EXISTS "shp_settings" (
 );
 
 INSERT INTO "shp_settings" ("id") VALUES ('singleton') ON CONFLICT ("id") DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- Master category link (forward reference - shp_categories is created above).
+-- ON DELETE SET NULL: removing a category clears it as any product's master
+-- rather than blocking the delete; the product keeps its other memberships.
+-- ---------------------------------------------------------------------------
+DO $$ BEGIN
+    ALTER TABLE "shp_products"
+        ADD CONSTRAINT "shp_products_master_category_id_fkey"
+        FOREIGN KEY ("master_category_id") REFERENCES "shp_categories"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS "shp_products_master_category_id_idx" ON "shp_products" ("master_category_id");

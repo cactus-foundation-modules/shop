@@ -52,6 +52,7 @@ export type ShpProduct = {
   metaTitle: string | null
   metaDescription: string | null
   ogImageId: string | null
+  masterCategoryId: string | null
   isPreOrder: boolean
   preOrderDispatchDate: Date | null
   preOrderNote: string | null

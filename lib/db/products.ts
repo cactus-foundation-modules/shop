@@ -33,6 +33,7 @@ function mapProduct(r: Record<string, unknown>): ShpProduct {
     metaTitle: (r.meta_title as string | null) ?? null,
     metaDescription: (r.meta_description as string | null) ?? null,
     ogImageId: (r.og_image_id as string | null) ?? null,
+    masterCategoryId: (r.master_category_id as string | null) ?? null,
     isPreOrder: r.is_pre_order as boolean,
     preOrderDispatchDate: (r.pre_order_dispatch_date as Date | null) ?? null,
     preOrderNote: (r.pre_order_note as string | null) ?? null,
@@ -101,6 +102,12 @@ export async function getProductCollectionIds(productId: string): Promise<string
 // own, so "first" is by insertion (ctid) order, matching how getProductCategoryIds
 // returns them (no explicit ORDER BY = physical row order).
 export async function getPrimaryCategoryId(productId: string): Promise<string | null> {
+  // The master category is the lead one when set; otherwise fall back to any
+  // membership so recommendations still have a category to key off.
+  const master = await prisma.$queryRaw<{ master_category_id: string | null }[]>`
+    SELECT "master_category_id" FROM "shp_products" WHERE "id" = ${productId} LIMIT 1
+  `
+  if (master[0]?.master_category_id) return master[0].master_category_id
   const rows = await prisma.$queryRaw<{ category_id: string }[]>`
     SELECT "category_id" FROM "shp_product_categories" WHERE "product_id" = ${productId} LIMIT 1
   `
@@ -232,6 +239,7 @@ export type UpdateProductInput = Partial<{
   metaTitle: string | null
   metaDescription: string | null
   ogImageId: string | null
+  masterCategoryId: string | null
   isPreOrder: boolean
   preOrderDispatchDate: Date | null
   preOrderNote: string | null
@@ -250,7 +258,7 @@ const COLUMN_MAP: Record<keyof UpdateProductInput, string> = {
   weight: 'weight', weightUnit: 'weight_unit', dimensionL: 'dimension_l', dimensionW: 'dimension_w',
   dimensionH: 'dimension_h', dimensionUnit: 'dimension_unit', digitalFileId: 'digital_file_id',
   downloadLimit: 'download_limit', downloadExpiry: 'download_expiry', metaTitle: 'meta_title',
-  metaDescription: 'meta_description', ogImageId: 'og_image_id', isPreOrder: 'is_pre_order',
+  metaDescription: 'meta_description', ogImageId: 'og_image_id', masterCategoryId: 'master_category_id', isPreOrder: 'is_pre_order',
   preOrderDispatchDate: 'pre_order_dispatch_date', preOrderNote: 'pre_order_note',
   preOrderMaxQuantity: 'pre_order_max_quantity', relatedMode: 'related_mode', upsellMode: 'upsell_mode',
   relatedLimit: 'related_limit', upsellLimit: 'upsell_limit',
