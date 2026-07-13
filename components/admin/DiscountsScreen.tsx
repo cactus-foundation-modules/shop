@@ -1,6 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { TabStrip } from '@/components/admin/TabStrip'
+import { formatMoney } from '@/modules/shop/lib/money'
+import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
+import { useConfirm, useAlert } from '@/modules/shop/components/admin/dialogs'
 
 type DiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FREE_SHIPPING'
 
@@ -26,11 +30,22 @@ const emptyAutoForm: AutoDiscountForm = { name: '', type: 'PERCENTAGE', value: '
 function numOrNull(v: string): number | null {
   return v.trim() === '' ? null : Number(v)
 }
+// A discount's "value" means different things per type: a percentage, a fixed
+// money amount, or nothing at all for free shipping. Render it accordingly so
+// the table never shows a bare "5" that could be read as £5 or 5%.
+function formatDiscountValue(type: DiscountType, value: string | null, symbol: string): string {
+  if (type === 'PERCENTAGE') return value == null ? '—' : `${value}%`
+  if (type === 'FIXED_AMOUNT') return value == null ? '—' : formatMoney(value, symbol)
+  return '—'
+}
 function dateOrNull(v: string): string | null {
   return v.trim() === '' ? null : new Date(v).toISOString()
 }
 
 export function DiscountsScreen() {
+  const currencySymbol = useCurrencySymbol()
+  const [confirm, confirmNode] = useConfirm()
+  const [showAlert, alertNode] = useAlert()
   const [tab, setTab] = useState<'coupons' | 'automatic'>('coupons')
   const [coupons, setCoupons] = useState<Coupon[]>([])
   const [autoDiscounts, setAutoDiscounts] = useState<AutoDiscount[]>([])
@@ -68,7 +83,7 @@ export function DiscountsScreen() {
     }
     const url = editingCouponId ? `/api/m/shop/admin/coupons/${editingCouponId}` : '/api/m/shop/admin/coupons'
     const res = await fetch(url, { method: editingCouponId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    if (!res.ok) { alert((await res.json()).error ?? 'Could not save coupon'); return }
+    if (!res.ok) { await showAlert((await res.json()).error ?? 'Could not save coupon', 'Save failed'); return }
     setCouponForm(null)
     setEditingCouponId(null)
     refresh()
@@ -80,7 +95,7 @@ export function DiscountsScreen() {
   }
 
   async function deleteCoupon(c: Coupon) {
-    if (!confirm(`Delete coupon "${c.code}"?`)) return
+    if (!(await confirm({ title: 'Delete coupon?', message: `Coupon "${c.code}" will be permanently removed.` }))) return
     await fetch(`/api/m/shop/admin/coupons/${c.id}`, { method: 'DELETE' })
     refresh()
   }
@@ -108,7 +123,7 @@ export function DiscountsScreen() {
     }
     const url = editingAutoId ? `/api/m/shop/admin/automatic-discounts/${editingAutoId}` : '/api/m/shop/admin/automatic-discounts'
     const res = await fetch(url, { method: editingAutoId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    if (!res.ok) { alert((await res.json()).error ?? 'Could not save discount'); return }
+    if (!res.ok) { await showAlert((await res.json()).error ?? 'Could not save discount', 'Save failed'); return }
     setAutoForm(null)
     setEditingAutoId(null)
     refresh()
@@ -120,7 +135,7 @@ export function DiscountsScreen() {
   }
 
   async function deleteAutoDiscount(d: AutoDiscount) {
-    if (!confirm(`Delete automatic discount "${d.name}"?`)) return
+    if (!(await confirm({ title: 'Delete automatic discount?', message: `"${d.name}" will be permanently removed.` }))) return
     await fetch(`/api/m/shop/admin/automatic-discounts/${d.id}`, { method: 'DELETE' })
     refresh()
   }
@@ -128,10 +143,12 @@ export function DiscountsScreen() {
   return (
     <div>
       <div className="page-header"><h1 className="page-title">Discounts</h1></div>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-        <button onClick={() => setTab('coupons')} style={{ fontWeight: tab === 'coupons' ? 700 : 400, background: 'none', border: 'none', cursor: 'pointer' }}>Coupons</button>
-        <button onClick={() => setTab('automatic')} style={{ fontWeight: tab === 'automatic' ? 700 : 400, background: 'none', border: 'none', cursor: 'pointer' }}>Automatic</button>
-      </div>
+      <TabStrip
+        items={[
+          { key: 'coupons', label: 'Coupons', active: tab === 'coupons', onClick: () => setTab('coupons') },
+          { key: 'automatic', label: 'Automatic', active: tab === 'automatic', onClick: () => setTab('automatic') },
+        ]}
+      />
 
       {tab === 'coupons' && (
         <div>
@@ -141,9 +158,9 @@ export function DiscountsScreen() {
             <tbody>
               {coupons.map((c) => (
                 <tr key={c.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                  <td style={{ padding: '0.5rem' }}>{c.code}</td><td>{c.type}</td><td>{c.value ?? '—'}</td>
+                  <td style={{ padding: '0.5rem' }}>{c.code}</td><td>{c.type}</td><td>{formatDiscountValue(c.type, c.value, currencySymbol)}</td>
                   <td>{c.usageCount}{c.usageLimit ? ` / ${c.usageLimit}` : ''}</td>
-                  <td>{c.expiresAt ? new Date(c.expiresAt).toLocaleDateString() : '—'}</td>
+                  <td>{c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('en-GB') : '—'}</td>
                   <td><button onClick={() => toggleCoupon(c)} style={linkButton}>{c.isActive ? 'Deactivate' : 'Activate'}</button></td>
                   <td style={{ display: 'flex', gap: '0.5rem' }}>
                     <button onClick={() => startEditCoupon(c)} style={linkButton}>Edit</button>
@@ -191,7 +208,7 @@ export function DiscountsScreen() {
             <tbody>
               {autoDiscounts.map((d) => (
                 <tr key={d.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                  <td style={{ padding: '0.5rem' }}>{d.name}</td><td>{d.type}</td><td>{d.value ?? '—'}</td><td>{d.priority}</td>
+                  <td style={{ padding: '0.5rem' }}>{d.name}</td><td>{d.type}</td><td>{formatDiscountValue(d.type, d.value, currencySymbol)}</td><td>{d.priority}</td>
                   <td><button onClick={() => toggleAutoDiscount(d)} style={linkButton}>{d.isActive ? 'Deactivate' : 'Activate'}</button></td>
                   <td style={{ display: 'flex', gap: '0.5rem' }}>
                     <button onClick={() => startEditAuto(d)} style={linkButton}>Edit</button>
@@ -232,6 +249,8 @@ export function DiscountsScreen() {
           )}
         </div>
       )}
+      {confirmNode}
+      {alertNode}
     </div>
   )
 }

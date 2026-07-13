@@ -5,10 +5,7 @@ import { getCouponByCode, incrementCouponUsage } from '@/modules/shop/lib/db/dis
 import { createDigitalDownload } from '@/modules/shop/lib/db/digital'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { sendShopEmail } from '@/modules/shop/lib/email'
-
-function formatMoney(amount: string, symbol: string): string {
-  return `${symbol}${Number(amount).toFixed(2)}`
-}
+import { formatMoney } from '@/modules/shop/lib/money'
 
 function formatAddress(address: { line1: string; line2?: string; city: string; postcode: string; country: string }): string {
   return [address.line1, address.line2, address.city, address.postcode, address.country].filter(Boolean).join(', ')

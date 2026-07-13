@@ -5,6 +5,7 @@ import { getMemberAreaPath } from '@/lib/members/paths'
 import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { listDownloadsForOrder } from '@/modules/shop/lib/db/digital'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { formatMoney } from '@/modules/shop/lib/money'
 
 export const metadata = { title: 'Order detail' }
 
@@ -29,11 +30,11 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
         {items.map((item) => (
           <li key={item.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>{item.productName} x{item.quantity}</span>
-            <span>{config.currencySymbol}{item.total}</span>
+            <span>{formatMoney(item.total, config.currencySymbol)}</span>
           </li>
         ))}
       </ul>
-      <p style={{ fontWeight: 600 }}>Total: {config.currencySymbol}{order.total}</p>
+      <p style={{ fontWeight: 600 }}>Total: {formatMoney(order.total, config.currencySymbol)}</p>
       {downloads.length > 0 && (
         <div>
           <h2 style={{ fontSize: '1.125rem' }}>Downloads</h2>

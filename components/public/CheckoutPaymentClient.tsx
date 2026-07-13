@@ -136,7 +136,7 @@ export function CheckoutPaymentClient() {
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Payment method</h2>
-      {error && <p style={{ color: 'var(--color-danger, #c00)' }}>{error}</p>}
+      {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
       <div style={{ display: 'grid', gap: '0.5rem' }}>
         {(config?.enabledPaymentMethods ?? []).map((m) => (
           <label key={m} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>

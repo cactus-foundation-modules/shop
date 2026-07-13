@@ -5,6 +5,7 @@ import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import type { LayoutRef } from '@/lib/puck/LayoutPickerField'
 import type { PuckData, ShpProduct, ShpProductMedia } from '@/modules/shop/lib/types'
 import { injectShopProductCardEmbed } from '@/modules/shop/lib/inject-part-context'
+import { formatMoney } from '@/modules/shop/lib/money'
 import type { CardPartContext, CardBadge } from '@/modules/shop/components/puck/parts/part-context'
 
 // Server-only helper shared by every product-card surface (grid, related,
@@ -99,10 +100,7 @@ export function MinimalCard({ product, ctx }: CardItem) {
       </div>
       <h3 className="shop-card-name">{product.name}</h3>
       <div className="shop-card-pricerow">
-        <span className="shop-card-price">
-          {ctx.currencySymbol}
-          {product.price}
-        </span>
+        <span className="shop-card-price">{formatMoney(product.price, ctx.currencySymbol)}</span>
       </div>
     </a>
   )

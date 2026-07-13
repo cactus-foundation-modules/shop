@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { ShpTaxClass, ShpShippingZone, ShpTaxZoneRate, ShpShippingRate, ShpShippingRateType } from '@/modules/shop/lib/types'
+import { useConfirm } from '@/modules/shop/components/admin/dialogs'
 
 const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.25rem 0' }
 const sectionHeading: React.CSSProperties = { margin: '0 0 0.5rem', fontSize: '0.9375rem', fontWeight: 600 }
@@ -32,6 +33,7 @@ function zoneSummary(z: ShpShippingZone): string {
 }
 
 export function TaxShippingScreen() {
+  const [confirm, confirmNode] = useConfirm()
   const [taxClasses, setTaxClasses] = useState<ShpTaxClass[]>([])
   const [newClassName, setNewClassName] = useState('')
   const [classEdits, setClassEdits] = useState<Record<string, { name: string; code: string }>>({})
@@ -102,7 +104,7 @@ export function TaxShippingScreen() {
   }
 
   async function removeTaxClass(id: string) {
-    if (!confirm('Delete this tax class? Products using it will lose their tax class.')) return
+    if (!(await confirm({ title: 'Delete tax class?', message: 'Products using it will lose their tax class.' }))) return
     await fetch(`/api/m/shop/admin/tax-classes/${id}`, { method: 'DELETE' })
     loadTaxClasses()
   }
@@ -152,7 +154,7 @@ export function TaxShippingScreen() {
 
   async function deleteZone() {
     if (!openZoneId) return
-    if (!confirm('Delete this zone? Its tax rates and shipping rates are deleted too.')) return
+    if (!(await confirm({ title: 'Delete zone?', message: 'Its tax rates and shipping rates are deleted too.' }))) return
     await fetch(`/api/m/shop/admin/shipping-zones/${openZoneId}`, { method: 'DELETE' })
     setOpenZoneId(null)
     loadZones()
@@ -219,7 +221,7 @@ export function TaxShippingScreen() {
 
   async function deleteRate(id: string) {
     if (!openZoneId) return
-    if (!confirm('Delete this shipping rate?')) return
+    if (!(await confirm({ title: 'Delete shipping rate?', message: 'This shipping rate will be removed.' }))) return
     await fetch(`/api/m/shop/admin/shipping-rates/${id}`, { method: 'DELETE' })
     fetch(`/api/m/shop/admin/shipping-zones/${openZoneId}`).then(async (r) => { if (r.ok) setShippingRates((await r.json()).rates) })
   }
@@ -454,6 +456,7 @@ export function TaxShippingScreen() {
           </div>
         ))}
       </div>
+      {confirmNode}
     </div>
   )
 }

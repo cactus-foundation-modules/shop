@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { formatMoney } from '@/modules/shop/lib/money'
 
 type OrderStatusResponse = {
   order: { orderNumber: string; total: string; paymentMethod: string; paymentStatus: string }
@@ -35,7 +36,7 @@ export function OrderConfirmationClient() {
       })
   }, [])
 
-  if (error) return <p style={{ color: 'var(--color-danger, #c00)' }}>{error}</p>
+  if (error) return <p style={{ color: 'var(--color-danger)' }}>{error}</p>
   if (!data) return null
 
   const isManual = data.order.paymentMethod === 'BANK_TRANSFER' || data.order.paymentMethod === 'CASH'
@@ -48,7 +49,7 @@ export function OrderConfirmationClient() {
         {data.items.map((item, i) => (
           <li key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>{item.productName} x{item.quantity}</span>
-            <span>{data.currencySymbol}{item.total}</span>
+            <span>{formatMoney(item.total, data.currencySymbol)}</span>
           </li>
         ))}
       </ul>

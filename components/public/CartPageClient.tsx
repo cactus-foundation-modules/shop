@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getCart, setLineQuantity, removeFromCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
+import { formatMoney } from '@/modules/shop/lib/money'
 
 type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
@@ -70,22 +71,23 @@ export function CartPageClient() {
             )}
             <div style={{ flex: 1 }}>
               <a href={`/shop/products/${line.slug}`} style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>{line.name}</a>
-              {!line.available && <p style={{ color: 'var(--color-danger, #c00)', fontSize: '0.8125rem', margin: '0.25rem 0 0' }}>{line.availabilityReason}</p>}
+              {!line.available && <p style={{ color: 'var(--color-danger)', fontSize: '0.8125rem', margin: '0.25rem 0 0' }}>{line.availabilityReason}</p>}
               {line.isPreOrder && <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>Pre-order</p>}
             </div>
             <input
               type="number" min={0} value={line.quantity}
+              aria-label={`Quantity for ${line.name}`}
               onChange={(e) => setLineQuantity(line.productId, Math.max(0, Number(e.target.value)))}
               style={{ width: 56, padding: '0.375rem', borderRadius: 6, border: '1px solid var(--color-border)' }}
             />
-            <span style={{ minWidth: 70, textAlign: 'right' }}>{currencySymbol}{line.lineSubtotal.toFixed(2)}</span>
-            <button onClick={() => removeFromCart(line.productId)} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer' }}>Remove</button>
+            <span style={{ minWidth: 70, textAlign: 'right' }}>{formatMoney(line.lineSubtotal, currencySymbol)}</span>
+            <button aria-label={`Remove ${line.name}`} onClick={() => removeFromCart(line.productId)} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer' }}>Remove</button>
           </li>
         ))}
       </ul>
 
       <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <input placeholder="Coupon code" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
+        <input aria-label="Coupon code" placeholder="Coupon code" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
         <button onClick={applyCoupon} style={{ background: 'var(--color-bg-subtle)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 1rem', cursor: 'pointer' }}>Apply</button>
       </div>
       {couponMessage && <p style={{ fontSize: '0.875rem' }}>{couponMessage}</p>}

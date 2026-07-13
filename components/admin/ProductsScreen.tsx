@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { ImportModal } from '@/modules/shop/components/admin/ImportModal'
+import { formatMoney } from '@/modules/shop/lib/money'
+import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
+import { usePrompt } from '@/modules/shop/components/admin/dialogs'
 
 type ProductRow = {
   id: string; name: string; slug: string; type: string; status: string; price: string; stockCount: number | null; sku: string | null
@@ -11,6 +14,8 @@ type ProductRow = {
 
 export function ProductsScreen() {
   const adminPath = useAdminPath()
+  const currencySymbol = useCurrencySymbol()
+  const [promptText, promptNode] = usePrompt()
   const [products, setProducts] = useState<ProductRow[]>([])
   const [subscriberCounts, setSubscriberCounts] = useState<Record<string, { pending: number; fulfilled: number }>>({})
   const [search, setSearch] = useState('')
@@ -32,7 +37,7 @@ export function ProductsScreen() {
   useEffect(refresh, [search])
 
   async function createProduct() {
-    const name = prompt('Product name?')
+    const name = await promptText({ title: 'New product', placeholder: 'Product name', confirmLabel: 'Create' })
     if (!name) return
     const res = await fetch('/api/m/shop/admin/products', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -58,7 +63,7 @@ export function ProductsScreen() {
 
       {importOpen && <ImportModal onClose={() => setImportOpen(false)} onDone={refresh} />}
 
-      <input placeholder="Search products…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)', marginBottom: '1rem', width: 300 }} />
+      <input aria-label="Search products" placeholder="Search products…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)', marginBottom: '1rem', width: 300 }} />
 
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
@@ -77,7 +82,7 @@ export function ProductsScreen() {
               <td style={{ padding: '0.5rem' }}><a href={`/${adminPath}/m/shop/products/${p.id}`}>{p.name}</a></td>
               <td style={{ padding: '0.5rem' }}>{p.type}</td>
               <td style={{ padding: '0.5rem' }}>{p.status}</td>
-              <td style={{ padding: '0.5rem' }}>{p.price}</td>
+              <td style={{ padding: '0.5rem' }}>{formatMoney(p.price, currencySymbol)}</td>
               <td style={{ padding: '0.5rem' }}>{p.stockCount ?? '—'}</td>
               <td style={{ padding: '0.5rem' }}>
                 {subscriberCounts[p.id]
@@ -101,6 +106,7 @@ export function ProductsScreen() {
           </ul>
         </div>
       )}
+      {promptNode}
     </div>
   )
 }

@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
+import { formatMoney } from '@/modules/shop/lib/money'
+import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 
 type Customer = { email: string; name: string; memberId: string | null; orderCount: number; totalSpent: string }
 
 export function CustomersScreen() {
   const adminPath = useAdminPath()
+  const currencySymbol = useCurrencySymbol()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [search, setSearch] = useState('')
 
@@ -19,7 +22,7 @@ export function CustomersScreen() {
   return (
     <div>
       <div className="page-header"><h1 className="page-title">Customers</h1></div>
-      <input placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)', marginBottom: '1rem', width: 300 }} />
+      <input aria-label="Search customers" placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)', marginBottom: '1rem', width: 300 }} />
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}>
@@ -32,7 +35,7 @@ export function CustomersScreen() {
               <td style={{ padding: '0.5rem' }}><a href={`/${adminPath}/m/shop/customers/${encodeURIComponent(c.email)}`}>{c.name}</a></td>
               <td>{c.email}</td>
               <td>{c.orderCount}</td>
-              <td>{c.totalSpent}</td>
+              <td>{formatMoney(c.totalSpent, currencySymbol)}</td>
               <td>{c.memberId ? 'Yes' : 'Guest'}</td>
             </tr>
           ))}

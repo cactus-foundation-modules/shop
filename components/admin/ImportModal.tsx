@@ -67,7 +67,7 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
           {step !== 'progress' && <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-muted)' }}>×</button>}
         </div>
         <div style={{ padding: '1.25rem', overflowY: 'auto' }}>
-          {error && <p style={{ color: 'var(--color-danger, #c00)', fontSize: '0.875rem' }}>{error}</p>}
+          {error && <p style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}>{error}</p>}
 
           {step === 'upload' && (
             <div style={{ display: 'grid', gap: '0.75rem' }}>

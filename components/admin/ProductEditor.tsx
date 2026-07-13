@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { MediaPickerModal } from '@/modules/shop/components/admin/MediaPickerModal'
 import { ProductPicker } from '@/modules/shop/components/admin/ProductPicker'
+import { useAlert } from '@/modules/shop/components/admin/dialogs'
 
 type ProductData = {
   id: string; name: string; slug: string; type: string; status: string
@@ -19,6 +20,7 @@ type Term = { id: string; name: string; slug: string }
 type PickedProduct = { id: string; name: string }
 
 export function ProductEditor({ productId }: { productId: string }) {
+  const [showAlert, alertNode] = useAlert()
   const [product, setProduct] = useState<ProductData | null>(null)
   const [media, setMedia] = useState<Array<{ type: 'IMAGE' | 'VIDEO_FILE' | 'VIDEO_URL'; url: string; altText?: string | null; isPrimary?: boolean }>>([])
   const [categoryIds, setCategoryIds] = useState<string[]>([])
@@ -74,7 +76,7 @@ export function ProductEditor({ productId }: { productId: string }) {
     body.append('file', file)
     const res = await fetch('/api/m/shop/admin/digital-files', { method: 'POST', body })
     setUploadingDigitalFile(false)
-    if (!res.ok) { alert((await res.json()).error ?? 'Upload failed'); return }
+    if (!res.ok) { await showAlert((await res.json()).error ?? 'Upload failed', 'Upload failed'); return }
     const record = await res.json()
     set('digitalFileId', record.id)
     setDigitalFileName(file.name)
@@ -96,7 +98,7 @@ export function ProductEditor({ productId }: { productId: string }) {
         downloadExpiry: product.downloadExpiry, media, categoryIds, masterCategoryId, tagIds, collectionIds,
       }),
     })
-    if (!res.ok) { alert((await res.json()).error ?? 'Save failed'); setSaving(false); return }
+    if (!res.ok) { await showAlert((await res.json()).error ?? 'Save failed', 'Save failed'); setSaving(false); return }
     const excludedIds = excludedProducts.map((p) => p.id)
     await Promise.all([
       fetch(`/api/m/shop/admin/products/${productId}/related`, {
@@ -310,6 +312,7 @@ export function ProductEditor({ productId }: { productId: string }) {
       </section>
 
       <button onClick={save} disabled={saving} style={buttonPrimary}>{saving ? 'Saving…' : 'Save product'}</button>
+      {alertNode}
     </div>
   )
 }

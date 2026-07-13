@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
+import { formatMoney } from '@/modules/shop/lib/money'
+import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 
 type OrderRow = { id: string; orderNumber: string; status: string; paymentStatus: string; customerName: string; total: string; createdAt: string }
 
@@ -9,6 +11,7 @@ const TABS = ['ALL', 'PENDING', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED
 
 export function OrdersScreen() {
   const adminPath = useAdminPath()
+  const currencySymbol = useCurrencySymbol()
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [tab, setTab] = useState<(typeof TABS)[number]>('ALL')
 
@@ -46,7 +49,7 @@ export function OrdersScreen() {
               <td style={{ padding: '0.5rem' }}>{o.customerName}</td>
               <td style={{ padding: '0.5rem' }}>{o.status}</td>
               <td style={{ padding: '0.5rem' }}>{o.paymentStatus}</td>
-              <td style={{ padding: '0.5rem' }}>{o.total}</td>
+              <td style={{ padding: '0.5rem' }}>{formatMoney(o.total, currencySymbol)}</td>
             </tr>
           ))}
         </tbody>

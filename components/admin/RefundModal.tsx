@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { formatMoney } from '@/modules/shop/lib/money'
+import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 
 type OrderItem = { id: string; productName: string; quantity: number; unitPrice: string; total: string; refundedQty: number; isPreOrder: boolean }
 
@@ -18,6 +20,7 @@ export function RefundModal({ orderId, items, paymentMethod, onClose, onDone }: 
   onClose: () => void
   onDone: () => void
 }) {
+  const currencySymbol = useCurrencySymbol()
   const refundable = items.filter((i) => i.refundedQty < i.quantity)
   const [quantities, setQuantities] = useState<Record<string, number>>(Object.fromEntries(refundable.map((i) => [i.id, 0])))
   const [reason, setReason] = useState('')
@@ -59,7 +62,7 @@ export function RefundModal({ orderId, items, paymentMethod, onClose, onDone }: 
           {!MANUAL_METHOD_COPY[paymentMethod] && (
             <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>This will be refunded automatically via {paymentMethod === 'STRIPE' ? 'Stripe' : 'PayPal'}.</p>
           )}
-          {error && <p style={{ color: 'var(--color-danger, #c00)', fontSize: '0.875rem' }}>{error}</p>}
+          {error && <p style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}>{error}</p>}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}><th style={{ padding: '0.375rem' }}>Item</th><th>Remaining</th><th>Refund qty</th></tr></thead>
             <tbody>
@@ -82,7 +85,7 @@ export function RefundModal({ orderId, items, paymentMethod, onClose, onDone }: 
             </tbody>
           </table>
           <label>Reason (optional)<textarea value={reason} onChange={(e) => setReason(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: 6, border: '1px solid var(--color-border)', marginTop: '0.25rem' }} /></label>
-          <p style={{ fontWeight: 600 }}>Total refund: {totalAmount.toFixed(2)}</p>
+          <p style={{ fontWeight: 600 }}>Total refund: {formatMoney(totalAmount, currencySymbol)}</p>
         </div>
         <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
           <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>

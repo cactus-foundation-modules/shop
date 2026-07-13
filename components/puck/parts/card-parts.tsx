@@ -1,4 +1,5 @@
 import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints'
+import { formatMoney } from '@/modules/shop/lib/money'
 import type { CardPartContext } from '@/modules/shop/components/puck/parts/part-context'
 
 // Product Card part-blocks. These make up a Product Card layout (admin >
@@ -175,15 +176,9 @@ export function ShopCardPrice(props: CardPriceProps) {
     <>
       <EditorStyle ctx={ctx} />
       <div className="shop-card-pricerow">
-        <span className="shop-card-price">
-          {symbol}
-          {price}
-        </span>
+        <span className="shop-card-price">{formatMoney(price, symbol)}</span>
         {showCompare && compare && (
-          <span className="shop-card-compare">
-            {symbol}
-            {compare}
-          </span>
+          <span className="shop-card-compare">{formatMoney(compare, symbol)}</span>
         )}
       </div>
     </>

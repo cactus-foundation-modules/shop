@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { RefundModal } from '@/modules/shop/components/admin/RefundModal'
+import { formatMoney } from '@/modules/shop/lib/money'
+import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 
 type OrderItem = { id: string; productName: string; quantity: number; unitPrice: string; total: string; refundedQty: number; isPreOrder: boolean }
 type OrderDetail = {
@@ -19,6 +21,7 @@ type OrderDetail = {
 const STATUSES = ['PENDING', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED', 'ON_HOLD']
 
 export function OrderDetailScreen({ orderId, children }: { orderId: string; children?: React.ReactNode }) {
+  const currencySymbol = useCurrencySymbol()
   const [data, setData] = useState<OrderDetail | null>(null)
   const [note, setNote] = useState('')
   const [sendEmailOnChange, setSendEmailOnChange] = useState(true)
@@ -82,7 +85,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
             <tr key={item.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
               <td style={{ padding: '0.5rem' }}>{item.productName}{item.isPreOrder && ' (pre-order)'}</td>
               <td>{item.quantity}</td>
-              <td>{item.total}</td>
+              <td>{formatMoney(item.total, currencySymbol)}</td>
               <td>{item.refundedQty}</td>
             </tr>
           ))}
@@ -103,11 +106,11 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
       )}
 
       <dl style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.25rem 1rem' }}>
-        <dt>Subtotal</dt><dd style={{ margin: 0 }}>{order.subtotal}</dd>
-        <dt>Discount</dt><dd style={{ margin: 0 }}>-{order.discountAmount}</dd>
-        <dt>Shipping</dt><dd style={{ margin: 0 }}>{order.shippingAmount}</dd>
-        <dt>Tax</dt><dd style={{ margin: 0 }}>{order.taxAmount}</dd>
-        <dt style={{ fontWeight: 600 }}>Total</dt><dd style={{ margin: 0, fontWeight: 600 }}>{order.total}</dd>
+        <dt>Subtotal</dt><dd style={{ margin: 0 }}>{formatMoney(order.subtotal, currencySymbol)}</dd>
+        <dt>Discount</dt><dd style={{ margin: 0 }}>-{formatMoney(order.discountAmount, currencySymbol)}</dd>
+        <dt>Shipping</dt><dd style={{ margin: 0 }}>{formatMoney(order.shippingAmount, currencySymbol)}</dd>
+        <dt>Tax</dt><dd style={{ margin: 0 }}>{formatMoney(order.taxAmount, currencySymbol)}</dd>
+        <dt style={{ fontWeight: 600 }}>Total</dt><dd style={{ margin: 0, fontWeight: 600 }}>{formatMoney(order.total, currencySymbol)}</dd>
       </dl>
 
       <section>

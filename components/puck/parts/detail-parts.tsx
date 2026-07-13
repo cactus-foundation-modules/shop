@@ -1,6 +1,7 @@
 import { AddToCartButton } from '@/modules/shop/components/public/AddToCartButton'
 import { ProductGallery, ProductTabs, type ProductTab } from '@/modules/shop/components/public/ProductDetailIslands'
 import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints'
+import { formatMoney } from '@/modules/shop/lib/money'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
 
@@ -225,15 +226,9 @@ export function ShopDetailPriceRsc(props: PriceProps) {
     <>
       <Style css={priceCss} />
       <div className="spd-price-block">
-        <span className="spd-price-now">
-          {currencySymbol}
-          {product.price}
-        </span>
+        <span className="spd-price-now">{formatMoney(product.price, currencySymbol)}</span>
         {showCompare && hasWas && (
-          <span className="spd-price-was">
-            {currencySymbol}
-            {product.compareAtPrice}
-          </span>
+          <span className="spd-price-was">{formatMoney(product.compareAtPrice, currencySymbol)}</span>
         )}
         {showSave && savePct != null && savePct > 0 && <span className="spd-save">Save {savePct}%</span>}
       </div>

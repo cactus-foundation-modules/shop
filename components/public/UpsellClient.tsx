@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { getCart, subscribeCart } from '@/modules/shop/components/public/cart'
+import { formatMoney } from '@/modules/shop/lib/money'
 
 type UpsellProduct = { id: string; slug: string; name: string; price: string }
 
@@ -74,7 +75,7 @@ export function UpsellClient({ heading }: { heading?: string }) {
             {products.map((p) => (
               <a key={p.id} href={`/shop/products/${p.slug}`} className="spu-item">
                 <span className="spu-name">{p.name}</span>
-                <span className="spu-price">{currencySymbol}{p.price}</span>
+                <span className="spu-price">{formatMoney(p.price, currencySymbol)}</span>
               </a>
             ))}
           </div>

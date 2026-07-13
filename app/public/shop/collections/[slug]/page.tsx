@@ -7,6 +7,7 @@ import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { injectCollectionContext } from '@/modules/shop/lib/inject-collection-context'
 import type { PuckData } from '@/modules/shop/lib/types'
+import { formatMoney } from '@/modules/shop/lib/money'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
@@ -41,7 +42,7 @@ export default async function ShopCollectionPage({ params }: { params: Promise<{
             <div style={{ aspectRatio: '1/1', background: 'var(--color-surface-muted)' }} />
             <div style={{ padding: '0.75rem' }}>
               <h3 style={{ margin: '0 0 0.25rem', fontSize: '0.9375rem' }}>{p.name}</h3>
-              <span style={{ fontWeight: 600 }}>{config.currencySymbol}{p.price}</span>
+              <span style={{ fontWeight: 600 }}>{formatMoney(p.price, config.currencySymbol)}</span>
             </div>
           </a>
         ))}

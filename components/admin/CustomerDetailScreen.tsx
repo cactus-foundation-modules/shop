@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
+import { formatMoney } from '@/modules/shop/lib/money'
+import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 
 type CustomerDetail = {
   email: string; name: string; memberId: string | null
@@ -11,6 +13,7 @@ type CustomerDetail = {
 
 export function CustomerDetailScreen({ email }: { email: string }) {
   const adminPath = useAdminPath()
+  const currencySymbol = useCurrencySymbol()
   const [data, setData] = useState<CustomerDetail | null>(null)
 
   useEffect(() => {
@@ -25,7 +28,7 @@ export function CustomerDetailScreen({ email }: { email: string }) {
       <p>{data.email} {data.memberId && '(member)'}</p>
       <h3 style={{ fontSize: '0.9375rem' }}>Orders</h3>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-        {data.orders.map((o) => <li key={o.id}><a href={`/${adminPath}/m/shop/orders/${o.id}`}>{o.orderNumber}</a> - {o.status} - {o.total}</li>)}
+        {data.orders.map((o) => <li key={o.id}><a href={`/${adminPath}/m/shop/orders/${o.id}`}>{o.orderNumber}</a> - {o.status} - {formatMoney(o.total, currencySymbol)}</li>)}
       </ul>
       {data.addresses.length > 0 && (
         <>

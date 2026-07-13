@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkout'
 import { findShippingZoneForPostcode, listShippingRatesForZone } from '@/modules/shop/lib/db/tax-shipping'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { formatMoney } from '@/modules/shop/lib/money'
 
 const Body = z.object({
   lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1) })),
@@ -41,10 +42,10 @@ export async function POST(request: NextRequest) {
   })
 
   if (config.minimumOrderValue != null && totals.subtotal < config.minimumOrderValue) {
-    return NextResponse.json({ error: `Minimum order value is ${config.currencySymbol}${config.minimumOrderValue}` }, { status: 400 })
+    return NextResponse.json({ error: `Minimum order value is ${formatMoney(config.minimumOrderValue, config.currencySymbol)}` }, { status: 400 })
   }
   if (config.maximumOrderValue != null && totals.subtotal > config.maximumOrderValue) {
-    return NextResponse.json({ error: `Maximum order value is ${config.currencySymbol}${config.maximumOrderValue}` }, { status: 400 })
+    return NextResponse.json({ error: `Maximum order value is ${formatMoney(config.maximumOrderValue, config.currencySymbol)}` }, { status: 400 })
   }
 
   const hasPreOrderItems = resolvedLines.some((l) => l.isPreOrder)

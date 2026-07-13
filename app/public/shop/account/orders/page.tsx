@@ -4,6 +4,7 @@ import { getMembersConfig } from '@/lib/members/config'
 import { getMemberAreaPath } from '@/lib/members/paths'
 import { listOrdersByMemberId } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { formatMoney } from '@/modules/shop/lib/money'
 
 export const metadata = { title: 'Your orders' }
 
@@ -25,7 +26,7 @@ export default async function ShopAccountOrdersPage() {
           <li key={order.id} style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.75rem 1rem' }}>
             <a href={`/shop/account/orders/${order.id}`} style={{ textDecoration: 'none', color: 'inherit', display: 'flex', justifyContent: 'space-between' }}>
               <span>{order.orderNumber} - {order.status}</span>
-              <span>{config.currencySymbol}{order.total}</span>
+              <span>{formatMoney(order.total, config.currencySymbol)}</span>
             </a>
           </li>
         ))}

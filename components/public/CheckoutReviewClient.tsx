@@ -61,7 +61,7 @@ export function CheckoutReviewClient() {
       </section>
     )
   }
-  if (!summary) return error ? <p style={{ color: 'var(--color-danger, #c00)' }}>{error}</p> : null
+  if (!summary) return error ? <p style={{ color: 'var(--color-danger)' }}>{error}</p> : null
 
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
@@ -78,7 +78,7 @@ export function CheckoutReviewClient() {
         <dt>Tax</dt><dd style={{ margin: 0 }}>{summary.currencySymbol}{summary.taxAmount.toFixed(2)}</dd>
         <dt style={{ fontWeight: 600 }}>Total</dt><dd style={{ margin: 0, fontWeight: 600 }}>{summary.currencySymbol}{summary.total.toFixed(2)}</dd>
       </dl>
-      {error && <p style={{ color: 'var(--color-danger, #c00)' }}>{error}</p>}
+      {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
       <button
         onClick={placeOrder}
         disabled={placing}
