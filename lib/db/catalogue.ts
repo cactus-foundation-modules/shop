@@ -142,13 +142,32 @@ export async function categoryReparentWouldCycle(id: string, newParentId: string
 }
 
 // Persists a sibling ordering: writes position = array index for each id. The
-// admin tree sends one parent's children in their new order.
-export async function reorderCategories(orderedIds: string[]): Promise<void> {
+// admin tree sends one parent's children in their new order. When `parentId` is
+// provided (including null for the top level) it is also written to every id in
+// the group - that is how a drag that drops a category under a new parent both
+// re-parents the moved node and reindexes its destination siblings in one shot.
+// Omit `parentId` (undefined) to reorder in place without touching parentage,
+// which is what the up/down arrows do.
+export async function reorderCategories(
+  orderedIds: string[],
+  parentId?: string | null
+): Promise<void> {
   if (orderedIds.length === 0) return
+  const setParent = parentId !== undefined
   await prisma.$transaction(
-    orderedIds.map((id, i) => prisma.$executeRaw`
-      UPDATE "shp_categories" SET "position" = ${i}, "updated_at" = CURRENT_TIMESTAMP WHERE "id" = ${id}
-    `)
+    orderedIds.map((id, i) =>
+      setParent
+        ? prisma.$executeRaw`
+            UPDATE "shp_categories"
+            SET "position" = ${i}, "parent_id" = ${parentId}, "updated_at" = CURRENT_TIMESTAMP
+            WHERE "id" = ${id}
+          `
+        : prisma.$executeRaw`
+            UPDATE "shp_categories"
+            SET "position" = ${i}, "updated_at" = CURRENT_TIMESTAMP
+            WHERE "id" = ${id}
+          `
+    )
   )
 }
 

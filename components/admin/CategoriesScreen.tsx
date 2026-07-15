@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
 import { useConfirm, usePrompt, useAlert } from '@/modules/shop/components/admin/dialogs'
 
 type Category = {
@@ -47,6 +47,12 @@ export function CategoriesScreen() {
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [editingId, setEditingId] = useState<string | null>(null)
+  // Drag-and-drop reordering / re-nesting. `dragId` is the row being carried;
+  // `dropTarget` is the row currently hovered plus which third of it the pointer
+  // is over - 'before'/'after' drop as a sibling of the target, 'inside' files
+  // the dragged category under the target.
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ id: string; zone: 'before' | 'inside' | 'after' } | null>(null)
   const [editName, setEditName] = useState('')
   const [editParentId, setEditParentId] = useState<string>('')
   const [editMode, setEditMode] = useState<DisplayModeChoice>('')
@@ -194,6 +200,83 @@ export function CategoriesScreen() {
     refresh()
   }
 
+  // A drop is only legal if the target is neither the dragged category nor one
+  // of its own descendants - anything else would file a branch inside itself.
+  function canDropOn(targetId: string): boolean {
+    if (!dragId || targetId === dragId) return false
+    return !descendantIds(dragId).includes(targetId)
+  }
+
+  // Pick the drop zone from where the pointer sits in the target row: the top
+  // ~30% inserts before, the bottom ~30% after, and the middle files inside.
+  function onRowDragOver(e: ReactDragEvent<HTMLLIElement>, cat: Category) {
+    if (!canDropOn(cat.id)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    const rect = e.currentTarget.getBoundingClientRect()
+    const y = e.clientY - rect.top
+    const zone: 'before' | 'inside' | 'after' =
+      y < rect.height * 0.3 ? 'before' : y > rect.height * 0.7 ? 'after' : 'inside'
+    setDropTarget((prev) => (prev && prev.id === cat.id && prev.zone === zone ? prev : { id: cat.id, zone }))
+  }
+
+  // Commit the drag: work out the destination parent and the new sibling order,
+  // reflect it optimistically, then persist parent + order in one request.
+  async function completeDrop() {
+    const target = dropTarget
+    const moved = dragId
+    setDropTarget(null)
+    setDragId(null)
+    if (!target || !moved || target.id === moved) return
+    const movedCat = categories.find((c) => c.id === moved)
+    const targetCat = categories.find((c) => c.id === target.id)
+    if (!movedCat || !targetCat) return
+    if (descendantIds(moved).includes(target.id)) return
+
+    const newParentId: string | null = target.zone === 'inside' ? target.id : targetCat.parentId
+    const group = childrenOf(newParentId).filter((c) => c.id !== moved).map((c) => c.id)
+    let insertAt: number
+    if (target.zone === 'inside') {
+      insertAt = group.length // append as the last child
+    } else {
+      const ti = group.indexOf(target.id)
+      if (ti < 0) return
+      insertAt = target.zone === 'before' ? ti : ti + 1
+    }
+    const orderedIds = [...group.slice(0, insertAt), moved, ...group.slice(insertAt)]
+
+    // Nothing actually moved (same parent, identical order) - skip the write.
+    const currentGroup = childrenOf(newParentId).map((c) => c.id)
+    if (
+      newParentId === movedCat.parentId &&
+      currentGroup.length === orderedIds.length &&
+      currentGroup.every((id, i) => id === orderedIds[i])
+    ) {
+      return
+    }
+
+    // Optimistic: re-file the moved row and reindex its destination siblings.
+    setCategories((prev) => {
+      const order = new Map(orderedIds.map((id, i) => [id, i]))
+      return prev
+        .map((c) => {
+          if (c.id === moved) return { ...c, parentId: newParentId, position: order.get(c.id) ?? c.position }
+          if (order.has(c.id)) return { ...c, position: order.get(c.id)! }
+          return c
+        })
+        .sort((a, b) => (a.position - b.position) || a.name.localeCompare(b.name))
+    })
+    // Make sure the new parent is open so the moved row is actually on screen.
+    if (newParentId) setCollapsed((prev) => { const n = new Set(prev); n.delete(newParentId); return n })
+
+    const res = await fetch('/api/m/shop/admin/categories/reorder', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderedIds, parentId: newParentId }),
+    })
+    if (!res.ok) await showAlert((await res.json().catch(() => ({}))).error ?? 'Could not save the new order.', 'Reorder failed')
+    refresh()
+  }
+
   async function remove(cat: Category) {
     const childCount = descendantIds(cat.id).length
     const message = childCount > 0
@@ -251,6 +334,11 @@ export function CategoriesScreen() {
       {categories.length > 0 && rows.length === 0 && (
         <p style={{ color: 'var(--color-text-muted)' }}>No categories match &ldquo;{search.trim()}&rdquo;.</p>
       )}
+      {categories.length > 0 && rows.length > 0 && !query && (
+        <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', margin: '0 0 0.5rem' }}>
+          Drag the handle to reorder, or drop a category onto another to file it inside. The arrows nudge one step; Edit lets you pick a parent from a list.
+        </p>
+      )}
 
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.375rem' }}>
         {rows.map(({ cat, depth }) => {
@@ -261,18 +349,49 @@ export function CategoriesScreen() {
           const parentOfSomething = hasChildren(cat.id)
           const isCollapsed = collapsed.has(cat.id) && !query
           const count = counts[cat.id] ?? 0
+          const drop = dropTarget?.id === cat.id ? dropTarget.zone : null
           return (
             <li
               key={cat.id}
+              onDragOver={(e) => onRowDragOver(e, cat)}
+              onDrop={(e) => { e.preventDefault(); void completeDrop() }}
               style={{
                 border: '1px solid var(--color-border)', borderRadius: 8,
                 padding: '0.5rem 0.75rem', marginLeft: `${depth * 1.5}rem`,
                 background: isEditing ? 'var(--color-bg-subtle)' : 'var(--color-surface)',
                 borderColor: isEditing ? 'var(--color-primary-border)' : 'var(--color-border)',
+                opacity: dragId === cat.id ? 0.4 : 1,
+                outline: drop === 'inside' ? '2px solid var(--color-primary)' : undefined,
+                outlineOffset: drop === 'inside' ? '-2px' : undefined,
+                boxShadow: drop === 'before'
+                  ? 'inset 0 3px 0 var(--color-primary)'
+                  : drop === 'after'
+                    ? 'inset 0 -3px 0 var(--color-primary)'
+                    : undefined,
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                  {!query && (
+                    <span
+                      draggable
+                      onDragStart={(e) => {
+                        setDragId(cat.id)
+                        e.dataTransfer.effectAllowed = 'move'
+                        e.dataTransfer.setData('text/plain', cat.id)
+                      }}
+                      onDragEnd={() => { setDragId(null); setDropTarget(null) }}
+                      role="button"
+                      aria-label={`Drag to reorder or nest ${cat.name}`}
+                      title="Drag to reorder or nest"
+                      style={{
+                        cursor: 'grab', color: 'var(--color-text-muted)', flexShrink: 0,
+                        lineHeight: 1, padding: '0 0.125rem', userSelect: 'none', fontSize: '0.875rem',
+                      }}
+                    >
+                      ⠿
+                    </span>
+                  )}
                   {parentOfSomething ? (
                     <button
                       type="button"
