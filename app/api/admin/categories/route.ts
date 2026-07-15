@@ -11,7 +11,12 @@ export async function GET() {
   return NextResponse.json({ categories })
 }
 
-const Body = z.object({ name: z.string().min(1), description: z.string().nullable().optional(), parentId: z.string().nullable().optional() })
+const Body = z.object({
+  name: z.string().min(1),
+  description: z.string().nullable().optional(),
+  parentId: z.string().nullable().optional(),
+  productDisplayMode: z.enum(['rollup', 'exact']).nullable().optional(),
+})
 
 export async function POST(request: NextRequest) {
   const gate = await requireShopUser('shop.products')

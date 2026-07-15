@@ -58,6 +58,12 @@ export const ShpConfigSchema = z.object({
   shopTitle: z.string().default(''),
   shopMetaDescription: z.string().default(''),
 
+  // Category browsing - shop-wide default for how a category page lists
+  // products. 'rollup' also shows products filed in any descendant category;
+  // 'exact' shows only products filed directly on the category. Each category
+  // can override this via its own product_display_mode.
+  categoryProductDisplayMode: z.enum(['rollup', 'exact']).default('rollup'),
+
   // Back-in-stock (addendum A)
   backInStockAccountPrompt: z.boolean().default(true),
 

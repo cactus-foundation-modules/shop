@@ -242,6 +242,17 @@ export function ShopSettingsTab() {
           </div>
 
           <hr style={hr} />
+          <h3 style={sectionHeading}>Category pages</h3>
+          <div className="field">
+            <label>Products shown on a category page</label>
+            <select value={config.categoryProductDisplayMode} onChange={(e) => set('categoryProductDisplayMode', e.target.value as ShpConfig['categoryProductDisplayMode'])}>
+              <option value="rollup">The category and all its sub-categories</option>
+              <option value="exact">Only products filed directly on the category</option>
+            </select>
+            <span className="field-hint">The default for every category. Any individual category can override this on the Categories screen.</span>
+          </div>
+
+          <hr style={hr} />
           <h3 style={sectionHeading}>SEO</h3>
           <div className="field"><label>Shop title</label><input value={config.shopTitle} onChange={(e) => set('shopTitle', e.target.value)} /></div>
           <div className="field"><label>Meta description</label><textarea rows={3} value={config.shopMetaDescription} onChange={(e) => set('shopMetaDescription', e.target.value)} /></div>

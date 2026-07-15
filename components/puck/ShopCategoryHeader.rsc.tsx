@@ -1,5 +1,6 @@
 import { connection } from 'next/server'
-import { getCategoryBySlug } from '@/modules/shop/lib/db/catalogue'
+import Link from 'next/link'
+import { getCategoryBySlug, getCategoryAncestorPath } from '@/modules/shop/lib/db/catalogue'
 import { shopCategoryHeaderPuckComponent, type ShopCategoryHeaderProps } from './ShopCategoryHeader'
 
 // Server (RSC) half of Shop: Category Header. Kept out of the client editor
@@ -29,9 +30,21 @@ export async function ShopCategoryHeaderRsc(props: ShopCategoryHeaderProps) {
   if (!props.categorySlug) return null
   const category = await getCategoryBySlug(props.categorySlug)
   if (!category) return null
+  const crumbs = (await getCategoryAncestorPath(category.id)).filter((a) => a.id !== category.id)
 
   return (
     <div>
+      {crumbs.length > 0 && (
+        <nav aria-label="Breadcrumb" style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>
+          <Link href="/shop" style={{ color: 'inherit', textDecoration: 'none' }}>Shop</Link>
+          {crumbs.map((a) => (
+            <span key={a.id}>
+              <span style={{ margin: '0 0.4rem' }}>/</span>
+              <Link href={`/shop/categories/${a.slug}`} style={{ color: 'inherit', textDecoration: 'none' }}>{a.name}</Link>
+            </span>
+          ))}
+        </nav>
+      )}
       <span style={EYEBROW}>The range</span>
       <h1 style={HEADING}>{category.name}</h1>
       {category.description && (

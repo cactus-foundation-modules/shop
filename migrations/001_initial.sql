@@ -205,6 +205,11 @@ CREATE TABLE IF NOT EXISTS "shp_categories" (
     "description" TEXT,
     "parent_id" TEXT,
     "position" INTEGER NOT NULL DEFAULT 0,
+    -- Per-category product listing mode for nested categories. NULL = inherit
+    -- the shop-wide default (config.categoryProductDisplayMode); 'rollup' =
+    -- also list every descendant category's products; 'exact' = only products
+    -- filed directly on this category.
+    "product_display_mode" TEXT,
     "meta_title" TEXT,
     "meta_description" TEXT,
     "og_image_id" TEXT,
@@ -213,8 +218,11 @@ CREATE TABLE IF NOT EXISTS "shp_categories" (
 
     CONSTRAINT "shp_categories_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "shp_categories_slug_key" UNIQUE ("slug"),
-    -- SET NULL: deleting a parent promotes its children to root categories rather than blocking the delete
-    CONSTRAINT "shp_categories_parent_id_fkey" FOREIGN KEY ("parent_id") REFERENCES "shp_categories"("id") ON DELETE SET NULL
+    -- CASCADE: deleting a parent deletes its whole sub-tree (children, their
+    -- children, ...). Product links go with them via shp_product_categories'
+    -- own CASCADE; the products themselves survive (master_category_id is SET
+    -- NULL). This is the "delete whole subtree" behaviour chosen for nesting.
+    CONSTRAINT "shp_categories_parent_id_fkey" FOREIGN KEY ("parent_id") REFERENCES "shp_categories"("id") ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS "shp_categories_parent_id_idx" ON "shp_categories" ("parent_id");

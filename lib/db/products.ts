@@ -120,6 +120,9 @@ export type ListProductsFilter = {
   status?: ShpProductStatus
   type?: ShpProductType
   categorySlug?: string
+  // Match products filed in ANY of these category ids - used for the
+  // roll-up listing where a parent category shows its descendants' products.
+  categoryIds?: string[]
   tagSlug?: string
   collectionSlug?: string
   search?: string
@@ -143,6 +146,12 @@ export async function listProducts(filter: ListProductsFilter): Promise<{ produc
       SELECT "product_id" FROM "shp_product_categories" pc
       JOIN "shp_categories" c ON c."id" = pc."category_id"
       WHERE c."slug" = ${filter.categorySlug}
+    )`)
+  }
+  if (filter.categoryIds && filter.categoryIds.length > 0) {
+    conditions.push(Prisma.sql`p."id" IN (
+      SELECT "product_id" FROM "shp_product_categories"
+      WHERE "category_id" IN (${Prisma.join(filter.categoryIds)})
     )`)
   }
   if (filter.tagSlug) {

@@ -1,6 +1,6 @@
 import { connection } from 'next/server'
 import { listProducts, getProductMedia, getProductTagIds } from '@/modules/shop/lib/db'
-import { listTags } from '@/modules/shop/lib/db/catalogue'
+import { listTags, resolveCategoryProductFilter } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
@@ -15,13 +15,18 @@ import { shopProductGridPuckComponent, type ShopProductGridProps } from './ShopP
 export async function ShopProductGridRsc(props: ShopProductGridProps) {
   await connection()
   const columns = props.columns ?? 3
-  const [config, bp, tags, listed, template] = await Promise.all([
-    getShopConfigCached(),
+  // Resolve the category filter first - a category page's grid rolls up over the
+  // sub-tree (or not) per the category's own mode / the shop default.
+  const config = await getShopConfigCached()
+  const categoryFilter = props.categorySlug
+    ? await resolveCategoryProductFilter(props.categorySlug, config.categoryProductDisplayMode)
+    : {}
+  const [bp, tags, listed, template] = await Promise.all([
     getShopBreakpoints(),
     listTags(),
     listProducts({
       status: 'ACTIVE',
-      categorySlug: props.categorySlug || undefined,
+      ...categoryFilter,
       collectionSlug: props.collectionSlug || undefined,
       tagSlug: props.tagSlug || undefined,
       perPage: props.limit ?? 12,

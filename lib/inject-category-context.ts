@@ -16,6 +16,11 @@ function injectBlocks(blocks: unknown[], ctx: CategoryContext): void {
     if (block.type && CATEGORY_CONTEXT_BLOCKS.has(block.type) && block.props) {
       block.props.categorySlug = ctx.categorySlug
     }
+    // A Category Browser dropped into the category layout shows the current
+    // category's direct children (its sub-categories) - inject as its parent.
+    if (block.type === 'ShopCategoryBrowser' && block.props) {
+      block.props.parentCategorySlug = ctx.categorySlug
+    }
     if (block.props) {
       for (const value of Object.values(block.props)) {
         if (Array.isArray(value)) injectBlocks(value, ctx)

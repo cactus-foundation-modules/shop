@@ -84,6 +84,9 @@ export type ShpCategory = {
   description: string | null
   parentId: string | null
   position: number
+  // NULL = inherit the shop-wide default; 'rollup' = list descendant products
+  // too; 'exact' = only products filed directly on this category.
+  productDisplayMode: 'rollup' | 'exact' | null
   metaTitle: string | null
   metaDescription: string | null
   ogImageId: string | null

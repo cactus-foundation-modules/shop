@@ -17,6 +17,7 @@ type ProductData = {
 }
 
 type Term = { id: string; name: string; slug: string }
+type CategoryTerm = Term & { parentId: string | null; position: number }
 type PickedProduct = { id: string; name: string }
 
 export function ProductEditor({ productId }: { productId: string }) {
@@ -27,7 +28,7 @@ export function ProductEditor({ productId }: { productId: string }) {
   const [masterCategoryId, setMasterCategoryId] = useState<string | null>(null)
   const [tagIds, setTagIds] = useState<string[]>([])
   const [collectionIds, setCollectionIds] = useState<string[]>([])
-  const [categories, setCategories] = useState<Term[]>([])
+  const [categories, setCategories] = useState<CategoryTerm[]>([])
   const [tags, setTags] = useState<Term[]>([])
   const [collections, setCollections] = useState<Term[]>([])
   const [taxClasses, setTaxClasses] = useState<Term[]>([])
@@ -261,20 +262,31 @@ export function ProductEditor({ productId }: { productId: string }) {
 
       <section style={{ display: 'grid', gap: '0.5rem' }}>
         <h3 style={{ margin: 0, fontSize: '0.9375rem' }}>Categories</h3>
-        {categories.map((c) => (
-          <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <input
-              type="checkbox"
-              checked={categoryIds.includes(c.id)}
-              onChange={() => setCategoryIds((prev) => {
-                const next = toggle(prev, c.id)
-                // Unticking the master category clears the master selection.
-                if (masterCategoryId === c.id && !next.includes(c.id)) setMasterCategoryId(null)
-                return next
-              })}
-            /> {c.name}
-          </label>
-        ))}
+        {(() => {
+          // Render the category tree in order, indented by depth, so nesting is
+          // obvious when filing a product.
+          const childrenOf = (pid: string | null) =>
+            categories.filter((c) => (c.parentId ?? null) === pid).sort((a, b) => (a.position - b.position) || a.name.localeCompare(b.name))
+          const rows: Array<{ cat: CategoryTerm; depth: number }> = []
+          const walk = (pid: string | null, depth: number) => {
+            for (const c of childrenOf(pid)) { rows.push({ cat: c, depth }); walk(c.id, depth + 1) }
+          }
+          walk(null, 0)
+          return rows.map(({ cat: c, depth }) => (
+            <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: `${depth * 1.25}rem` }}>
+              <input
+                type="checkbox"
+                checked={categoryIds.includes(c.id)}
+                onChange={() => setCategoryIds((prev) => {
+                  const next = toggle(prev, c.id)
+                  // Unticking the master category clears the master selection.
+                  if (masterCategoryId === c.id && !next.includes(c.id)) setMasterCategoryId(null)
+                  return next
+                })}
+              /> {c.name}
+            </label>
+          ))
+        })()}
         <label style={{ display: 'grid', gap: '0.25rem' }}>
           <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Master category</span>
           <select
