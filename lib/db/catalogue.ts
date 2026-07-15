@@ -83,6 +83,21 @@ export async function getCategoryProductCount(categoryId: string): Promise<numbe
   return Number(rows[0]?.count ?? 0)
 }
 
+// Direct product count for every category in one query, keyed by category id.
+// "Direct" = filed straight under that category, not rolled up over descendants -
+// it mirrors what the admin tree shows against each row. Categories with no
+// products are simply absent from the map (callers default them to 0).
+export async function getCategoryProductCounts(): Promise<Record<string, number>> {
+  const rows = await prisma.$queryRaw<{ category_id: string; count: bigint }[]>`
+    SELECT "category_id", COUNT(*)::bigint AS count
+    FROM "shp_product_categories"
+    GROUP BY "category_id"
+  `
+  const counts: Record<string, number> = {}
+  for (const r of rows) counts[r.category_id] = Number(r.count)
+  return counts
+}
+
 // Every category id in the sub-tree rooted at categoryId, inclusive. UNION (not
 // UNION ALL) makes the walk cycle-safe: a stray parent cycle repeats ids, which
 // dedupe away and terminate the recursion rather than looping forever. Used to

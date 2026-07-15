@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
-import { listCategories, createCategory } from '@/modules/shop/lib/db'
+import { listCategories, createCategory, getCategoryProductCounts } from '@/modules/shop/lib/db'
 import { slugify, ensureUniqueCategorySlug } from '@/modules/shop/lib/slug'
 
 export async function GET() {
   const gate = await requireShopUser('shop.products', { allowAccess: true })
   if (gate.error) return gate.error
-  const categories = await listCategories()
-  return NextResponse.json({ categories })
+  const [categories, productCounts] = await Promise.all([listCategories(), getCategoryProductCounts()])
+  return NextResponse.json({ categories, productCounts })
 }
 
 const Body = z.object({
