@@ -5,7 +5,7 @@ import { getProductBySlug, getProductMedia, getProductCategoryIds, getProductTag
 export async function GET(_request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const product = await getProductBySlug(slug)
-  if (!product || product.status !== 'ACTIVE') return errorResponse('Product not found', 404)
+  if (!product || product.status !== 'ACTIVE' || product.catalogueHidden) return errorResponse('Product not found', 404)
 
   const [media, categoryIds, tagIds] = await Promise.all([
     getProductMedia(product.id),

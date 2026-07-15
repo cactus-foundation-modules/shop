@@ -28,7 +28,7 @@ export default async function ShopCollectionPage({ params }: { params: Promise<{
   }
 
   const [{ products }, config] = await Promise.all([
-    listProducts({ status: 'ACTIVE', collectionSlug: slug, perPage: 60 }),
+    listProducts({ status: 'ACTIVE', collectionSlug: slug, perPage: 60, excludeHidden: true }),
     getShopConfigCached(),
   ])
 

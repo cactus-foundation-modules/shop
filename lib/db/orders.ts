@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
-import type { ShpAddress, ShpOrder, ShpOrderItem, ShpOrderStatus, ShpPaymentMethod, ShpPaymentStatus } from '@/modules/shop/lib/types'
+import type { LineMeta, ShpAddress, ShpOrder, ShpOrderItem, ShpOrderStatus, ShpPaymentMethod, ShpPaymentStatus } from '@/modules/shop/lib/types'
 
 function mapOrder(r: Record<string, unknown>): ShpOrder {
   return {
@@ -49,6 +49,8 @@ function mapOrderItem(r: Record<string, unknown>): ShpOrderItem {
     refundedQty: r.refunded_qty as number,
     isPreOrder: r.is_pre_order as boolean,
     preOrderDispatchDate: (r.pre_order_dispatch_date as Date | null) ?? null,
+    // jsonb comes back already parsed (or null for an unpersonalised line).
+    lineMeta: (r.line_meta as LineMeta | null) ?? null,
   }
 }
 
@@ -112,6 +114,7 @@ export type CreateOrderInput = {
     total: number
     isPreOrder: boolean
     preOrderDispatchDate: Date | null
+    lineMeta?: LineMeta | null
   }>
 }
 
@@ -140,11 +143,13 @@ export async function createPendingOrder(data: CreateOrderInput): Promise<{ id: 
       await tx.$executeRaw`
         INSERT INTO "shp_order_items" (
           "order_id", "product_id", "product_name", "product_sku", "product_type",
-          "quantity", "unit_price", "tax_rate", "tax_amount", "total", "is_pre_order", "pre_order_dispatch_date"
+          "quantity", "unit_price", "tax_rate", "tax_amount", "total", "is_pre_order", "pre_order_dispatch_date",
+          "line_meta"
         ) VALUES (
           ${orderId}, ${item.productId}, ${item.productName}, ${item.productSku}, ${item.productType},
           ${item.quantity}, ${item.unitPrice}, ${item.taxRate}, ${item.taxAmount}, ${item.total},
-          ${item.isPreOrder}, ${item.preOrderDispatchDate}
+          ${item.isPreOrder}, ${item.preOrderDispatchDate},
+          ${item.lineMeta ? JSON.stringify(item.lineMeta) : null}::jsonb
         )
       `
     }

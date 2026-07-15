@@ -42,7 +42,14 @@ export async function fulfillPaidOrder(orderId: string): Promise<void> {
   }
 
   const preOrderItem = items.find((i) => i.isPreOrder)
-  const itemsList = items.map((i) => `${i.productName} x${i.quantity} - ${formatMoney(i.total, config.currencySymbol)}`).join('\n')
+  const itemsList = items.map((i) => {
+    const base = `${i.productName} x${i.quantity} - ${formatMoney(i.total, config.currencySymbol)}`
+    // Personalisation (engraving, options, upload names) listed under the item.
+    const extras = i.lineMeta?.fields?.length
+      ? '\n' + i.lineMeta.fields.map((f) => `    ${f.label}: ${f.value}`).join('\n')
+      : ''
+    return base + extras
+  }).join('\n')
 
   await sendShopEmail('ORDER_CONFIRMED', order.customerEmail, {
     orderNumber: order.orderNumber,

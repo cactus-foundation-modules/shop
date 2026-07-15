@@ -5,12 +5,16 @@ import Link from 'next/link'
 import { getCart, setLineQuantity, removeFromCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import { formatMoney } from '@/modules/shop/lib/money'
+import type { LineMeta } from '@/modules/shop/lib/types'
 
 type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
   lineSubtotal: number; available: boolean; availabilityReason: string | null
   isPreOrder: boolean; imageUrl: string | null
+  lineId?: string | null; lineMeta?: LineMeta | null
 }
+
+const lineKey = (l: Pick<ValidatedLine, 'productId' | 'lineId'>) => l.lineId ?? l.productId
 
 export function CartPageClient() {
   const [lines, setLines] = useState<ValidatedLine[]>([])
@@ -64,7 +68,7 @@ export function CartPageClient() {
     <div style={{ display: 'grid', gap: '1rem', maxWidth: 640 }}>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.75rem' }}>
         {lines.map((line) => (
-          <li key={line.productId} style={{ display: 'flex', gap: '1rem', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
+          <li key={lineKey(line)} style={{ display: 'flex', gap: '1rem', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
             {line.imageUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={line.imageUrl} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6 }} />
@@ -73,15 +77,25 @@ export function CartPageClient() {
               <a href={`/shop/products/${line.slug}`} style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>{line.name}</a>
               {!line.available && <p style={{ color: 'var(--color-danger)', fontSize: '0.8125rem', margin: '0.25rem 0 0' }}>{line.availabilityReason}</p>}
               {line.isPreOrder && <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>Pre-order</p>}
+              {line.lineMeta?.fields?.length ? (
+                <ul style={{ listStyle: 'none', margin: '0.25rem 0 0', padding: 0, display: 'grid', gap: '0.125rem' }}>
+                  {line.lineMeta.fields.map((f, i) => (
+                    <li key={i} style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                      <span style={{ fontWeight: 500 }}>{f.label}:</span>{' '}
+                      {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
             <input
               type="number" min={0} value={line.quantity}
               aria-label={`Quantity for ${line.name}`}
-              onChange={(e) => setLineQuantity(line.productId, Math.max(0, Number(e.target.value)))}
+              onChange={(e) => setLineQuantity(lineKey(line), Math.max(0, Number(e.target.value)))}
               style={{ width: 56, padding: '0.375rem', borderRadius: 6, border: '1px solid var(--color-border)' }}
             />
             <span style={{ minWidth: 70, textAlign: 'right' }}>{formatMoney(line.lineSubtotal, currencySymbol)}</span>
-            <button aria-label={`Remove ${line.name}`} onClick={() => removeFromCart(line.productId)} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer' }}>Remove</button>
+            <button aria-label={`Remove ${line.name}`} onClick={() => removeFromCart(lineKey(line))} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer' }}>Remove</button>
           </li>
         ))}
       </ul>

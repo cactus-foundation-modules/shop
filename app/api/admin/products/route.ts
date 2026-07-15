@@ -17,6 +17,8 @@ export async function GET(request: NextRequest) {
     preOrder: params.get('preOrder') === 'true',
     page: params.get('page') ? Number(params.get('page')) : undefined,
     perPage: params.get('perPage') ? Number(params.get('perPage')) : undefined,
+    // Variant child products are managed under Product options, not here.
+    excludeHidden: true,
   })
   const subscriberCounts = await getBackInStockSubscriberCounts(products.map((p) => p.id))
   return NextResponse.json({ products, total, subscriberCounts })

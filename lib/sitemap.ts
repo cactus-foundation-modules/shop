@@ -6,7 +6,7 @@ import { prisma } from '@/lib/db/prisma'
 // scripts/generate-module-router.mjs, not the spec's shopSitemapEntries name.
 export async function getPublicSitemapEntries(siteUrl: string): Promise<MetadataRoute.Sitemap> {
   const products = await prisma.$queryRaw<Array<{ slug: string; updated_at: Date }>>`
-    SELECT "slug", "updated_at" FROM "shp_products" WHERE "status" = 'ACTIVE'
+    SELECT "slug", "updated_at" FROM "shp_products" WHERE "status" = 'ACTIVE' AND "catalogue_hidden" = false
   `
   const categories = await prisma.$queryRaw<Array<{ slug: string; updated_at: Date }>>`
     SELECT c."slug", c."updated_at" FROM "shp_categories" c

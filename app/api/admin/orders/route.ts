@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     items: totals.lineItems.map((l) => ({
       productId: l.product.id, productName: l.product.name, productSku: l.product.sku, productType: l.product.type,
       quantity: l.quantity, unitPrice: l.unitPrice, taxRate: l.taxRate, taxAmount: l.taxAmount, total: l.lineTotal,
-      isPreOrder: l.isPreOrder, preOrderDispatchDate: l.product.preOrderDispatchDate,
+      isPreOrder: l.isPreOrder, preOrderDispatchDate: l.product.preOrderDispatchDate, lineMeta: l.lineMeta,
     })),
   })
 

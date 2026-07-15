@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getCart, setLineQuantity, removeFromCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
+import type { LineMeta } from '@/modules/shop/lib/types'
 
 // Full cart-display island. ONE render path, shared by the Puck editor preview
 // (seeded with SAMPLE_LINES, no fetch, controls inert) and the live frontend
@@ -14,7 +15,13 @@ type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
   lineSubtotal: number; available: boolean; availabilityReason: string | null
   isPreOrder: boolean; imageUrl: string | null
+  lineId?: string | null; lineMeta?: LineMeta | null
 }
+
+// A personalised line is keyed by its lineId so two of the same product with
+// different options are targeted/removed independently; plain lines fall back
+// to productId exactly as before.
+const lineKey = (l: Pick<ValidatedLine, 'productId' | 'lineId'>) => l.lineId ?? l.productId
 
 // All look/behaviour knobs. Every value is plain and serialisable, so this whole
 // object crosses the RSC boundary from the server wrapper into the client island.
@@ -184,7 +191,24 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
         {showUnitPrice && (
           <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>{money(line.unitPrice)} each</p>
         )}
+        {renderLineMeta(line)}
       </>
+    )
+  }
+
+  // Generic personalisation display: label/value pairs the resolver normalised.
+  // A field with an href renders as a link (e.g. an uploaded artwork file).
+  function renderLineMeta(line: ValidatedLine) {
+    if (!line.lineMeta?.fields?.length) return null
+    return (
+      <ul style={{ listStyle: 'none', margin: '0.25rem 0 0', padding: 0, display: 'grid', gap: '0.125rem' }}>
+        {line.lineMeta.fields.map((f, i) => (
+          <li key={i} style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+            <span style={{ fontWeight: 500 }}>{f.label}:</span>{' '}
+            {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
+          </li>
+        ))}
+      </ul>
     )
   }
 
@@ -196,16 +220,16 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
       const btn = { width: 28, height: 28, borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-bg-subtle)', cursor: preview ? 'default' : 'pointer', lineHeight: 1 } as const
       return (
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-          <button type="button" aria-label="Decrease quantity" onClick={() => onQty(line.productId, line.quantity - 1)} style={btn}>−</button>
+          <button type="button" aria-label="Decrease quantity" onClick={() => onQty(lineKey(line), line.quantity - 1)} style={btn}>−</button>
           <span style={{ minWidth: 24, textAlign: 'center' }}>{line.quantity}</span>
-          <button type="button" aria-label="Increase quantity" onClick={() => onQty(line.productId, line.quantity + 1)} style={btn}>＋</button>
+          <button type="button" aria-label="Increase quantity" onClick={() => onQty(lineKey(line), line.quantity + 1)} style={btn}>＋</button>
         </div>
       )
     }
     return (
       <input
         type="number" min={0} value={line.quantity} readOnly={preview}
-        onChange={(e) => onQty(line.productId, Number(e.target.value))}
+        onChange={(e) => onQty(lineKey(line), Number(e.target.value))}
         style={{ width: 56, padding: '0.375rem', borderRadius: 6, border: '1px solid var(--color-border)' }}
       />
     )
@@ -215,7 +239,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
     if (!showRemove) return null
     return (
       <button
-        type="button" aria-label="Remove item" title="Remove" onClick={() => onRemove(line.productId)}
+        type="button" aria-label="Remove item" title="Remove" onClick={() => onRemove(lineKey(line))}
         style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: preview ? 'default' : 'pointer', fontSize: removeIcon ? '1.1rem' : '0.9375rem' }}
       >
         {removeIcon ? '🗑' : 'Remove'}
@@ -232,7 +256,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: density.gap }}>
         {lines.map((line) => (
           <li
-            key={line.productId}
+            key={lineKey(line)}
             style={{
               display: 'flex', gap: '1rem', alignItems: 'center', paddingBottom: density.padY,
               ...(layoutStyle === 'cards'
@@ -272,7 +296,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
           </thead>
           <tbody>
             {lines.map((line) => (
-              <tr key={line.productId}>
+              <tr key={lineKey(line)}>
                 <td style={td}>
                   <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                     {renderThumb(line)}

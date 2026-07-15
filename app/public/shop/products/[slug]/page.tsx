@@ -20,7 +20,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function ShopProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const product = await getProductBySlug(slug)
-  if (!product || product.status !== 'ACTIVE') notFound()
+  // Catalogue-hidden rows (variant children) are reached only through their
+  // parent's selector, never on their own URL.
+  if (!product || product.status !== 'ACTIVE' || product.catalogueHidden) notFound()
 
   const layout = await resolveThemeLayout('shopProduct', { moduleName: 'shop', slug })
   if (!layout?.builderData) notFound()

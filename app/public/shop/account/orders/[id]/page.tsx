@@ -28,9 +28,21 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
       <p>Status: {order.status}</p>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.5rem' }}>
         {items.map((item) => (
-          <li key={item.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>{item.productName} x{item.quantity}</span>
-            <span>{formatMoney(item.total, config.currencySymbol)}</span>
+          <li key={item.id} style={{ display: 'grid', gap: '0.125rem' }}>
+            <span style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>{item.productName} x{item.quantity}</span>
+              <span>{formatMoney(item.total, config.currencySymbol)}</span>
+            </span>
+            {item.lineMeta?.fields?.length ? (
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.125rem' }}>
+                {item.lineMeta.fields.map((f, i) => (
+                  <li key={i} style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                    <span style={{ fontWeight: 500 }}>{f.label}:</span>{' '}
+                    {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </li>
         ))}
       </ul>

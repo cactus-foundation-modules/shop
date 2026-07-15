@@ -6,6 +6,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   const { slug } = await params
   const collection = await getCollectionBySlug(slug)
   if (!collection) return errorResponse('Collection not found', 404)
-  const { products } = await listProducts({ status: 'ACTIVE', collectionSlug: slug, perPage: 100 })
+  const { products } = await listProducts({ status: 'ACTIVE', collectionSlug: slug, perPage: 100, excludeHidden: true })
   return NextResponse.json({ collection, products })
 }

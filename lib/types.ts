@@ -4,6 +4,14 @@
 
 export type PuckData = { root: { props?: Record<string, unknown> }; content: unknown[]; zones?: Record<string, unknown> }
 
+// Per-line personalisation, normalised for generic display. A shop.cart-line-resolver
+// provider (e.g. shop-variations) produces this from the shopper's raw inputs; shop
+// snapshots it onto the order line (shp_order_items.line_meta) and renders the
+// label/value pairs wherever it lists line items. A `href` renders the value as a
+// download link (used by file-upload personalisation).
+export type LineMetaField = { label: string; value: string; href?: string }
+export type LineMeta = { fields: LineMetaField[] }
+
 export type ShpAddress = {
   firstName: string
   lastName: string
@@ -62,6 +70,9 @@ export type ShpProduct = {
   upsellMode: ShpRecommendationMode
   relatedLimit: number
   upsellLimit: number
+  // Purchasable but hidden from the catalogue (grid/search/sitemap/own URL).
+  // Backs shop-variations child rows; false for ordinary products.
+  catalogueHidden: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -231,6 +242,8 @@ export type ShpOrderItem = {
   refundedQty: number
   isPreOrder: boolean
   preOrderDispatchDate: Date | null
+  // Personalisation captured at add-to-cart, priced server-side. NULL for plain lines.
+  lineMeta: LineMeta | null
 }
 
 export type ShpRefundStatus = 'PENDING' | 'COMPLETED' | 'FAILED'

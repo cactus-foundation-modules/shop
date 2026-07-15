@@ -5,7 +5,7 @@ import { formatMoney } from '@/modules/shop/lib/money'
 
 type OrderStatusResponse = {
   order: { orderNumber: string; total: string; paymentMethod: string; paymentStatus: string }
-  items: Array<{ productName: string; quantity: number; total: string }>
+  items: Array<{ productName: string; quantity: number; total: string; lineMeta?: { fields: Array<{ label: string; value: string; href?: string }> } | null }>
   instructions: string | null
   currencySymbol: string
 }
@@ -47,9 +47,21 @@ export function OrderConfirmationClient() {
       <p style={{ color: 'var(--color-text-muted)' }}>Order <strong>{data.order.orderNumber}</strong></p>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.375rem' }}>
         {data.items.map((item, i) => (
-          <li key={i} style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>{item.productName} x{item.quantity}</span>
-            <span>{formatMoney(item.total, data.currencySymbol)}</span>
+          <li key={i} style={{ display: 'grid', gap: '0.125rem' }}>
+            <span style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>{item.productName} x{item.quantity}</span>
+              <span>{formatMoney(item.total, data.currencySymbol)}</span>
+            </span>
+            {item.lineMeta?.fields?.length ? (
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.125rem' }}>
+                {item.lineMeta.fields.map((f, j) => (
+                  <li key={j} style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                    <span style={{ fontWeight: 500 }}>{f.label}:</span>{' '}
+                    {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </li>
         ))}
       </ul>

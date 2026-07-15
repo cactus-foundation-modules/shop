@@ -13,6 +13,9 @@ export async function GET(request: NextRequest) {
     status: (params.get('status') as never) ?? undefined,
     categorySlug: params.get('category') ?? undefined,
     perPage: 10_000,
+    // Variant children aren't standalone catalogue rows; they export via
+    // Product options' own CSV, not the core product export.
+    excludeHidden: true,
   })
 
   const [categories, tags, collections] = await Promise.all([listCategories(), listTags(), listCollections()])

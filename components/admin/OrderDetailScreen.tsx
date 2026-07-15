@@ -5,7 +5,8 @@ import { RefundModal } from '@/modules/shop/components/admin/RefundModal'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 
-type OrderItem = { id: string; productName: string; quantity: number; unitPrice: string; total: string; refundedQty: number; isPreOrder: boolean }
+type LineMetaField = { label: string; value: string; href?: string }
+type OrderItem = { id: string; productName: string; quantity: number; unitPrice: string; total: string; refundedQty: number; isPreOrder: boolean; lineMeta?: { fields: LineMetaField[] } | null }
 type OrderDetail = {
   order: {
     id: string; orderNumber: string; status: string; paymentStatus: string; paymentMethod: string
@@ -83,7 +84,19 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
         <tbody>
           {data.items.map((item) => (
             <tr key={item.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-              <td style={{ padding: '0.5rem' }}>{item.productName}{item.isPreOrder && ' (pre-order)'}</td>
+              <td style={{ padding: '0.5rem' }}>
+                {item.productName}{item.isPreOrder && ' (pre-order)'}
+                {item.lineMeta?.fields?.length ? (
+                  <ul style={{ listStyle: 'none', margin: '0.25rem 0 0', padding: 0, display: 'grid', gap: '0.125rem' }}>
+                    {item.lineMeta.fields.map((f, i) => (
+                      <li key={i} style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                        <span style={{ fontWeight: 500 }}>{f.label}:</span>{' '}
+                        {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </td>
               <td>{item.quantity}</td>
               <td>{formatMoney(item.total, currencySymbol)}</td>
               <td>{item.refundedQty}</td>

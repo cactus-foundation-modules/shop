@@ -4,7 +4,7 @@ import { resolveCartLines, resolveDiscounts } from '@/modules/shop/lib/checkout'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 
 const Body = z.object({
-  lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1) })),
+  lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1), lineId: z.string().optional(), meta: z.record(z.unknown()).optional() })),
   couponCode: z.string().min(1),
   customerEmail: z.string().email().nullable().optional(),
 })

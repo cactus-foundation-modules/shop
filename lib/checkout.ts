@@ -6,8 +6,9 @@ import { getTaxRateForZoneAndClass, listShippingRatesForZone, resolveWeightBased
 import { getCouponByCode, listAutomaticDiscounts } from '@/modules/shop/lib/db/discounts'
 import { countPriorCouponOrdersByEmail } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { getCartLineResolvers, resolveLineMeta } from '@/modules/shop/lib/line-meta'
 import type { CartLine } from '@/modules/shop/components/public/cart'
-import type { ShpProduct } from '@/modules/shop/lib/types'
+import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 
 // Money is held as floating-point pounds throughout; round every figure that
 // gets persisted or charged to 2dp so the stored/charged total can't drift a
@@ -24,11 +25,17 @@ export type ResolvedCartLine = {
   available: boolean
   availabilityReason?: string
   isPreOrder: boolean
+  // Personalisation carried from the cart line: the stable client key and the
+  // normalised, server-priced meta (null for a plain line). unitPrice already
+  // includes any personalisation price adjustment.
+  lineId?: string
+  lineMeta: LineMeta | null
 }
 
 // Re-checks stock/price/status for every cart line - the only source of
 // truth the checkout flow trusts (spec 8.1 POST /cart/validate).
 export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLine[]> {
+  const resolvers = await getCartLineResolvers()
   const results: ResolvedCartLine[] = []
   for (const line of cart) {
     const product = await getProductById(line.productId)
@@ -59,7 +66,17 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       availabilityReason = 'Pre-order is no longer available'
     }
 
-    const unitPrice = Number(product.price)
+    // Personalisation add-ons: a registered resolver validates the shopper's
+    // inputs and returns a server-authoritative price adjustment. An invalid
+    // input fails the line just like an out-of-stock one. The client never
+    // sends a price - only the raw meta it collected.
+    const metaResolution = await resolveLineMeta(product, line.meta, resolvers)
+    if (!metaResolution.valid) {
+      available = false
+      availabilityReason = metaResolution.reason ?? 'Please check the options on this item'
+    }
+
+    const unitPrice = Number(product.price) + metaResolution.priceAdjust
     results.push({
       product,
       quantity: line.quantity,
@@ -68,6 +85,8 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       available,
       availabilityReason,
       isPreOrder: product.isPreOrder,
+      lineId: line.lineId,
+      lineMeta: metaResolution.persistMeta,
     })
   }
   return results

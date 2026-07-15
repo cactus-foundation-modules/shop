@@ -43,6 +43,7 @@ function mapProduct(r: Record<string, unknown>): ShpProduct {
     upsellMode: r.upsell_mode as ShpProduct['upsellMode'],
     relatedLimit: r.related_limit as number,
     upsellLimit: r.upsell_limit as number,
+    catalogueHidden: (r.catalogue_hidden as boolean | null) ?? false,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
   }
@@ -127,6 +128,10 @@ export type ListProductsFilter = {
   collectionSlug?: string
   search?: string
   preOrder?: boolean
+  // Exclude catalogue-hidden rows (the variant child products). The public
+  // grid, search and admin product list pass true; variations' own queries
+  // pass false to reach the children.
+  excludeHidden?: boolean
 }
 
 export async function listProducts(filter: ListProductsFilter): Promise<{ products: ShpProduct[]; total: number }> {
@@ -140,6 +145,7 @@ export async function listProducts(filter: ListProductsFilter): Promise<{ produc
   if (filter.status) conditions.push(Prisma.sql`p."status" = ${filter.status}`)
   if (filter.type) conditions.push(Prisma.sql`p."type" = ${filter.type}`)
   if (filter.preOrder) conditions.push(Prisma.sql`p."is_pre_order" = true`)
+  if (filter.excludeHidden) conditions.push(Prisma.sql`p."catalogue_hidden" = false`)
   if (filter.search) conditions.push(Prisma.sql`(p."name" ILIKE ${`%${filter.search}%`} OR p."sku" ILIKE ${`%${filter.search}%`})`)
   if (filter.categorySlug) {
     conditions.push(Prisma.sql`p."id" IN (
@@ -199,6 +205,9 @@ export type CreateProductInput = {
   stockCount?: number | null
   lowStockThreshold?: number | null
   outOfStockBehaviour?: ShpProduct['outOfStockBehaviour']
+  weight?: number | null
+  // Create the row hidden from the catalogue (used for variation child products).
+  catalogueHidden?: boolean
 }
 
 export async function createProduct(data: CreateProductInput): Promise<{ id: string }> {
@@ -206,11 +215,13 @@ export async function createProduct(data: CreateProductInput): Promise<{ id: str
     INSERT INTO "shp_products" (
       "name", "slug", "type", "status", "description", "short_description", "sku", "barcode",
       "price", "compare_at_price", "cost_price", "tax_class_id",
-      "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour"
+      "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
+      "weight", "catalogue_hidden"
     ) VALUES (
       ${data.name}, ${data.slug}, ${data.type}, ${data.status ?? 'DRAFT'}, ${data.description ?? null}, ${data.shortDescription ?? null}, ${data.sku ?? null}, ${data.barcode ?? null},
       ${data.price}, ${data.compareAtPrice ?? null}, ${data.costPrice ?? null}, ${data.taxClassId ?? null},
-      ${data.trackInventory ?? false}, ${data.stockCount ?? null}, ${data.lowStockThreshold ?? null}, ${data.outOfStockBehaviour ?? 'BLOCK'}
+      ${data.trackInventory ?? false}, ${data.stockCount ?? null}, ${data.lowStockThreshold ?? null}, ${data.outOfStockBehaviour ?? 'BLOCK'},
+      ${data.weight ?? null}, ${data.catalogueHidden ?? false}
     )
     RETURNING "id"
   `
@@ -257,6 +268,7 @@ export type UpdateProductInput = Partial<{
   upsellMode: ShpProduct['upsellMode']
   relatedLimit: number
   upsellLimit: number
+  catalogueHidden: boolean
 }>
 
 const COLUMN_MAP: Record<keyof UpdateProductInput, string> = {
@@ -270,7 +282,7 @@ const COLUMN_MAP: Record<keyof UpdateProductInput, string> = {
   metaDescription: 'meta_description', ogImageId: 'og_image_id', masterCategoryId: 'master_category_id', isPreOrder: 'is_pre_order',
   preOrderDispatchDate: 'pre_order_dispatch_date', preOrderNote: 'pre_order_note',
   preOrderMaxQuantity: 'pre_order_max_quantity', relatedMode: 'related_mode', upsellMode: 'upsell_mode',
-  relatedLimit: 'related_limit', upsellLimit: 'upsell_limit',
+  relatedLimit: 'related_limit', upsellLimit: 'upsell_limit', catalogueHidden: 'catalogue_hidden',
 }
 
 export async function updateProduct(id: string, fields: UpdateProductInput): Promise<void> {

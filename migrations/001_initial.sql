@@ -151,6 +151,10 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
     "related_limit" INTEGER NOT NULL DEFAULT 4,
     "upsell_limit" INTEGER NOT NULL DEFAULT 4,
 
+    -- Hidden from the catalogue (grid/search/sitemap/own URL) while still
+    -- purchasable. Backs the shop-variations child rows; false for everything else.
+    "catalogue_hidden" BOOLEAN NOT NULL DEFAULT false,
+
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -171,6 +175,7 @@ CREATE INDEX IF NOT EXISTS "shp_products_type_idx" ON "shp_products" ("type");
 CREATE INDEX IF NOT EXISTS "shp_products_tax_class_id_idx" ON "shp_products" ("tax_class_id");
 CREATE INDEX IF NOT EXISTS "shp_products_digital_file_id_idx" ON "shp_products" ("digital_file_id");
 CREATE INDEX IF NOT EXISTS "shp_products_is_pre_order_idx" ON "shp_products" ("is_pre_order");
+CREATE INDEX IF NOT EXISTS "shp_products_catalogue_hidden_idx" ON "shp_products" ("catalogue_hidden");
 
 -- ---------------------------------------------------------------------------
 -- Product media
@@ -420,6 +425,10 @@ CREATE TABLE IF NOT EXISTS "shp_order_items" (
     "refunded_qty" INTEGER NOT NULL DEFAULT 0,
     "is_pre_order" BOOLEAN NOT NULL DEFAULT false,
     "pre_order_dispatch_date" TIMESTAMP(3),
+    -- Normalised personalisation snapshot ({ fields: [{ label, value, href? }] })
+    -- priced server-side by a shop.cart-line-resolver provider. NULL when the
+    -- line carries no personalisation.
+    "line_meta" JSONB,
 
     CONSTRAINT "shp_order_items_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "shp_order_items_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE,

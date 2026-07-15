@@ -33,6 +33,7 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
     listProducts({
       status: 'ACTIVE',
       perPage: 60,
+      excludeHidden: true,
       ...(await resolveCategoryProductFilter(slug, config.categoryProductDisplayMode)),
     }),
     getCategoryAncestorPath(category.id),

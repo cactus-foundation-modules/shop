@@ -6,7 +6,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { formatMoney } from '@/modules/shop/lib/money'
 
 const Body = z.object({
-  lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1) })),
+  lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1), lineId: z.string().optional(), meta: z.record(z.unknown()).optional() })),
   postcode: z.string().optional(),
   shippingRateId: z.string().nullable().optional(),
   couponCode: z.string().nullable().optional(),

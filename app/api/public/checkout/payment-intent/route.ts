@@ -17,7 +17,12 @@ const AddressSchema = z.object({
 })
 
 const Body = z.object({
-  lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1) })),
+  lines: z.array(z.object({
+    productId: z.string(),
+    quantity: z.number().int().min(1),
+    lineId: z.string().optional(),
+    meta: z.record(z.unknown()).optional(),
+  })),
   customerEmail: z.string().email(),
   customerName: z.string().min(1),
   customerPhone: z.string().optional(),
@@ -99,6 +104,7 @@ export async function POST(request: NextRequest) {
       total: l.lineTotal,
       isPreOrder: l.isPreOrder,
       preOrderDispatchDate: l.product.preOrderDispatchDate,
+      lineMeta: l.lineMeta,
     })),
   })
 
