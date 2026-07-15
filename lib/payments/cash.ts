@@ -17,6 +17,7 @@ async function refundOrder(_refund: ShpRefundRequest): Promise<ShpRefundResult> 
 export const cashProvider: ShpPaymentProvider = {
   id: 'CASH',
   label: 'Cash',
+  confirmMode: 'manual',
   createIntent,
   confirmPayment,
   refundOrder,

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getShopConfigCached, getAvailablePaymentMethods } from '@/modules/shop/lib/config'
+import { getPaymentMethodLabels } from '@/modules/shop/lib/payments/registry'
 
 // Client-safe config slice the storefront needs (spec 8.1 GET /config).
 export async function GET() {
@@ -17,6 +18,7 @@ export async function GET() {
     requirePhone: config.requirePhone,
     checkoutSteps: config.checkoutSteps,
     enabledPaymentMethods,
+    paymentMethodLabels: getPaymentMethodLabels(),
     stripePublishableKey: publishableKey,
     shopStatus: config.shopStatus,
     shopClosedMessage: config.shopClosedMessage,

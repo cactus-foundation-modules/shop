@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getOrderById, markOrderPaid, markOrderPaymentFailed, markOrderAwaitingConfirmation, setOrderPaymentReference } from '@/modules/shop/lib/db/orders'
-import { paymentProviders } from '@/modules/shop/lib/payments/registry'
+import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { fulfillPaidOrder } from '@/modules/shop/lib/order-fulfillment'
 
 const Body = z.object({ orderId: z.string(), payload: z.unknown() })
@@ -16,9 +16,12 @@ export async function POST(request: NextRequest) {
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   if (order.paymentStatus === 'PAID') return NextResponse.json({ orderNumber: order.orderNumber, status: 'PAID' })
 
-  const provider = paymentProviders[order.paymentMethod]
+  const provider = getPaymentProvider(order.paymentMethod)
+  if (!provider) return NextResponse.json({ error: 'Payment method is no longer available.' }, { status: 400 })
 
-  if (order.paymentMethod === 'BANK_TRANSFER' || order.paymentMethod === 'CASH') {
+  // Manual providers (bank transfer, cash) have no automated confirmation - park
+  // the order for an admin to clear once the money actually arrives.
+  if (provider.confirmMode === 'manual') {
     await markOrderAwaitingConfirmation(order.id)
     return NextResponse.json({ orderNumber: order.orderNumber, status: 'AWAITING_CONFIRMATION' })
   }
@@ -40,6 +43,14 @@ export async function POST(request: NextRequest) {
   }
 
   if (result.providerReference) await setOrderPaymentReference(order.id, result.providerReference)
+
+  // Authorised but not yet settled (e.g. open-banking): hold at
+  // AWAITING_CONFIRMATION and let the provider's webhook flip it to PAID.
+  if (result.pending) {
+    await markOrderAwaitingConfirmation(order.id)
+    return NextResponse.json({ orderNumber: order.orderNumber, status: 'AWAITING_CONFIRMATION' })
+  }
+
   const justPaid = await markOrderPaid(order.id, result.providerReference ?? '')
   if (justPaid) await fulfillPaidOrder(order.id)
 

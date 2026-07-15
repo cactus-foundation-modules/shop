@@ -13,6 +13,14 @@ export type ShpOrderDraft = {
 export interface ShpPaymentProvider {
   id: ShpPaymentMethod
   label: string
+  // 'manual' providers (bank transfer, cash) have no automated confirmation -
+  // the confirm route parks the order at AWAITING_CONFIRMATION for an admin to
+  // clear, rather than calling confirmPayment. Defaults to 'auto' when unset.
+  confirmMode?: 'auto' | 'manual'
+  // Module-contributed providers self-gate on their own env/settings so a method
+  // can never reach checkout without being configured. Built-in providers are
+  // gated by lib/env.ts instead; when unset the method is treated as available.
+  isAvailable?(): boolean | Promise<boolean>
   createIntent(order: ShpOrderDraft): Promise<ShpPaymentIntent>
   // order carries amount/currency so providers can re-validate what was actually
   // charged against what the order costs - never trust payload alone (spec 7).
@@ -30,6 +38,10 @@ export type ShpPaymentIntent = {
 
 export type ShpPaymentResult = {
   success: boolean
+  // Confirmation is genuine but not yet final (e.g. an open-banking payment that
+  // is authorised and awaiting settlement). The confirm route parks the order at
+  // AWAITING_CONFIRMATION and lets the provider's webhook flip it to PAID.
+  pending?: boolean
   providerReference?: string
   error?: string
 }

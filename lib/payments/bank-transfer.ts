@@ -19,6 +19,7 @@ async function refundOrder(_refund: ShpRefundRequest): Promise<ShpRefundResult> 
 export const bankTransferProvider: ShpPaymentProvider = {
   id: 'BANK_TRANSFER',
   label: 'Bank transfer',
+  confirmMode: 'manual',
   createIntent,
   confirmPayment,
   refundOrder,

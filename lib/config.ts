@@ -40,8 +40,10 @@ export const ShpConfigSchema = z.object({
   requirePhone: z.boolean().default(false),
   checkoutSteps: z.array(CheckoutStepSchema).default(DEFAULT_CHECKOUT_STEPS),
 
-  // Payment methods
-  enabledPaymentMethods: z.array(z.enum(['STRIPE', 'PAYPAL', 'BANK_TRANSFER', 'CASH'])).default(['STRIPE']),
+  // Payment methods. Free-form strings rather than a closed enum so module-
+  // contributed methods (via the shop.payment-providers extension point) can be
+  // enabled here too; availability is still gated in getAvailablePaymentMethods.
+  enabledPaymentMethods: z.array(z.string()).default(['STRIPE']),
   bankTransferInstructions: z.string().default(''),
   cashInstructions: z.string().default(''),
 
@@ -117,13 +119,36 @@ export async function updateShopConfig(patch: Partial<ShpConfig>): Promise<ShpCo
   return next
 }
 
-// Enabled payment methods filtered by actual env presence - a method the
-// admin has ticked but never configured keys for can never reach checkout.
-export async function getAvailablePaymentMethods(): Promise<ShpConfig['enabledPaymentMethods']> {
+// Enabled payment methods filtered by actual availability - a method the admin
+// has ticked but never configured (Stripe/PayPal keys missing, or a module
+// provider reporting itself unconfigured) can never reach checkout.
+export async function getAvailablePaymentMethods(): Promise<string[]> {
   const config = await getShopConfigCached()
-  return config.enabledPaymentMethods.filter((method) => {
-    if (method === 'STRIPE') return isStripeConfigured()
-    if (method === 'PAYPAL') return isPayPalConfigured()
-    return true // BANK_TRANSFER / CASH need no env vars
-  })
+  // Dynamic import keeps this file free of a static registry <-> config cycle
+  // (bank-transfer / cash providers import getShopConfigCached from here).
+  const { getPaymentProvider, getAllPaymentProviders } = await import('@/modules/shop/lib/payments/registry')
+
+  const builtInIds = new Set(['STRIPE', 'PAYPAL', 'BANK_TRANSFER', 'CASH'])
+  const available: string[] = []
+
+  // Built-in methods are chosen in shop settings (enabledPaymentMethods) and
+  // gated by their env presence.
+  for (const method of config.enabledPaymentMethods) {
+    if (method === 'STRIPE') { if (isStripeConfigured()) available.push(method); continue }
+    if (method === 'PAYPAL') { if (isPayPalConfigured()) available.push(method); continue }
+    if (method === 'BANK_TRANSFER' || method === 'CASH') { available.push(method); continue } // no env vars
+    // A module method explicitly ticked in shop settings is still honoured.
+    const provider = getPaymentProvider(method)
+    if (provider && (provider.isAvailable ? await provider.isAvailable() : true)) available.push(method)
+  }
+
+  // Module-contributed methods self-manage their availability from their own
+  // settings tab (isAvailable), so they appear when configured without needing
+  // to be added to enabledPaymentMethods in shop's settings UI.
+  for (const provider of getAllPaymentProviders()) {
+    if (builtInIds.has(provider.id) || available.includes(provider.id)) continue
+    if (provider.isAvailable ? await provider.isAvailable() : true) available.push(provider.id)
+  }
+
+  return available
 }

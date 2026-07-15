@@ -4,7 +4,12 @@ import { useEffect, useRef, useState } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
 import { getCheckoutState, updateCheckoutState, isContactAndShippingComplete } from '@/modules/shop/components/public/checkout-state'
 
-type ShopClientConfig = { enabledPaymentMethods: string[]; stripePublishableKey: string | null; currencySymbol: string }
+type ShopClientConfig = { enabledPaymentMethods: string[]; paymentMethodLabels?: Record<string, string>; stripePublishableKey: string | null; currencySymbol: string }
+
+// Preferred display names for the built-in methods (kept here so the wording
+// stays exact); any other method falls back to the provider label from config,
+// then the raw code.
+const BUILT_IN_METHOD_LABELS: Record<string, string> = { STRIPE: 'Card (Stripe)', PAYPAL: 'PayPal', BANK_TRANSFER: 'Bank transfer', CASH: 'Cash' }
 
 declare global {
   interface Window {
@@ -78,8 +83,10 @@ export function CheckoutPaymentClient() {
         const elements = stripe.elements({ clientSecret: data.clientSecret })
         stripeElementsRef.current = elements
         if (elementsRef.current) elements.create('payment').mount(elementsRef.current)
-      } else if (next === 'PAYPAL' && data.approvalUrl) {
-        sessionStorage.setItem('cactus_shop_paypal_order_id', data.providerOrderId ?? '')
+      } else if (data.approvalUrl) {
+        // Any provider that returns an approval URL (PayPal, open-banking, ...)
+        // sends the shopper off-site to authorise, then back to a return URL.
+        if (next === 'PAYPAL') sessionStorage.setItem('cactus_shop_paypal_order_id', data.providerOrderId ?? '')
         window.location.href = data.approvalUrl
       } else if (data.instructions) {
         setInstructions(data.instructions)
@@ -141,7 +148,7 @@ export function CheckoutPaymentClient() {
         {(config?.enabledPaymentMethods ?? []).map((m) => (
           <label key={m} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
             <input type="radio" name="paymentMethod" checked={method === m} onChange={() => chooseMethod(m)} disabled={loading} />
-            <span>{{ STRIPE: 'Card (Stripe)', PAYPAL: 'PayPal', BANK_TRANSFER: 'Bank transfer', CASH: 'Cash' }[m] ?? m}</span>
+            <span>{BUILT_IN_METHOD_LABELS[m] ?? config?.paymentMethodLabels?.[m] ?? m}</span>
           </label>
         ))}
       </div>

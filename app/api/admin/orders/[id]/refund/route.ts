@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getOrderById, getOrderItemById, getOrderItems, updateOrderStatus } from '@/modules/shop/lib/db/orders'
 import { createRefund, listRefundsForOrder } from '@/modules/shop/lib/db/refunds'
-import { paymentProviders } from '@/modules/shop/lib/payments/registry'
+import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 
 const Body = z.object({
   reason: z.string().nullable().optional(),
@@ -53,7 +53,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'This refund would exceed the amount paid for the order.' }, { status: 400 })
   }
 
-  const provider = paymentProviders[order.paymentMethod]
+  const provider = getPaymentProvider(order.paymentMethod)
+  if (!provider) return NextResponse.json({ error: 'No payment provider is registered for this order.' }, { status: 400 })
   const result = await provider.refundOrder({
     providerReference: order.paymentReference ?? '',
     amount: totalAmount,

@@ -195,7 +195,10 @@ export type ShpAutomaticDiscount = {
 
 export type ShpOrderStatus =
   | 'PENDING' | 'PROCESSING' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | 'ON_HOLD'
-export type ShpPaymentMethod = 'STRIPE' | 'PAYPAL' | 'BANK_TRANSFER' | 'CASH'
+// Built-in method literals keep autocomplete; `(string & {})` lets module-
+// contributed providers (via the shop.payment-providers extension point) use
+// their own method codes without shop enumerating them.
+export type ShpPaymentMethod = 'STRIPE' | 'PAYPAL' | 'BANK_TRANSFER' | 'CASH' | (string & {})
 export type ShpPaymentStatus = 'PENDING' | 'PAID' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | 'FAILED' | 'AWAITING_CONFIRMATION'
 
 export type ShpOrder = {

@@ -5,7 +5,7 @@ import { findShippingZoneForPostcode, getShippingRateById } from '@/modules/shop
 import { createPendingOrder } from '@/modules/shop/lib/db/orders'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
 import { getShopConfigCached, getAvailablePaymentMethods } from '@/modules/shop/lib/config'
-import { paymentProviders } from '@/modules/shop/lib/payments/registry'
+import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 import type { ShpAddress } from '@/modules/shop/lib/types'
@@ -30,7 +30,7 @@ const Body = z.object({
   billingAddress: AddressSchema.nullable().optional(),
   shippingRateId: z.string().nullable().optional(),
   couponCode: z.string().nullable().optional(),
-  paymentMethod: z.enum(['STRIPE', 'PAYPAL', 'BANK_TRANSFER', 'CASH']),
+  paymentMethod: z.string().min(1),
 })
 
 // PROTECTED - creates the PENDING order (Q8) then the provider intent. Stock
@@ -108,7 +108,8 @@ export async function POST(request: NextRequest) {
     })),
   })
 
-  const provider = paymentProviders[data.paymentMethod]
+  const provider = getPaymentProvider(data.paymentMethod)
+  if (!provider) return NextResponse.json({ error: 'Selected payment method is not available.' }, { status: 400 })
   const intent = await provider.createIntent({
     orderId, orderNumber, amount: totals.total, currency: config.currency,
     customerEmail: data.customerEmail, customerName: data.customerName,

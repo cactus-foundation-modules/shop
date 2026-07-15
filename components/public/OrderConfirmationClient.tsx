@@ -65,7 +65,7 @@ export function OrderConfirmationClient() {
           </li>
         ))}
       </ul>
-      {isManual && data.order.paymentStatus === 'AWAITING_CONFIRMATION' && (
+      {data.order.paymentStatus === 'AWAITING_CONFIRMATION' && (
         <p style={{ background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.75rem' }}>
           Your order is awaiting payment confirmation. We&apos;ll be in touch once it clears.
         </p>
