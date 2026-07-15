@@ -72,6 +72,7 @@ export function ShopSettingsTab() {
   const [envStatus, setEnvStatus] = useState<{ stripe: boolean; paypal: boolean } | null>(null)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
+  const [saveError, setSaveError] = useState('')
   const [forbidden, setForbidden] = useState(false)
   const [subTab, setSubTab] = useState<SubTab>('general')
 
@@ -82,6 +83,7 @@ export function ShopSettingsTab() {
   const [templateActive, setTemplateActive] = useState(true)
   const [templateSaving, setTemplateSaving] = useState(false)
   const [templateMessage, setTemplateMessage] = useState('')
+  const [templateError, setTemplateError] = useState('')
 
   const [envAdminAllowed, setEnvAdminAllowed] = useState<boolean | null>(null)
   const [envKeyStatus, setEnvKeyStatus] = useState<Record<string, boolean>>({})
@@ -91,7 +93,10 @@ export function ShopSettingsTab() {
   const [envSaveError, setEnvSaveError] = useState('')
 
   useEffect(() => {
-    fetch('/api/m/shop/admin/settings').then(async (res) => {
+    // no-store: the browser must never serve a cached copy of this response, or
+    // a reload right after saving shows the pre-save values and reads as "it
+    // didn't save".
+    fetch('/api/m/shop/admin/settings', { cache: 'no-store' }).then(async (res) => {
       if (res.status === 403) { setForbidden(true); return }
       const data = await res.json()
       setConfig(data.config)
@@ -146,33 +151,54 @@ export function ShopSettingsTab() {
     setTemplateBody(t.bodyHtml)
     setTemplateActive(t.isActive)
     setTemplateMessage('')
+    setTemplateError('')
   }
 
   async function save() {
     if (!config) return
     setSaving(true)
     setMessage('')
-    const res = await fetch('/api/m/shop/admin/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) })
-    if (res.ok) {
-      setConfig((await res.json()).config)
-      setMessage('Settings saved.')
+    setSaveError('')
+    try {
+      const res = await fetch('/api/m/shop/admin/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) })
+      if (res.ok) {
+        setConfig((await res.json()).config)
+        setMessage('Settings saved.')
+      } else {
+        // Never fail silently - a swallowed non-2xx is exactly what makes a save
+        // look like it did nothing.
+        const data = await res.json().catch(() => null)
+        setSaveError(data?.error ?? `Couldn't save (error ${res.status}). Please try again.`)
+      }
+    } catch {
+      setSaveError("Couldn't reach the server. Check your connection and try again.")
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
   }
 
   async function saveTemplate() {
     if (!activeTrigger) return
     setTemplateSaving(true)
     setTemplateMessage('')
-    const res = await fetch('/api/m/shop/admin/email-templates', {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ trigger: activeTrigger, subject: templateSubject, bodyHtml: templateBody, isActive: templateActive }),
-    })
-    if (res.ok) {
-      loadTemplates()
-      setTemplateMessage('Template saved.')
+    setTemplateError('')
+    try {
+      const res = await fetch('/api/m/shop/admin/email-templates', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trigger: activeTrigger, subject: templateSubject, bodyHtml: templateBody, isActive: templateActive }),
+      })
+      if (res.ok) {
+        loadTemplates()
+        setTemplateMessage('Template saved.')
+      } else {
+        const data = await res.json().catch(() => null)
+        setTemplateError(data?.error ?? `Couldn't save (error ${res.status}). Please try again.`)
+      }
+    } catch {
+      setTemplateError("Couldn't reach the server. Check your connection and try again.")
+    } finally {
+      setTemplateSaving(false)
     }
-    setTemplateSaving(false)
   }
 
   if (forbidden) return <div>Only shop managers can view or change shop settings.</div>
@@ -193,6 +219,7 @@ export function ShopSettingsTab() {
       <TabStrip items={SUB_TABS.map((t) => ({ key: t.key, label: t.label, active: t.key === subTab, onClick: () => setSubTab(t.key) }))} />
 
       {message && <div className="alert alert-success" style={{ marginBottom: '1rem' }}>{message}</div>}
+      {saveError && <div className="alert alert-danger" style={{ marginBottom: '1rem' }}>{saveError}</div>}
 
       {subTab === 'general' && (
         <div>
@@ -473,6 +500,7 @@ export function ShopSettingsTab() {
             {activeTemplate && (
               <div className="card">
                 {templateMessage && <div className="alert alert-success">{templateMessage}</div>}
+                {templateError && <div className="alert alert-danger">{templateError}</div>}
 
                 <label style={checkboxRow}>
                   <input type="checkbox" checked={templateActive} onChange={(e) => setTemplateActive(e.target.checked)} />

@@ -111,9 +111,18 @@ export function invalidateShopConfigCache(): void {
 export async function updateShopConfig(patch: Partial<ShpConfig>): Promise<ShpConfig> {
   const current = await getShopConfig()
   const next = ShpConfigSchema.parse({ ...current, ...patch })
+  // Upsert, not a bare UPDATE. The singleton row is seeded by the init
+  // migration, but a plain "UPDATE ... WHERE id = 'singleton'" silently affects
+  // zero rows if that row is ever missing - the save returns 200 and looks fine,
+  // yet nothing persists and the next read falls back to defaults. INSERT ... ON
+  // CONFLICT makes a missing row heal itself on first save instead of quietly
+  // dropping the write.
+  const serialised = JSON.stringify(next)
   await prisma.$executeRaw`
-    UPDATE "shp_settings" SET "config" = ${JSON.stringify(next)}::jsonb, "updated_at" = CURRENT_TIMESTAMP
-    WHERE "id" = 'singleton'
+    INSERT INTO "shp_settings" ("id", "config", "updated_at")
+    VALUES ('singleton', ${serialised}::jsonb, CURRENT_TIMESTAMP)
+    ON CONFLICT ("id") DO UPDATE
+      SET "config" = ${serialised}::jsonb, "updated_at" = CURRENT_TIMESTAMP
   `
   invalidateShopConfigCache()
   return next
