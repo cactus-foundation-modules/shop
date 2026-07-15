@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { TabStrip } from '@/components/admin/TabStrip'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import type { ShpEmailTemplate, ShpEmailTemplateTrigger } from '@/modules/shop/lib/types'
@@ -67,7 +67,11 @@ const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid var(--co
 const sectionHeading: React.CSSProperties = { margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }
 const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: 'var(--form-gap)' }
 
-export function ShopSettingsTab() {
+// `hostedSettingsSlots` carries settings panels other modules contribute to a
+// named slot (see the core config page). Payment provider modules (e.g.
+// GoCardless Instant Bank Pay) target 'shop.payments' so their credentials and
+// toggle sit alongside Stripe and PayPal, not in a separate top-level tab.
+export function ShopSettingsTab({ hostedSettingsSlots }: { hostedSettingsSlots?: Record<string, ReactNode> } = {}) {
   const [config, setConfig] = useState<ShpConfig | null>(null)
   const [envStatus, setEnvStatus] = useState<{ stripe: boolean; paypal: boolean } | null>(null)
   const [saving, setSaving] = useState(false)
@@ -447,6 +451,13 @@ export function ShopSettingsTab() {
                 )
               })}
             </div>
+          )}
+
+          {hostedSettingsSlots?.['shop.payments'] && (
+            <>
+              <hr style={hr} />
+              {hostedSettingsSlots['shop.payments']}
+            </>
           )}
 
           <hr style={hr} />
