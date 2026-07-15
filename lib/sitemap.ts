@@ -1,10 +1,14 @@
 import type { MetadataRoute } from 'next'
 import { prisma } from '@/lib/db/prisma'
+import { getShopConfigCached } from '@/modules/shop/lib/config'
 
 // Active products, categories with products, and collections (spec 14.1) -
 // getPublicSitemapEntries is the actual mechanism scanned by
 // scripts/generate-module-router.mjs, not the spec's shopSitemapEntries name.
 export async function getPublicSitemapEntries(siteUrl: string): Promise<MetadataRoute.Sitemap> {
+  const shopConfig = await getShopConfigCached()
+  if (shopConfig.shopStatus === 'CLOSED') return []
+
   const products = await prisma.$queryRaw<Array<{ slug: string; updated_at: Date }>>`
     SELECT "slug", "updated_at" FROM "shp_products" WHERE "status" = 'ACTIVE' AND "catalogue_hidden" = false
   `
