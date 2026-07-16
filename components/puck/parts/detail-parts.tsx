@@ -50,6 +50,19 @@ function Style({ css }: { css: string }) {
 // feeding a percentage back into the measurement that produced it.
 const galleryCss = ({ tabletBp, mobileBp }: Breakpoints) => `
 .spd-stage-col{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - 32px - var(--spd-thumbs-h,76px));width:var(--spd-fit);max-width:100%;position:sticky;top:calc(var(--spd-header-h,96px) + 16px);display:flex;flex-direction:column;gap:12px}
+/* Sticking needs somewhere to stick: a sticky box can only travel inside its own
+   parent, so the parent has to outlive it. The gallery's parent is the Split's
+   left cell, and a Split set to align "start" (which the Default template is, so
+   the buy column starts level with the photo rather than centring against it)
+   sizes both cells to their own content. The left cell then ends exactly where
+   the photo does, the column fills it, travel is zero, and the photo scrolls
+   away with the page - sticky was quietly a no-op on the busiest layout there is.
+   Stretching just this cell hands the column the taller buy column's height to
+   travel down, and leaves the buy column's own alignment alone.
+   Selected via :has rather than fixing the template because the alignment is
+   saved per site: a shop that already has a product page keeps the align it was
+   built with, and CSS is the only half of this that reaches it. */
+:has(> .spd-stage-col){align-self:stretch}
 /* The stage simply fills that column now - the column is already the photo's
    width, so there is no slack left to centre the photo in. flex:none because the
    width is the whole mechanism - letting flex shrink the height instead would
