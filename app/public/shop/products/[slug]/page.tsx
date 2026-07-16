@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
@@ -7,10 +8,20 @@ import { getProductBySlug } from '@/modules/shop/lib/db/products'
 import { injectProductContext } from '@/modules/shop/lib/inject-product-context'
 import type { PuckData } from '@/modules/shop/lib/types'
 
+// generateMetadata and the render below both need the same row. Behind React
+// cache() that is one query per request instead of two. Wrapped here rather
+// than in the db layer: other callers there read back rows they have just
+// written, and a request-scoped memo would hand them the pre-write row.
+const getProduct = cache(getProductBySlug)
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const product = await getProductBySlug(slug)
-  if (!product) return {}
+  const product = await getProduct(slug)
+  // Mirrors the page's visibility gate below. Next currently discards this
+  // metadata once the page calls notFound(), but only while no
+  // global-not-found convention exists - adding one flips metadata resolution
+  // back to the page and would publish a hidden product's name.
+  if (!product || product.status !== 'ACTIVE' || product.catalogueHidden) return {}
   return {
     title: product.metaTitle || product.name,
     description: product.metaDescription || product.shortDescription || undefined,
@@ -19,7 +30,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function ShopProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const product = await getProductBySlug(slug)
+  const product = await getProduct(slug)
   // Catalogue-hidden rows (variant children) are reached only through their
   // parent's selector, never on their own URL.
   if (!product || product.status !== 'ACTIVE' || product.catalogueHidden) notFound()
