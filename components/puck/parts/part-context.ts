@@ -34,6 +34,10 @@ export type DetailPartContext = {
   // shop-only site and for every unclaimed product, where the parts below render
   // shop's own markup unchanged. Resolved once per page, not once per part.
   slot: ShopDetailSlot | null
+  // Every block type in the layout being rendered, passed through to any slot
+  // component so a provider can stand down a piece the author has already placed
+  // as a block of its own. See SlotBase in lib/detail-slot.ts.
+  layoutBlockTypes: string[]
 }
 
 // Injected onto every Product Card part-block, once per product, when a card

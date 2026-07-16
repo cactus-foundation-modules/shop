@@ -63,6 +63,9 @@ export function ShopDetailGallery(props: GalleryProps) {
 export function ShopDetailGalleryRsc(props: GalleryProps) {
   const ctx = props._ctx
   if (!ctx) return null
+  // The layout already carries the provider's own gallery block, so that one
+  // owns the job and this part steps aside entirely - see `covered`.
+  if (ctx.slot?.covered.includes('Gallery')) return null
   // A claimed product's image follows the shopper's chosen combination, so the
   // provider's gallery replaces ours - styled with our classes so it still looks
   // like this layout's gallery.
@@ -75,6 +78,7 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
           slug={ctx.product.slug}
           productId={ctx.product.id}
           currencySymbol={ctx.currencySymbol}
+          layoutBlockTypes={ctx.layoutBlockTypes}
           productName={ctx.product.name}
           images={ctx.images}
           shape={props.shape}
@@ -246,6 +250,10 @@ export function ShopDetailPriceRsc(props: PriceProps) {
   const { product, currencySymbol, hasWas, savePct } = ctx
   const showCompare = props.showCompare !== 'no'
   const showSave = props.showSave !== 'no'
+  // The layout already carries the provider's own price block. Rendering our
+  // static parent price beside it would put two different figures for the one
+  // product on the page, so this part steps aside - see `covered`.
+  if (ctx.slot?.covered.includes('Price')) return null
   // A claimed product is priced by the chosen combination, so our static price
   // would be wrong the moment the shopper picks an option.
   const SlotPrice = ctx.slot?.Price
@@ -257,6 +265,7 @@ export function ShopDetailPriceRsc(props: PriceProps) {
           slug={product.slug}
           productId={product.id}
           currencySymbol={currencySymbol}
+          layoutBlockTypes={ctx.layoutBlockTypes}
           basePrice={product.price}
           compareAtPrice={showCompare && hasWas ? product.compareAtPrice : null}
           savePct={showSave ? savePct : null}
@@ -398,6 +407,9 @@ export function ShopDetailAddToCartRsc(props: AddProps) {
   const { product, outOfStock } = ctx
   const showStepper = props.showStepper !== 'no'
   const label = product.isPreOrder ? 'Pre-order now' : 'Add to basket'
+  // The layout already carries the provider's own buy block, so that one owns
+  // the purchase and this part steps aside - see `covered`.
+  if (ctx.slot?.covered.includes('PurchaseArea')) return null
   // A claimed product is bought as a chosen combination, and its availability
   // lives on that combination rather than on the parent row - so the provider
   // owns this whole area, our out-of-stock gate included. Gating on the parent
@@ -411,6 +423,7 @@ export function ShopDetailAddToCartRsc(props: AddProps) {
           slug={product.slug}
           productId={product.id}
           currencySymbol={ctx.currencySymbol}
+          layoutBlockTypes={ctx.layoutBlockTypes}
           showStepper={showStepper}
           label={label}
           classNames={{ row: 'spd-buy-row', stepper: 'spd-stepper', add: 'spd-add', outOfStock: 'spd-oos' }}

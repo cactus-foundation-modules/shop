@@ -9,7 +9,7 @@ import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { injectShopProductDetailEmbed } from '@/modules/shop/lib/inject-part-context'
-import { resolveShopDetailSlot } from '@/modules/shop/lib/detail-slot'
+import { resolveShopDetailProvider, narrowShopDetailSlot, collectLayoutBlockTypes } from '@/modules/shop/lib/detail-slot'
 import type { PuckData } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { shopProductDetailPuckComponent, type ShopProductDetailProps } from './ShopProductDetail'
@@ -38,14 +38,17 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   const product = await getProductBySlug(props.productSlug)
   if (!product) return null
 
-  const [media, config, bp, tags, tagIds, template, slot] = await Promise.all([
+  // The claim needs only the product, so it still resolves alongside the
+  // template; which of its slots the layout has already covered is decided
+  // below, once the template's blocks are known.
+  const [media, config, bp, tags, tagIds, template, provider] = await Promise.all([
     getProductMedia(product.id),
     getShopConfigCached(),
     getShopBreakpoints(),
     listTags(),
     getProductTagIds(product.id),
     resolveDetailTemplate(props.layoutRef, props.productSlug),
-    resolveShopDetailSlot(product),
+    resolveShopDetailProvider(product),
   ])
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
   const tagSlugs = tagIds.map((id) => tagById.get(id)).filter((s): s is string => Boolean(s))
@@ -92,6 +95,9 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
 
   if (!template) return null
 
+  const blockTypes = collectLayoutBlockTypes(template)
+  const slot = narrowShopDetailSlot(provider, blockTypes)
+
   const ctx: DetailPartContext = {
     product,
     images,
@@ -104,6 +110,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     hasWas,
     savePct,
     slot,
+    layoutBlockTypes: [...blockTypes],
   }
   const data = injectShopProductDetailEmbed(template, ctx)
 

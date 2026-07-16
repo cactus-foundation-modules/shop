@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "publicBasePath": "shop",
@@ -111,7 +111,7 @@
       { "key": "shopConfirmation", "label": "Confirmation", "starterImport": "./lib/starterLayouts", "starterExport": "shopConfirmationStarters" },
       { "key": "shopCart", "label": "Cart", "starterImport": "./lib/starterLayouts", "starterExport": "shopCartStarters" },
       { "key": "shopProductDetail", "label": "Product Detail", "starterImport": "./lib/starterLayouts", "starterExport": "shopProductDetailStarters" },
-      { "key": "shopProductCard", "label": "Product Card", "starterImport": "./lib/starterLayouts", "starterExport": "shopProductCardStarters" }
+      { "key": "shopProductCard", "label": "Product Card", "starterImport": "./lib/starterLayouts", "starterExport": "shopProductCardStarters", "editorPreview": { "className": "shop-card", "maxWidth": 340 } }
     ]
   },
   "extensionPoints": [

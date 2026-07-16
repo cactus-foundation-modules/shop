@@ -32,7 +32,11 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
 .shop-card-img.shape-landscape{aspect-ratio:4/3}
 .shop-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s ease}
 .shop-card:hover .shop-card-img img{transform:scale(1.03)}
-.shop-card-badge{position:absolute;top:10px;left:10px;z-index:3;font-size:12px;font-weight:600;line-height:1;padding:5px 9px;border-radius:6px}
+/* !important: the editor sets position:relative inline on every part root (see
+   dragRefOf). The badge and the fill image are the two that must position
+   against the card instead, so they have to outrank it. No-op on the live page,
+   where nothing sets an inline position. */
+.shop-card-badge{position:absolute !important;top:10px;left:10px;z-index:3;font-size:12px;font-weight:600;line-height:1;padding:5px 9px;border-radius:6px}
 .shop-card-badge-new{background:var(--color-primary);color:var(--color-on-primary)}
 .shop-card-badge-low{background:var(--color-warning-subtle);color:var(--color-warning);border:1px solid var(--color-warning-border)}
 .shop-card-badge-trade{background:var(--color-fg);color:var(--color-bg)}
@@ -55,7 +59,7 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
 
 /* Overlay: image fills the card, text floats over a surface-colour fade. */
 .shop-card:has(.shop-card-img.fill-mode){aspect-ratio:3/4;padding-bottom:16px}
-.shop-card-img.fill-mode{position:absolute;inset:0;aspect-ratio:auto;height:100%}
+.shop-card-img.fill-mode{position:absolute !important;inset:0;aspect-ratio:auto;height:100%}
 .shop-card-img.fill-mode .shop-card-scrim{position:absolute;left:0;right:0;bottom:0;height:60%;background:linear-gradient(transparent,var(--color-surface) 72%)}
 .shop-card-img.fill-mode ~ *{position:relative;z-index:2}
 .shop-card-img.fill-mode ~ .shop-card-name{margin-top:auto}
@@ -63,6 +67,24 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
 @media (max-width:${tabletBp}){.shop-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:${mobileBp}){.shop-grid{grid-template-columns:1fr}}
 `
+}
+
+// Every part below is declared `inline: true` and attaches `puck.dragRef` to its
+// own root element. That is not cosmetic. Without it the editor wraps each part
+// in a <div> of its own, which lands BETWEEN `.shop-card` and the part - and the
+// card's whole design is the container arranging its direct children. Wrapped,
+// the image is no longer a grid item (so `beside` never puts it in column one),
+// `~` never sees a sibling, and the wrapper Puck gives `position: relative`
+// becomes the containing block the `fill` image stretches to instead of the
+// card. Every look collapsed to "image on top". Live has no such wrapper, so
+// this is also what keeps the editor's markup identical to the storefront's.
+type PuckPart = { puck?: { dragRef?: ((element: Element | null) => void) | null } }
+
+// Puck also stamps `position: relative` inline onto that same element, which
+// outranks any stylesheet rule - hence the two `!important`s in the CSS above,
+// on the only parts that must position against the card rather than themselves.
+function dragRefOf(props: PuckPart) {
+  return props.puck?.dragRef ?? undefined
 }
 
 function Style({ css }: { css: string }) {
@@ -84,7 +106,7 @@ const yesNo = [
 // Image (carries the card's overall layout via its display mode)
 // ---------------------------------------------------------------------------
 
-type ImageProps = { _ctx?: CardPartContext; display?: string; shape?: string }
+type ImageProps = PuckPart & { _ctx?: CardPartContext; display?: string; shape?: string }
 
 function imgClass({ display, shape }: ImageProps): string {
   const mode = display === 'beside' ? ' beside-mode' : display === 'fill' ? ' fill-mode' : ''
@@ -99,7 +121,7 @@ export function ShopCardImage(props: ImageProps) {
   return (
     <>
       <EditorStyle ctx={ctx} />
-      <div className={imgClass(props)}>
+      <div className={imgClass(props)} ref={dragRefOf(props)}>
         {ctx?.image && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={ctx.image.url} alt={ctx.image.alt} />
@@ -112,6 +134,7 @@ export function ShopCardImage(props: ImageProps) {
 
 export const shopCardImagePuckComponent = {
   label: 'Card: Image',
+  inline: true,
   fields: {
     display: { type: 'select' as const, label: 'Card layout', options: [{ value: 'standard', label: 'Image on top' }, { value: 'beside', label: 'Image beside text' }, { value: 'fill', label: 'Image fills card (overlay)' }] },
     shape: { type: 'select' as const, label: 'Image shape (top layout only)', options: [{ value: 'landscape', label: 'Landscape' }, { value: 'square', label: 'Square' }, { value: 'portrait', label: 'Portrait' }] },
@@ -125,9 +148,10 @@ export const shopCardImagePuckRscComponent = { ...shopCardImagePuckComponent, re
 // Badge
 // ---------------------------------------------------------------------------
 
-type CardPartProps = { _ctx?: CardPartContext }
+type CardPartProps = PuckPart & { _ctx?: CardPartContext }
 
-export function ShopCardBadge({ _ctx }: CardPartProps) {
+export function ShopCardBadge(props: CardPartProps) {
+  const _ctx = props._ctx
   const badge = _ctx?.badge
   // In the editor (no ctx) show a sample so the part is visible; live shows the
   // real badge, or nothing when the product has none.
@@ -136,35 +160,35 @@ export function ShopCardBadge({ _ctx }: CardPartProps) {
   return (
     <>
       <EditorStyle ctx={_ctx} />
-      <span className={`shop-card-badge shop-card-badge-${shown.variant}`}>{shown.label}</span>
+      <span className={`shop-card-badge shop-card-badge-${shown.variant}`} ref={dragRefOf(props)}>{shown.label}</span>
     </>
   )
 }
 
-export const shopCardBadgePuckComponent = { label: 'Card: Badge', fields: {}, defaultProps: {}, render: ShopCardBadge }
+export const shopCardBadgePuckComponent = { label: 'Card: Badge', inline: true, fields: {}, defaultProps: {}, render: ShopCardBadge }
 export const shopCardBadgePuckRscComponent = { ...shopCardBadgePuckComponent, render: ShopCardBadge }
 
 // ---------------------------------------------------------------------------
 // Name
 // ---------------------------------------------------------------------------
 
-export function ShopCardName({ _ctx }: CardPartProps) {
+export function ShopCardName(props: CardPartProps) {
   return (
     <>
-      <EditorStyle ctx={_ctx} />
-      <h3 className="shop-card-name">{_ctx?.product.name ?? 'Product name'}</h3>
+      <EditorStyle ctx={props._ctx} />
+      <h3 className="shop-card-name" ref={dragRefOf(props)}>{props._ctx?.product.name ?? 'Product name'}</h3>
     </>
   )
 }
 
-export const shopCardNamePuckComponent = { label: 'Card: Name', fields: {}, defaultProps: {}, render: ShopCardName }
+export const shopCardNamePuckComponent = { label: 'Card: Name', inline: true, fields: {}, defaultProps: {}, render: ShopCardName }
 export const shopCardNamePuckRscComponent = { ...shopCardNamePuckComponent, render: ShopCardName }
 
 // ---------------------------------------------------------------------------
 // Price (price + compare-at)
 // ---------------------------------------------------------------------------
 
-type CardPriceProps = { _ctx?: CardPartContext; showCompare?: string }
+type CardPriceProps = PuckPart & { _ctx?: CardPartContext; showCompare?: string }
 
 export function ShopCardPrice(props: CardPriceProps) {
   const ctx = props._ctx
@@ -175,7 +199,7 @@ export function ShopCardPrice(props: CardPriceProps) {
   return (
     <>
       <EditorStyle ctx={ctx} />
-      <div className="shop-card-pricerow">
+      <div className="shop-card-pricerow" ref={dragRefOf(props)}>
         <span className="shop-card-price">{formatMoney(price, symbol)}</span>
         {showCompare && compare && (
           <span className="shop-card-compare">{formatMoney(compare, symbol)}</span>
@@ -187,6 +211,7 @@ export function ShopCardPrice(props: CardPriceProps) {
 
 export const shopCardPricePuckComponent = {
   label: 'Card: Price',
+  inline: true,
   fields: {
     showCompare: { type: 'select' as const, label: 'Show "was" price', options: yesNo },
   },
@@ -199,26 +224,27 @@ export const shopCardPricePuckRscComponent = { ...shopCardPricePuckComponent, re
 // Blurb (short description)
 // ---------------------------------------------------------------------------
 
-export function ShopCardBlurb({ _ctx }: CardPartProps) {
+export function ShopCardBlurb(props: CardPartProps) {
+  const _ctx = props._ctx
   // Live: hide when the product has no short description. Editor: show sample.
   if (_ctx && !_ctx.product.shortDescription) return null
   const text = _ctx?.product.shortDescription ?? 'A short line about this product.'
   return (
     <>
       <EditorStyle ctx={_ctx} />
-      <p className="shop-card-blurb">{text}</p>
+      <p className="shop-card-blurb" ref={dragRefOf(props)}>{text}</p>
     </>
   )
 }
 
-export const shopCardBlurbPuckComponent = { label: 'Card: Short description', fields: {}, defaultProps: {}, render: ShopCardBlurb }
+export const shopCardBlurbPuckComponent = { label: 'Card: Short description', inline: true, fields: {}, defaultProps: {}, render: ShopCardBlurb }
 export const shopCardBlurbPuckRscComponent = { ...shopCardBlurbPuckComponent, render: ShopCardBlurb }
 
 // ---------------------------------------------------------------------------
 // Spec link / CTA (a labelled affordance - the whole card is the real link)
 // ---------------------------------------------------------------------------
 
-type CtaProps = { _ctx?: CardPartContext; label?: string }
+type CtaProps = PuckPart & { _ctx?: CardPartContext; label?: string }
 
 function CtaArrow() {
   return (
@@ -232,7 +258,7 @@ export function ShopCardCta(props: CtaProps) {
   return (
     <>
       <EditorStyle ctx={props._ctx} />
-      <span className="shop-card-cta">
+      <span className="shop-card-cta" ref={dragRefOf(props)}>
         {props.label || 'Full spec'}
         <CtaArrow />
       </span>
@@ -242,6 +268,7 @@ export function ShopCardCta(props: CtaProps) {
 
 export const shopCardCtaPuckComponent = {
   label: 'Card: Spec link',
+  inline: true,
   fields: {
     label: { type: 'text' as const, label: 'Link label' },
   },

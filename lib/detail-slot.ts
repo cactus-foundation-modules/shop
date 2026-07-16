@@ -16,7 +16,7 @@
 import type { ComponentType } from 'react'
 import { prisma } from '@/lib/db/prisma'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
-import type { ShpProduct } from '@/modules/shop/lib/types'
+import type { PuckData, ShpProduct } from '@/modules/shop/lib/types'
 
 // Handed to every slot component so a replaced part is styled by the layout it
 // sits in, not by the module that supplied it. The provider renders shop's own
@@ -53,6 +53,12 @@ type SlotBase = {
   slug: string
   productId: string
   currencySymbol: string
+  // Every block type present in the layout this part sits in. Shop reports the
+  // fact and reads nothing into it; a provider uses it to stand down the pieces
+  // of a slot the author has already placed as blocks of the provider's own (an
+  // options picker dropped in by hand, say), which is the finer-grained cousin
+  // of `coveredSlots` below.
+  layoutBlockTypes: string[]
 }
 
 export type ShopDetailGallerySlotProps = SlotBase & {
@@ -90,10 +96,24 @@ export type ShopDetailPurchaseSlotProps = SlotBase & {
   label: string
 }
 
+export type ShopDetailSlotName = 'Gallery' | 'Price' | 'PurchaseArea'
+
 export type ShopDetailPartsProvider = {
   // True when this provider owns how the product is priced and bought. Called
   // once per product page render, never per part.
   claimsProduct: (product: ShpProduct) => Promise<boolean> | boolean
+  // Which jobs the layout ALREADY does with blocks of the provider's own. Shop
+  // hands over the block types it found in the layout and gets back the slots to
+  // leave alone; it never learns which type means what, which is the whole point
+  // - shop still knows nothing about options.
+  //
+  // Shop then renders NOTHING for a covered slot, rather than falling back to
+  // its own part. Falling back is what looks like the safe choice and is not: a
+  // layout holding both shop's Price and the provider's own price block would
+  // show the parent's static price next to the chosen combination's, so the
+  // shopper reads two different prices for the one product. The author placed
+  // the provider's block for that job deliberately; it wins outright.
+  coveredSlots?: (blockTypes: Set<string>) => ShopDetailSlotName[]
   Gallery?: ComponentType<ShopDetailGallerySlotProps>
   Price?: ComponentType<ShopDetailPriceSlotProps>
   PurchaseArea?: ComponentType<ShopDetailPurchaseSlotProps>
@@ -102,16 +122,54 @@ export type ShopDetailPartsProvider = {
 // What the parts actually see: the components of the provider that claimed this
 // product, or null on a shop-only site (and on every unclaimed product), in
 // which case every part renders shop's own markup exactly as before.
-export type ShopDetailSlot = Omit<ShopDetailPartsProvider, 'claimsProduct'>
+export type ShopDetailSlot = Omit<ShopDetailPartsProvider, 'claimsProduct' | 'coveredSlots'> & {
+  covered: ShopDetailSlotName[]
+}
 
 type ExtensionPointEntry = { point: string; id: string; permission?: string }
 
 const POINT = 'shop.product-detail-parts'
 
+// Narrowing is split off from resolving so the claim (which needs only the
+// product) can still run alongside the template fetch, while this - pure and
+// synchronous - runs once the template is in hand and its blocks are known.
+export function narrowShopDetailSlot(
+  provider: ShopDetailPartsProvider | null,
+  blockTypes: Set<string>,
+): ShopDetailSlot | null {
+  if (!provider) return null
+  const { Gallery, Price, PurchaseArea } = provider
+  return { Gallery, Price, PurchaseArea, covered: provider.coveredSlots?.(blockTypes) ?? [] }
+}
+
+// Every block type in a saved layout, zones included, so a provider can see what
+// the author has already placed. Structural blocks (Split, Section) nest their
+// children in `zones`, so a Product Detail built the default way keeps all its
+// parts there rather than in `content` - miss those and the check reads empty on
+// exactly the layout it matters most for.
+export function collectLayoutBlockTypes(data: PuckData): Set<string> {
+  const types = new Set<string>()
+  const walk = (blocks: unknown[]): void => {
+    for (const item of blocks) {
+      if (!item || typeof item !== 'object') continue
+      const block = item as { type?: string; props?: Record<string, unknown> }
+      if (block.type) types.add(block.type)
+      for (const value of Object.values(block.props ?? {})) {
+        if (Array.isArray(value)) walk(value)
+      }
+    }
+  }
+  walk(Array.isArray(data.content) ? data.content : [])
+  for (const zone of Object.values(data.zones ?? {})) {
+    if (Array.isArray(zone)) walk(zone)
+  }
+  return types
+}
+
 // First claiming provider wins. Two modules both claiming one product would mean
 // two answers to "what does this cost", so the order of the active-modules query
 // decides rather than merging them.
-export async function resolveShopDetailSlot(product: ShpProduct): Promise<ShopDetailSlot | null> {
+export async function resolveShopDetailProvider(product: ShpProduct): Promise<ShopDetailPartsProvider | null> {
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return null
 
@@ -127,10 +185,7 @@ export async function resolveShopDetailSlot(product: ShpProduct): Promise<ShopDe
       if (entry.point !== POINT) continue
       const provider = providers[entry.id] as ShopDetailPartsProvider | undefined
       if (!provider) continue
-      if (await provider.claimsProduct(product)) {
-        const { Gallery, Price, PurchaseArea } = provider
-        return { Gallery, Price, PurchaseArea }
-      }
+      if (await provider.claimsProduct(product)) return provider
     }
   }
   return null
