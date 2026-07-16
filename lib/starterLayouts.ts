@@ -397,6 +397,11 @@ export function shopCartStarters() {
 // The parts (Gallery/Badges/Title/Price/Add to Cart/Tabs...) are the draggable
 // pieces of the product detail area; the two-column structure comes from a
 // Split, not a hardcoded grid. Add to Cart cannot be deleted (it's the anchor).
+//
+// Default's Split is on the `auto` ratio rather than a fixed fraction: the photo
+// is square and sizes itself against the viewport, so the gallery column hugs
+// whatever width the photo settled on and the buy column takes the rest. A fixed
+// fraction left the photo centred in a column too wide for it.
 
 const detailSplit = (id: string, ratio: string) => ({ type: 'Split', props: { id, ratio, align: 'start', gap: 'lg', padding: 'none' } })
 
@@ -408,7 +413,7 @@ export function shopProductDetailStarters() {
       description: 'The classic two-column product page: gallery on the left, buy column on the right, tabs below.',
       publishByDefault: true,
       data: {
-        content: [detailSplit('pdp-cols', '50/50'), block('ShopDetailTabs', 'pdp-tabs')],
+        content: [detailSplit('pdp-cols', 'auto'), block('ShopDetailTabs', 'pdp-tabs')],
         root: { props: {} },
         zones: {
           'pdp-cols:left': [block('ShopDetailGallery', 'pdp-gallery', { thumbPosition: 'below' })],

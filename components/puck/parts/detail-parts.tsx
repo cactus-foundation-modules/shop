@@ -40,23 +40,29 @@ function Style({ css }: { css: string }) {
 // letterbox and crops the photo, which is exactly what the ratio is here to
 // prevent. `--spd-fit` is that width budget: what's left of the viewport once
 // the header, the strip and the gaps have had their share.
-const galleryCss = ({ tabletBp }: Breakpoints) => `
-.spd-stage-col{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - 32px - var(--spd-thumbs-h,76px));position:sticky;top:calc(var(--spd-header-h,96px) + 16px);display:flex;flex-direction:column;gap:12px}
-/* min() keeps the stage inside its column on a wide screen and inside the
-   viewport on a short one, whichever bites first; aspect-ratio takes the height
-   with it, so it stays square either way. flex:none because the width is the
-   whole mechanism - letting flex shrink the height instead would undo it.
-   align-self centres the photo once it is narrower than its column.
-   The strip deliberately keeps its own full width rather than matching --spd-fit:
-   its height feeds that sum, so tying its width to the result would let a
-   narrower strip wrap to more rows, shrink the budget, and narrow itself again -
-   a loop the ResizeObserver below would happily chase. */
-.spd-stage{position:relative;border:1px solid var(--color-border);border-radius:16px;background:var(--color-bg-subtle);overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;flex:none;align-self:center;width:min(100%,var(--spd-fit));min-width:140px}
+//
+// That budget is the COLUMN's width, not just the stage's, so the column hugs
+// the photo and the buy column beside it collects whatever the photo didn't
+// want. It has to be a definite width for that to work: the layout's Split is
+// set to the `auto` ratio, whose fit-content track can only hug content that
+// declares a width, and `max-width` (unlike `width`) is ignored while the track
+// is being sized, so it clamps the column to the track afterwards without
+// feeding a percentage back into the measurement that produced it.
+const galleryCss = ({ tabletBp, mobileBp }: Breakpoints) => `
+.spd-stage-col{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - 32px - var(--spd-thumbs-h,76px));width:var(--spd-fit);max-width:100%;position:sticky;top:calc(var(--spd-header-h,96px) + 16px);display:flex;flex-direction:column;gap:12px}
+/* The stage simply fills that column now - the column is already the photo's
+   width, so there is no slack left to centre the photo in. flex:none because the
+   width is the whole mechanism - letting flex shrink the height instead would
+   undo it. min-width is the floor the fit-content track reads as its min-content,
+   so a very short viewport can't crush the photo to nothing. */
+.spd-stage{position:relative;border:1px solid var(--color-border);border-radius:16px;background:var(--color-bg-subtle);overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;flex:none;width:100%;min-width:140px}
 /* Beside sits the strip next to the stage rather than under it, so the strip's
    height is no longer the stage's problem - only the header's is. Here the stage
    takes the row's leftover width and caps it, rather than setting it outright,
-   since the strip is spending some of that width too. */
-.spd-stage-col.beside{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - 32px);flex-direction:row-reverse;align-items:flex-start}
+   since the strip is spending some of that width too. The column keeps its auto
+   width for the same reason: --spd-fit is the stage's budget here, not the whole
+   row's, so handing it to the column would short the stage by the strip. */
+.spd-stage-col.beside{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - 32px);width:auto;flex-direction:row-reverse;align-items:flex-start}
 .spd-stage-col.beside .spd-stage{flex:1 1 auto;align-self:flex-start;width:auto;max-width:var(--spd-fit);min-width:0}
 .spd-stage-col.beside .spd-thumbs{flex-direction:column;margin-top:0;flex:none}
 .spd-stage-img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .18s ease}
@@ -67,15 +73,31 @@ const galleryCss = ({ tabletBp }: Breakpoints) => `
 /* The column's gap now does the spacing the margin used to. The strip keeps its
    full height; the stage is what gives way, by shrinking squarely. */
 .spd-thumbs{display:flex;gap:10px;margin-top:0;flex-wrap:wrap;flex:none}
-.spd-thumb{width:64px;height:64px;border:1px solid var(--color-border);border-radius:8px;overflow:hidden;background:var(--color-bg-subtle);cursor:pointer;padding:0;transition:border-color .12s ease,box-shadow .12s ease}
+/* A strip below the stage must not wrap, because its height feeds --spd-fit and
+   its width is now that same budget's result. Wrapping closes that circle: a
+   narrower strip takes more rows, a taller strip leaves the photo less, a
+   smaller photo narrows the column, and the ResizeObserver in GalleryViewportFit
+   chases it round. One nowrap row is a constant 64px however many photos there
+   are, so the budget holds still and the extras scroll sideways instead.
+   overflow-x also drops the strip's min-content contribution to zero, keeping
+   fifteen thumbnails from widening the column they are supposed to sit inside.
+   Beside is exempt: its strip is a column whose height never entered the sum. */
+.spd-stage-col:not(.beside) .spd-thumbs{flex-wrap:nowrap;overflow-x:auto;min-width:0}
+/* flex:none or a nowrap strip squashes its thumbnails to fit instead of
+   scrolling them - they'd stop being square, which is the one thing they are. */
+.spd-thumb{width:64px;height:64px;flex:none;border:1px solid var(--color-border);border-radius:8px;overflow:hidden;background:var(--color-bg-subtle);cursor:pointer;padding:0;transition:border-color .12s ease,box-shadow .12s ease}
 .spd-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .spd-thumb.on{border-color:var(--color-primary);box-shadow:0 0 0 1px var(--color-primary)}
 .spd-thumb:hover{border-color:var(--color-primary)}
-/* Stacked on a narrow screen the gallery has the full width to itself and the
-   buy panel is below it, not beside it - so there's nothing to stick to, and the
-   photo should use the width it has rather than shrink to a viewport it no
-   longer shares. */
-@media (max-width:${tabletBp}){.spd-stage-col{position:static}.spd-stage{width:100%}}
+/* Nothing to stick to once the page is short of room for a sticky column. */
+@media (max-width:${tabletBp}){.spd-stage-col{position:static}}
+/* The hug stands down only where the Split actually stacks, which core does at
+   the MOBILE breakpoint (tokens.ts), not the tablet one - between the two the
+   buy column is still beside the gallery and still wants the slack. Stacked, the
+   gallery has the full width to itself and the photo should use the width it has
+   rather than shrink to a viewport it no longer shares; hugging there would only
+   donate the slack to the margin. */
+@media (max-width:${mobileBp}){.spd-stage-col{width:100%}}
 `
 
 type GalleryProps = { _ctx?: DetailPartContext; thumbPosition?: string }
