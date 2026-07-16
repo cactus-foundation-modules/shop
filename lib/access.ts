@@ -24,6 +24,16 @@ export async function hasShopPermission(
   return hasPermission(user, key)
 }
 
+// Staff with shop access (or shop.manage) keep seeing the storefront while the
+// shop is CLOSED, so they can check it before reopening. Everyone else gets the
+// closed message. Reads the session cookie, so only call it on the CLOSED path
+// to avoid forcing dynamic rendering of the open storefront.
+export async function canPreviewClosedShop(): Promise<boolean> {
+  const user = await getSessionFromCookie()
+  if (!user) return false
+  return hasShopPermission(user, 'shop.access', { allowAccess: true })
+}
+
 // Shared session + permission gate for admin API routes. Returns the session
 // user on success, or a ready-to-return NextResponse on failure so callers can
 // just do: `const gate = await requireShopUser('shop.products'); if (gate.error) return gate.error`
