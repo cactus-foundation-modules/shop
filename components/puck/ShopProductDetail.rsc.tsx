@@ -105,6 +105,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     tagSlugs,
     digitalFile: digitalFile ? { filename: digitalFile.filename, size: digitalFile.size } : null,
     bp,
+    zoomImages: config.imageZoomOnHover,
     outOfStock,
     lowStock,
     hasWas,

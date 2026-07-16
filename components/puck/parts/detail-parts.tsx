@@ -32,7 +32,11 @@ const galleryCss = ({ tabletBp }: Breakpoints) => `
 .spd-stage-col.beside .spd-stage{flex:1;min-width:0}
 .spd-stage-col.beside .spd-thumbs{flex-direction:column;margin-top:0;flex:none}
 .spd-stage{position:relative;border:1px solid var(--color-border);border-radius:16px;background:var(--color-bg-subtle);overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center}
-.spd-stage-img{width:100%;height:100%;object-fit:cover;display:block}
+.spd-stage-img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .18s ease}
+.spd-stage.zoomable{cursor:zoom-in}
+/* touch-action only while magnified, so a finger passing over a plain image still scrolls the page */
+.spd-stage.zoomed{cursor:zoom-out;touch-action:none}
+@media (prefers-reduced-motion:reduce){.spd-stage-img{transition:none}}
 .spd-thumbs{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
 .spd-thumb{width:64px;height:64px;border:1px solid var(--color-border);border-radius:8px;overflow:hidden;background:var(--color-bg-subtle);cursor:pointer;padding:0;transition:border-color .12s ease,box-shadow .12s ease}
 .spd-thumb img{width:100%;height:100%;object-fit:cover;display:block}
@@ -83,6 +87,7 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
           images={ctx.images}
           shape={props.shape}
           thumbPosition={props.thumbPosition}
+          zoom={ctx.zoomImages}
           classNames={{
             col: `spd-stage-col${props.thumbPosition === 'beside' ? ' beside' : ''}`,
             stage: 'spd-stage',
@@ -93,7 +98,7 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
           }}
         />
       ) : (
-        <ProductGallery images={ctx.images} productName={ctx.product.name} shape={props.shape} thumbPosition={props.thumbPosition} />
+        <ProductGallery images={ctx.images} productName={ctx.product.name} shape={props.shape} thumbPosition={props.thumbPosition} zoom={ctx.zoomImages} />
       )}
     </>
   )

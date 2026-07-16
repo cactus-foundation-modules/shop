@@ -292,6 +292,16 @@ export function ShopSettingsTab({ hostedSettingsSlots }: { hostedSettingsSlots?:
           </div>
 
           <hr style={hr} />
+          <h3 style={sectionHeading}>Product images</h3>
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.imageZoomOnHover} onChange={(e) => set('imageZoomOnHover', e.target.checked)} />
+            Zoom the image on hover
+          </label>
+          <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
+            Magnifies whichever part of the main product image the shopper points at. On a touchscreen, a tap magnifies that spot, a drag moves it around, and a second tap zooms back out.
+          </p>
+
+          <hr style={hr} />
           <h3 style={sectionHeading}>SEO</h3>
           <div className="field"><label>Shop title</label><input value={config.shopTitle} onChange={(e) => set('shopTitle', e.target.value)} /></div>
           <div className="field"><label>Meta description</label><textarea rows={3} value={config.shopMetaDescription} onChange={(e) => set('shopMetaDescription', e.target.value)} /></div>

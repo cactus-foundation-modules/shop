@@ -66,6 +66,11 @@ export const ShpConfigSchema = z.object({
   // can override this via its own product_display_mode.
   categoryProductDisplayMode: z.enum(['rollup', 'exact']).default('rollup'),
 
+  // Product images - magnify the part of the main product image the shopper
+  // hovers or taps. Off by default so an existing shop's images behave exactly
+  // as they did until the owner asks for it.
+  imageZoomOnHover: z.boolean().default(false),
+
   // Back-in-stock (addendum A)
   backInStockAccountPrompt: z.boolean().default(true),
 

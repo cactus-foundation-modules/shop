@@ -73,6 +73,10 @@ export type ShopDetailGallerySlotProps = SlotBase & {
   // replaced gallery honours them too.
   shape?: string
   thumbPosition?: string
+  // The shop-wide "magnify the image under the pointer" setting. A provider that
+  // leaves this alone simply shows a plain image, which is what shop's own
+  // gallery does when it's off.
+  zoom?: boolean
 }
 
 export type ShopDetailPriceSlotProps = SlotBase & {
