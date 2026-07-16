@@ -220,6 +220,14 @@ export function ShopSettingsTab({ hostedSettingsSlots }: { hostedSettingsSlots?:
 
   return (
     <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-4)' }}>
+        {subTab !== 'templates' && (
+          <button className="btn btn-primary" disabled={saving} onClick={save}>
+            {saving ? 'Saving…' : 'Save settings'}
+          </button>
+        )}
+      </div>
+
       <TabStrip items={SUB_TABS.map((t) => ({ key: t.key, label: t.label, active: t.key === subTab, onClick: () => setSubTab(t.key) }))} />
 
       {message && <div className="alert alert-success" style={{ marginBottom: '1rem' }}>{message}</div>}
@@ -482,12 +490,6 @@ export function ShopSettingsTab({ hostedSettingsSlots }: { hostedSettingsSlots?:
             <input type="email" value={config.lowStockAlertEmail} onChange={(e) => set('lowStockAlertEmail', e.target.value)} />
           </div>
         </div>
-      )}
-
-      {subTab !== 'templates' && (
-        <button className="btn btn-primary" style={{ marginTop: 'var(--space-5)' }} disabled={saving} onClick={save}>
-          {saving ? 'Saving…' : 'Save settings'}
-        </button>
       )}
 
       {subTab === 'templates' && (
