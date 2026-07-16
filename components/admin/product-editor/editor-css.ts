@@ -33,6 +33,12 @@ export const productEditorCss = `
 
 /* --- Panels ------------------------------------------------------------- */
 .spe-panel{display:grid;gap:1.25rem;margin:0}
+/* Grid children default to min-width:auto, so they refuse to shrink below their
+   content's intrinsic width. A panel holding something wide (the variants table)
+   would then push past the layout's main column and end up under the sidebar.
+   Flooring at 0 lets a panel take its column's width, so any overflow:auto
+   wrapper inside it can actually scroll. */
+.spe-panel>*,.spe-grid>*{min-width:0}
 .spe-section{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:1.25rem}
 .spe-section-head{margin:0 0 0.25rem;font-size:0.9375rem;font-weight:600}
 .spe-section-blurb{margin:0 0 1rem;font-size:0.8125rem;color:var(--color-text-muted);max-width:60ch}
