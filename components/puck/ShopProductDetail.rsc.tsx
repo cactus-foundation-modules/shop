@@ -10,6 +10,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { injectShopProductDetailEmbed } from '@/modules/shop/lib/inject-part-context'
 import { resolveShopDetailProvider, narrowShopDetailSlot, collectLayoutBlockTypes } from '@/modules/shop/lib/detail-slot'
+import { resolveShopGalleryExtras } from '@/modules/shop/lib/gallery-media'
 import type { PuckData } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { shopProductDetailPuckComponent, type ShopProductDetailProps } from './ShopProductDetail'
@@ -41,7 +42,9 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   // The claim needs only the product, so it still resolves alongside the
   // template; which of its slots the layout has already covered is decided
   // below, once the template's blocks are known.
-  const [media, config, bp, tags, tagIds, template, provider] = await Promise.all([
+  // Extra gallery media is additive and needs only the product, so it resolves
+  // alongside everything else rather than behind the template.
+  const [media, config, bp, tags, tagIds, template, provider, galleryExtras] = await Promise.all([
     getProductMedia(product.id),
     getShopConfigCached(),
     getShopBreakpoints(),
@@ -49,6 +52,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     getProductTagIds(product.id),
     resolveDetailTemplate(props.layoutRef, props.productSlug),
     resolveShopDetailProvider(product),
+    resolveShopGalleryExtras(product.id),
   ])
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
   const tagSlugs = tagIds.map((id) => tagById.get(id)).filter((s): s is string => Boolean(s))
@@ -112,6 +116,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     savePct,
     slot,
     layoutBlockTypes: [...blockTypes],
+    galleryExtras,
   }
   const data = injectShopProductDetailEmbed(template, ctx)
 

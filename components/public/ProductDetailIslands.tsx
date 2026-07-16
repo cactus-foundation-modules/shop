@@ -8,6 +8,7 @@
 // boundary - the "slots" pattern - so no data fetching happens client-side.
 
 import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 
 export type GalleryImage = { url: string; alt: string }
 
@@ -33,16 +34,27 @@ function pct(offset: number, size: number): string {
 // around, a second tap zooms back out. Touch deliberately isn't wired to
 // pointerenter/leave - a passing finger would magnify and drop the image on
 // every scroll past it.
-export function ProductGallery({ images, productName, shape, thumbPosition, zoom }: { images: GalleryImage[]; productName: string; shape?: string; thumbPosition?: string; zoom?: boolean }) {
+// `extras` are items contributed by another module through `shop.gallery-media`
+// (see lib/gallery-media.ts) - a 3D model, say. They render as further thumbnails
+// in this strip, and picking one hands the stage to the contributing module. Shop
+// owns the strip, the stage box and the class names; it never learns what the
+// item is. Empty on a shop-only site, where everything below behaves as before.
+export function ProductGallery({ images, productName, shape, thumbPosition, zoom, extras = [] }: { images: GalleryImage[]; productName: string; shape?: string; thumbPosition?: string; zoom?: boolean; extras?: ShopGalleryExtra[] }) {
   const [active, setActive] = useState(0)
   const [hovering, setHovering] = useState(false)
   const [tapped, setTapped] = useState(false)
   const [origin, setOrigin] = useState('50% 50%')
+  // Which contributed item is on the stage, as { provider id, item key }, or null
+  // when a plain image is showing. The provider id is part of it because two
+  // modules could contribute items keyed the same way without knowing it.
+  const [picked, setPicked] = useState<{ id: string; key: string } | null>(null)
   const colClass = `spd-stage-col${thumbPosition === 'beside' ? ' beside' : ''}`
   const aspect = stageAspect(shape)
-  const magnified = Boolean(zoom) && (hovering || tapped)
 
-  if (images.length === 0) {
+  // An empty gallery is still worth rendering when a module has contributed
+  // something to it: a product whose only picture is a 3D model would otherwise
+  // show the empty-stage box and none of the thumbnails offering the model.
+  if (images.length === 0 && extras.length === 0) {
     return (
       <div className={colClass}>
         <div className="spd-stage spd-stage-empty" style={{ aspectRatio: aspect }} aria-hidden="true" />
@@ -50,15 +62,20 @@ export function ProductGallery({ images, productName, shape, thumbPosition, zoom
     )
   }
 
-  const current = images[Math.min(active, images.length - 1)]
-  if (!current) return null
+  const current = images[Math.min(active, images.length - 1)] ?? null
+  const activeExtra = picked ? extras.find((e) => e.id === picked.id) ?? null : null
+  // Magnifying applies to shop's own image. A contributed stage owns its whole
+  // box - a 3D viewer does its own zooming, with its own controls - so the
+  // pointer must reach it untouched rather than through a transform of ours.
+  const magnified = Boolean(zoom) && !activeExtra && (hovering || tapped)
+  const zoomable = Boolean(zoom) && !activeExtra
 
   function track(e: ReactPointerEvent<HTMLDivElement>) {
     const box = e.currentTarget.getBoundingClientRect()
     setOrigin(`${pct(e.clientX - box.left, box.width)} ${pct(e.clientY - box.top, box.height)}`)
   }
 
-  const zoomHandlers = zoom
+  const zoomHandlers = zoomable
     ? {
         onPointerEnter: (e: ReactPointerEvent<HTMLDivElement>) => {
           if (e.pointerType === 'touch') return
@@ -81,42 +98,69 @@ export function ProductGallery({ images, productName, shape, thumbPosition, zoom
       }
     : {}
 
+  // The strip earns its place with more than one thing to pick between - an
+  // image plus a contributed item counts, which is why this is not the old
+  // images.length > 1.
+  const showThumbs = images.length + extras.length > 1
+
   return (
     <div className={colClass}>
       <div
-        className={`spd-stage${zoom ? ' zoomable' : ''}${magnified ? ' zoomed' : ''}`}
+        className={`spd-stage${zoomable ? ' zoomable' : ''}${magnified ? ' zoomed' : ''}`}
         style={{ aspectRatio: aspect }}
         {...zoomHandlers}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          className="spd-stage-img"
-          src={current.url}
-          alt={current.alt || productName}
-          draggable={false}
-          // Origin stays put while zoomed out, so releasing settles back into
-          // the spot the shopper was looking at rather than snapping to centre.
-          style={zoom ? { transformOrigin: origin, transform: magnified ? `scale(${ZOOM_SCALE})` : undefined } : undefined}
-        />
+        {activeExtra && picked ? (
+          <activeExtra.Stage payload={activeExtra.payload} itemKey={picked.key} activeProductId={null} />
+        ) : current ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            className="spd-stage-img"
+            src={current.url}
+            alt={current.alt || productName}
+            draggable={false}
+            // Origin stays put while zoomed out, so releasing settles back into
+            // the spot the shopper was looking at rather than snapping to centre.
+            style={zoom ? { transformOrigin: origin, transform: magnified ? `scale(${ZOOM_SCALE})` : undefined } : undefined}
+          />
+        ) : null}
       </div>
-      {images.length > 1 && (
+      {showThumbs && (
         <div className="spd-thumbs" role="tablist" aria-label="Product images">
           {images.map((img, i) => (
             <button
               key={i}
               type="button"
               role="tab"
-              aria-selected={i === active}
+              aria-selected={i === active && !picked}
               aria-label={`Show image ${i + 1} of ${images.length}`}
-              className={`spd-thumb${i === active ? ' on' : ''}`}
+              className={`spd-thumb${i === active && !picked ? ' on' : ''}`}
               onClick={() => {
                 setActive(i)
                 setTapped(false)
+                setPicked(null)
               }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={img.url} alt={img.alt || `${productName} thumbnail ${i + 1}`} />
             </button>
+          ))}
+          {extras.map((extra) => (
+            <extra.Thumbs
+              key={extra.id}
+              payload={extra.payload}
+              // Shop has no notion of a chosen combination, so every contributed
+              // item shows here. A gallery that does know (shop-variations')
+              // replaces this one wholesale and passes the chosen child instead.
+              activeProductId={null}
+              activeKey={picked?.id === extra.id ? picked.key : null}
+              onPick={(key) => {
+                setPicked(key === null ? null : { id: extra.id, key })
+                setTapped(false)
+              }}
+              thumbClass="spd-thumb"
+              thumbOnClass="spd-thumb on"
+            />
           ))}
         </div>
       )}

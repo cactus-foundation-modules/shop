@@ -16,6 +16,7 @@
 import type { ComponentType } from 'react'
 import { prisma } from '@/lib/db/prisma'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 import type { PuckData, ShpProduct } from '@/modules/shop/lib/types'
 
 // Handed to every slot component so a replaced part is styled by the layout it
@@ -77,6 +78,16 @@ export type ShopDetailGallerySlotProps = SlotBase & {
   // leaves this alone simply shows a plain image, which is what shop's own
   // gallery does when it's off.
   zoom?: boolean
+  // Extra gallery items contributed through `shop.gallery-media` (a 3D model,
+  // say), already resolved server-side. A replacing gallery is the only thing
+  // rendering a strip for this product, so it owns showing these too - ignore
+  // them and installing the contributing module would quietly do nothing on
+  // exactly the products this provider claimed. See lib/gallery-media.ts for how
+  // a host renders them; ProductGallery does the same job for unclaimed products.
+  // extra thumbnail rendering, and passes each one the chosen combination's child
+  // product id - which is the provider's own knowledge, not shop's, and the whole
+  // reason this is handed over rather than rendered by shop around the outside.
+  extras?: ShopGalleryExtra[]
 }
 
 export type ShopDetailPriceSlotProps = SlotBase & {

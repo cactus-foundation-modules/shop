@@ -1,5 +1,6 @@
 import type { Breakpoints } from '@/modules/shop/lib/breakpoints'
 import type { ShopDetailSlot } from '@/modules/shop/lib/detail-slot'
+import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
 // Shared context passed to the shop's part-blocks (the small draggable pieces
@@ -41,6 +42,13 @@ export type DetailPartContext = {
   // component so a provider can stand down a piece the author has already placed
   // as a block of its own. See SlotBase in lib/detail-slot.ts.
   layoutBlockTypes: string[]
+  // Extra gallery items contributed through `shop.gallery-media` (see
+  // lib/gallery-media.ts) - additive thumbnails, not a replacement for a part of
+  // ours, so unlike `slot` this is a list rather than a single winner. Empty on a
+  // shop-only site and for any product no module has extra media for. Resolved
+  // here, with the rest of the context, because a part's render must stay
+  // synchronous - see ShopDetailGalleryRsc.
+  galleryExtras: ShopGalleryExtra[]
 }
 
 // Injected onto every Product Card part-block, once per product, when a card

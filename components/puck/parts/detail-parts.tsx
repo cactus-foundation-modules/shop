@@ -85,6 +85,11 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
   // provider's gallery replaces ours - styled with our classes so it still looks
   // like this layout's gallery.
   const SlotGallery = ctx.slot?.Gallery
+  // Extra items another module has for this product (a 3D model, say), resolved
+  // once per page by the injector alongside the slot rather than awaited here.
+  // This part must stay synchronous: wrapResponsiveRender calls a block's render
+  // as a plain function, so an async one hands it a Promise rather than markup.
+  const extras = ctx.galleryExtras
   return (
     <>
       <Style css={galleryCss(ctx.bp)} />
@@ -100,6 +105,7 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
           shape={props.shape}
           thumbPosition={props.thumbPosition}
           zoom={ctx.zoomImages}
+          extras={extras}
           classNames={{
             col: `spd-stage-col${props.thumbPosition === 'beside' ? ' beside' : ''}`,
             stage: 'spd-stage',
@@ -110,7 +116,7 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
           }}
         />
       ) : (
-        <ProductGallery images={ctx.images} productName={ctx.product.name} shape={props.shape} thumbPosition={props.thumbPosition} zoom={ctx.zoomImages} />
+        <ProductGallery images={ctx.images} productName={ctx.product.name} shape={props.shape} thumbPosition={props.thumbPosition} zoom={ctx.zoomImages} extras={extras} />
       )}
     </>
   )
