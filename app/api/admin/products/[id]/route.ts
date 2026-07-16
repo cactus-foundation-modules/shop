@@ -109,9 +109,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (tagIds) await setProductTags(id, tagIds)
   if (collectionIds) await setProductCollections(id, collectionIds)
 
-  // File the product's images into Shop / <master category> / <slug><n>. Runs
-  // after the media and category writes so it sees the final state; no-op when
-  // nothing moved.
+  // File the product's images into Shop / <master category> / <product> /
+  // <slug><n>. Runs after the media and category writes so it sees the final
+  // state; no-op when nothing moved.
   if (media || finalCategoryIds || masterProvided) await reorganiseProductMedia(id)
 
   const after = await getProductById(id)

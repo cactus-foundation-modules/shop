@@ -7,33 +7,50 @@ import { getCategoryById } from '@/modules/shop/lib/db/catalogue'
 // Product image filing.
 //
 // Every image attached to a product is filed in the core media library under
-//   Shop / <master category> / <product-slug><n>
-// (n is the image's 1-based position). The master category names the folder;
-// products with no master land under "Uncategorised". Only images that resolve
-// to a managed core Media row are moved - externally-hosted urls and video
-// embeds are left untouched. Runs on every product save, after the media list
-// has been written, and is idempotent: an image already in the right place with
-// the right name is a no-op (no blob copy).
+//   Shop / <master category> / <product> / <product-slug><n>
+// (n is the image's 1-based position). The master category names the category
+// folder and the product name names the folder inside it; products with no
+// master land under "Uncategorised". Only images that resolve to a managed core
+// Media row are moved - externally-hosted urls and video embeds are left
+// untouched. Runs on every product save, after the media list has been written,
+// and is idempotent: an image already in the right place with the right name is
+// a no-op (no blob copy).
+//
+// The per-product folder is what lets a product's variation images sit beside
+// its own: a dependent module (shop-variations) files a variant's image by
+// passing the parent as `folderProductId`, so the image is named from the
+// variant's own slug but lands in the parent's folder.
 //
 // The exact-name flag on the core relocate keeps the stored key free of the
-// usual nanoid, so the url reads shop/<category>/<slug><n>.<ext> exactly. Names
-// are unique per product (slug is globally unique, n is the position), so the
-// caller safely owns collision within the folder.
+// usual nanoid, so the url reads shop/<category>/<product>/<slug><n>.<ext>
+// exactly. Names are globally unique (slug is unique, n is the position), so the
+// caller safely owns collision within the folder - two products sharing a name
+// share a folder without either clobbering the other.
 // ---------------------------------------------------------------------------
 
 const UNCATEGORISED_FOLDER = 'Uncategorised'
 
-export async function reorganiseProductMedia(productId: string): Promise<void> {
+export async function reorganiseProductMedia(
+  productId: string,
+  options: { folderProductId?: string } = {},
+): Promise<void> {
   const product = await getProductById(productId)
   if (!product) return
 
+  // Images are normally filed under their own product; `folderProductId` files
+  // them under another product's folder instead (see the header note).
+  const folderProduct = options.folderProductId && options.folderProductId !== productId
+    ? await getProductById(options.folderProductId)
+    : product
+  if (!folderProduct) return
+
   let categoryName = UNCATEGORISED_FOLDER
-  if (product.masterCategoryId) {
-    const category = await getCategoryById(product.masterCategoryId)
+  if (folderProduct.masterCategoryId) {
+    const category = await getCategoryById(folderProduct.masterCategoryId)
     if (category) categoryName = category.name
   }
 
-  const folderId = await getOrCreateFolderByPath(['Shop', categoryName])
+  const folderId = await getOrCreateFolderByPath(['Shop', categoryName, folderProduct.name])
 
   const images = await prisma.$queryRaw<{ url: string }[]>`
     SELECT "url" FROM "shp_product_media"
