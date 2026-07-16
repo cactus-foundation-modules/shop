@@ -63,10 +63,34 @@ export function ShopDetailGallery(props: GalleryProps) {
 export function ShopDetailGalleryRsc(props: GalleryProps) {
   const ctx = props._ctx
   if (!ctx) return null
+  // A claimed product's image follows the shopper's chosen combination, so the
+  // provider's gallery replaces ours - styled with our classes so it still looks
+  // like this layout's gallery.
+  const SlotGallery = ctx.slot?.Gallery
   return (
     <>
       <Style css={galleryCss(ctx.bp)} />
-      <ProductGallery images={ctx.images} productName={ctx.product.name} shape={props.shape} thumbPosition={props.thumbPosition} />
+      {SlotGallery ? (
+        <SlotGallery
+          slug={ctx.product.slug}
+          productId={ctx.product.id}
+          currencySymbol={ctx.currencySymbol}
+          productName={ctx.product.name}
+          images={ctx.images}
+          shape={props.shape}
+          thumbPosition={props.thumbPosition}
+          classNames={{
+            col: `spd-stage-col${props.thumbPosition === 'beside' ? ' beside' : ''}`,
+            stage: 'spd-stage',
+            image: 'spd-stage-img',
+            thumbs: 'spd-thumbs',
+            thumb: 'spd-thumb',
+            thumbOn: 'spd-thumb on',
+          }}
+        />
+      ) : (
+        <ProductGallery images={ctx.images} productName={ctx.product.name} shape={props.shape} thumbPosition={props.thumbPosition} />
+      )}
     </>
   )
 }
@@ -222,6 +246,27 @@ export function ShopDetailPriceRsc(props: PriceProps) {
   const { product, currencySymbol, hasWas, savePct } = ctx
   const showCompare = props.showCompare !== 'no'
   const showSave = props.showSave !== 'no'
+  // A claimed product is priced by the chosen combination, so our static price
+  // would be wrong the moment the shopper picks an option.
+  const SlotPrice = ctx.slot?.Price
+  if (SlotPrice) {
+    return (
+      <>
+        <Style css={priceCss} />
+        <SlotPrice
+          slug={product.slug}
+          productId={product.id}
+          currencySymbol={currencySymbol}
+          basePrice={product.price}
+          compareAtPrice={showCompare && hasWas ? product.compareAtPrice : null}
+          savePct={showSave ? savePct : null}
+          showCompare={showCompare}
+          showSave={showSave}
+          classNames={{ block: 'spd-price-block', now: 'spd-price-now', was: 'spd-price-was', save: 'spd-save' }}
+        />
+      </>
+    )
+  }
   return (
     <>
       <Style css={priceCss} />
@@ -352,17 +397,34 @@ export function ShopDetailAddToCartRsc(props: AddProps) {
   if (!ctx) return null
   const { product, outOfStock } = ctx
   const showStepper = props.showStepper !== 'no'
+  const label = product.isPreOrder ? 'Pre-order now' : 'Add to basket'
+  // A claimed product is bought as a chosen combination, and its availability
+  // lives on that combination rather than on the parent row - so the provider
+  // owns this whole area, our out-of-stock gate included. Gating on the parent
+  // first would strand a product whose parent tracks no stock of its own.
+  const SlotPurchase = ctx.slot?.PurchaseArea
+  if (SlotPurchase) {
+    return (
+      <>
+        <Style css={buyCss} />
+        <SlotPurchase
+          slug={product.slug}
+          productId={product.id}
+          currencySymbol={ctx.currencySymbol}
+          showStepper={showStepper}
+          label={label}
+          classNames={{ row: 'spd-buy-row', stepper: 'spd-stepper', add: 'spd-add', outOfStock: 'spd-oos' }}
+        />
+      </>
+    )
+  }
   return (
     <>
       <Style css={buyCss} />
       {outOfStock ? (
         <p className="spd-oos">Out of stock</p>
       ) : (
-        <AddToCartButton
-          productId={product.id}
-          label={product.isPreOrder ? 'Pre-order now' : 'Add to basket'}
-          showStepper={showStepper}
-        />
+        <AddToCartButton productId={product.id} label={label} showStepper={showStepper} />
       )}
     </>
   )

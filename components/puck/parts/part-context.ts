@@ -1,4 +1,5 @@
 import type { Breakpoints } from '@/modules/shop/lib/breakpoints'
+import type { ShopDetailSlot } from '@/modules/shop/lib/detail-slot'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
 // Shared context passed to the shop's part-blocks (the small draggable pieces
@@ -28,6 +29,11 @@ export type DetailPartContext = {
   lowStock: boolean
   hasWas: boolean
   savePct: number | null
+  // Set by the injector when a companion module claims this product through the
+  // `shop.product-detail-parts` point (see lib/detail-slot.ts). Null on a
+  // shop-only site and for every unclaimed product, where the parts below render
+  // shop's own markup unchanged. Resolved once per page, not once per part.
+  slot: ShopDetailSlot | null
 }
 
 // Injected onto every Product Card part-block, once per product, when a card
