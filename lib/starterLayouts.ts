@@ -411,7 +411,7 @@ export function shopProductDetailStarters() {
         content: [detailSplit('pdp-cols', '50/50'), block('ShopDetailTabs', 'pdp-tabs')],
         root: { props: {} },
         zones: {
-          'pdp-cols:left': [block('ShopDetailGallery', 'pdp-gallery', { shape: 'square', thumbPosition: 'below' })],
+          'pdp-cols:left': [block('ShopDetailGallery', 'pdp-gallery', { thumbPosition: 'below' })],
           'pdp-cols:right': [
             block('ShopDetailBadges', 'pdp-badges'),
             block('ShopDetailTitle', 'pdp-title'),
@@ -428,10 +428,10 @@ export function shopProductDetailStarters() {
     {
       id: 'starter-shop-detail-editorial',
       name: 'Editorial',
-      description: 'Image-led: a wide gallery up top with thumbnails beside it, the buy details in a boxed column below, then tabs.',
+      description: 'Image-led: a big photo up top with thumbnails beside it, the buy details in a boxed column below, then tabs.',
       data: {
         content: [
-          block('ShopDetailGallery', 'gallery-1', { shape: 'landscape', thumbPosition: 'beside' }),
+          block('ShopDetailGallery', 'gallery-1', { thumbPosition: 'beside' }),
           section('section-1', {
             maxWidth: 'narrow',
             content: [
@@ -459,7 +459,7 @@ export function shopProductDetailStarters() {
           section('section-1', {
             maxWidth: 'narrow',
             content: [
-              block('ShopDetailGallery', 'gallery-1', { shape: 'square', thumbPosition: 'below' }),
+              block('ShopDetailGallery', 'gallery-1', { thumbPosition: 'below' }),
               block('ShopDetailBadges', 'badges-1'),
               block('ShopDetailTitle', 'title-1'),
               block('ShopDetailPrice', 'price-1', { showCompare: 'yes', showSave: 'yes' }),
@@ -492,7 +492,7 @@ export function shopProductCardStarters() {
       publishByDefault: true,
       data: {
         content: [
-          block('ShopCardImage', 'card-img', { display: 'standard', shape: 'landscape' }),
+          block('ShopCardImage', 'card-img', { display: 'standard' }),
           block('ShopCardBadge', 'card-badge'),
           block('ShopCardName', 'card-name'),
           block('ShopCardPrice', 'card-price', { showCompare: 'yes' }),
@@ -524,7 +524,7 @@ export function shopProductCardStarters() {
       description: 'Image on the left, details on the right - a list-style row that reads well in tight spaces.',
       data: {
         content: [
-          block('ShopCardImage', 'card-img', { display: 'beside', shape: 'square' }),
+          block('ShopCardImage', 'card-img', { display: 'beside' }),
           block('ShopCardName', 'card-name'),
           block('ShopCardPrice', 'card-price', { showCompare: 'yes' }),
           block('ShopCardBlurb', 'card-blurb'),

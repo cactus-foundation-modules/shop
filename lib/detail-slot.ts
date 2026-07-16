@@ -70,9 +70,11 @@ export type ShopDetailGallerySlotProps = SlotBase & {
   // its own image, so a claimed product paints its picture on first byte rather
   // than after a fetch.
   images: ShopDetailSlotImage[]
-  // The layout author's own choices on shop's Gallery part, passed through so a
-  // replaced gallery honours them too.
-  shape?: string
+  // The layout author's own choice on shop's Gallery part, passed through so a
+  // replaced gallery honours it too. The stage's shape used to be one of these;
+  // it is square for every product now, and lives in shop's `.spd-stage` CSS,
+  // which a provider is handed through `classNames` - so a replacing gallery
+  // gets the ratio for free rather than being trusted to reproduce it.
   thumbPosition?: string
   // The shop-wide "magnify the image under the pointer" setting. A provider that
   // leaves this alone simply shows a plain image, which is what shop's own

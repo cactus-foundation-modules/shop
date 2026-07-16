@@ -27,44 +27,65 @@ function Style({ css }: { css: string }) {
 // Gallery (main image + thumbnails)
 // ---------------------------------------------------------------------------
 
+// The product photo is always square, and the stage with it. Both offsets below
+// need the site header's real height, measured and published as `--spd-header-h`
+// by GalleryViewportFit (the 96px fallback covers the moment before hydration
+// and the editor canvas, and was the old hardcoded guess for every site);
+// `--spd-thumbs-h` is the strip's measured height, published the same way.
+//
+// The column sticks clear of the header, and the stage fits the leftover
+// viewport by giving up WIDTH - `aspect-ratio` then takes the height with it, so
+// it stays square and merely gets smaller. Capping its height instead (the
+// obvious move, and what this did briefly) squashes a square stage into a
+// letterbox and crops the photo, which is exactly what the ratio is here to
+// prevent. `--spd-fit` is that width budget: what's left of the viewport once
+// the header, the strip and the gaps have had their share.
 const galleryCss = ({ tabletBp }: Breakpoints) => `
-.spd-stage-col{position:sticky;top:calc(var(--spd-header-h,96px) + 16px);max-height:calc(100dvh - var(--spd-header-h,96px) - 32px);display:flex;flex-direction:column;gap:12px}
-.spd-stage-col.beside{flex-direction:row-reverse;align-items:flex-start}
-/* Beside puts the strip alongside, so the column is a row and the stage can't
-   be squeezed down by the column's own cap the way it is when stacked - its
-   height comes from its width and the aspect ratio, and nothing above it is
-   giving way. Cap it against the same viewport sum by hand, or a portrait stage
-   on a short screen would simply overrun the column. */
-.spd-stage-col.beside .spd-stage{flex:1;min-width:0;max-height:calc(100dvh - var(--spd-header-h,96px) - 32px)}
+.spd-stage-col{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - 32px - var(--spd-thumbs-h,76px));position:sticky;top:calc(var(--spd-header-h,96px) + 16px);display:flex;flex-direction:column;gap:12px}
+/* min() keeps the stage inside its column on a wide screen and inside the
+   viewport on a short one, whichever bites first; aspect-ratio takes the height
+   with it, so it stays square either way. flex:none because the width is the
+   whole mechanism - letting flex shrink the height instead would undo it.
+   align-self centres the photo once it is narrower than its column.
+   The strip deliberately keeps its own full width rather than matching --spd-fit:
+   its height feeds that sum, so tying its width to the result would let a
+   narrower strip wrap to more rows, shrink the budget, and narrow itself again -
+   a loop the ResizeObserver below would happily chase. */
+.spd-stage{position:relative;border:1px solid var(--color-border);border-radius:16px;background:var(--color-bg-subtle);overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;flex:none;align-self:center;width:min(100%,var(--spd-fit));min-width:140px}
+/* Beside sits the strip next to the stage rather than under it, so the strip's
+   height is no longer the stage's problem - only the header's is. Here the stage
+   takes the row's leftover width and caps it, rather than setting it outright,
+   since the strip is spending some of that width too. */
+.spd-stage-col.beside{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - 32px);flex-direction:row-reverse;align-items:flex-start}
+.spd-stage-col.beside .spd-stage{flex:1 1 auto;align-self:flex-start;width:auto;max-width:var(--spd-fit);min-width:0}
 .spd-stage-col.beside .spd-thumbs{flex-direction:column;margin-top:0;flex:none}
-.spd-stage{position:relative;border:1px solid var(--color-border);border-radius:16px;background:var(--color-bg-subtle);overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;flex:1 1 auto;min-height:140px}
 .spd-stage-img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .18s ease}
 .spd-stage.zoomable{cursor:zoom-in}
 /* touch-action only while magnified, so a finger passing over a plain image still scrolls the page */
 .spd-stage.zoomed{cursor:zoom-out;touch-action:none}
 @media (prefers-reduced-motion:reduce){.spd-stage-img{transition:none}}
-/* The column's gap now does the spacing the margin used to; flex:none keeps the
-   strip at full height so the stage above absorbs any squeeze on its own. */
+/* The column's gap now does the spacing the margin used to. The strip keeps its
+   full height; the stage is what gives way, by shrinking squarely. */
 .spd-thumbs{display:flex;gap:10px;margin-top:0;flex-wrap:wrap;flex:none}
 .spd-thumb{width:64px;height:64px;border:1px solid var(--color-border);border-radius:8px;overflow:hidden;background:var(--color-bg-subtle);cursor:pointer;padding:0;transition:border-color .12s ease,box-shadow .12s ease}
 .spd-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .spd-thumb.on{border-color:var(--color-primary);box-shadow:0 0 0 1px var(--color-primary)}
 .spd-thumb:hover{border-color:var(--color-primary)}
 /* Stacked on a narrow screen the gallery has the full width to itself and the
-   buy panel is below it, not beside it - so there's nothing to stick to and no
-   reason to cap the height. */
-@media (max-width:${tabletBp}){.spd-stage-col{position:static;max-height:none}}
+   buy panel is below it, not beside it - so there's nothing to stick to, and the
+   photo should use the width it has rather than shrink to a viewport it no
+   longer shares. */
+@media (max-width:${tabletBp}){.spd-stage-col{position:static}.spd-stage{width:100%}}
 `
 
-type GalleryProps = { _ctx?: DetailPartContext; shape?: string; thumbPosition?: string }
+type GalleryProps = { _ctx?: DetailPartContext; thumbPosition?: string }
 
 export function ShopDetailGallery(props: GalleryProps) {
-  const aspect = props.shape === 'portrait' ? '3 / 4' : props.shape === 'landscape' ? '4 / 3' : '1 / 1'
   return (
     <>
       <Style css={galleryCss(DEFAULT_BREAKPOINTS)} />
       <div className={`spd-stage-col${props.thumbPosition === 'beside' ? ' beside' : ''}`} style={{ opacity: 0.6 }}>
-        <div className="spd-stage spd-stage-empty" style={{ aspectRatio: aspect }} />
+        <div className="spd-stage spd-stage-empty" />
         <div className="spd-thumbs">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="spd-thumb" />
@@ -102,7 +123,6 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
           layoutBlockTypes={ctx.layoutBlockTypes}
           productName={ctx.product.name}
           images={ctx.images}
-          shape={props.shape}
           thumbPosition={props.thumbPosition}
           zoom={ctx.zoomImages}
           extras={extras}
@@ -116,7 +136,7 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
           }}
         />
       ) : (
-        <ProductGallery images={ctx.images} productName={ctx.product.name} shape={props.shape} thumbPosition={props.thumbPosition} zoom={ctx.zoomImages} extras={extras} />
+        <ProductGallery images={ctx.images} productName={ctx.product.name} thumbPosition={props.thumbPosition} zoom={ctx.zoomImages} extras={extras} />
       )}
     </>
   )
@@ -125,10 +145,9 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
 export const shopDetailGalleryPuckComponent = {
   label: 'Product: Gallery',
   fields: {
-    shape: { type: 'select' as const, label: 'Image shape', options: [{ value: 'square', label: 'Square' }, { value: 'portrait', label: 'Portrait' }, { value: 'landscape', label: 'Landscape' }] },
     thumbPosition: { type: 'select' as const, label: 'Thumbnails', options: [{ value: 'below', label: 'Below image' }, { value: 'beside', label: 'Beside image' }] },
   },
-  defaultProps: { shape: 'square', thumbPosition: 'below' },
+  defaultProps: { thumbPosition: 'below' },
   render: ShopDetailGallery,
 }
 export const shopDetailGalleryPuckRscComponent = { ...shopDetailGalleryPuckComponent, render: ShopDetailGalleryRsc }

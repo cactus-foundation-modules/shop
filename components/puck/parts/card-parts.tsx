@@ -26,10 +26,13 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
 .shop-sec-head span{font-size:13px;color:var(--color-text-muted)}
 .shop-card{position:relative;display:flex;flex-direction:column;background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;box-shadow:0 1px 3px rgba(0,0,0,.06);padding-bottom:16px;transition:box-shadow .25s ease,transform .25s ease}
 .shop-card:hover{transform:translateY(-4px);box-shadow:0 8px 30px rgba(0,0,0,.10)}
-.shop-card-img{position:relative;aspect-ratio:4/3;background:var(--color-bg-subtle);overflow:hidden}
-.shop-card-img.shape-square{aspect-ratio:1/1}
-.shop-card-img.shape-portrait{aspect-ratio:3/4}
-.shop-card-img.shape-landscape{aspect-ratio:4/3}
+/* Square, always. This was a per-instance pick (square/portrait/landscape) whose
+   only real effect was letting one shop's photos be three different shapes
+   depending on which layout a page happened to use. The photo is object-fit:cover
+   in a clipped box, so a non-square original crops to fit rather than distorting.
+   Overlay (fill-mode) is exempt below - the image being the whole card is the
+   design, not a shape. */
+.shop-card-img{position:relative;aspect-ratio:1/1;background:var(--color-bg-subtle);overflow:hidden}
 .shop-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s ease}
 .shop-card:hover .shop-card-img img{transform:scale(1.03)}
 /* !important: the editor sets position:relative inline on every part root (see
@@ -106,13 +109,11 @@ const yesNo = [
 // Image (carries the card's overall layout via its display mode)
 // ---------------------------------------------------------------------------
 
-type ImageProps = PuckPart & { _ctx?: CardPartContext; display?: string; shape?: string }
+type ImageProps = PuckPart & { _ctx?: CardPartContext; display?: string }
 
-function imgClass({ display, shape }: ImageProps): string {
+function imgClass({ display }: ImageProps): string {
   const mode = display === 'beside' ? ' beside-mode' : display === 'fill' ? ' fill-mode' : ''
-  // Shape only applies to the in-flow (standard) layout; fill ignores it.
-  const shapeClass = display === 'fill' ? '' : shape ? ` shape-${shape}` : ''
-  return `shop-card-img${mode}${shapeClass}`
+  return `shop-card-img${mode}`
 }
 
 export function ShopCardImage(props: ImageProps) {
@@ -137,9 +138,8 @@ export const shopCardImagePuckComponent = {
   inline: true,
   fields: {
     display: { type: 'select' as const, label: 'Card layout', options: [{ value: 'standard', label: 'Image on top' }, { value: 'beside', label: 'Image beside text' }, { value: 'fill', label: 'Image fills card (overlay)' }] },
-    shape: { type: 'select' as const, label: 'Image shape (top layout only)', options: [{ value: 'landscape', label: 'Landscape' }, { value: 'square', label: 'Square' }, { value: 'portrait', label: 'Portrait' }] },
   },
-  defaultProps: { display: 'standard', shape: 'landscape' },
+  defaultProps: { display: 'standard' },
   render: ShopCardImage,
 }
 export const shopCardImagePuckRscComponent = { ...shopCardImagePuckComponent, render: ShopCardImage }

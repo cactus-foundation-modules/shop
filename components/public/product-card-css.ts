@@ -14,7 +14,7 @@ export function productCardCss({ tabletBp, mobileBp }: Breakpoints): string {
 .spc-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
 .spc-card{position:relative;display:flex;flex-direction:column;background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;box-shadow:0 1px 3px rgba(0,0,0,.06);transition:box-shadow .25s ease,transform .25s ease}
 .spc-card:hover{transform:translateY(-4px);box-shadow:0 8px 30px rgba(0,0,0,.10)}
-.spc-img{position:relative;aspect-ratio:4/3;background:var(--color-bg-subtle);overflow:hidden}
+.spc-img{position:relative;aspect-ratio:1/1;background:var(--color-bg-subtle);overflow:hidden}
 .spc-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s ease}
 .spc-card:hover .spc-img img{transform:scale(1.03)}
 .spc-body{display:flex;flex-direction:column;gap:8px;padding:16px;flex:1}

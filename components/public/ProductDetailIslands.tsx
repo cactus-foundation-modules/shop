@@ -17,12 +17,11 @@ export type GalleryImage = { url: string; alt: string }
 // existing rounded, clipped box, so nothing new has to be positioned.
 const ZOOM_SCALE = 2.5
 
-// shape sets the stage aspect ratio (square/portrait/landscape); thumbPosition
-// puts the thumbnail strip below (default) or beside the stage. Both are set
-// per-instance on the Gallery part in the Product Detail layout editor.
-function stageAspect(shape?: string): string {
-  return shape === 'portrait' ? '3 / 4' : shape === 'landscape' ? '4 / 3' : '1 / 1'
-}
+// The stage is always square. It used to be shape-pickable (square/portrait/
+// landscape) per Gallery instance, which meant one shop's photos could be three
+// different shapes depending on which layout a page used; the ratio now lives in
+// `.spd-stage` CSS only. thumbPosition still puts the strip below (default) or
+// beside the stage.
 
 function pct(offset: number, size: number): string {
   return `${Math.min(100, Math.max(0, (offset / size) * 100))}%`
@@ -39,7 +38,7 @@ function pct(offset: number, size: number): string {
 // in this strip, and picking one hands the stage to the contributing module. Shop
 // owns the strip, the stage box and the class names; it never learns what the
 // item is. Empty on a shop-only site, where everything below behaves as before.
-export function ProductGallery({ images, productName, shape, thumbPosition, zoom, extras = [] }: { images: GalleryImage[]; productName: string; shape?: string; thumbPosition?: string; zoom?: boolean; extras?: ShopGalleryExtra[] }) {
+export function ProductGallery({ images, productName, thumbPosition, zoom, extras = [] }: { images: GalleryImage[]; productName: string; thumbPosition?: string; zoom?: boolean; extras?: ShopGalleryExtra[] }) {
   const [active, setActive] = useState(0)
   const [hovering, setHovering] = useState(false)
   const [tapped, setTapped] = useState(false)
@@ -49,7 +48,6 @@ export function ProductGallery({ images, productName, shape, thumbPosition, zoom
   // modules could contribute items keyed the same way without knowing it.
   const [picked, setPicked] = useState<{ id: string; key: string } | null>(null)
   const colClass = `spd-stage-col${thumbPosition === 'beside' ? ' beside' : ''}`
-  const aspect = stageAspect(shape)
 
   // An empty gallery is still worth rendering when a module has contributed
   // something to it: a product whose only picture is a 3D model would otherwise
@@ -57,7 +55,7 @@ export function ProductGallery({ images, productName, shape, thumbPosition, zoom
   if (images.length === 0 && extras.length === 0) {
     return (
       <div className={colClass}>
-        <div className="spd-stage spd-stage-empty" style={{ aspectRatio: aspect }} aria-hidden="true" />
+        <div className="spd-stage spd-stage-empty" aria-hidden="true" />
       </div>
     )
   }
@@ -107,7 +105,6 @@ export function ProductGallery({ images, productName, shape, thumbPosition, zoom
     <div className={colClass}>
       <div
         className={`spd-stage${zoomable ? ' zoomable' : ''}${magnified ? ' zoomed' : ''}`}
-        style={{ aspectRatio: aspect }}
         {...zoomHandlers}
       >
         {activeExtra && picked ? (
