@@ -1,4 +1,5 @@
 import { AddToCartButton } from '@/modules/shop/components/public/AddToCartButton'
+import { GalleryViewportFit } from '@/modules/shop/components/public/GalleryViewportFit'
 import { ProductGallery, ProductTabs, type ProductTab } from '@/modules/shop/components/public/ProductDetailIslands'
 import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints'
 import { formatMoney } from '@/modules/shop/lib/money'
@@ -27,22 +28,32 @@ function Style({ css }: { css: string }) {
 // ---------------------------------------------------------------------------
 
 const galleryCss = ({ tabletBp }: Breakpoints) => `
-.spd-stage-col{position:sticky;top:96px}
-.spd-stage-col.beside{display:flex;flex-direction:row-reverse;gap:12px;align-items:flex-start}
-.spd-stage-col.beside .spd-stage{flex:1;min-width:0}
+.spd-stage-col{position:sticky;top:calc(var(--spd-header-h,96px) + 16px);max-height:calc(100dvh - var(--spd-header-h,96px) - 32px);display:flex;flex-direction:column;gap:12px}
+.spd-stage-col.beside{flex-direction:row-reverse;align-items:flex-start}
+/* Beside puts the strip alongside, so the column is a row and the stage can't
+   be squeezed down by the column's own cap the way it is when stacked - its
+   height comes from its width and the aspect ratio, and nothing above it is
+   giving way. Cap it against the same viewport sum by hand, or a portrait stage
+   on a short screen would simply overrun the column. */
+.spd-stage-col.beside .spd-stage{flex:1;min-width:0;max-height:calc(100dvh - var(--spd-header-h,96px) - 32px)}
 .spd-stage-col.beside .spd-thumbs{flex-direction:column;margin-top:0;flex:none}
-.spd-stage{position:relative;border:1px solid var(--color-border);border-radius:16px;background:var(--color-bg-subtle);overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center}
+.spd-stage{position:relative;border:1px solid var(--color-border);border-radius:16px;background:var(--color-bg-subtle);overflow:hidden;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;flex:1 1 auto;min-height:140px}
 .spd-stage-img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .18s ease}
 .spd-stage.zoomable{cursor:zoom-in}
 /* touch-action only while magnified, so a finger passing over a plain image still scrolls the page */
 .spd-stage.zoomed{cursor:zoom-out;touch-action:none}
 @media (prefers-reduced-motion:reduce){.spd-stage-img{transition:none}}
-.spd-thumbs{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+/* The column's gap now does the spacing the margin used to; flex:none keeps the
+   strip at full height so the stage above absorbs any squeeze on its own. */
+.spd-thumbs{display:flex;gap:10px;margin-top:0;flex-wrap:wrap;flex:none}
 .spd-thumb{width:64px;height:64px;border:1px solid var(--color-border);border-radius:8px;overflow:hidden;background:var(--color-bg-subtle);cursor:pointer;padding:0;transition:border-color .12s ease,box-shadow .12s ease}
 .spd-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .spd-thumb.on{border-color:var(--color-primary);box-shadow:0 0 0 1px var(--color-primary)}
 .spd-thumb:hover{border-color:var(--color-primary)}
-@media (max-width:${tabletBp}){.spd-stage-col{position:static}}
+/* Stacked on a narrow screen the gallery has the full width to itself and the
+   buy panel is below it, not beside it - so there's nothing to stick to and no
+   reason to cap the height. */
+@media (max-width:${tabletBp}){.spd-stage-col{position:static;max-height:none}}
 `
 
 type GalleryProps = { _ctx?: DetailPartContext; shape?: string; thumbPosition?: string }
@@ -77,6 +88,7 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
   return (
     <>
       <Style css={galleryCss(ctx.bp)} />
+      <GalleryViewportFit />
       {SlotGallery ? (
         <SlotGallery
           slug={ctx.product.slug}
