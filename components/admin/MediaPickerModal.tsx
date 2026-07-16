@@ -8,7 +8,17 @@ type MediaItem = { id: string; url: string; key: string; altText: string | null;
 // MultiMediaPickerModal - browses core's shared media library
 // (GET /api/admin/media) and adds an upload tab against the same endpoint's
 // POST, since shop stores product media as plain URLs rather than media IDs.
-export function MediaPickerModal({ onAdd, onClose }: { onAdd: (items: MediaItem[]) => void; onClose: () => void }) {
+//
+// `resolveFolderId` is asked, per upload, where the file should be filed - the
+// product's Shop / <category> / <product> folder. Called at upload time rather
+// than taken as a value so the answer reflects the editor as it stands, and so
+// nothing is created for a picker that is only browsed. Omitted or null means
+// the library root: core's own default, and where product images used to land.
+export function MediaPickerModal({ onAdd, onClose, resolveFolderId }: {
+  onAdd: (items: MediaItem[]) => void
+  onClose: () => void
+  resolveFolderId?: () => Promise<string | null>
+}) {
   const [items, setItems] = useState<MediaItem[]>([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
@@ -17,13 +27,20 @@ export function MediaPickerModal({ onAdd, onClose }: { onAdd: (items: MediaItem[
   const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  function refresh() {
-    fetch('/api/admin/media?perPage=50')
+  // folder=all, not the endpoint's default: that default is the library root, so
+  // the picker could only ever see root images. Product images live in
+  // Shop / <category> / <product>, and a picker blind to folders is half of what
+  // kept making the root look like the only place an image could go.
+  //
+  // Returns its promise so an upload can wait for the list it is about to be
+  // ticked in.
+  function refresh(): Promise<void> {
+    return fetch('/api/admin/media?perPage=50&folder=all&type=image')
       .then((r) => r.json())
       .then((d) => { setItems(d.items ?? []); setLoading(false) })
       .catch(() => setLoading(false))
   }
-  useEffect(refresh, [])
+  useEffect(() => { void refresh() }, [])
 
   const filtered = query
     ? items.filter((i) => i.key.toLowerCase().includes(query.toLowerCase()) || (i.altText ?? '').toLowerCase().includes(query.toLowerCase()))
@@ -41,12 +58,21 @@ export function MediaPickerModal({ onAdd, onClose }: { onAdd: (items: MediaItem[
   async function handleUpload(file: File) {
     setUploading(true)
     setUploadError(null)
+    const folderId = resolveFolderId ? await resolveFolderId() : null
     const body = new FormData()
     body.append('file', file)
+    if (folderId) body.append('folderId', folderId)
     const res = await fetch('/api/admin/media', { method: 'POST', body })
     setUploading(false)
-    if (!res.ok) { setUploadError((await res.json()).error ?? 'Upload failed'); return }
-    refresh()
+    if (!res.ok) { setUploadError((await res.json().catch(() => ({}))).error ?? 'Upload failed'); return }
+    const uploaded = await res.json().catch(() => null) as MediaItem | null
+
+    // Tick the new image straight away: the admin just picked the file, so
+    // making them hunt for it in the grid is a step for the sake of it. Only
+    // after the refresh, though - Add reads the selection back out of `items`,
+    // so ticking something that is not listed yet would quietly drop it.
+    await refresh()
+    if (uploaded?.id) setPicked((prev) => new Set(prev).add(uploaded.id))
   }
 
   return (

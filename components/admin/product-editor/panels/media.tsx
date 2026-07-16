@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { MediaPickerModal } from '@/modules/shop/components/admin/MediaPickerModal'
 import { EmptyNote, Section } from '@/modules/shop/components/admin/product-editor/fields'
 import type { MediaItem, PanelProps } from '@/modules/shop/components/admin/product-editor/model'
@@ -8,11 +8,31 @@ import type { MediaItem, PanelProps } from '@/modules/shop/components/admin/prod
 /** Images in shopper-facing order. The first one is the cover, so reordering is
  * the same gesture as choosing the cover; drag to reorder, or use the arrows,
  * which are also the keyboard route. */
-export function MediaPanel({ state, patch }: PanelProps) {
+export function MediaPanel({ state, patch, productId }: PanelProps & { productId: string }) {
   const [picking, setPicking] = useState(false)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const media = state.media
+  const masterCategoryId = state.form.masterCategoryId
+
+  // Where a new upload is filed: Shop / <category> / <product>, resolved at the
+  // moment of upload so the image goes straight there instead of landing in the
+  // library root and waiting for the save to move it. Asked for per upload
+  // rather than up front: it creates the folder, so doing it on mount would
+  // leave an empty one behind for every product whose Images tab was opened,
+  // and it picks up the category currently chosen on screen, which may not be
+  // the saved one yet. Null on failure - the upload still works, it just lands
+  // in the root as it always used to.
+  const resolveUploadFolderId = useCallback(async (): Promise<string | null> => {
+    const query = masterCategoryId ? `?masterCategoryId=${encodeURIComponent(masterCategoryId)}` : ''
+    try {
+      const res = await fetch(`/api/m/shop/admin/products/${productId}/media-folder${query}`, { method: 'POST' })
+      if (!res.ok) return null
+      return (await res.json()).folderId ?? null
+    } catch {
+      return null
+    }
+  }, [productId, masterCategoryId])
 
   const setMedia = (next: MediaItem[]) => patch((s) => ({ ...s, media: next }))
 
@@ -88,6 +108,7 @@ export function MediaPanel({ state, patch }: PanelProps) {
 
         {picking && (
           <MediaPickerModal
+            resolveFolderId={resolveUploadFolderId}
             onClose={() => setPicking(false)}
             onAdd={(items) => {
               const fresh = items

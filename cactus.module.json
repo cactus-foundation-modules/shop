@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.40",
+  "version": "0.1.41",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "publicBasePath": "shop",

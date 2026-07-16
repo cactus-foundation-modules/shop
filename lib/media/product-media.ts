@@ -26,9 +26,44 @@ import { getCategoryById } from '@/modules/shop/lib/db/catalogue'
 // exactly. Names are globally unique (slug is unique, n is the position), so the
 // caller safely owns collision within the folder - two products sharing a name
 // share a folder without either clobbering the other.
+//
+// The editor also resolves this folder up front (getProductMediaFolderId) and
+// uploads new images straight into it. Filing on save alone was not enough: an
+// upload that is never saved, or saved while any part of the move fails, simply
+// stayed in the library root, which is where product images had been piling up.
 // ---------------------------------------------------------------------------
 
 const UNCATEGORISED_FOLDER = 'Uncategorised'
+
+/**
+ * The library folder a product's images belong in, created if it does not exist
+ * yet: Shop / <master category> / <product>.
+ *
+ * `masterCategoryId` overrides the product's saved master, which is what lets
+ * the editor file an upload under the category currently picked on screen
+ * rather than the one last saved. `folderProductId` files under another
+ * product's folder (see the header note).
+ */
+export async function getProductMediaFolderId(
+  productId: string,
+  options: { folderProductId?: string; masterCategoryId?: string | null } = {},
+): Promise<string | null> {
+  const folderProductId = options.folderProductId ?? productId
+  const folderProduct = await getProductById(folderProductId)
+  if (!folderProduct) return null
+
+  const masterCategoryId = options.masterCategoryId !== undefined
+    ? options.masterCategoryId
+    : folderProduct.masterCategoryId
+
+  let categoryName = UNCATEGORISED_FOLDER
+  if (masterCategoryId) {
+    const category = await getCategoryById(masterCategoryId)
+    if (category) categoryName = category.name
+  }
+
+  return getOrCreateFolderByPath(['Shop', categoryName, folderProduct.name])
+}
 
 export async function reorganiseProductMedia(
   productId: string,
@@ -39,18 +74,8 @@ export async function reorganiseProductMedia(
 
   // Images are normally filed under their own product; `folderProductId` files
   // them under another product's folder instead (see the header note).
-  const folderProduct = options.folderProductId && options.folderProductId !== productId
-    ? await getProductById(options.folderProductId)
-    : product
-  if (!folderProduct) return
-
-  let categoryName = UNCATEGORISED_FOLDER
-  if (folderProduct.masterCategoryId) {
-    const category = await getCategoryById(folderProduct.masterCategoryId)
-    if (category) categoryName = category.name
-  }
-
-  const folderId = await getOrCreateFolderByPath(['Shop', categoryName, folderProduct.name])
+  const folderId = await getProductMediaFolderId(productId, options)
+  if (folderId === null) return
 
   const images = await prisma.$queryRaw<{ url: string }[]>`
     SELECT "url" FROM "shp_product_media"
@@ -77,10 +102,13 @@ export async function reorganiseProductMedia(
           WHERE "product_id" = ${productId} AND "url" = ${url}
         `
       }
-    } catch {
+    } catch (err) {
       // A single image failing to relocate (provider hiccup, missing blob) must
       // not fail the whole save - the row keeps its current url and can be
-      // re-filed on the next save.
+      // re-filed on the next save. Say so in the log though: swallowing this
+      // silently is how every product image ended up sat in the library root
+      // with nothing anywhere reporting a problem.
+      console.warn(`[shop] could not file image ${url} for product ${productId}:`, err)
     }
   }
 }
