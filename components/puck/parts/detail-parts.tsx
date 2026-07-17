@@ -92,10 +92,19 @@ const galleryCss = ({ tabletBp, mobileBp }: Breakpoints) => `
    smaller photo narrows the column, and the ResizeObserver in GalleryViewportFit
    chases it round. One nowrap row is a constant 64px however many photos there
    are, so the budget holds still and the extras scroll sideways instead.
-   overflow-x also drops the strip's min-content contribution to zero, keeping
-   fifteen thumbnails from widening the column they are supposed to sit inside.
-   Beside is exempt: its strip is a column whose height never entered the sum. */
-.spd-stage-col:not(.beside) .spd-thumbs{flex-wrap:nowrap;overflow-x:auto;min-width:0}
+   Beside is exempt: its strip is a column whose height never entered the sum.
+
+   contain:inline-size is what actually stops fifteen thumbnails widening the
+   column they are supposed to sit inside. overflow-x and min-width:0 were meant
+   to do that job and don't: they only free the strip to BE narrow (they drop its
+   automatic minimum size), while its min-content width is still the whole nowrap
+   row - 656px for the nine photos on Deskwell's Chiro Plus. That figure was
+   quietly the widest thing in the gallery column, so a stacked mobile layout,
+   whose single 1fr track is floored by its items' min-content, was sized 656px
+   inside a 327px page and the shopper could swipe the whole product page
+   sideways. Containment makes the strip's intrinsic width 0 as intended, so the
+   track is free to be the page's width and the row scrolls inside it. */
+.spd-stage-col:not(.beside) .spd-thumbs{flex-wrap:nowrap;overflow-x:auto;min-width:0;contain:inline-size}
 /* Shop's own strip below the stage sits in a positioned box (GalleryThumbStrip)
    so the arrows and fades have something to hang off. That makes the wrapper the
    column's flex child and the strip the wrapper's, so flex:none moves up here
