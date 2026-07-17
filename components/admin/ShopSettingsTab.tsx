@@ -1,7 +1,8 @@
 'use client'
 
-import { Fragment, useEffect, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { TabStrip } from '@/components/admin/TabStrip'
+import type { ModuleSettingsTabProps } from '@/lib/modules/hosted-settings'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import type { ShpEmailTemplate, ShpEmailTemplateTrigger } from '@/modules/shop/lib/types'
 
@@ -35,6 +36,20 @@ const SUB_TABS: { key: SubTab; label: string }[] = [
   { key: 'templates', label: 'Email templates' },
 ]
 
+// Two slots this tab publishes for other modules' settings panels (`host` on
+// their manifest settingsTabs entry - see lib/modules/hosted-settings.ts):
+//
+// - 'shop.payments' merges a panel into the Payments sub-tab, under the heading
+//   shop writes. For a payment provider, whose keys and toggle belong next to
+//   Stripe's and PayPal's rather than anywhere else.
+// - 'shop.settings-sub-tabs' gives a panel a sub-tab of its own, labelled from
+//   its manifest entry. For an add-on whose settings are nobody else's business
+//   and would only be noise inside one of shop's own sub-tabs.
+//
+// Both are empty on a shop with no add-ons installed, and an empty slot renders
+// nothing: no extra tab, no gap, no diff for a shop-only site owner.
+const HOSTED_SUB_TAB_SLOT = 'shop.settings-sub-tabs'
+
 type ProviderKeyField = { key: string; label: string; type: 'text' | 'password' | 'select'; options?: string[] }
 type ProviderSection = { id: 'stripe' | 'paypal'; title: string; description: string; keys: ProviderKeyField[] }
 
@@ -67,18 +82,19 @@ const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid var(--co
 const sectionHeading: React.CSSProperties = { margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }
 const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: 'var(--form-gap)' }
 
-// `hostedSettingsSlots` carries settings panels other modules contribute to a
-// named slot (see the core config page). Payment provider modules (e.g.
-// GoCardless Instant Bank Pay) target 'shop.payments' so their credentials and
-// toggle sit alongside Stripe and PayPal, not in a separate top-level tab.
-export function ShopSettingsTab({ hostedSettingsSlots }: { hostedSettingsSlots?: Record<string, ReactNode> } = {}) {
+// Settings panels other modules contribute to this tab's slots, resolved and
+// rendered by the core config page and handed down (see HOSTED_SUB_TAB_SLOT
+// above, and lib/modules/hosted-settings.ts for the two shapes).
+export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: ModuleSettingsTabProps = {}) {
   const [config, setConfig] = useState<ShpConfig | null>(null)
   const [envStatus, setEnvStatus] = useState<{ stripe: boolean; paypal: boolean } | null>(null)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [saveError, setSaveError] = useState('')
   const [forbidden, setForbidden] = useState(false)
-  const [subTab, setSubTab] = useState<SubTab>('general')
+  // Not SubTab: a contributed sub-tab's key is its manifest id, which shop cannot
+  // know the set of.
+  const [subTab, setSubTab] = useState<string>('general')
 
   const [templates, setTemplates] = useState<ShpEmailTemplate[]>([])
   const [activeTrigger, setActiveTrigger] = useState<ShpEmailTemplateTrigger | null>(null)
@@ -218,17 +234,31 @@ export function ShopSettingsTab({ hostedSettingsSlots }: { hostedSettingsSlots?:
 
   const activeTemplate = templates.find((t) => t.trigger === activeTrigger)
 
+  // Contributed sub-tabs go after shop's own, in module-load order, so a newly
+  // installed add-on never reorders the tabs a site owner already knows.
+  const hostedSubTabs = hostedSettingsPanels?.[HOSTED_SUB_TAB_SLOT] ?? []
+  const activeHostedSubTab = hostedSubTabs.find((p) => p.id === subTab)
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-4)' }}>
-        {subTab !== 'templates' && (
+        {/* A contributed sub-tab saves its own settings through its own module's
+            API, exactly as the templates sub-tab does. Shop's Save button would
+            not save it, so showing one over it only invites the click that
+            appears to do nothing. */}
+        {subTab !== 'templates' && !activeHostedSubTab && (
           <button className="btn btn-primary" disabled={saving} onClick={save}>
             {saving ? 'Saving…' : 'Save settings'}
           </button>
         )}
       </div>
 
-      <TabStrip items={SUB_TABS.map((t) => ({ key: t.key, label: t.label, active: t.key === subTab, onClick: () => setSubTab(t.key) }))} />
+      <TabStrip
+        items={[
+          ...SUB_TABS.map((t) => ({ key: t.key as string, label: t.label })),
+          ...hostedSubTabs.map((p) => ({ key: p.id, label: p.label })),
+        ].map((t) => ({ key: t.key, label: t.label, active: t.key === subTab, onClick: () => setSubTab(t.key) }))}
+      />
 
       {message && <div className="alert alert-success" style={{ marginBottom: '1rem' }}>{message}</div>}
       {saveError && <div className="alert alert-danger" style={{ marginBottom: '1rem' }}>{saveError}</div>}
@@ -548,6 +578,11 @@ export function ShopSettingsTab({ hostedSettingsSlots }: { hostedSettingsSlots?:
           </div>
         </div>
       )}
+
+      {/* Rendered by the core config page, so shop hands it the space and asks
+          nothing else about it. Whatever the panel needs - its own fetch, its own
+          save, its own permission check - is its own module's business. */}
+      {activeHostedSubTab && <div>{activeHostedSubTab.node}</div>}
     </div>
   )
 }
