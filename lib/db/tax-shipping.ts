@@ -34,6 +34,20 @@ export async function getTaxClassByCode(code: string): Promise<ShpTaxClass | nul
   return rows[0] ?? null
 }
 
+// Reverse of getTaxClassByCode, batched: maps tax-class ids to their codes so
+// the CSV export can write the real code per product in one query rather than
+// N. Ids with no matching class (or a null code) are simply absent from the map.
+export async function getTaxClassCodesByIds(ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter(Boolean))]
+  if (unique.length === 0) return new Map()
+  const rows = await prisma.$queryRaw<{ id: string; code: string | null }[]>`
+    SELECT "id", "code" FROM "shp_tax_classes" WHERE "id" IN (${Prisma.join(unique)})
+  `
+  const map = new Map<string, string>()
+  for (const r of rows) if (r.code) map.set(r.id, r.code)
+  return map
+}
+
 // ---------------------------------------------------------------------------
 // Shipping zones
 // ---------------------------------------------------------------------------

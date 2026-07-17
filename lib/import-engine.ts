@@ -1,4 +1,4 @@
-import { parseCsv, resolveColumnMap, type CsvColumn } from '@/modules/shop/lib/csv'
+import { parseCsv, resolveColumnMap, parseMediaCells, type CsvColumn } from '@/modules/shop/lib/csv'
 import { getProductBySlug, createProduct, updateProduct, setProductMedia, setProductCategories, setProductTags, setProductCollections } from '@/modules/shop/lib/db/products'
 import { findOrCreateTagBySlug, getCategoryBySlug, createCategory, getCollectionBySlug, createCollection } from '@/modules/shop/lib/db/catalogue'
 import { getTaxClassByCode } from '@/modules/shop/lib/db/tax-shipping'
@@ -123,12 +123,14 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       const categoryNames = cell(row, 'categories').split('|').map((s) => s.trim()).filter(Boolean)
       const tagNames = cell(row, 'tags').split('|').map((s) => s.trim()).filter(Boolean)
       const collectionNames = cell(row, 'collections').split('|').map((s) => s.trim()).filter(Boolean)
-      const imageUrls = cell(row, 'image_urls').split('|').map((s) => s.trim()).filter(Boolean)
+      // Type-prefixed media: `IMAGE:url|VIDEO_URL:url`, alt aligned in image_alt.
+      // Legacy un-prefixed urls fall through to IMAGE, so old CSVs are unchanged.
+      const mediaCells = parseMediaCells(cell(row, 'image_urls'), cell(row, 'image_alt'))
 
       if (categoryNames.length) await setProductCategories(resolvedId, await resolveTermIds(categoryNames, getCategoryBySlug, (n, s) => createCategory({ name: n, slug: s })))
       if (tagNames.length) await setProductTags(resolvedId, await resolveTagIds(tagNames))
       if (collectionNames.length) await setProductCollections(resolvedId, await resolveTermIds(collectionNames, getCollectionBySlug, (n, s) => createCollection({ name: n, slug: s })))
-      if (imageUrls.length) await setProductMedia(resolvedId, imageUrls.map((url, idx) => ({ type: 'IMAGE' as const, url, isPrimary: idx === 0 })))
+      if (mediaCells.length) await setProductMedia(resolvedId, mediaCells.map((m, idx) => ({ type: m.type, url: m.url, altText: m.altText, isPrimary: idx === 0 })))
     } catch (err) {
       errors.push({ row: rowNumber, reason: err instanceof Error ? err.message : 'Unknown error' })
       skipped++

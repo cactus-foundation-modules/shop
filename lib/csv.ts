@@ -2,10 +2,65 @@
 export const CSV_COLUMNS = [
   'sku', 'name', 'type', 'status', 'description', 'short_description', 'price', 'compare_at_price', 'cost_price',
   'tax_class', 'track_inventory', 'stock_count', 'low_stock_threshold', 'out_of_stock_behaviour', 'weight', 'weight_unit',
-  'categories', 'tags', 'collections', 'meta_title', 'meta_description', 'image_urls', 'barcode',
+  'categories', 'tags', 'collections', 'meta_title', 'meta_description', 'image_urls', 'image_alt', 'barcode',
 ] as const
 
 export type CsvColumn = (typeof CSV_COLUMNS)[number]
+
+// Columns that a valid shop CSV may omit. `image_alt` was appended after this
+// format shipped, so every CSV in the wild predates it; `cost_price` is genuinely
+// optional (and the Google-Sheet mirror drops it entirely when the owner hides
+// margins). headerMatchesFormat must tolerate both being absent, or an old export
+// would be bounced into the manual column-mapping step for no reason.
+const OPTIONAL_CSV_COLUMNS: readonly CsvColumn[] = ['image_alt', 'cost_price']
+
+// The three media kinds shp_product_media.type may hold. Kept here (not just in
+// the DB CHECK) because the CSV format encodes the kind as a `TYPE:url` prefix.
+export const MEDIA_TYPES = ['IMAGE', 'VIDEO_FILE', 'VIDEO_URL'] as const
+export type MediaType = (typeof MEDIA_TYPES)[number]
+export type MediaCell = { type: MediaType; url: string; altText: string | null }
+
+// Serialise a product's media rows into the two positionally-aligned pipe-joined
+// cells the CSV carries: `image_urls` holds `TYPE:url` per entry, `image_alt`
+// holds the matching alt text (empty where there is none). Keeping the kind in
+// the cell is what stops a video degrading to an image on the next import.
+export function serializeMedia(media: Array<{ type: string; url: string; altText?: string | null }>): { imageUrls: string; imageAlt: string } {
+  return {
+    imageUrls: media.map((m) => `${m.type}:${m.url}`).join('|'),
+    imageAlt: media.map((m) => m.altText ?? '').join('|'),
+  }
+}
+
+// Inverse of serializeMedia, and deliberately lenient for backwards compatibility.
+// An entry whose prefix is not one of the three known media kinds is read as a
+// plain IMAGE url - so `https://x/a.jpg` keeps its `https:` and every pre-prefix
+// CSV imports exactly as it did before. Alt text is taken from the aligned
+// `image_alt` entry, or null when that column is absent/blank.
+export function parseMediaCells(imageUrls: string, imageAlt: string): MediaCell[] {
+  const urlEntries = imageUrls.split('|').map((s) => s.trim()).filter(Boolean)
+  const altEntries = imageAlt.split('|').map((s) => s.trim())
+  return urlEntries.map((entry, idx) => {
+    const match = /^(IMAGE|VIDEO_FILE|VIDEO_URL):(.*)$/i.exec(entry)
+    const type = (match ? match[1]!.toUpperCase() : 'IMAGE') as MediaType
+    const url = match ? match[2]! : entry
+    const alt = altEntries[idx]
+    return { type, url, altText: alt ? alt : null }
+  })
+}
+
+// Collect every page from a paginated fetcher into one array. Used by the export
+// route so it emits the whole catalogue instead of the first page - the
+// per-page clamp in listProducts stays put (it guards the public list). The
+// empty-page guard stops a total that shifts mid-loop spinning forever.
+export async function collectPaged<T>(fetchPage: (page: number) => Promise<{ items: T[]; total: number }>): Promise<T[]> {
+  const all: T[] = []
+  for (let page = 1; ; page++) {
+    const { items, total } = await fetchPage(page)
+    all.push(...items)
+    if (items.length === 0 || all.length >= total) break
+  }
+  return all
+}
 
 export function toCsvField(value: string): string {
   // CSV formula-injection guard: a cell starting with = + - @ (or tab/CR) is
@@ -70,7 +125,14 @@ export function resolveColumnMap(header: string[], columnMap?: Record<string, st
   return map
 }
 
-export function headerMatchesFormat(header: string[]): boolean {
+// The required columns a header is missing (optional columns never count). The
+// Google-Sheet mirror uses this to refuse a mangled sheet by name; the shop UI
+// uses headerMatchesFormat below to decide auto-submit vs the mapping step.
+export function missingFormatColumns(header: string[]): CsvColumn[] {
   const normalised = header.map((h) => h.trim().toLowerCase().replace(/\s+/g, '_'))
-  return CSV_COLUMNS.every((c) => normalised.includes(c))
+  return CSV_COLUMNS.filter((c) => !OPTIONAL_CSV_COLUMNS.includes(c) && !normalised.includes(c))
+}
+
+export function headerMatchesFormat(header: string[]): boolean {
+  return missingFormatColumns(header).length === 0
 }
