@@ -4,6 +4,8 @@ import { Render } from '@puckeditor/core/rsc'
 import { getCategoryBySlug, getCategoryAncestorPath, listCategories, resolveCategoryProductFilter } from '@/modules/shop/lib/db/catalogue'
 import { listProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { getShopGate } from '@/modules/shop/lib/access'
+import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { injectCategoryContext } from '@/modules/shop/lib/inject-category-context'
@@ -12,6 +14,7 @@ import { formatMoney } from '@/modules/shop/lib/money'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
+  if ((await getShopGate()).blocked) return {}
   const category = await getCategoryBySlug(slug)
   if (!category) return {}
   return { title: category.metaTitle || category.name, description: category.metaDescription || category.description || undefined }
@@ -19,13 +22,21 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function ShopCategoryPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
+  const gate = await getShopGate()
+  if (gate.blocked) return <ShopClosedNotice message={gate.message} />
+
   const category = await getCategoryBySlug(slug)
   if (!category) notFound()
 
   const layout = await resolveThemeLayout('shopCategory', { moduleName: 'shop', slug: category.slug })
   if (layout?.builderData) {
     const data = injectCategoryContext(layout.builderData as PuckData, { categorySlug: category.slug })
-    return <Render config={getModuleLayoutPuckRscConfig('shopCategory') as any} data={data as any} />
+    return (
+      <>
+        {gate.staffPreview && <ShopStaffPreviewBanner />}
+        <Render config={getModuleLayoutPuckRscConfig('shopCategory') as any} data={data as any} />
+      </>
+    )
   }
 
   const config = await getShopConfigCached()
@@ -45,6 +56,7 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
+      {gate.staffPreview && <ShopStaffPreviewBanner />}
       <nav aria-label="Breadcrumb" style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
         <Link href="/shop" style={{ color: 'inherit', textDecoration: 'none' }}>Shop</Link>
         {crumbs.map((a) => (

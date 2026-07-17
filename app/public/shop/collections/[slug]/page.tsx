@@ -3,6 +3,8 @@ import { Render } from '@puckeditor/core/rsc'
 import { getCollectionBySlug } from '@/modules/shop/lib/db/catalogue'
 import { listProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { getShopGate } from '@/modules/shop/lib/access'
+import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { injectCollectionContext } from '@/modules/shop/lib/inject-collection-context'
@@ -11,6 +13,7 @@ import { formatMoney } from '@/modules/shop/lib/money'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
+  if ((await getShopGate()).blocked) return {}
   const collection = await getCollectionBySlug(slug)
   if (!collection) return {}
   return { title: collection.metaTitle || collection.name, description: collection.metaDescription || collection.description || undefined }
@@ -18,13 +21,21 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function ShopCollectionPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
+  const gate = await getShopGate()
+  if (gate.blocked) return <ShopClosedNotice message={gate.message} />
+
   const collection = await getCollectionBySlug(slug)
   if (!collection) notFound()
 
   const layout = await resolveThemeLayout('shopCollection', { moduleName: 'shop', slug: collection.slug })
   if (layout?.builderData) {
     const data = injectCollectionContext(layout.builderData as PuckData, { collectionSlug: collection.slug })
-    return <Render config={getModuleLayoutPuckRscConfig('shopCollection') as any} data={data as any} />
+    return (
+      <>
+        {gate.staffPreview && <ShopStaffPreviewBanner />}
+        <Render config={getModuleLayoutPuckRscConfig('shopCollection') as any} data={data as any} />
+      </>
+    )
   }
 
   const [{ products }, config] = await Promise.all([
@@ -34,6 +45,7 @@ export default async function ShopCollectionPage({ params }: { params: Promise<{
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
+      {gate.staffPreview && <ShopStaffPreviewBanner />}
       <h1 style={{ fontSize: '1.75rem' }}>{collection.name}</h1>
       {collection.description && <p style={{ color: 'var(--color-text-muted)' }}>{collection.description}</p>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginTop: '1.5rem' }}>

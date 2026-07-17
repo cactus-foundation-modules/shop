@@ -5,11 +5,15 @@ import { getProductById } from '@/modules/shop/lib/db/products'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { verifyUnsubscribeToken } from '@/modules/shop/lib/unsubscribe-token'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { shopClosedResponse } from '@/modules/shop/lib/access'
 
 const SubscribeBody = z.object({ productId: z.string(), email: z.string().email() })
 
 // Idempotent subscribe - repeat subscribes just return 200 (addendum A.4).
 export async function POST(request: NextRequest) {
+  const closed = await shopClosedResponse()
+  if (closed) return closed
+
   const ip = getClientIpFromRequest(request)
   if (!checkInMemoryRateLimit(`back-in-stock:${ip}`, 20, 60 * 60 * 1000)) {
     return NextResponse.json({ error: 'Too many requests, please try again later.' }, { status: 429 })
@@ -27,6 +31,9 @@ export async function POST(request: NextRequest) {
 }
 
 // Unsubscribe via signed token from the email link - no DB lookup needed to validate it.
+// Deliberately not behind the CLOSED gate, here or on GET below: an unsubscribe
+// link that has already gone out to someone's inbox has to keep working even
+// while the shop is shut.
 export async function DELETE(request: NextRequest) {
   const token = request.nextUrl.searchParams.get('token')
   if (!token) return NextResponse.json({ error: 'Missing token' }, { status: 400 })

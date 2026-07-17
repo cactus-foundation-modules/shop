@@ -1,6 +1,8 @@
 import { getDownloadByToken } from '@/modules/shop/lib/db/digital'
 import { getOrderItemById } from '@/modules/shop/lib/db/orders'
 import { getProductById } from '@/modules/shop/lib/db/products'
+import { getShopGate } from '@/modules/shop/lib/access'
+import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 
 export const metadata = { title: 'Download' }
 
@@ -9,6 +11,9 @@ export const metadata = { title: 'Download' }
 // the count; this page just explains expiry/limit states nicely first.
 export default async function ShopDownloadPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
+  const gate = await getShopGate()
+  if (gate.blocked) return <ShopClosedNotice message={gate.message} />
+
   const download = await getDownloadByToken(token)
 
   if (!download) {
@@ -26,6 +31,7 @@ export default async function ShopDownloadPage({ params }: { params: Promise<{ t
 
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', padding: '4rem 1.5rem', textAlign: 'center' }}>
+      {gate.staffPreview && <ShopStaffPreviewBanner />}
       <p>Your file is ready.</p>
       <a
         href={`/api/m/shop/public/downloads/${token}`}

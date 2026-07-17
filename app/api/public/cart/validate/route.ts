@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { resolveCartLines } from '@/modules/shop/lib/checkout'
 import { getProductMedia } from '@/modules/shop/lib/db'
+import { shopClosedResponse } from '@/modules/shop/lib/access'
 
 const Body = z.object({
   lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1), lineId: z.string().optional(), meta: z.record(z.unknown()).optional() })),
@@ -10,6 +11,9 @@ const Body = z.object({
 // Revalidates client localStorage cart lines against live stock/price/status
 // (spec 8.1 POST /cart/validate, Q9).
 export async function POST(request: NextRequest) {
+  const closed = await shopClosedResponse()
+  if (closed) return closed
+
   const parsed = Body.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: 'Invalid cart' }, { status: 400 })
 

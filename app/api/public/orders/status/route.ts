@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOrderByNumberAndEmail, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { shopClosedResponse } from '@/modules/shop/lib/access'
 
 // Guest order lookup: order number + email must both match - no enumeration (spec 8.1).
 export async function GET(request: NextRequest) {
+  const closed = await shopClosedResponse()
+  if (closed) return closed
+
   const orderNumber = request.nextUrl.searchParams.get('orderNumber')
   const email = request.nextUrl.searchParams.get('email')
   if (!orderNumber || !email) return NextResponse.json({ error: 'orderNumber and email are required' }, { status: 400 })

@@ -5,6 +5,8 @@ import type { Data } from '@puckeditor/core'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getProductBySlug } from '@/modules/shop/lib/db/products'
+import { getShopGate } from '@/modules/shop/lib/access'
+import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { injectProductContext } from '@/modules/shop/lib/inject-product-context'
 import type { PuckData } from '@/modules/shop/lib/types'
 
@@ -16,6 +18,9 @@ const getProduct = cache(getProductBySlug)
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
+  // A closed shop must not publish its product names either, so the title is
+  // withheld from anyone the page itself would turn away.
+  if ((await getShopGate()).blocked) return {}
   const product = await getProduct(slug)
   // Mirrors the page's visibility gate below. Next currently discards this
   // metadata once the page calls notFound(), but only while no
@@ -30,6 +35,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function ShopProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
+  const gate = await getShopGate()
+  if (gate.blocked) return <ShopClosedNotice message={gate.message} />
+
   const product = await getProduct(slug)
   // Catalogue-hidden rows (variant children) are reached only through their
   // parent's selector, never on their own URL.
@@ -43,6 +51,7 @@ export default async function ShopProductPage({ params }: { params: Promise<{ sl
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
+      {gate.staffPreview && <ShopStaffPreviewBanner />}
       <Render config={getModuleLayoutPuckRscConfig('shopProduct') as any} data={data as Data} />
     </div>
   )

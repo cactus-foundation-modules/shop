@@ -4,10 +4,14 @@ import { getDownloadByToken, getDigitalFileById, incrementDownloadCount } from '
 import { getOrderItemById } from '@/modules/shop/lib/db/orders'
 import { getProductById } from '@/modules/shop/lib/db/products'
 import { contentDisposition } from '@/modules/shop/lib/download-name'
+import { shopClosedResponse } from '@/modules/shop/lib/access'
 
 // PROTECTED - access control: token lookup, expiry + download-limit checks
 // before ever handing back a URL (spec 8.1 GET /downloads/[token]).
 export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
+  const closed = await shopClosedResponse()
+  if (closed) return closed
+
   const { token } = await params
   const download = await getDownloadByToken(token)
   if (!download) return errorResponse('This download link is not valid.', 404)

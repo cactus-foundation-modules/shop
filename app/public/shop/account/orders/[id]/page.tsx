@@ -5,6 +5,8 @@ import { getMemberAreaPath } from '@/lib/members/paths'
 import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { listDownloadsForOrder } from '@/modules/shop/lib/db/digital'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { getShopGate } from '@/modules/shop/lib/access'
+import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { formatMoney } from '@/modules/shop/lib/money'
 
 export const metadata = { title: 'Order detail' }
@@ -12,6 +14,9 @@ export const metadata = { title: 'Order detail' }
 export default async function ShopAccountOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const membersConfig = await getMembersConfig()
   if (!membersConfig.enabled) notFound()
+
+  const gate = await getShopGate()
+  if (gate.blocked) return <ShopClosedNotice message={gate.message} />
 
   const member = await getMemberFromCookie()
   if (!member) redirect(`/${getMemberAreaPath()}/login?redirect=/shop/account/orders`)
@@ -24,6 +29,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '2rem 1.5rem' }}>
+      {gate.staffPreview && <ShopStaffPreviewBanner />}
       <h1 style={{ fontSize: '1.5rem' }}>Order {order.orderNumber}</h1>
       <p>Status: {order.status}</p>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.5rem' }}>
