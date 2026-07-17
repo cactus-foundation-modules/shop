@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { ImportModal } from '@/modules/shop/components/admin/ImportModal'
@@ -44,7 +44,10 @@ function stockBadge(p: ProductRow): { cls: string; label: string } | null {
   return { cls: 'badge-success', label: `${p.stockCount} in stock` }
 }
 
-export function ProductsScreen() {
+// `toolbarExtras` are controls other modules hang beside the header buttons via
+// the `shop.products-toolbar` extension point (e.g. the Google Sheet dropdown).
+// Server-resolved on the page and passed straight through; empty on a plain shop.
+export function ProductsScreen({ toolbarExtras }: { toolbarExtras?: ReactNode } = {}) {
   const adminPath = useAdminPath()
   const currencySymbol = useCurrencySymbol()
   const [promptText, promptNode] = usePrompt()
@@ -224,6 +227,7 @@ export function ProductsScreen() {
           <Link href="/api/m/shop/admin/products/import-template" className="btn btn-secondary btn-sm">Import template</Link>
           <button onClick={() => setImportOpen(true)} className="btn btn-secondary btn-sm">Import CSV</button>
           <button onClick={createProduct} className="btn btn-primary btn-sm">New product</button>
+          {toolbarExtras}
         </div>
       </div>
 
