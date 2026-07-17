@@ -1,9 +1,9 @@
 {
   "name": "shop",
-  "version": "0.1.54",
+  "version": "0.1.55",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
-  "requiresCoreVersion": "0.5.490",
+  "requiresCoreVersion": "0.5.493",
   "publicBasePath": "shop",
   "permissions": [
     "shop.access",
@@ -118,6 +118,7 @@
   "extensionPoints": [
     { "point": "core.admin-dashboard-widgets", "id": "shop-summary", "permission": "shop.access", "import": "./components/admin/ShopDashboardWidget", "component": "shopDashboardWidget" },
     { "point": "core.menu-entity-provider", "id": "shop", "import": "./lib/menu-entity-provider", "component": "shopMenuEntityProvider" },
+    { "point": "core.media-reference-rewriters", "id": "shop", "import": "./lib/media-reference-rewriter", "component": "shopMediaReferenceRewriter" },
     { "point": "members.account-section", "id": "shop-orders", "import": "./components/public/ShopAccountSection", "component": "ShopAccountSection" }
   ],
   "memberExtensions": {
