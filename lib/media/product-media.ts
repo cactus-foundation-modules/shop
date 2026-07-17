@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/prisma'
-import { getOrCreateFolderByPath, moveOrRenameMedia } from '@/lib/media/organise'
+import { getOrCreateFolderByPath, moveOrRenameMedia, sanitizeFolderSegment } from '@/lib/media/organise'
 import { getProductById } from '@/modules/shop/lib/db/products'
 import { getCategoryById } from '@/modules/shop/lib/db/catalogue'
 
@@ -7,8 +7,10 @@ import { getCategoryById } from '@/modules/shop/lib/db/catalogue'
 // Product image filing.
 //
 // Every image attached to a product is filed in the core media library under
-//   Shop / <master category> / <product> / <product-slug><n>
-// (n is the image's 1-based position). The master category names the category
+//   shop / <master category> / <product> / <product-slug><n>
+// (n is the image's 1-based position; the folder names are lower-cased to match
+// the storage path, so images share a folder with the product's 3D models and
+// downloads rather than a parallel upper-case one). The master category names the category
 // folder and the product name names the folder inside it; products with no
 // master land under "Uncategorised". Only images that resolve to a managed core
 // Media row are moved - externally-hosted urls and video embeds are left
@@ -37,7 +39,8 @@ const UNCATEGORISED_FOLDER = 'Uncategorised'
 
 /**
  * The library folder a product's images belong in, created if it does not exist
- * yet: Shop / <master category> / <product>.
+ * yet: shop / <master category> / <product> (names lower-cased to match the
+ * storage path, so 3D models and downloads file alongside the images).
  *
  * `masterCategoryId` overrides the product's saved master, which is what lets
  * the editor file an upload under the category currently picked on screen
@@ -62,7 +65,15 @@ export async function getProductMediaFolderId(
     if (category) categoryName = category.name
   }
 
-  return getOrCreateFolderByPath(['Shop', categoryName, folderProduct.name])
+  // The segments are lower-cased to the same form the storage path uses, so a
+  // product's images land in the very folder its 3D models and downloads do -
+  // those modules build their subfolder from this folder's resolved (lower-case)
+  // path, and an upper-case tree here left images sitting in a parallel folder.
+  return getOrCreateFolderByPath([
+    sanitizeFolderSegment('Shop'),
+    sanitizeFolderSegment(categoryName),
+    sanitizeFolderSegment(folderProduct.name),
+  ])
 }
 
 export async function reorganiseProductMedia(
