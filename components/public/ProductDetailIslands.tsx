@@ -125,6 +125,26 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
       </div>
       {showThumbs && (
         <GalleryThumbStrip beside={thumbPosition === 'beside'}>
+          {/* Contributed media (a 3D model, say) leads the strip, so the richer
+              view sits first rather than trailing behind the photos - it is also
+              what the stage opens on, and the two should agree. */}
+          {extras.map((extra) => (
+            <extra.Thumbs
+              key={extra.id}
+              payload={extra.payload}
+              // Shop has no notion of a chosen combination, so every contributed
+              // item shows here. A gallery that does know (shop-variations')
+              // replaces this one wholesale and passes the chosen child instead.
+              activeProductId={null}
+              activeKey={picked?.id === extra.id ? picked.key : null}
+              onPick={(key) => {
+                setPicked(key === null ? null : { id: extra.id, key })
+                setTapped(false)
+              }}
+              thumbClass="spd-thumb"
+              thumbOnClass="spd-thumb on"
+            />
+          ))}
           {images.map((img, i) => (
             <button
               key={i}
@@ -142,23 +162,6 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={img.url} alt={img.alt || `${productName} thumbnail ${i + 1}`} />
             </button>
-          ))}
-          {extras.map((extra) => (
-            <extra.Thumbs
-              key={extra.id}
-              payload={extra.payload}
-              // Shop has no notion of a chosen combination, so every contributed
-              // item shows here. A gallery that does know (shop-variations')
-              // replaces this one wholesale and passes the chosen child instead.
-              activeProductId={null}
-              activeKey={picked?.id === extra.id ? picked.key : null}
-              onPick={(key) => {
-                setPicked(key === null ? null : { id: extra.id, key })
-                setTapped(false)
-              }}
-              thumbClass="spd-thumb"
-              thumbOnClass="spd-thumb on"
-            />
           ))}
         </GalleryThumbStrip>
       )}
