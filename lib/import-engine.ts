@@ -52,7 +52,7 @@ async function resolveTagIds(names: string[]): Promise<string[]> {
 // stores image_urls as IMAGE-type media rows pointing at the external URL
 // (Q13 - not re-uploaded). Runs inside Next's after() (Q7), progress tracked
 // on the shp_import_jobs row so the admin can poll it.
-export async function processImportJob(jobId: string, csvText: string, adminEmail: string, columnMap: Record<string, string> | null): Promise<void> {
+export async function processImportJob(jobId: string, csvText: string, adminEmail: string, columnMap: Record<string, string> | null, opts?: { notify?: boolean }): Promise<void> {
   const rows = parseCsv(csvText)
   const header = rows[0] ?? []
   const dataRows = rows.slice(1)
@@ -149,7 +149,12 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
   }
 
   await markImportJobCompleted(jobId, 'COMPLETED')
-  await sendShopEmail('IMPORT_COMPLETE', adminEmail, {
-    createdCount: String(created), updatedCount: String(updated), skippedCount: String(skipped),
-  })
+  // A direct CSV upload emails the admin a completion report; a background sync
+  // (e.g. a Google-Sheet Pull) that already surfaces its own result passes
+  // notify:false so it doesn't spam a report on every run.
+  if (opts?.notify !== false) {
+    await sendShopEmail('IMPORT_COMPLETE', adminEmail, {
+      createdCount: String(created), updatedCount: String(updated), skippedCount: String(skipped),
+    })
+  }
 }
