@@ -8,6 +8,7 @@
 // boundary - the "slots" pattern - so no data fetching happens client-side.
 
 import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { GalleryThumbStrip } from '@/modules/shop/components/public/GalleryThumbStrip'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 
 export type GalleryImage = { url: string; alt: string }
@@ -123,7 +124,7 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
         ) : null}
       </div>
       {showThumbs && (
-        <div className="spd-thumbs" role="tablist" aria-label="Product images">
+        <GalleryThumbStrip beside={thumbPosition === 'beside'}>
           {images.map((img, i) => (
             <button
               key={i}
@@ -159,7 +160,7 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
               thumbOnClass="spd-thumb on"
             />
           ))}
-        </div>
+        </GalleryThumbStrip>
       )}
     </div>
   )

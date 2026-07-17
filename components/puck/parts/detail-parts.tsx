@@ -96,6 +96,36 @@ const galleryCss = ({ tabletBp, mobileBp }: Breakpoints) => `
    fifteen thumbnails from widening the column they are supposed to sit inside.
    Beside is exempt: its strip is a column whose height never entered the sum. */
 .spd-stage-col:not(.beside) .spd-thumbs{flex-wrap:nowrap;overflow-x:auto;min-width:0}
+/* Shop's own strip below the stage sits in a positioned box (GalleryThumbStrip)
+   so the arrows and fades have something to hang off. That makes the wrapper the
+   column's flex child and the strip the wrapper's, so flex:none moves up here
+   with the role: the column's main axis is vertical, so it is the strip's HEIGHT
+   that was ever being pinned, and its width came from the cross-axis stretch the
+   wrapper still gets.
+   Everything below is scoped to the wrapper rather than to the strip, because a
+   slot provider's gallery (shop-variations') wears our .spd-thumbs class but
+   renders it straight into the column with no wrapper. flex:1 1 auto reaching it
+   there would read as grow-to-fill on the vertical axis and stretch its strip
+   down the page, and a hidden scrollbar would leave it with no overflow hint at
+   all, having no arrows to replace it with. */
+.spd-thumbs-wrap{position:relative;display:flex;flex:none;min-width:0}
+/* The strip takes the wrapper's width and scrolls inside it rather than sizing
+   to its thumbnails, which is what keeps fifteen photos from widening the column
+   they are supposed to sit in. The scrollbar goes because the arrows say the
+   same thing more clearly, and because its height was quietly being charged to
+   the photo's budget via --spd-thumbs-h. */
+.spd-thumbs-wrap .spd-thumbs{flex:1 1 auto;scrollbar-width:none;-ms-overflow-style:none}
+.spd-thumbs-wrap .spd-thumbs::-webkit-scrollbar{display:none}
+/* Fades start where the arrow ends, so the row appears to run on underneath the
+   button rather than out of it. Page bg rather than a hardcoded white: this is
+   the shopper's site, in whichever mode they are reading it in. */
+.spd-thumbs-fade{position:absolute;top:0;bottom:0;width:2rem;pointer-events:none}
+.spd-thumbs-fade.start{left:1.5rem;background:linear-gradient(to right,var(--color-page-bg,var(--color-bg)),transparent)}
+.spd-thumbs-fade.end{right:1.5rem;background:linear-gradient(to left,var(--color-page-bg,var(--color-bg)),transparent)}
+.spd-thumbs-arrow{position:absolute;top:0;bottom:0;width:1.5rem;z-index:1;display:flex;align-items:center;justify-content:center;padding:0;border:none;cursor:pointer;background:var(--color-page-bg,var(--color-bg));color:var(--color-text-muted);font-family:inherit;font-size:1rem;line-height:1}
+.spd-thumbs-arrow.start{left:0}
+.spd-thumbs-arrow.end{right:0}
+.spd-thumbs-arrow:hover{color:var(--color-text)}
 /* flex:none or a nowrap strip squashes its thumbnails to fit instead of
    scrolling them - they'd stop being square, which is the one thing they are. */
 .spd-thumb{width:64px;height:64px;flex:none;border:1px solid var(--color-border);border-radius:8px;overflow:hidden;background:var(--color-bg-subtle);cursor:pointer;padding:0;transition:border-color .12s ease,box-shadow .12s ease}
@@ -121,11 +151,24 @@ export function ShopDetailGallery(props: GalleryProps) {
       <Style css={galleryCss(DEFAULT_BREAKPOINTS)} />
       <div className={`spd-stage-col${props.thumbPosition === 'beside' ? ' beside' : ''}`} style={{ opacity: 0.6 }}>
         <div className="spd-stage spd-stage-empty" />
-        <div className="spd-thumbs">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="spd-thumb" />
-          ))}
-        </div>
+        {/* Wrapped exactly as the frontend strip is (GalleryThumbStrip), so the
+            preview inherits the same flex roles. Four placeholders never
+            overflow, so no arrows are earned here. `beside` has no wrapper. */}
+        {props.thumbPosition === 'beside' ? (
+          <div className="spd-thumbs">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="spd-thumb" />
+            ))}
+          </div>
+        ) : (
+          <div className="spd-thumbs-wrap">
+            <div className="spd-thumbs">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="spd-thumb" />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </>
   )
