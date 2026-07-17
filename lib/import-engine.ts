@@ -84,9 +84,16 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       const taxClassCode = cell(row, 'tax_class')
       const taxClass = taxClassCode ? await getTaxClassByCode(taxClassCode) : null
 
+      // Match an existing product by SKU when the row carries one; otherwise fall
+      // back to the slug derived from the name. Without this a SKU-less product
+      // (most small shops have none) can never be matched on re-import, so every
+      // import - and every Google-Sheet Pull - duplicated the whole catalogue
+      // with a fresh `-2` slug. Slug is the only other stable, unique identity we
+      // carry; catalogue-hidden variant children are excluded so a name clash
+      // with a variant can't hijack the row.
       const existing = sku
         ? await prisma.$queryRaw<{ id: string }[]>`SELECT "id" FROM "shp_products" WHERE "sku" = ${sku} LIMIT 1`
-        : []
+        : await prisma.$queryRaw<{ id: string }[]>`SELECT "id" FROM "shp_products" WHERE "slug" = ${slugify(name)} AND "catalogue_hidden" = false LIMIT 1`
       const productId = existing[0]?.id
 
       const fields = {
