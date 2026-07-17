@@ -2,26 +2,38 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
-import { listProducts, createProduct, getBackInStockSubscriberCounts } from '@/modules/shop/lib/db'
+import { listProducts, createProduct, getBackInStockSubscriberCounts, getPrimaryProductImages } from '@/modules/shop/lib/db'
+import type { ProductSort, ProductStockFilter } from '@/modules/shop/lib/db'
 import { slugify, ensureUniqueProductSlug } from '@/modules/shop/lib/slug'
+
+const SORTS: ProductSort[] = ['newest', 'oldest', 'name-asc', 'name-desc', 'price-asc', 'price-desc', 'stock-asc', 'stock-desc']
+const STOCKS: ProductStockFilter[] = ['in', 'low', 'out']
 
 export async function GET(request: NextRequest) {
   const gate = await requireShopUser('shop.products', { allowAccess: true })
   if (gate.error) return gate.error
 
   const params = request.nextUrl.searchParams
+  const sortParam = params.get('sort')
+  const stockParam = params.get('stock')
   const { products, total } = await listProducts({
     status: (params.get('status') as 'DRAFT' | 'ACTIVE' | 'ARCHIVED' | null) ?? undefined,
     type: (params.get('type') as 'PHYSICAL' | 'DIGITAL' | 'SERVICE' | null) ?? undefined,
     search: params.get('search') ?? undefined,
     preOrder: params.get('preOrder') === 'true',
+    stock: STOCKS.includes(stockParam as ProductStockFilter) ? (stockParam as ProductStockFilter) : undefined,
+    sort: SORTS.includes(sortParam as ProductSort) ? (sortParam as ProductSort) : undefined,
     page: params.get('page') ? Number(params.get('page')) : undefined,
     perPage: params.get('perPage') ? Number(params.get('perPage')) : undefined,
     // Variant child products are managed under Product options, not here.
     excludeHidden: true,
   })
-  const subscriberCounts = await getBackInStockSubscriberCounts(products.map((p) => p.id))
-  return NextResponse.json({ products, total, subscriberCounts })
+  const ids = products.map((p) => p.id)
+  const [subscriberCounts, images] = await Promise.all([
+    getBackInStockSubscriberCounts(ids),
+    getPrimaryProductImages(ids),
+  ])
+  return NextResponse.json({ products, total, subscriberCounts, images })
 }
 
 const Body = z.object({

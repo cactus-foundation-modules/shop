@@ -126,6 +126,17 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   const gate = await requireShopUser('shop.products')
   if (gate.error) return gate.error
   const { id } = await params
-  await deleteProduct(id)
+  try {
+    await deleteProduct(id)
+  } catch (err) {
+    // A product still tied to another module's data (e.g. it backs live product
+    // options) can refuse to delete. Say so plainly rather than 500-ing.
+    const isFkViolation = err instanceof Prisma.PrismaClientKnownRequestError
+      && (err.code === 'P2003' || (err.code === 'P2010' && String(err.meta?.message ?? '').includes('foreign key')))
+    if (isFkViolation) {
+      return NextResponse.json({ error: 'This product is still linked to other data and could not be deleted.' }, { status: 409 })
+    }
+    throw err
+  }
   return NextResponse.json({ success: true })
 }

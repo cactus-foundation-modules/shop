@@ -115,6 +115,26 @@ export async function getPrimaryCategoryId(productId: string): Promise<string | 
   return rows[0]?.category_id ?? null
 }
 
+// Stock states for the admin filter. 'in' = tracked and above the low
+// threshold; 'low' = tracked, at or below the threshold but not yet empty;
+// 'out' = tracked and empty. Untracked products match none of these.
+export type ProductStockFilter = 'in' | 'low' | 'out'
+
+// Whitelist of admin list orderings. Kept as a fixed map (never interpolated
+// from the request) so the ORDER BY can never carry user input into SQL.
+export type ProductSort = 'newest' | 'oldest' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'stock-asc' | 'stock-desc'
+
+const SORT_SQL: Record<ProductSort, Prisma.Sql> = {
+  newest: Prisma.sql`p."created_at" DESC`,
+  oldest: Prisma.sql`p."created_at" ASC`,
+  'name-asc': Prisma.sql`p."name" ASC`,
+  'name-desc': Prisma.sql`p."name" DESC`,
+  'price-asc': Prisma.sql`p."price" ASC`,
+  'price-desc': Prisma.sql`p."price" DESC`,
+  'stock-asc': Prisma.sql`p."stock_count" ASC NULLS FIRST`,
+  'stock-desc': Prisma.sql`p."stock_count" DESC NULLS LAST`,
+}
+
 export type ListProductsFilter = {
   page?: number
   perPage?: number
@@ -128,6 +148,8 @@ export type ListProductsFilter = {
   collectionSlug?: string
   search?: string
   preOrder?: boolean
+  stock?: ProductStockFilter
+  sort?: ProductSort
   // Exclude catalogue-hidden rows (the variant child products). The public
   // grid, search and admin product list pass true; variations' own queries
   // pass false to reach the children.
@@ -145,6 +167,9 @@ export async function listProducts(filter: ListProductsFilter): Promise<{ produc
   if (filter.status) conditions.push(Prisma.sql`p."status" = ${filter.status}`)
   if (filter.type) conditions.push(Prisma.sql`p."type" = ${filter.type}`)
   if (filter.preOrder) conditions.push(Prisma.sql`p."is_pre_order" = true`)
+  if (filter.stock === 'out') conditions.push(Prisma.sql`(p."track_inventory" = true AND COALESCE(p."stock_count", 0) <= 0)`)
+  if (filter.stock === 'low') conditions.push(Prisma.sql`(p."track_inventory" = true AND p."low_stock_threshold" IS NOT NULL AND p."stock_count" IS NOT NULL AND p."stock_count" > 0 AND p."stock_count" <= p."low_stock_threshold")`)
+  if (filter.stock === 'in') conditions.push(Prisma.sql`(p."track_inventory" = true AND p."stock_count" IS NOT NULL AND p."stock_count" > 0 AND (p."low_stock_threshold" IS NULL OR p."stock_count" > p."low_stock_threshold"))`)
   if (filter.excludeHidden) conditions.push(Prisma.sql`p."catalogue_hidden" = false`)
   if (filter.search) conditions.push(Prisma.sql`(p."name" ILIKE ${`%${filter.search}%`} OR p."sku" ILIKE ${`%${filter.search}%`})`)
   if (filter.categorySlug) {
@@ -177,9 +202,10 @@ export async function listProducts(filter: ListProductsFilter): Promise<{ produc
 
   const where = conditions.length ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty
 
+  const orderBy = SORT_SQL[filter.sort ?? 'newest'] ?? SORT_SQL.newest
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
     SELECT p.* FROM "shp_products" p ${where}
-    ORDER BY p."created_at" DESC
+    ORDER BY ${orderBy}, p."id" DESC
     LIMIT ${perPage} OFFSET ${offset}
   `
   const countRows = await prisma.$queryRaw<{ count: bigint }[]>`
@@ -341,6 +367,100 @@ export async function decrementStockOnShip(orderItemIds: string[]): Promise<void
 
 export async function deleteProduct(id: string): Promise<void> {
   await prisma.$executeRaw`DELETE FROM "shp_products" WHERE "id" = ${id}`
+}
+
+// Delete several products at once. Order-line history survives (the
+// shp_order_items FK is ON DELETE SET NULL); media, categories, tags,
+// collections, back-in-stock subs and recommendation links cascade.
+export async function bulkDeleteProducts(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0
+  return prisma.$executeRaw`DELETE FROM "shp_products" WHERE "id" IN (${Prisma.join(ids)})`
+}
+
+export async function bulkSetProductStatus(ids: string[], status: ShpProductStatus): Promise<number> {
+  if (ids.length === 0) return 0
+  return prisma.$executeRaw`
+    UPDATE "shp_products" SET "status" = ${status}, "updated_at" = CURRENT_TIMESTAMP WHERE "id" IN (${Prisma.join(ids)})
+  `
+}
+
+// One representative image per product for the admin list thumbnails. Prefers
+// the primary image, else the lowest-position one; videos are ignored so a
+// thumbnail is always a still. Batched so the list is a single extra query.
+export async function getPrimaryProductImages(productIds: string[]): Promise<Record<string, string>> {
+  if (productIds.length === 0) return {}
+  const rows = await prisma.$queryRaw<{ product_id: string; url: string }[]>`
+    SELECT DISTINCT ON ("product_id") "product_id", "url"
+    FROM "shp_product_media"
+    WHERE "product_id" IN (${Prisma.join(productIds)}) AND "type" = 'IMAGE'
+    ORDER BY "product_id", "is_primary" DESC, "position" ASC
+  `
+  return Object.fromEntries(rows.map((r) => [r.product_id, r.url]))
+}
+
+// Clone a product into a fresh DRAFT with a new name/slug and no SKU (SKUs are
+// unique). Copies media, category/tag/collection membership and the manual
+// recommendation lists. catalogue_hidden is omitted from the INSERT so the copy
+// defaults to visible - a duplicate is a real product, never a variant child.
+// Returns the new id, or null if the source is gone.
+export async function duplicateProduct(sourceId: string, next: { name: string; slug: string }): Promise<{ id: string } | null> {
+  const created = await prisma.$queryRaw<{ id: string }[]>`
+    INSERT INTO "shp_products" (
+      "name", "slug", "type", "status", "description", "short_description", "sku", "barcode",
+      "price", "compare_at_price", "cost_price", "tax_class_id",
+      "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
+      "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
+      "digital_file_id", "download_limit", "download_expiry",
+      "meta_title", "meta_description", "og_image_id", "master_category_id",
+      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity",
+      "related_mode", "upsell_mode", "related_limit", "upsell_limit"
+    )
+    SELECT
+      ${next.name}, ${next.slug}, "type", 'DRAFT', "description", "short_description", NULL, "barcode",
+      "price", "compare_at_price", "cost_price", "tax_class_id",
+      "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
+      "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
+      "digital_file_id", "download_limit", "download_expiry",
+      "meta_title", "meta_description", "og_image_id", "master_category_id",
+      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity",
+      "related_mode", "upsell_mode", "related_limit", "upsell_limit"
+    FROM "shp_products" WHERE "id" = ${sourceId}
+    RETURNING "id"
+  `
+  const newId = created[0]?.id
+  if (!newId) return null
+
+  await prisma.$transaction([
+    prisma.$executeRaw`
+      INSERT INTO "shp_product_media" ("product_id", "type", "url", "alt_text", "position", "is_primary")
+      SELECT ${newId}, "type", "url", "alt_text", "position", "is_primary" FROM "shp_product_media" WHERE "product_id" = ${sourceId}
+    `,
+    prisma.$executeRaw`
+      INSERT INTO "shp_product_categories" ("product_id", "category_id")
+      SELECT ${newId}, "category_id" FROM "shp_product_categories" WHERE "product_id" = ${sourceId}
+    `,
+    prisma.$executeRaw`
+      INSERT INTO "shp_product_tags" ("product_id", "tag_id")
+      SELECT ${newId}, "tag_id" FROM "shp_product_tags" WHERE "product_id" = ${sourceId}
+    `,
+    prisma.$executeRaw`
+      INSERT INTO "shp_product_collections" ("product_id", "collection_id", "position")
+      SELECT ${newId}, "collection_id", "position" FROM "shp_product_collections" WHERE "product_id" = ${sourceId}
+    `,
+    prisma.$executeRaw`
+      INSERT INTO "shp_related_products" ("product_id", "related_id", "position")
+      SELECT ${newId}, "related_id", "position" FROM "shp_related_products" WHERE "product_id" = ${sourceId}
+    `,
+    prisma.$executeRaw`
+      INSERT INTO "shp_upsell_products" ("product_id", "upsell_id", "position")
+      SELECT ${newId}, "upsell_id", "position" FROM "shp_upsell_products" WHERE "product_id" = ${sourceId}
+    `,
+    prisma.$executeRaw`
+      INSERT INTO "shp_auto_exclude_products" ("product_id", "excluded_id")
+      SELECT ${newId}, "excluded_id" FROM "shp_auto_exclude_products" WHERE "product_id" = ${sourceId}
+    `,
+  ])
+  return { id: newId }
 }
 
 export async function setProductMedia(

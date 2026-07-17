@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { TabStrip } from '@/components/admin/TabStrip'
 import { UnsavedChangesModal } from '@/components/admin/UnsavedChangesModal'
 import { useUnsavedChanges } from '@/components/admin/useUnsavedChanges'
+import { useAdminPath } from '@/components/admin/AdminPathContext'
+import { useConfirm, useAlert } from '@/modules/shop/components/admin/dialogs'
 import {
   ProductEditorRegistryProvider,
   ProductEditorTabScope,
@@ -35,6 +37,9 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
   extraTabs?: ExtraTab[]
   initialTab?: string
 }) {
+  const adminPath = useAdminPath()
+  const [confirm, confirmNode] = useConfirm()
+  const [alert, alertNode] = useAlert()
   const [state, setState] = useState<EditorState | null>(null)
   const [baseline, setBaseline] = useState<EditorState | null>(null)
   const [categories, setCategories] = useState<CategoryTerm[]>([])
@@ -193,6 +198,31 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
       setSaving(false)
     }
   }, [productId, registrations, fetchState])
+
+  // --- Duplicate / delete --------------------------------------------------
+  // Both navigate away with a hard load, so clear the dirty guard first to skip
+  // the "unsaved changes" prompt - the product is being replaced or removed, so
+  // any in-progress edits are moot.
+  const duplicateCurrent = useCallback(async () => {
+    const res = await fetch(`/api/m/shop/admin/products/${productId}/duplicate`, { method: 'POST' })
+    if (!res.ok) { await alert('Could not duplicate this product.'); return }
+    const { id } = await res.json()
+    dirtyRef.current = false
+    window.location.href = `/${adminPath}/m/shop/products/${id}`
+  }, [productId, adminPath, alert, dirtyRef])
+
+  const deleteCurrent = useCallback(async () => {
+    const name = stateRef.current?.form.name?.trim() || 'This product'
+    if (!(await confirm({
+      title: 'Delete product?',
+      message: `"${name}" will be permanently removed. Any orders that included it keep their history.`,
+      confirmLabel: 'Delete',
+    }))) return
+    const res = await fetch(`/api/m/shop/admin/products/${productId}`, { method: 'DELETE' })
+    if (!res.ok) { await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'Could not delete this product.'); return }
+    dirtyRef.current = false
+    window.location.href = `/${adminPath}/m/shop/products`
+  }, [productId, adminPath, confirm, alert, dirtyRef])
 
   // --- Tabs ----------------------------------------------------------------
   const setField = useCallback(<K extends keyof ProductForm>(key: K, value: ProductForm[K]) => {
@@ -366,6 +396,16 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
                 <p className="spe-save-note">Fix the fields marked in red, then save.</p>
               )}
             </div>
+
+            <div className="spe-card">
+              <h2 className="spe-card-title">Manage</h2>
+              <button type="button" className="btn btn-secondary btn-sm" style={{ width: '100%', justifyContent: 'center' }} onClick={() => void duplicateCurrent()}>
+                Duplicate product
+              </button>
+              <button type="button" className="btn btn-danger btn-sm" style={{ width: '100%', justifyContent: 'center', marginTop: '0.5rem' }} onClick={() => void deleteCurrent()}>
+                Delete product
+              </button>
+            </div>
           </aside>
         </div>
       </ProductEditorRegistryProvider>
@@ -390,6 +430,8 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
           })
         }}
       />
+      {confirmNode}
+      {alertNode}
     </>
   )
 }
