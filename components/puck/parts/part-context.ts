@@ -1,5 +1,6 @@
 import type { Breakpoints } from '@/modules/shop/lib/breakpoints'
 import type { ShopDetailSlot } from '@/modules/shop/lib/detail-slot'
+import type { ShopDetailTabExtra } from '@/modules/shop/lib/detail-tabs'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
@@ -49,6 +50,12 @@ export type DetailPartContext = {
   // here, with the rest of the context, because a part's render must stay
   // synchronous - see ShopDetailGalleryRsc.
   galleryExtras: ShopGalleryExtra[]
+  // Extra tabs contributed through `shop.product-detail-tabs` (see
+  // lib/detail-tabs.ts), already loaded and ordered. Additive like
+  // `galleryExtras`, and resolved here for the same reason: ShopDetailTabsRsc
+  // renders synchronously and cannot await a provider itself. Empty on a
+  // shop-only site.
+  detailTabs: ShopDetailTabExtra[]
 }
 
 // Injected onto every Product Card part-block, once per product, when a card

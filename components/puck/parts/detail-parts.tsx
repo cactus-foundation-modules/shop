@@ -673,6 +673,14 @@ const TYPE_LABEL: Record<ShpProduct['type'], string> = {
   SERVICE: 'Service',
 }
 
+// Shop's own tabs, numbered so a tab contributed through
+// `shop.product-detail-tabs` can be dropped among them rather than only after
+// them. Spaced by tens for the obvious reason. See lib/detail-tabs.ts - a
+// provider that names no order lands after this lot.
+const TAB_ORDER = { desc: 10, spec: 20, dims: 30, downloads: 40 } as const
+
+type OrderedTab = ProductTab & { order: number }
+
 function FactsTable({ rows }: { rows: Array<[string, string]> }) {
   return (
     <table className="spd-facts">
@@ -705,7 +713,7 @@ export function ShopDetailTabs(_props: PartProps) {
 
 export function ShopDetailTabsRsc({ _ctx }: PartProps) {
   if (!_ctx) return null
-  const { product, digitalFile } = _ctx
+  const { product, digitalFile, detailTabs } = _ctx
 
   const weightStr = product.weight ? `${product.weight}${product.weightUnit ? ` ${product.weightUnit}` : ''}` : null
   const dimUnit = product.dimensionUnit ? ` ${product.dimensionUnit}` : ''
@@ -726,19 +734,20 @@ export function ShopDetailTabsRsc({ _ctx }: PartProps) {
   if (product.dimensionW) dimRows.push(['Width', `${product.dimensionW}${dimUnit}`])
   if (product.dimensionH) dimRows.push(['Height', `${product.dimensionH}${dimUnit}`])
 
-  const tabs: ProductTab[] = []
+  const own: OrderedTab[] = []
   if (product.description) {
-    tabs.push({ id: 'desc', label: 'Description', content: <p>{product.description}</p> })
+    own.push({ id: 'desc', order: TAB_ORDER.desc, label: 'Description', content: <p>{product.description}</p> })
   }
-  tabs.push({ id: 'spec', label: 'Specification', content: <FactsTable rows={specRows} /> })
+  own.push({ id: 'spec', order: TAB_ORDER.spec, label: 'Specification', content: <FactsTable rows={specRows} /> })
   if (dimRows.length > 0) {
-    tabs.push({ id: 'dims', label: 'Dimensions', content: <FactsTable rows={dimRows} /> })
+    own.push({ id: 'dims', order: TAB_ORDER.dims, label: 'Dimensions', content: <FactsTable rows={dimRows} /> })
   }
   if (digitalFile) {
     const ext = (digitalFile.filename.split('.').pop() ?? 'FILE').toUpperCase().slice(0, 4)
     const sizeMb = `${(digitalFile.size / 1048576).toFixed(1)}MB`
-    tabs.push({
+    own.push({
       id: 'downloads',
+      order: TAB_ORDER.downloads,
       label: 'Downloads',
       content: (
         <div className="spd-dl">
@@ -752,6 +761,20 @@ export function ShopDetailTabsRsc({ _ctx }: PartProps) {
       ),
     })
   }
+
+  // Tabs contributed by other modules, already loaded and ordered by
+  // resolveShopDetailTabs (lib/detail-tabs.ts). Empty on a shop-only site, which
+  // is why the sort below is the only trace of this on one.
+  const contributed: OrderedTab[] = detailTabs.map((tab) => ({
+    id: tab.id,
+    order: tab.order,
+    label: tab.label,
+    content: <tab.Panel payload={tab.payload} />,
+  }))
+
+  // Shop's own first on a tie: sort is stable, and a contributed tab landing on
+  // the same number as the description should not be what the shopper opens on.
+  const tabs = [...own, ...contributed].sort((a, b) => a.order - b.order)
 
   if (tabs.length === 0) return null
   return (
