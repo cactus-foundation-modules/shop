@@ -1,13 +1,70 @@
 import { parseCsv, resolveColumnMap, parseMediaCells, type CsvColumn } from '@/modules/shop/lib/csv'
-import { getProductBySlug, createProduct, updateProduct, setProductMedia, setProductCategories, setProductTags, setProductCollections } from '@/modules/shop/lib/db/products'
+import {
+  getProductBySlug, getProductById, createProduct, updateProduct,
+  getProductCategoryIds, getProductTagIds, getProductCollectionIds, getProductMedia,
+  setProductMedia, setProductCategories, setProductTags, setProductCollections,
+} from '@/modules/shop/lib/db/products'
 import { findOrCreateTagBySlug, getCategoryBySlug, createCategory, getCollectionBySlug, createCollection } from '@/modules/shop/lib/db/catalogue'
 import { getTaxClassByCode } from '@/modules/shop/lib/db/tax-shipping'
 import { prisma } from '@/lib/db/prisma'
 import { slugify, ensureUniqueProductSlug } from '@/modules/shop/lib/slug'
 import { updateImportJobProgress, markImportJobCompleted } from '@/modules/shop/lib/db/import-jobs'
 import { sendShopEmail } from '@/modules/shop/lib/email'
+import type { ShpProduct } from '@/modules/shop/lib/types'
 
 type RowError = { row: number; reason: string }
+
+type ImportFields = {
+  name: string; description: string | null; shortDescription: string | null; price: number
+  compareAtPrice: number | null; costPrice: number | null; taxClassId: string | null
+  trackInventory: boolean; stockCount: number | null; lowStockThreshold: number | null
+  outOfStockBehaviour: 'BLOCK' | 'BACKORDER'; weight: number | null; weightUnit: string | null
+  metaTitle: string | null; metaDescription: string | null; barcode: string | null
+}
+
+// A CSV row carries every column on every export, whether or not the owner
+// actually touched it - so re-importing (and every Google-Sheet Pull) used to
+// write every matched product back unconditionally, bumping updated_at and
+// costing a write no different row actually needed. Comparing first turns most
+// of a re-sync into pure reads, and makes "N updated" mean what it says.
+function productFieldsUnchanged(existing: ShpProduct, fields: ImportFields): boolean {
+  const num = (s: string | null) => (s == null ? null : Number(s))
+  return existing.name === fields.name
+    && existing.description === fields.description
+    && existing.shortDescription === fields.shortDescription
+    && Number(existing.price) === fields.price
+    && num(existing.compareAtPrice) === fields.compareAtPrice
+    && num(existing.costPrice) === fields.costPrice
+    && existing.taxClassId === fields.taxClassId
+    && existing.trackInventory === fields.trackInventory
+    && existing.stockCount === fields.stockCount
+    && existing.lowStockThreshold === fields.lowStockThreshold
+    && existing.outOfStockBehaviour === fields.outOfStockBehaviour
+    && num(existing.weight) === fields.weight
+    && existing.weightUnit === fields.weightUnit
+    && existing.metaTitle === fields.metaTitle
+    && existing.metaDescription === fields.metaDescription
+    && existing.barcode === fields.barcode
+}
+
+function sameIdSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const setB = new Set(b)
+  return a.every((id) => setB.has(id))
+}
+
+function sameIdOrder(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i])
+}
+
+type DesiredMedia = { type: string; url: string; altText: string | null; isPrimary: boolean }
+
+function sameMedia(desired: DesiredMedia[], current: DesiredMedia[]): boolean {
+  return desired.length === current.length && desired.every((m, i) =>
+    m.type === current[i]!.type && m.url === current[i]!.url
+    && (m.altText ?? null) === (current[i]!.altText ?? null) && m.isPrimary === current[i]!.isPrimary
+  )
+}
 
 // Parse an optional numeric CSV cell: empty or non-numeric -> null, so a stray
 // "lots" in stock_count doesn't write NaN and abort the row with an opaque DB
@@ -116,10 +173,14 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       }
 
       let resolvedId: string
+      let rowChanged = false
       if (productId) {
-        await updateProduct(productId, fields)
+        const existingProduct = await getProductById(productId)
+        if (!existingProduct || !productFieldsUnchanged(existingProduct, fields)) {
+          await updateProduct(productId, fields)
+          rowChanged = true
+        }
         resolvedId = productId
-        updated++
       } else {
         const slug = await ensureUniqueProductSlug(slugify(name))
         const { id } = await createProduct({ ...fields, slug, type: type as 'PHYSICAL' | 'DIGITAL' | 'SERVICE', status: 'DRAFT', sku })
@@ -134,10 +195,24 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       // Legacy un-prefixed urls fall through to IMAGE, so old CSVs are unchanged.
       const mediaCells = parseMediaCells(cell(row, 'image_urls'), cell(row, 'image_alt'))
 
-      if (categoryNames.length) await setProductCategories(resolvedId, await resolveTermIds(categoryNames, getCategoryBySlug, (n, s) => createCategory({ name: n, slug: s })))
-      if (tagNames.length) await setProductTags(resolvedId, await resolveTagIds(tagNames))
-      if (collectionNames.length) await setProductCollections(resolvedId, await resolveTermIds(collectionNames, getCollectionBySlug, (n, s) => createCollection({ name: n, slug: s })))
-      if (mediaCells.length) await setProductMedia(resolvedId, mediaCells.map((m, idx) => ({ type: m.type, url: m.url, altText: m.altText, isPrimary: idx === 0 })))
+      if (categoryNames.length) {
+        const ids = await resolveTermIds(categoryNames, getCategoryBySlug, (n, s) => createCategory({ name: n, slug: s }))
+        if (!productId || !sameIdSet(ids, await getProductCategoryIds(resolvedId))) { await setProductCategories(resolvedId, ids); rowChanged = true }
+      }
+      if (tagNames.length) {
+        const ids = await resolveTagIds(tagNames)
+        if (!productId || !sameIdSet(ids, await getProductTagIds(resolvedId))) { await setProductTags(resolvedId, ids); rowChanged = true }
+      }
+      if (collectionNames.length) {
+        const ids = await resolveTermIds(collectionNames, getCollectionBySlug, (n, s) => createCollection({ name: n, slug: s }))
+        if (!productId || !sameIdOrder(ids, await getProductCollectionIds(resolvedId))) { await setProductCollections(resolvedId, ids); rowChanged = true }
+      }
+      if (mediaCells.length) {
+        const desired = mediaCells.map((m, idx) => ({ type: m.type, url: m.url, altText: m.altText, isPrimary: idx === 0 }))
+        if (!productId || !sameMedia(desired, await getProductMedia(resolvedId))) { await setProductMedia(resolvedId, desired); rowChanged = true }
+      }
+
+      if (productId && rowChanged) updated++
     } catch (err) {
       errors.push({ row: rowNumber, reason: err instanceof Error ? err.message : 'Unknown error' })
       skipped++
