@@ -1,12 +1,12 @@
 import { parseCsv, resolveColumnMap, parseMediaCells, type CsvColumn } from '@/modules/shop/lib/csv'
 import {
-  getProductBySlug, getProductById, createProduct, updateProduct,
+  createProduct, updateProduct,
+  getProductsBySkus, getProductsBySlugs,
   getProductCategoryIds, getProductTagIds, getProductCollectionIds, getProductMedia,
   setProductMedia, setProductCategories, setProductTags, setProductCollections,
 } from '@/modules/shop/lib/db/products'
 import { findOrCreateTagBySlug, getCategoryBySlug, createCategory, getCollectionBySlug, createCollection } from '@/modules/shop/lib/db/catalogue'
 import { getTaxClassByCode } from '@/modules/shop/lib/db/tax-shipping'
-import { prisma } from '@/lib/db/prisma'
 import { slugify, ensureUniqueProductSlug } from '@/modules/shop/lib/slug'
 import { updateImportJobProgress, markImportJobCompleted } from '@/modules/shop/lib/db/import-jobs'
 import { sendShopEmail } from '@/modules/shop/lib/email'
@@ -125,6 +125,25 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
     return index !== undefined ? (row[Number(index)] ?? '').trim() : ''
   }
 
+  // One-pass pre-scan so the whole import matches with two queries instead of a
+  // lookup (and a full re-read for the compare) per row. A row carrying a SKU is
+  // matched by it; the rest fall back to the slug derived from the name - the same
+  // identity the per-row path used. The mapped ShpProduct doubles as the compare
+  // baseline, so productFieldsUnchanged needs no extra read either. This is the
+  // bulk of what made a large Google-Sheet Pull crawl.
+  const skuSet = new Set<string>()
+  const slugSet = new Set<string>()
+  for (const row of dataRows) {
+    const sku = cell(row, 'sku') || null
+    if (sku) { skuSet.add(sku); continue }
+    const name = cell(row, 'name')
+    if (name) slugSet.add(slugify(name))
+  }
+  const productsBySku = await getProductsBySkus([...skuSet])
+  const productsBySlug = await getProductsBySlugs([...slugSet])
+  // Tax classes are looked up by a short code many rows share; resolve each once.
+  const taxClassByCode = new Map<string, Awaited<ReturnType<typeof getTaxClassByCode>>>()
+
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i]!
     const rowNumber = i + 2 // 1-indexed + header row
@@ -139,7 +158,11 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       if (!priceRaw || Number.isNaN(price)) { errors.push({ row: rowNumber, reason: 'Missing or invalid price' }); skipped++; continue }
 
       const taxClassCode = cell(row, 'tax_class')
-      const taxClass = taxClassCode ? await getTaxClassByCode(taxClassCode) : null
+      let taxClass = taxClassCode ? taxClassByCode.get(taxClassCode) ?? null : null
+      if (taxClassCode && !taxClassByCode.has(taxClassCode)) {
+        taxClass = await getTaxClassByCode(taxClassCode)
+        taxClassByCode.set(taxClassCode, taxClass)
+      }
 
       // Match an existing product by SKU when the row carries one; otherwise fall
       // back to the slug derived from the name. Without this a SKU-less product
@@ -147,11 +170,10 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       // import - and every Google-Sheet Pull - duplicated the whole catalogue
       // with a fresh `-2` slug. Slug is the only other stable, unique identity we
       // carry; catalogue-hidden variant children are excluded so a name clash
-      // with a variant can't hijack the row.
-      const existing = sku
-        ? await prisma.$queryRaw<{ id: string }[]>`SELECT "id" FROM "shp_products" WHERE "sku" = ${sku} LIMIT 1`
-        : await prisma.$queryRaw<{ id: string }[]>`SELECT "id" FROM "shp_products" WHERE "slug" = ${slugify(name)} AND "catalogue_hidden" = false LIMIT 1`
-      const productId = existing[0]?.id
+      // with a variant can't hijack the row. The pre-loaded maps mean no per-row
+      // query, and the matched row is itself the compare baseline below.
+      const existingProduct = sku ? productsBySku.get(sku) : productsBySlug.get(slugify(name))
+      const productId = existingProduct?.id
 
       const fields = {
         name,
@@ -174,13 +196,12 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
 
       let resolvedId: string
       let rowChanged = false
-      if (productId) {
-        const existingProduct = await getProductById(productId)
-        if (!existingProduct || !productFieldsUnchanged(existingProduct, fields)) {
-          await updateProduct(productId, fields)
+      if (existingProduct) {
+        if (!productFieldsUnchanged(existingProduct, fields)) {
+          await updateProduct(existingProduct.id, fields)
           rowChanged = true
         }
-        resolvedId = productId
+        resolvedId = existingProduct.id
       } else {
         const slug = await ensureUniqueProductSlug(slugify(name))
         const { id } = await createProduct({ ...fields, slug, type: type as 'PHYSICAL' | 'DIGITAL' | 'SERVICE', status: 'DRAFT', sku })

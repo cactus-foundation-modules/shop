@@ -72,6 +72,39 @@ export async function getProductBySlug(slug: string): Promise<ShpProduct | null>
   return rows[0] ? mapProduct(rows[0]) : null
 }
 
+// Bulk match for the CSV importer: one query for every SKU the sheet carries,
+// keyed by SKU, so a re-import doesn't fire a lookup per row. First row wins on
+// the (unexpected) chance two products share a SKU, matching the old per-row
+// LIMIT 1 lookup.
+export async function getProductsBySkus(skus: string[]): Promise<Map<string, ShpProduct>> {
+  const map = new Map<string, ShpProduct>()
+  if (skus.length === 0) return map
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "shp_products" WHERE "sku" IN (${Prisma.join(skus)})
+  `
+  for (const r of rows) {
+    const p = mapProduct(r)
+    if (p.sku && !map.has(p.sku)) map.set(p.sku, p)
+  }
+  return map
+}
+
+// Bulk match by slug for the SKU-less rows. catalogue_hidden = false keeps a
+// name clash with a hidden variant child from hijacking the row, exactly as the
+// per-row lookup did.
+export async function getProductsBySlugs(slugs: string[]): Promise<Map<string, ShpProduct>> {
+  const map = new Map<string, ShpProduct>()
+  if (slugs.length === 0) return map
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "shp_products" WHERE "slug" IN (${Prisma.join(slugs)}) AND "catalogue_hidden" = false
+  `
+  for (const r of rows) {
+    const p = mapProduct(r)
+    if (!map.has(p.slug)) map.set(p.slug, p)
+  }
+  return map
+}
+
 export async function getProductMedia(productId: string): Promise<ShpProductMedia[]> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
     SELECT * FROM "shp_product_media" WHERE "product_id" = ${productId} ORDER BY "position" ASC
