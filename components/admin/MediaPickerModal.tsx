@@ -6,6 +6,19 @@ type MediaItem = { id: string; url: string; key: string; altText: string | null;
 
 type Folder = { id: string; name: string; parentId: string | null }
 
+// Mirrors core's LibrarySort, minus the size options - file weight is not how
+// anyone hunts for a product photo.
+type Sort = 'newest' | 'oldest' | 'name' | 'name_desc'
+
+const SORT_OPTIONS: { value: Sort; label: string }[] = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'name', label: 'Name A-Z' },
+  { value: 'name_desc', label: 'Name Z-A' },
+]
+
+const PER_PAGE = 50
+
 // Adapted from modules/directory/components/admin/EntryImagesField.tsx's
 // MultiMediaPickerModal - browses core's shared media library
 // (GET /api/admin/media) and adds an upload tab against the same endpoint's
@@ -42,6 +55,15 @@ export function MediaPickerModal({ onAdd, onClose, resolveFolderId, resolveIniti
   const [folders, setFolders] = useState<Folder[]>([])
   // null = library root; undefined = still resolving where to open.
   const [folderId, setFolderId] = useState<string | null | undefined>(resolveInitialFolderId ? undefined : null)
+  const [sort, setSort] = useState<Sort>('newest')
+  // The listing pages rather than showing a fixed first 50 - a shop with a few
+  // hundred product photos had no way to reach anything past the first page.
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const pageRef = useRef(1)
+  // Bumped to force the listing effect to re-run for the same folder/sort, which
+  // is what an upload into the folder already on screen needs.
+  const [reloadKey, setReloadKey] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Folder tree, once. The picker assembles each level from parentId.
@@ -69,25 +91,61 @@ export function MediaPickerModal({ onAdd, onClose, resolveFolderId, resolveIniti
   // Media scoped to the current folder, or spanning every folder while
   // searching. Debounced so typing doesn't hammer the endpoint per keystroke.
   const trimmed = query.trim()
-  useEffect(() => {
-    if (folderId === undefined) return
-    let cancelled = false
-    const params = new URLSearchParams({ perPage: '50', type: 'image' })
+
+  // One page of the listing. Search spans every folder; otherwise the current
+  // folder only. Sort and paging are handled by core's endpoint, which already
+  // takes both - the picker simply never asked.
+  function buildParams(page: number) {
+    const params = new URLSearchParams({ perPage: String(PER_PAGE), type: 'image', sort, page: String(page) })
     if (trimmed) {
       params.set('folder', 'all')
       params.set('q', trimmed)
     } else {
       params.set('folder', folderId ?? 'root')
     }
+    return params
+  }
+
+  useEffect(() => {
+    if (folderId === undefined) return
+    let cancelled = false
+    pageRef.current = 1
     const timer = setTimeout(() => {
       if (!cancelled) setLoading(true)
-      fetch(`/api/admin/media?${params.toString()}`)
+      fetch(`/api/admin/media?${buildParams(1).toString()}`)
         .then((r) => r.json())
-        .then((d) => { if (!cancelled) { setItems(d.items ?? []); setLoading(false) } })
+        .then((d) => {
+          if (cancelled) return
+          setItems(d.items ?? [])
+          setHasMore(Boolean(d.hasMore))
+          setLoading(false)
+        })
         .catch(() => { if (!cancelled) setLoading(false) })
     }, trimmed ? 250 : 0)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [folderId, trimmed])
+    // buildParams is derived from exactly these, so listing it would only add noise.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folderId, trimmed, sort, reloadKey])
+
+  // Appends the next page. Deduped by id because an upload landing mid-browse
+  // can shift rows between pages.
+  function loadMore() {
+    if (loadingMore || !hasMore) return
+    setLoadingMore(true)
+    const next = pageRef.current + 1
+    fetch(`/api/admin/media?${buildParams(next).toString()}`)
+      .then((r) => r.json())
+      .then((d) => {
+        pageRef.current = next
+        setItems((prev) => {
+          const seen = new Set(prev.map((i) => i.id))
+          return [...prev, ...((d.items ?? []) as MediaItem[]).filter((i) => !seen.has(i.id))]
+        })
+        setHasMore(Boolean(d.hasMore))
+        setLoadingMore(false)
+      })
+      .catch(() => setLoadingMore(false))
+  }
 
   // Subfolders of the current level, hidden while searching (search spans all).
   const subfolders = trimmed || folderId === undefined ? [] : folders.filter((f) => f.parentId === folderId)
@@ -133,18 +191,10 @@ export function MediaPickerModal({ onAdd, onClose, resolveFolderId, resolveIniti
       const foldersRes = await fetch('/api/admin/media/folders').then((r) => r.ok ? r.json() : null).catch(() => null)
       if (foldersRes?.folders) setFolders(foldersRes.folders)
       setQuery('')
-      setFolderId((prev) => {
-        const next = uploadFolderId ?? null
-        if (prev === next) {
-          // Same folder: the folder effect won't re-run, so refresh by hand.
-          const params = new URLSearchParams({ perPage: '50', type: 'image', folder: next ?? 'root' })
-          void fetch(`/api/admin/media?${params.toString()}`)
-            .then((r) => r.json())
-            .then((d) => setItems(d.items ?? []))
-            .catch(() => null)
-        }
-        return next
-      })
+      setFolderId(uploadFolderId ?? null)
+      // Covers the case where the upload folder is the folder already on screen:
+      // the folder effect wouldn't re-run on its own, so nudge it.
+      setReloadKey((k) => k + 1)
       setPicked((prev) => new Map(prev).set(uploaded.id, uploaded))
     }
   }
@@ -166,6 +216,14 @@ export function MediaPickerModal({ onAdd, onClose, resolveFolderId, resolveIniti
             autoFocus
             style={{ flex: 1, padding: '0.375rem 0.75rem', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: '0.875rem', fontFamily: 'inherit', background: 'var(--color-bg)', color: 'var(--color-text)' }}
           />
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as Sort)}
+            aria-label="Sort images"
+            style={{ padding: '0.375rem 0.5rem', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: '0.8125rem', fontFamily: 'inherit', background: 'var(--color-bg)', color: 'var(--color-text)', flexShrink: 0 }}
+          >
+            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
           <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f) }} />
           <button type="button" className="btn btn-secondary btn-sm" disabled={uploading} onClick={() => fileInputRef.current?.click()}>{uploading ? 'Uploading…' : 'Upload new'}</button>
           <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-muted)', lineHeight: 1, flexShrink: 0 }}>×</button>
@@ -234,6 +292,13 @@ export function MediaPickerModal({ onAdd, onClose, resolveFolderId, resolveIniti
               )
             })}
           </div>
+          {!loading && hasMore && (
+            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '0.875rem' }}>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={loadingMore} onClick={loadMore}>
+                {loadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            </div>
+          )}
         </div>
         <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
           <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Cancel</button>
