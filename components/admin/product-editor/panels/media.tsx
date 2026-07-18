@@ -34,6 +34,21 @@ export function MediaPanel({ state, patch, productId }: PanelProps & { productId
     }
   }, [productId, masterCategoryId])
 
+  // Where the picker OPENS: the same product folder, but resolved with a look
+  // rather than a create (GET vs POST), falling back to the deepest ancestor
+  // that exists - so browsing leaves no empty folder behind and the admin still
+  // lands among this product's images rather than the whole library at once.
+  const resolveBrowseFolderId = useCallback(async (): Promise<string | null> => {
+    const query = masterCategoryId ? `?masterCategoryId=${encodeURIComponent(masterCategoryId)}` : ''
+    try {
+      const res = await fetch(`/api/m/shop/admin/products/${productId}/media-folder${query}`)
+      if (!res.ok) return null
+      return (await res.json()).folderId ?? null
+    } catch {
+      return null
+    }
+  }, [productId, masterCategoryId])
+
   const setMedia = (next: MediaItem[]) => patch((s) => ({ ...s, media: next }))
 
   function move(from: number, to: number) {
@@ -109,6 +124,7 @@ export function MediaPanel({ state, patch, productId }: PanelProps & { productId
         {picking && (
           <MediaPickerModal
             resolveFolderId={resolveUploadFolderId}
+            resolveInitialFolderId={resolveBrowseFolderId}
             onClose={() => setPicking(false)}
             onAdd={(items) => {
               const fresh = items

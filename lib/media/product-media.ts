@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/prisma'
-import { getOrCreateFolderByPath, moveOrRenameMedia, sanitizeFolderSegment } from '@/lib/media/organise'
+import { cleanFolderName, getOrCreateFolderByPath, moveOrRenameMedia, sanitizeFolderSegment } from '@/lib/media/organise'
 import { getProductById } from '@/modules/shop/lib/db/products'
 import { getCategoryById } from '@/modules/shop/lib/db/catalogue'
 
@@ -47,10 +47,10 @@ const UNCATEGORISED_FOLDER = 'Uncategorised'
  * rather than the one last saved. `folderProductId` files under another
  * product's folder (see the header note).
  */
-export async function getProductMediaFolderId(
+async function productFolderSegments(
   productId: string,
   options: { folderProductId?: string; masterCategoryId?: string | null } = {},
-): Promise<string | null> {
+): Promise<string[] | null> {
   const folderProductId = options.folderProductId ?? productId
   const folderProduct = await getProductById(folderProductId)
   if (!folderProduct) return null
@@ -69,11 +69,48 @@ export async function getProductMediaFolderId(
   // product's images land in the very folder its 3D models and downloads do -
   // those modules build their subfolder from this folder's resolved (lower-case)
   // path, and an upper-case tree here left images sitting in a parallel folder.
-  return getOrCreateFolderByPath([
+  return [
     sanitizeFolderSegment('Shop'),
     sanitizeFolderSegment(categoryName),
     sanitizeFolderSegment(folderProduct.name),
-  ])
+  ]
+}
+
+export async function getProductMediaFolderId(
+  productId: string,
+  options: { folderProductId?: string; masterCategoryId?: string | null } = {},
+): Promise<string | null> {
+  const segments = await productFolderSegments(productId, options)
+  if (segments === null) return null
+  return getOrCreateFolderByPath(segments)
+}
+
+/**
+ * The same walk as getProductMediaFolderId, but looking only - nothing is
+ * created. Descends the product's folder path as far as it actually exists and
+ * returns the deepest folder found, so a product with no uploads yet opens the
+ * picker at its category (or Shop, or the root) rather than conjuring an empty
+ * folder for every product whose picker was merely opened. Extra `segments` are
+ * appended to the walk - the 3D module asks for [...path, '3d'].
+ */
+export async function findProductMediaFolderId(
+  productId: string,
+  options: { folderProductId?: string; masterCategoryId?: string | null; segments?: string[] } = {},
+): Promise<string | null> {
+  const base = await productFolderSegments(productId, options)
+  if (base === null) return null
+
+  // Mirror getOrCreateFolderByPath's treatment of each segment (cleaned, blanks
+  // skipped) so the find walks exactly the tree the create would build.
+  let parentId: string | null = null
+  for (const raw of [...base, ...(options.segments ?? [])]) {
+    const clean = cleanFolderName(raw)
+    if (!clean) continue
+    const existing: { id: string } | null = await prisma.folder.findFirst({ where: { parentId, name: clean }, select: { id: true } })
+    if (!existing) break
+    parentId = existing.id
+  }
+  return parentId
 }
 
 export async function reorganiseProductMedia(
