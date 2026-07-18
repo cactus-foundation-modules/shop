@@ -48,22 +48,23 @@ function Style({ css }: { css: string }) {
 // declares a width, and `max-width` (unlike `width`) is ignored while the track
 // is being sized, so it clamps the column to the track afterwards without
 // feeding a percentage back into the measurement that produced it.
-const galleryCss = ({ tabletBp, mobileBp }: Breakpoints) => `
+const galleryCss = ({ tabletBp, mobileBp }: Breakpoints, maxPct: number) => `
 /* Hard ceiling on the media column: whatever the Split's ratio says, the cell
-   holding the gallery never takes more than 40% of the row, so the buy column
-   always keeps the majority. The Split writes grid-template-columns inline, so
-   this needs !important to land, and :has() keeps it to the one cell that
-   actually holds the gallery.
-   minmax(0,40%), not fit-content(40%): the auto ratio's fit-content(60%) was
+   holding the gallery never takes more than maxPct of the row (the block's own
+   "Max media width" field, default 45%), so the buy column keeps the rest.
+   The Split writes grid-template-columns inline, so this needs
+   !important to land, and :has() keeps it to the one cell that actually holds
+   the gallery.
+   minmax(0,N%), not fit-content(N%): the auto ratio's fit-content(60%) was
    already meant to be a ceiling and wasn't one, because the column below
    declares a definite width. A definite width is also the item's min-content
    contribution, and fit-content floors the track at that - so the track grew to
    whatever --spd-fit asked for and sailed past 60%. minmax's max sizing
    function has no such floor, and the column's own max-width:100% then clamps
    --spd-fit to the capped track. */
-.puck-split:has(.spd-stage-col){grid-template-columns:minmax(0,40%) 1fr !important}
-.puck-split:has(> :last-child .spd-stage-col){grid-template-columns:1fr minmax(0,40%) !important}
-/* Stacked, there is no row to take 40% of, and core's own collapse rule is
+.puck-split:has(.spd-stage-col){grid-template-columns:minmax(0,${maxPct}%) 1fr !important}
+.puck-split:has(> :last-child .spd-stage-col){grid-template-columns:1fr minmax(0,${maxPct}%) !important}
+/* Stacked, there is no row to take a share of, and core's own collapse rule is
    !important too - this selector outranks it, so it has to re-state it. */
 @media (max-width:${mobileBp}){.puck-split:has(.spd-stage-col){grid-template-columns:1fr !important}}
 .spd-stage-col{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - 32px - var(--spd-thumbs-h,76px));width:var(--spd-fit);max-width:100%;position:sticky;top:calc(var(--spd-header-h,96px) + 16px);display:flex;flex-direction:column;gap:12px}
@@ -169,12 +170,23 @@ const galleryCss = ({ tabletBp, mobileBp }: Breakpoints) => `
 @media (max-width:${mobileBp}){.spd-stage-col{width:100%}}
 `
 
-type GalleryProps = { _ctx?: DetailPartContext; thumbPosition?: string }
+type GalleryProps = { _ctx?: DetailPartContext; thumbPosition?: string; maxWidthPct?: number }
+
+// The cap is a percentage of the Split row, so anything outside 10-90 is either
+// no cap at all or no buy column - clamp rather than trust the field, and fall
+// back to the default for a blank or non-numeric value (Puck's number field
+// hands back an empty string while the box is being cleared).
+const DEFAULT_MAX_WIDTH_PCT = 45
+function capPct(value: unknown) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_MAX_WIDTH_PCT
+  return Math.min(90, Math.max(10, Math.round(n)))
+}
 
 export function ShopDetailGallery(props: GalleryProps) {
   return (
     <>
-      <Style css={galleryCss(DEFAULT_BREAKPOINTS)} />
+      <Style css={galleryCss(DEFAULT_BREAKPOINTS, capPct(props.maxWidthPct))} />
       <div className={`spd-stage-col${props.thumbPosition === 'beside' ? ' beside' : ''}`} style={{ opacity: 0.6 }}>
         <div className="spd-stage spd-stage-empty" />
         {/* Wrapped exactly as the frontend strip is (GalleryThumbStrip), so the
@@ -217,7 +229,7 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
   const extras = ctx.galleryExtras
   return (
     <>
-      <Style css={galleryCss(ctx.bp)} />
+      <Style css={galleryCss(ctx.bp, capPct(props.maxWidthPct))} />
       <GalleryViewportFit />
       {SlotGallery ? (
         <SlotGallery
@@ -250,8 +262,9 @@ export const shopDetailGalleryPuckComponent = {
   label: 'Product: Gallery',
   fields: {
     thumbPosition: { type: 'select' as const, label: 'Thumbnails', options: [{ value: 'below', label: 'Below image' }, { value: 'beside', label: 'Beside image' }] },
+    maxWidthPct: { type: 'number' as const, label: 'Max media width (% of row)', min: 10, max: 90 },
   },
-  defaultProps: { thumbPosition: 'below' },
+  defaultProps: { thumbPosition: 'below', maxWidthPct: DEFAULT_MAX_WIDTH_PCT },
   render: ShopDetailGallery,
 }
 export const shopDetailGalleryPuckRscComponent = { ...shopDetailGalleryPuckComponent, render: ShopDetailGalleryRsc }
