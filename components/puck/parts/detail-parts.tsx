@@ -49,6 +49,23 @@ function Style({ css }: { css: string }) {
 // is being sized, so it clamps the column to the track afterwards without
 // feeding a percentage back into the measurement that produced it.
 const galleryCss = ({ tabletBp, mobileBp }: Breakpoints) => `
+/* Hard ceiling on the media column: whatever the Split's ratio says, the cell
+   holding the gallery never takes more than 40% of the row, so the buy column
+   always keeps the majority. The Split writes grid-template-columns inline, so
+   this needs !important to land, and :has() keeps it to the one cell that
+   actually holds the gallery.
+   minmax(0,40%), not fit-content(40%): the auto ratio's fit-content(60%) was
+   already meant to be a ceiling and wasn't one, because the column below
+   declares a definite width. A definite width is also the item's min-content
+   contribution, and fit-content floors the track at that - so the track grew to
+   whatever --spd-fit asked for and sailed past 60%. minmax's max sizing
+   function has no such floor, and the column's own max-width:100% then clamps
+   --spd-fit to the capped track. */
+.puck-split:has(.spd-stage-col){grid-template-columns:minmax(0,40%) 1fr !important}
+.puck-split:has(> :last-child .spd-stage-col){grid-template-columns:1fr minmax(0,40%) !important}
+/* Stacked, there is no row to take 40% of, and core's own collapse rule is
+   !important too - this selector outranks it, so it has to re-state it. */
+@media (max-width:${mobileBp}){.puck-split:has(.spd-stage-col){grid-template-columns:1fr !important}}
 .spd-stage-col{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - 32px - var(--spd-thumbs-h,76px));width:var(--spd-fit);max-width:100%;position:sticky;top:calc(var(--spd-header-h,96px) + 16px);display:flex;flex-direction:column;gap:12px}
 /* Sticking needs somewhere to stick: a sticky box can only travel inside its own
    parent, so the parent has to outlive it. The gallery's parent is the Split's
