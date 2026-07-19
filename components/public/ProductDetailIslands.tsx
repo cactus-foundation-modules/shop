@@ -123,7 +123,7 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
           />
         ) : null}
       </div>
-      {showThumbs && (
+      {showThumbs ? (
         <GalleryThumbStrip beside={thumbPosition === 'beside'}>
           {/* Contributed media (a 3D model, say) leads the strip, so the richer
               view sits first rather than trailing behind the photos - it is also
@@ -164,6 +164,28 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
             </button>
           ))}
         </GalleryThumbStrip>
+      ) : (
+        // A lone contributed item still has to mount: unlike a lone photo (already
+        // showing via `current`, no click required), a lone extra's stage only
+        // ever appears once its Thumbs component's own effect calls onPick - that
+        // is where "lead with the model" lives (see Gallery3dThumbs). No picker is
+        // needed with nothing to pick between, so it mounts invisibly rather than
+        // inside the visible strip.
+        extras.map((extra) => (
+          <div key={extra.id} style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }} aria-hidden="true">
+            <extra.Thumbs
+              payload={extra.payload}
+              activeProductId={null}
+              activeKey={picked?.id === extra.id ? picked.key : null}
+              onPick={(key) => {
+                setPicked(key === null ? null : { id: extra.id, key })
+                setTapped(false)
+              }}
+              thumbClass="spd-thumb"
+              thumbOnClass="spd-thumb on"
+            />
+          </div>
+        ))
       )}
     </div>
   )
