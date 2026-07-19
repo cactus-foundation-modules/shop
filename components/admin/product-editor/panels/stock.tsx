@@ -3,7 +3,7 @@
 import { Control, Field, Grid, Reveal, Section, Select, Switch } from '@/modules/shop/components/admin/product-editor/fields'
 import type { PanelProps } from '@/modules/shop/components/admin/product-editor/model'
 
-export function StockPanel({ state, setField, errors }: PanelProps) {
+export function StockPanel({ state, setField, errors, weightBasedShippingEnabled }: PanelProps) {
   const f = state.form
 
   return (
@@ -66,29 +66,36 @@ export function StockPanel({ state, setField, errors }: PanelProps) {
         )}
       </Section>
 
+      {/* No weight box unless the shop actually prices postage by weight - see
+          the switch on Tax & shipping. A weight already recorded stays on the
+          product, so switching it back on brings the figure back with it. */}
       <Section
-        title="Weight & size"
-        blurb="Used to work out postage when your shipping rates are priced by weight. Skip it if you charge a flat rate."
+        title={weightBasedShippingEnabled ? 'Weight & size' : 'Size'}
+        blurb={weightBasedShippingEnabled
+          ? 'Used to work out postage when your shipping rates are priced by weight. Skip it if you charge a flat rate.'
+          : 'Handy for your own records and for anything on the product page that quotes dimensions.'}
       >
-        <Grid cols={2}>
-          <Field label="Weight" optional error={errors.weight}>
-            {(p) => (
-              <span className="spe-prefixed">
-                <Control {...p} inputMode="decimal" value={f.weight} onChange={(e) => setField('weight', e.target.value)} placeholder="0.000" />
-                <span className="spe-suffix">
-                  <select
-                    aria-label="Weight unit"
-                    value={f.weightUnit}
-                    onChange={(e) => setField('weightUnit', e.target.value as typeof f.weightUnit)}
-                    style={{ border: 'none', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer' }}
-                  >
-                    <option value="kg">kg</option>
-                    <option value="lb">lb</option>
-                  </select>
+        <Grid cols={weightBasedShippingEnabled ? 2 : 1}>
+          {weightBasedShippingEnabled && (
+            <Field label="Weight" optional error={errors.weight}>
+              {(p) => (
+                <span className="spe-prefixed">
+                  <Control {...p} inputMode="decimal" value={f.weight} onChange={(e) => setField('weight', e.target.value)} placeholder="0.000" />
+                  <span className="spe-suffix">
+                    <select
+                      aria-label="Weight unit"
+                      value={f.weightUnit}
+                      onChange={(e) => setField('weightUnit', e.target.value as typeof f.weightUnit)}
+                      style={{ border: 'none', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer' }}
+                    >
+                      <option value="kg">kg</option>
+                      <option value="lb">lb</option>
+                    </select>
+                  </span>
                 </span>
-              </span>
-            )}
-          </Field>
+              )}
+            </Field>
+          )}
           <Field label="Measured in">
             {(p) => (
               <Select {...p} value={f.dimensionUnit} onChange={(e) => setField('dimensionUnit', e.target.value as typeof f.dimensionUnit)}>

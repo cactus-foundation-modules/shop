@@ -82,6 +82,10 @@ export type PanelProps = {
    * only for the ones listed; a value already stored against a switched-off type
    * is left alone rather than blanked, so switching it back on gets it back. */
   enabledPriceTypes: ShpPriceType[]
+  /** Whether the shop prices postage by weight. Off means no weight box; a
+   * weight already recorded is left on the product rather than blanked, so
+   * switching it back on gets it back. */
+  weightBasedShippingEnabled: boolean
 }
 
 /** What the product GET endpoint sends back. */

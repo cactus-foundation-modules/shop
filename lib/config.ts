@@ -43,6 +43,14 @@ export const ShpConfigSchema = z.object({
   // Tax
   taxMode: z.enum(['INCLUSIVE', 'EXCLUSIVE']).default('INCLUSIVE'),
 
+  // Shipping. Plenty of shops post everything for the same money and never want
+  // to see a weight box again. Switching this off drops the weight-based option
+  // when adding a shipping rate and hides the weight field on products and
+  // variations; rates already saved as weight-based are left alone, so turning
+  // it back on gets them back exactly as they were. Defaults on, which is what
+  // the shop already did before the switch existed.
+  weightBasedShippingEnabled: z.boolean().default(true),
+
   // Checkout configuration
   guestCheckoutEnabled: z.boolean().default(true),
   postPurchaseAccountPrompt: z.boolean().default(true),
@@ -81,6 +89,18 @@ export const ShpConfigSchema = z.object({
   // hovers or taps. Off by default so an existing shop's images behave exactly
   // as they did until the owner asks for it.
   imageZoomOnHover: z.boolean().default(false),
+
+  // Supplier. Off by default, because plenty of shops never care who they
+  // bought the thing from. The label is what the field gets called everywhere
+  // it appears - the four presets cover nearly everyone, and 'custom' hands the
+  // wording over to supplierLabelCustom.
+  supplierFieldEnabled: z.boolean().default(false),
+  supplierLabelPreset: z.enum(['Supplier', 'Manufacturer', 'Retailer', 'Importer', 'custom']).default('Supplier'),
+  supplierLabelCustom: z.string().default(''),
+  // Recording who supplied something and telling shoppers about it are two
+  // different decisions, so the storefront gets its own switch.
+  supplierShowOnFrontend: z.boolean().default(false),
+  supplierFieldScope: z.enum(['PRODUCTS', 'PRODUCTS_AND_VARIATIONS']).default('PRODUCTS'),
 
   // Back-in-stock (addendum A)
   backInStockAccountPrompt: z.boolean().default(true),

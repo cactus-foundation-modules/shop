@@ -18,6 +18,10 @@ export async function GET() {
     // rides along on the config call it already makes rather than a new one.
     enabledPriceTypes: config.enabledPriceTypes,
     showRetailPrice: config.showRetailPrice,
+    // Whether the shop prices postage by weight. The admin product editor uses
+    // it to decide whether a weight box is worth showing, which is why it rides
+    // along on the config call it already makes rather than a new one.
+    weightBasedShippingEnabled: config.weightBasedShippingEnabled,
     guestCheckoutEnabled: config.guestCheckoutEnabled,
     minimumOrderValue: config.minimumOrderValue,
     maximumOrderValue: config.maximumOrderValue,

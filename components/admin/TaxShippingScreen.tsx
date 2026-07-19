@@ -53,10 +53,34 @@ export function TaxShippingScreen() {
   const [rateForm, setRateForm] = useState<RateForm>(BLANK_RATE_FORM)
   const [rateError, setRateError] = useState('')
 
+  // Null until the settings call lands. Rendering the switch only once we know
+  // the real answer beats flashing it on and then correcting itself.
+  const [weightShipping, setWeightShipping] = useState<boolean | null>(null)
+  const [weightShippingSaved, setWeightShippingSaved] = useState(false)
+
   useEffect(() => {
     loadTaxClasses()
     loadZones()
+    fetch('/api/m/shop/admin/settings').then(async (r) => {
+      if (!r.ok) return
+      const { config } = await r.json()
+      setWeightShipping(config?.weightBasedShippingEnabled !== false)
+    })
   }, [])
+
+  async function saveWeightShipping(enabled: boolean) {
+    setWeightShipping(enabled)
+    // A weight-based rate being edited stops making sense the moment the switch
+    // goes off, so drop back to a flat rate rather than leaving a form whose
+    // type no longer appears in its own dropdown.
+    if (!enabled) setRateForm((f) => (f.type === 'WEIGHT_BASED' ? { ...f, type: 'FLAT' } : f))
+    await fetch('/api/m/shop/admin/settings', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ weightBasedShippingEnabled: enabled }),
+    })
+    setWeightShippingSaved(true)
+    setTimeout(() => setWeightShippingSaved(false), 2000)
+  }
 
   function loadTaxClasses() {
     fetch('/api/m/shop/admin/tax-classes').then(async (r) => {
@@ -247,6 +271,23 @@ export function TaxShippingScreen() {
       </div>
 
       <div className="card">
+        <h3 className="card-title" style={{ fontSize: '1rem' }}>Shipping options</h3>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={weightShipping ?? true}
+            disabled={weightShipping === null}
+            onChange={(e) => saveWeightShipping(e.target.checked)}
+          />
+          Charge postage by weight
+          {weightShippingSaved && <span className="field-hint" style={{ fontSize: '0.75rem', color: 'var(--color-success)' }}>Saved</span>}
+        </label>
+        <p className="field-hint" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
+          Leave this off if postage costs the same whatever is in the box. It takes the weight-based option off the shipping rates below, and takes the weight field off your products and their variations. Nothing you have already typed in is thrown away.
+        </p>
+      </div>
+
+      <div className="card">
         <h3 className="card-title" style={{ fontSize: '1rem' }}>Tax classes</h3>
         <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
           Every product gets a tax class (e.g. Standard, Reduced, Zero-rated). Each zone below sets its own rate for each class.
@@ -399,7 +440,12 @@ export function TaxShippingScreen() {
                         <label>Type</label>
                         <select value={rateForm.type} onChange={(e) => setRateForm((f) => ({ ...f, type: e.target.value as ShpShippingRateType }))}>
                           <option value="FLAT">Flat rate</option>
-                          <option value="WEIGHT_BASED">Weight-based</option>
+                          {/* Offered only while the shop prices postage by weight. An
+                              existing weight-based rate still lists its own type, so
+                              editing one does not silently become a flat rate. */}
+                          {(weightShipping !== false || rateForm.type === 'WEIGHT_BASED') && (
+                            <option value="WEIGHT_BASED">Weight-based</option>
+                          )}
                           <option value="FREE">Free shipping</option>
                         </select>
                       </div>
