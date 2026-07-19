@@ -265,6 +265,27 @@ export type CreateProductInput = {
   lowStockThreshold?: number | null
   outOfStockBehaviour?: ShpProduct['outOfStockBehaviour']
   weight?: number | null
+  // Everything below was accepted by callers (the CSV importer passes it) but
+  // never made it into the INSERT, so a newly imported product silently lost its
+  // weight unit, meta title/description and the rest until someone re-saved it
+  // in the admin.
+  weightUnit?: string | null
+  dimensionL?: number | null
+  dimensionW?: number | null
+  dimensionH?: number | null
+  dimensionUnit?: string | null
+  downloadLimit?: number | null
+  downloadExpiry?: number | null
+  metaTitle?: string | null
+  metaDescription?: string | null
+  isPreOrder?: boolean
+  preOrderDispatchDate?: Date | null
+  preOrderNote?: string | null
+  preOrderMaxQuantity?: number | null
+  relatedMode?: ShpProduct['relatedMode']
+  upsellMode?: ShpProduct['upsellMode']
+  relatedLimit?: number | null
+  upsellLimit?: number | null
   // Create the row hidden from the catalogue (used for variation child products).
   catalogueHidden?: boolean
 }
@@ -275,12 +296,18 @@ export async function createProduct(data: CreateProductInput): Promise<{ id: str
       "name", "slug", "type", "status", "description", "short_description", "sku", "barcode",
       "price", "compare_at_price", "cost_price", "tax_class_id",
       "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
-      "weight", "catalogue_hidden"
+      "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
+      "download_limit", "download_expiry", "meta_title", "meta_description",
+      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity",
+      "related_mode", "upsell_mode", "related_limit", "upsell_limit", "catalogue_hidden"
     ) VALUES (
       ${data.name}, ${data.slug}, ${data.type}, ${data.status ?? 'DRAFT'}, ${data.description ?? null}, ${data.shortDescription ?? null}, ${data.sku ?? null}, ${data.barcode ?? null},
       ${data.price}, ${data.compareAtPrice ?? null}, ${data.costPrice ?? null}, ${data.taxClassId ?? null},
       ${data.trackInventory ?? false}, ${data.stockCount ?? null}, ${data.lowStockThreshold ?? null}, ${data.outOfStockBehaviour ?? 'BLOCK'},
-      ${data.weight ?? null}, ${data.catalogueHidden ?? false}
+      ${data.weight ?? null}, ${data.weightUnit ?? null}, ${data.dimensionL ?? null}, ${data.dimensionW ?? null}, ${data.dimensionH ?? null}, ${data.dimensionUnit ?? null},
+      ${data.downloadLimit ?? null}, ${data.downloadExpiry ?? null}, ${data.metaTitle ?? null}, ${data.metaDescription ?? null},
+      ${data.isPreOrder ?? false}, ${data.preOrderDispatchDate ?? null}, ${data.preOrderNote ?? null}, ${data.preOrderMaxQuantity ?? null},
+      ${data.relatedMode ?? 'AUTOMATIC'}, ${data.upsellMode ?? 'AUTOMATIC'}, ${data.relatedLimit ?? 4}, ${data.upsellLimit ?? 4}, ${data.catalogueHidden ?? false}
     )
     RETURNING "id"
   `

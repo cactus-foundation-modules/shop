@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   CSV_COLUMNS,
+  NUMERIC_CSV_COLUMNS,
+  BOOLEAN_CSV_COLUMNS,
   serializeMedia,
   parseMediaCells,
   collectPaged,
@@ -125,5 +127,51 @@ describe('grid round-trip through the CSV text', () => {
       { type: 'VIDEO_URL', url: 'https://youtu.be/x', altText: 'clip' },
       { type: 'IMAGE', url: 'https://a.jpg', altText: 'photo' },
     ])
+  })
+})
+
+// The format is the contract between the CSV export, the CSV importer and the
+// Google-Sheet mirror. The sheet lost slug (and a dozen other fields) for exactly
+// as long as those three were maintained by hand, so what the format must and
+// must not carry is pinned here rather than left to review.
+describe('product CSV format coverage', () => {
+  it('carries every owner-editable product field', () => {
+    for (const column of [
+      'slug', 'dimension_l', 'dimension_w', 'dimension_h', 'dimension_unit',
+      'download_limit', 'download_expiry', 'is_pre_order', 'pre_order_dispatch_date',
+      'pre_order_note', 'pre_order_max_quantity', 'related_mode', 'related_limit',
+      'upsell_mode', 'upsell_limit',
+    ]) {
+      expect(CSV_COLUMNS).toContain(column)
+    }
+  })
+
+  it('carries no id-shaped, derived or system-owned column', () => {
+    for (const column of [
+      'id', 'digital_file_id', 'og_image_id', 'master_category_id',
+      'pre_order_count', 'catalogue_hidden', 'created_at', 'updated_at',
+    ]) {
+      expect(CSV_COLUMNS).not.toContain(column)
+    }
+  })
+
+  it('accepts a header from before the fields beyond the original 24 existed', () => {
+    const original = [
+      'sku', 'name', 'type', 'status', 'description', 'short_description', 'price', 'compare_at_price',
+      'tax_class', 'track_inventory', 'stock_count', 'low_stock_threshold', 'out_of_stock_behaviour',
+      'weight', 'weight_unit', 'categories', 'tags', 'collections', 'meta_title', 'meta_description',
+      'image_urls', 'barcode',
+    ]
+    expect(headerMatchesFormat(original)).toBe(true)
+  })
+
+  it('types numeric and boolean columns for the sheet, and leaves identifiers as text', () => {
+    for (const column of ['price', 'compare_at_price', 'stock_count', 'weight', 'dimension_l', 'related_limit']) {
+      expect(NUMERIC_CSV_COLUMNS).toContain(column)
+    }
+    // Leading zeros are meaningful on both, so neither may become a number.
+    expect(NUMERIC_CSV_COLUMNS).not.toContain('sku')
+    expect(NUMERIC_CSV_COLUMNS).not.toContain('barcode')
+    expect(BOOLEAN_CSV_COLUMNS).toEqual(['track_inventory', 'is_pre_order'])
   })
 })
