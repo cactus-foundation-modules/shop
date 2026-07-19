@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.69",
+  "version": "0.1.70",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.571",
@@ -16,14 +16,54 @@
   ],
   "navGroupLabel": "Shop",
   "navEntries": [
-    { "label": "Products", "path": "/m/shop/products", "icon": "<path d=\"M20 7 12 3 4 7v10l8 4 8-4Z\"/><path d=\"M4 7l8 4 8-4M12 11v10\"/>", "permission": "shop.access" },
-    { "label": "Categories", "path": "/m/shop/categories", "icon": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/>", "permission": "shop.access" },
-    { "label": "Collections", "path": "/m/shop/collections", "icon": "<path d=\"M4 6h16M4 12h16M4 18h10\"/>", "permission": "shop.access" },
-    { "label": "Orders", "path": "/m/shop/orders", "icon": "<path d=\"M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z\"/><path d=\"M3 6h18M16 10a4 4 0 0 1-8 0\"/>", "permission": "shop.access" },
-    { "label": "Customers", "path": "/m/shop/customers", "icon": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21a8 8 0 0 1 16 0\"/>", "permission": "shop.access" },
-    { "label": "Discounts", "path": "/m/shop/discounts", "icon": "<circle cx=\"7\" cy=\"7\" r=\"2\"/><circle cx=\"17\" cy=\"17\" r=\"2\"/><path d=\"M17 7 7 17\"/>", "permission": "shop.access" },
-    { "label": "Tax & shipping", "path": "/m/shop/tax-shipping", "icon": "<rect x=\"1\" y=\"3\" width=\"15\" height=\"13\"/><path d=\"M16 8h4l3 3v5h-7V8Z\"/><circle cx=\"5.5\" cy=\"18.5\" r=\"2.5\"/><circle cx=\"18.5\" cy=\"18.5\" r=\"2.5\"/>", "permission": "shop.access" },
-    { "label": "Reports", "path": "/m/shop/reports", "icon": "<path d=\"M3 3v18h18\"/><path d=\"M7 15l4-6 4 3 5-8\"/>", "permission": "shop.reports" }
+    {
+      "label": "Products",
+      "path": "/m/shop/products",
+      "icon": "<path d=\"M20 7 12 3 4 7v10l8 4 8-4Z\"/><path d=\"M4 7l8 4 8-4M12 11v10\"/>",
+      "permission": "shop.access"
+    },
+    {
+      "label": "Categories",
+      "path": "/m/shop/categories",
+      "icon": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/>",
+      "permission": "shop.access"
+    },
+    {
+      "label": "Collections",
+      "path": "/m/shop/collections",
+      "icon": "<path d=\"M4 6h16M4 12h16M4 18h10\"/>",
+      "permission": "shop.access"
+    },
+    {
+      "label": "Orders",
+      "path": "/m/shop/orders",
+      "icon": "<path d=\"M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z\"/><path d=\"M3 6h18M16 10a4 4 0 0 1-8 0\"/>",
+      "permission": "shop.access"
+    },
+    {
+      "label": "Customers",
+      "path": "/m/shop/customers",
+      "icon": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21a8 8 0 0 1 16 0\"/>",
+      "permission": "shop.access"
+    },
+    {
+      "label": "Discounts",
+      "path": "/m/shop/discounts",
+      "icon": "<circle cx=\"7\" cy=\"7\" r=\"2\"/><circle cx=\"17\" cy=\"17\" r=\"2\"/><path d=\"M17 7 7 17\"/>",
+      "permission": "shop.access"
+    },
+    {
+      "label": "Tax & shipping",
+      "path": "/m/shop/tax-shipping",
+      "icon": "<rect x=\"1\" y=\"3\" width=\"15\" height=\"13\"/><path d=\"M16 8h4l3 3v5h-7V8Z\"/><circle cx=\"5.5\" cy=\"18.5\" r=\"2.5\"/><circle cx=\"18.5\" cy=\"18.5\" r=\"2.5\"/>",
+      "permission": "shop.access"
+    },
+    {
+      "label": "Reports",
+      "path": "/m/shop/reports",
+      "icon": "<path d=\"M3 3v18h18\"/><path d=\"M7 15l4-6 4 3 5-8\"/>",
+      "permission": "shop.reports"
+    }
   ],
   "requiredEnvVars": [],
   "cookieCategories": [],
@@ -60,66 +100,454 @@
     "shp_settings"
   ],
   "cronJobs": [
-    { "path": "/api/m/shop/cron/low-stock-alerts", "schedule": "0 7 * * *" }
+    {
+      "path": "/api/m/shop/cron/low-stock-alerts",
+      "schedule": "0 7 * * *"
+    }
   ],
   "puckBlocks": [
-    { "type": "ShopProductGrid", "import": "./components/puck/ShopProductGrid", "component": "shopProductGridPuckComponent", "rscComponent": "shopProductGridPuckRscComponent", "rscImport": "./components/puck/ShopProductGrid.rsc", "layoutTypes": ["shopIndex", "shopCategory", "shopCollection"] },
-    { "type": "ShopProductCard", "import": "./components/puck/ShopProductCard", "component": "shopProductCardPuckComponent", "rscComponent": "shopProductCardPuckRscComponent", "rscImport": "./components/puck/ShopProductCard.rsc", "layoutTypes": ["shopIndex", "shopCategory", "shopCollection"] },
-    { "type": "ShopFeaturedCollection", "import": "./components/puck/ShopFeaturedCollection", "component": "shopFeaturedCollectionPuckComponent", "rscComponent": "shopFeaturedCollectionPuckRscComponent", "rscImport": "./components/puck/ShopFeaturedCollection.rsc", "layoutTypes": ["shopIndex"] },
-    { "type": "ShopCategoryBrowser", "import": "./components/puck/ShopCategoryBrowser", "component": "shopCategoryBrowserPuckComponent", "rscComponent": "shopCategoryBrowserPuckRscComponent", "rscImport": "./components/puck/ShopCategoryBrowser.rsc", "layoutTypes": ["shopIndex"] },
-    { "type": "ShopPromoBanner", "import": "./components/puck/ShopPromoBanner", "component": "shopPromoBannerPuckComponent", "rscComponent": "shopPromoBannerPuckRscComponent", "layoutTypes": ["shopIndex"] },
-    { "type": "ShopCartSummary", "import": "./components/puck/ShopCartSummary", "component": "shopCartSummaryPuckComponent", "rscComponent": "shopCartSummaryPuckRscComponent", "layoutTypes": ["header"] },
-    { "type": "ShopCartFull", "import": "./components/puck/ShopCartFull", "component": "shopCartFullPuckComponent", "rscComponent": "shopCartFullPuckRscComponent", "layoutTypes": ["shopCart"] },
-    { "type": "ShopCheckoutContact", "import": "./components/puck/ShopCheckoutContact", "component": "shopCheckoutContactPuckComponent", "rscComponent": "shopCheckoutContactPuckRscComponent", "layoutTypes": ["shopCheckout"] },
-    { "type": "ShopCheckoutShipping", "import": "./components/puck/ShopCheckoutShipping", "component": "shopCheckoutShippingPuckComponent", "rscComponent": "shopCheckoutShippingPuckRscComponent", "layoutTypes": ["shopCheckout"] },
-    { "type": "ShopCheckoutPayment", "import": "./components/puck/ShopCheckoutPayment", "component": "shopCheckoutPaymentPuckComponent", "rscComponent": "shopCheckoutPaymentPuckRscComponent", "layoutTypes": ["shopCheckout"] },
-    { "type": "ShopCheckoutReview", "import": "./components/puck/ShopCheckoutReview", "component": "shopCheckoutReviewPuckComponent", "rscComponent": "shopCheckoutReviewPuckRscComponent", "layoutTypes": ["shopCheckout"] },
-    { "type": "ShopOrderConfirmation", "import": "./components/puck/ShopOrderConfirmation", "component": "shopOrderConfirmationPuckComponent", "rscComponent": "shopOrderConfirmationPuckRscComponent", "layoutTypes": ["shopConfirmation"] },
-    { "type": "ShopProductDetail", "import": "./components/puck/ShopProductDetail", "component": "shopProductDetailPuckComponent", "rscComponent": "shopProductDetailPuckRscComponent", "rscImport": "./components/puck/ShopProductDetail.rsc", "layoutTypes": ["shopProduct"] },
-    { "type": "ShopBackInStockForm", "import": "./components/puck/ShopBackInStockForm", "component": "shopBackInStockFormPuckComponent", "rscComponent": "shopBackInStockFormPuckRscComponent", "layoutTypes": ["shopProduct"] },
-    { "type": "ShopRelatedProducts", "import": "./components/puck/ShopRelatedProducts", "component": "shopRelatedProductsPuckComponent", "rscComponent": "shopRelatedProductsPuckRscComponent", "rscImport": "./components/puck/ShopRelatedProducts.rsc", "layoutTypes": ["shopProduct"] },
-    { "type": "ShopUpsellProducts", "import": "./components/puck/ShopUpsellProducts", "component": "shopUpsellProductsPuckComponent", "rscComponent": "shopUpsellProductsPuckRscComponent", "layoutTypes": ["shopProduct", "shopCheckout", "shopCart"] },
-    { "type": "ShopCategoryHeader", "import": "./components/puck/ShopCategoryHeader", "component": "shopCategoryHeaderPuckComponent", "rscComponent": "shopCategoryHeaderPuckRscComponent", "rscImport": "./components/puck/ShopCategoryHeader.rsc", "layoutTypes": ["shopCategory"] },
-    { "type": "ShopCollectionHeader", "import": "./components/puck/ShopCollectionHeader", "component": "shopCollectionHeaderPuckComponent", "rscComponent": "shopCollectionHeaderPuckRscComponent", "rscImport": "./components/puck/ShopCollectionHeader.rsc", "layoutTypes": ["shopCollection"] },
-    { "type": "ShopDetailGallery", "import": "./components/puck/parts/detail-parts", "component": "shopDetailGalleryPuckComponent", "rscComponent": "shopDetailGalleryPuckRscComponent", "layoutTypes": ["shopProductDetail"] },
-    { "type": "ShopDetailBadges", "import": "./components/puck/parts/detail-parts", "component": "shopDetailBadgesPuckComponent", "rscComponent": "shopDetailBadgesPuckRscComponent", "layoutTypes": ["shopProductDetail"] },
-    { "type": "ShopDetailTitle", "import": "./components/puck/parts/detail-parts", "component": "shopDetailTitlePuckComponent", "rscComponent": "shopDetailTitlePuckRscComponent", "layoutTypes": ["shopProductDetail"] },
-    { "type": "ShopDetailSku", "import": "./components/puck/parts/detail-parts", "component": "shopDetailSkuPuckComponent", "rscComponent": "shopDetailSkuPuckRscComponent", "layoutTypes": ["shopProductDetail"] },
-    { "type": "ShopDetailPrice", "import": "./components/puck/parts/detail-parts", "component": "shopDetailPricePuckComponent", "rscComponent": "shopDetailPricePuckRscComponent", "layoutTypes": ["shopProductDetail"] },
-    { "type": "ShopDetailBlurb", "import": "./components/puck/parts/detail-parts", "component": "shopDetailBlurbPuckComponent", "rscComponent": "shopDetailBlurbPuckRscComponent", "layoutTypes": ["shopProductDetail"] },
-    { "type": "ShopDetailPreorder", "import": "./components/puck/parts/detail-parts", "component": "shopDetailPreorderPuckComponent", "rscComponent": "shopDetailPreorderPuckRscComponent", "layoutTypes": ["shopProductDetail"] },
-    { "type": "ShopDetailAddToCart", "import": "./components/puck/parts/detail-parts", "component": "shopDetailAddToCartPuckComponent", "rscComponent": "shopDetailAddToCartPuckRscComponent", "layoutTypes": ["shopProductDetail"] },
-    { "type": "ShopDetailReassure", "import": "./components/puck/parts/detail-parts", "component": "shopDetailReassurePuckComponent", "rscComponent": "shopDetailReassurePuckRscComponent", "layoutTypes": ["shopProductDetail"] },
-    { "type": "ShopDetailTabs", "import": "./components/puck/parts/detail-parts", "component": "shopDetailTabsPuckComponent", "rscComponent": "shopDetailTabsPuckRscComponent", "layoutTypes": ["shopProductDetail"] },
-    { "type": "ShopCardImage", "import": "./components/puck/parts/card-parts", "component": "shopCardImagePuckComponent", "rscComponent": "shopCardImagePuckRscComponent", "layoutTypes": ["shopProductCard"] },
-    { "type": "ShopCardBadge", "import": "./components/puck/parts/card-parts", "component": "shopCardBadgePuckComponent", "rscComponent": "shopCardBadgePuckRscComponent", "layoutTypes": ["shopProductCard"] },
-    { "type": "ShopCardName", "import": "./components/puck/parts/card-parts", "component": "shopCardNamePuckComponent", "rscComponent": "shopCardNamePuckRscComponent", "layoutTypes": ["shopProductCard"] },
-    { "type": "ShopCardPrice", "import": "./components/puck/parts/card-parts", "component": "shopCardPricePuckComponent", "rscComponent": "shopCardPricePuckRscComponent", "layoutTypes": ["shopProductCard"] },
-    { "type": "ShopCardBlurb", "import": "./components/puck/parts/card-parts", "component": "shopCardBlurbPuckComponent", "rscComponent": "shopCardBlurbPuckRscComponent", "layoutTypes": ["shopProductCard"] },
-    { "type": "ShopCardCta", "import": "./components/puck/parts/card-parts", "component": "shopCardCtaPuckComponent", "rscComponent": "shopCardCtaPuckRscComponent", "layoutTypes": ["shopProductCard"] }
+    {
+      "type": "ShopProductGrid",
+      "import": "./components/puck/ShopProductGrid",
+      "component": "shopProductGridPuckComponent",
+      "rscComponent": "shopProductGridPuckRscComponent",
+      "rscImport": "./components/puck/ShopProductGrid.rsc",
+      "layoutTypes": [
+        "shopIndex",
+        "shopCategory",
+        "shopCollection"
+      ]
+    },
+    {
+      "type": "ShopProductCard",
+      "import": "./components/puck/ShopProductCard",
+      "component": "shopProductCardPuckComponent",
+      "rscComponent": "shopProductCardPuckRscComponent",
+      "rscImport": "./components/puck/ShopProductCard.rsc",
+      "layoutTypes": [
+        "shopIndex",
+        "shopCategory",
+        "shopCollection"
+      ]
+    },
+    {
+      "type": "ShopFeaturedCollection",
+      "import": "./components/puck/ShopFeaturedCollection",
+      "component": "shopFeaturedCollectionPuckComponent",
+      "rscComponent": "shopFeaturedCollectionPuckRscComponent",
+      "rscImport": "./components/puck/ShopFeaturedCollection.rsc",
+      "layoutTypes": [
+        "shopIndex"
+      ]
+    },
+    {
+      "type": "ShopCategoryBrowser",
+      "import": "./components/puck/ShopCategoryBrowser",
+      "component": "shopCategoryBrowserPuckComponent",
+      "rscComponent": "shopCategoryBrowserPuckRscComponent",
+      "rscImport": "./components/puck/ShopCategoryBrowser.rsc",
+      "layoutTypes": [
+        "shopIndex"
+      ]
+    },
+    {
+      "type": "ShopPromoBanner",
+      "import": "./components/puck/ShopPromoBanner",
+      "component": "shopPromoBannerPuckComponent",
+      "rscComponent": "shopPromoBannerPuckRscComponent",
+      "layoutTypes": [
+        "shopIndex"
+      ]
+    },
+    {
+      "type": "ShopCartSummary",
+      "import": "./components/puck/ShopCartSummary",
+      "component": "shopCartSummaryPuckComponent",
+      "rscComponent": "shopCartSummaryPuckRscComponent",
+      "layoutTypes": [
+        "header"
+      ]
+    },
+    {
+      "type": "ShopCartFull",
+      "import": "./components/puck/ShopCartFull",
+      "component": "shopCartFullPuckComponent",
+      "rscComponent": "shopCartFullPuckRscComponent",
+      "layoutTypes": [
+        "shopCart"
+      ]
+    },
+    {
+      "type": "ShopCheckoutContact",
+      "import": "./components/puck/ShopCheckoutContact",
+      "component": "shopCheckoutContactPuckComponent",
+      "rscComponent": "shopCheckoutContactPuckRscComponent",
+      "layoutTypes": [
+        "shopCheckout"
+      ]
+    },
+    {
+      "type": "ShopCheckoutShipping",
+      "import": "./components/puck/ShopCheckoutShipping",
+      "component": "shopCheckoutShippingPuckComponent",
+      "rscComponent": "shopCheckoutShippingPuckRscComponent",
+      "layoutTypes": [
+        "shopCheckout"
+      ]
+    },
+    {
+      "type": "ShopCheckoutPayment",
+      "import": "./components/puck/ShopCheckoutPayment",
+      "component": "shopCheckoutPaymentPuckComponent",
+      "rscComponent": "shopCheckoutPaymentPuckRscComponent",
+      "layoutTypes": [
+        "shopCheckout"
+      ]
+    },
+    {
+      "type": "ShopCheckoutReview",
+      "import": "./components/puck/ShopCheckoutReview",
+      "component": "shopCheckoutReviewPuckComponent",
+      "rscComponent": "shopCheckoutReviewPuckRscComponent",
+      "layoutTypes": [
+        "shopCheckout"
+      ]
+    },
+    {
+      "type": "ShopOrderConfirmation",
+      "import": "./components/puck/ShopOrderConfirmation",
+      "component": "shopOrderConfirmationPuckComponent",
+      "rscComponent": "shopOrderConfirmationPuckRscComponent",
+      "layoutTypes": [
+        "shopConfirmation"
+      ]
+    },
+    {
+      "type": "ShopProductDetail",
+      "import": "./components/puck/ShopProductDetail",
+      "component": "shopProductDetailPuckComponent",
+      "rscComponent": "shopProductDetailPuckRscComponent",
+      "rscImport": "./components/puck/ShopProductDetail.rsc",
+      "layoutTypes": [
+        "shopProduct"
+      ]
+    },
+    {
+      "type": "ShopBackInStockForm",
+      "import": "./components/puck/ShopBackInStockForm",
+      "component": "shopBackInStockFormPuckComponent",
+      "rscComponent": "shopBackInStockFormPuckRscComponent",
+      "layoutTypes": [
+        "shopProduct"
+      ]
+    },
+    {
+      "type": "ShopRelatedProducts",
+      "import": "./components/puck/ShopRelatedProducts",
+      "component": "shopRelatedProductsPuckComponent",
+      "rscComponent": "shopRelatedProductsPuckRscComponent",
+      "rscImport": "./components/puck/ShopRelatedProducts.rsc",
+      "layoutTypes": [
+        "shopProduct"
+      ]
+    },
+    {
+      "type": "ShopUpsellProducts",
+      "import": "./components/puck/ShopUpsellProducts",
+      "component": "shopUpsellProductsPuckComponent",
+      "rscComponent": "shopUpsellProductsPuckRscComponent",
+      "layoutTypes": [
+        "shopProduct",
+        "shopCheckout",
+        "shopCart"
+      ]
+    },
+    {
+      "type": "ShopCategoryHeader",
+      "import": "./components/puck/ShopCategoryHeader",
+      "component": "shopCategoryHeaderPuckComponent",
+      "rscComponent": "shopCategoryHeaderPuckRscComponent",
+      "rscImport": "./components/puck/ShopCategoryHeader.rsc",
+      "layoutTypes": [
+        "shopCategory"
+      ]
+    },
+    {
+      "type": "ShopCollectionHeader",
+      "import": "./components/puck/ShopCollectionHeader",
+      "component": "shopCollectionHeaderPuckComponent",
+      "rscComponent": "shopCollectionHeaderPuckRscComponent",
+      "rscImport": "./components/puck/ShopCollectionHeader.rsc",
+      "layoutTypes": [
+        "shopCollection"
+      ]
+    },
+    {
+      "type": "ShopDetailGallery",
+      "import": "./components/puck/parts/detail-parts",
+      "component": "shopDetailGalleryPuckComponent",
+      "rscComponent": "shopDetailGalleryPuckRscComponent",
+      "layoutTypes": [
+        "shopProductDetail"
+      ]
+    },
+    {
+      "type": "ShopDetailBadges",
+      "import": "./components/puck/parts/detail-parts",
+      "component": "shopDetailBadgesPuckComponent",
+      "rscComponent": "shopDetailBadgesPuckRscComponent",
+      "layoutTypes": [
+        "shopProductDetail"
+      ]
+    },
+    {
+      "type": "ShopDetailTitle",
+      "import": "./components/puck/parts/detail-parts",
+      "component": "shopDetailTitlePuckComponent",
+      "rscComponent": "shopDetailTitlePuckRscComponent",
+      "layoutTypes": [
+        "shopProductDetail"
+      ]
+    },
+    {
+      "type": "ShopDetailSku",
+      "import": "./components/puck/parts/detail-parts",
+      "component": "shopDetailSkuPuckComponent",
+      "rscComponent": "shopDetailSkuPuckRscComponent",
+      "layoutTypes": [
+        "shopProductDetail"
+      ]
+    },
+    {
+      "type": "ShopDetailPrice",
+      "import": "./components/puck/parts/detail-parts",
+      "component": "shopDetailPricePuckComponent",
+      "rscComponent": "shopDetailPricePuckRscComponent",
+      "layoutTypes": [
+        "shopProductDetail"
+      ]
+    },
+    {
+      "type": "ShopDetailBlurb",
+      "import": "./components/puck/parts/detail-parts",
+      "component": "shopDetailBlurbPuckComponent",
+      "rscComponent": "shopDetailBlurbPuckRscComponent",
+      "layoutTypes": [
+        "shopProductDetail"
+      ]
+    },
+    {
+      "type": "ShopDetailPreorder",
+      "import": "./components/puck/parts/detail-parts",
+      "component": "shopDetailPreorderPuckComponent",
+      "rscComponent": "shopDetailPreorderPuckRscComponent",
+      "layoutTypes": [
+        "shopProductDetail"
+      ]
+    },
+    {
+      "type": "ShopDetailAddToCart",
+      "import": "./components/puck/parts/detail-parts",
+      "component": "shopDetailAddToCartPuckComponent",
+      "rscComponent": "shopDetailAddToCartPuckRscComponent",
+      "layoutTypes": [
+        "shopProductDetail"
+      ]
+    },
+    {
+      "type": "ShopDetailReassure",
+      "import": "./components/puck/parts/detail-parts",
+      "component": "shopDetailReassurePuckComponent",
+      "rscComponent": "shopDetailReassurePuckRscComponent",
+      "layoutTypes": [
+        "shopProductDetail"
+      ]
+    },
+    {
+      "type": "ShopDetailTabs",
+      "import": "./components/puck/parts/detail-parts",
+      "component": "shopDetailTabsPuckComponent",
+      "rscComponent": "shopDetailTabsPuckRscComponent",
+      "layoutTypes": [
+        "shopProductDetail"
+      ]
+    },
+    {
+      "type": "ShopCardImage",
+      "import": "./components/puck/parts/card-parts",
+      "component": "shopCardImagePuckComponent",
+      "rscComponent": "shopCardImagePuckRscComponent",
+      "layoutTypes": [
+        "shopProductCard"
+      ]
+    },
+    {
+      "type": "ShopCardBadge",
+      "import": "./components/puck/parts/card-parts",
+      "component": "shopCardBadgePuckComponent",
+      "rscComponent": "shopCardBadgePuckRscComponent",
+      "layoutTypes": [
+        "shopProductCard"
+      ]
+    },
+    {
+      "type": "ShopCardName",
+      "import": "./components/puck/parts/card-parts",
+      "component": "shopCardNamePuckComponent",
+      "rscComponent": "shopCardNamePuckRscComponent",
+      "layoutTypes": [
+        "shopProductCard"
+      ]
+    },
+    {
+      "type": "ShopCardPrice",
+      "import": "./components/puck/parts/card-parts",
+      "component": "shopCardPricePuckComponent",
+      "rscComponent": "shopCardPricePuckRscComponent",
+      "layoutTypes": [
+        "shopProductCard"
+      ]
+    },
+    {
+      "type": "ShopCardBlurb",
+      "import": "./components/puck/parts/card-parts",
+      "component": "shopCardBlurbPuckComponent",
+      "rscComponent": "shopCardBlurbPuckRscComponent",
+      "layoutTypes": [
+        "shopProductCard"
+      ]
+    },
+    {
+      "type": "ShopCardCta",
+      "import": "./components/puck/parts/card-parts",
+      "component": "shopCardCtaPuckComponent",
+      "rscComponent": "shopCardCtaPuckRscComponent",
+      "layoutTypes": [
+        "shopProductCard"
+      ]
+    }
   ],
   "settingsTabs": [
-    { "id": "shop", "label": "Shop", "permission": "shop.manage", "import": "./components/admin/ShopSettingsTab", "component": "ShopSettingsTab" }
+    {
+      "id": "shop",
+      "label": "Shop",
+      "permission": "shop.manage",
+      "import": "./components/admin/ShopSettingsTab",
+      "component": "ShopSettingsTab"
+    }
   ],
   "layoutTypes": {
     "groupLabel": "Shop",
     "types": [
-      { "key": "shopIndex", "label": "Shop Home", "starterImport": "./lib/starterLayouts", "starterExport": "shopIndexStarters" },
-      { "key": "shopCategory", "label": "Category", "starterImport": "./lib/starterLayouts", "starterExport": "shopCategoryStarters", "embedOptions": [ { "key": "categorySlug", "label": "Category slug", "type": "text", "placeholder": "e.g. furniture", "default": "" }, { "key": "limit", "label": "Number of products", "type": "number", "default": 3 } ], "embedInjectImport": "./lib/inject-embed-context", "embedInjectExport": "injectShopCategoryEmbed" },
-      { "key": "shopCollection", "label": "Collection", "starterImport": "./lib/starterLayouts", "starterExport": "shopCollectionStarters" },
-      { "key": "shopProduct", "label": "Product", "starterImport": "./lib/starterLayouts", "starterExport": "shopProductStarters" },
-      { "key": "shopCheckout", "label": "Checkout", "starterImport": "./lib/starterLayouts", "starterExport": "shopCheckoutStarters" },
-      { "key": "shopConfirmation", "label": "Confirmation", "starterImport": "./lib/starterLayouts", "starterExport": "shopConfirmationStarters" },
-      { "key": "shopCart", "label": "Cart", "starterImport": "./lib/starterLayouts", "starterExport": "shopCartStarters" },
-      { "key": "shopProductDetail", "label": "Product Detail", "starterImport": "./lib/starterLayouts", "starterExport": "shopProductDetailStarters" },
-      { "key": "shopProductCard", "label": "Product Card", "starterImport": "./lib/starterLayouts", "starterExport": "shopProductCardStarters", "editorPreview": { "className": "shop-card", "maxWidth": 340 } }
+      {
+        "key": "shopIndex",
+        "label": "Shop Home",
+        "starterImport": "./lib/starterLayouts",
+        "starterExport": "shopIndexStarters"
+      },
+      {
+        "key": "shopCategory",
+        "label": "Category",
+        "starterImport": "./lib/starterLayouts",
+        "starterExport": "shopCategoryStarters",
+        "embedOptions": [
+          {
+            "key": "categorySlug",
+            "label": "Category slug",
+            "type": "text",
+            "placeholder": "e.g. furniture",
+            "default": ""
+          },
+          {
+            "key": "limit",
+            "label": "Number of products",
+            "type": "number",
+            "default": 3
+          }
+        ],
+        "embedInjectImport": "./lib/inject-embed-context",
+        "embedInjectExport": "injectShopCategoryEmbed"
+      },
+      {
+        "key": "shopCollection",
+        "label": "Collection",
+        "starterImport": "./lib/starterLayouts",
+        "starterExport": "shopCollectionStarters"
+      },
+      {
+        "key": "shopProduct",
+        "label": "Product",
+        "starterImport": "./lib/starterLayouts",
+        "starterExport": "shopProductStarters"
+      },
+      {
+        "key": "shopCheckout",
+        "label": "Checkout",
+        "starterImport": "./lib/starterLayouts",
+        "starterExport": "shopCheckoutStarters"
+      },
+      {
+        "key": "shopConfirmation",
+        "label": "Confirmation",
+        "starterImport": "./lib/starterLayouts",
+        "starterExport": "shopConfirmationStarters"
+      },
+      {
+        "key": "shopCart",
+        "label": "Cart",
+        "starterImport": "./lib/starterLayouts",
+        "starterExport": "shopCartStarters"
+      },
+      {
+        "key": "shopProductDetail",
+        "label": "Product Detail",
+        "starterImport": "./lib/starterLayouts",
+        "starterExport": "shopProductDetailStarters"
+      },
+      {
+        "key": "shopProductCard",
+        "label": "Product Card",
+        "starterImport": "./lib/starterLayouts",
+        "starterExport": "shopProductCardStarters",
+        "editorPreview": {
+          "className": "shop-card",
+          "maxWidth": 340
+        }
+      }
     ]
   },
   "extensionPoints": [
-    { "point": "core.admin-dashboard-widgets", "id": "shop-summary", "permission": "shop.access", "import": "./components/admin/ShopDashboardWidget", "component": "shopDashboardWidget" },
-    { "point": "core.menu-entity-provider", "id": "shop", "import": "./lib/menu-entity-provider", "component": "shopMenuEntityProvider" },
-    { "point": "core.media-reference-rewriters", "id": "shop", "import": "./lib/media-reference-rewriter", "component": "shopMediaReferenceRewriter" },
-    { "point": "members.account-section", "id": "shop-orders", "import": "./components/public/ShopAccountSection", "component": "ShopAccountSection" }
+    {
+      "point": "core.admin-dashboard-widgets",
+      "id": "shop-summary",
+      "permission": "shop.access",
+      "import": "./components/admin/ShopDashboardWidget",
+      "component": "shopDashboardWidget"
+    },
+    {
+      "point": "core.menu-entity-provider",
+      "id": "shop",
+      "import": "./lib/menu-entity-provider",
+      "component": "shopMenuEntityProvider"
+    },
+    {
+      "point": "core.media-reference-rewriters",
+      "id": "shop",
+      "import": "./lib/media-reference-rewriter",
+      "component": "shopMediaReferenceRewriter"
+    },
+    {
+      "point": "members.account-section",
+      "id": "shop-orders",
+      "import": "./components/public/ShopAccountSection",
+      "component": "ShopAccountSection"
+    },
+    {
+      "point": "core.media-usage-providers",
+      "id": "shop",
+      "import": "./lib/media-usage-provider",
+      "component": "shopMediaUsageProvider"
+    }
   ],
   "memberExtensions": {
     "activityTypes": [],
