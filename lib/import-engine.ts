@@ -21,7 +21,8 @@ type RowError = { row: number; reason: string }
 type ImportFields = Partial<{
   name: string; slug: string; status: ShpProductStatus
   description: string | null; shortDescription: string | null; price: number
-  compareAtPrice: number | null; costPrice: number | null; taxClassId: string | null
+  salePrice: number | null; retailPrice: number | null; tradePrice: number | null
+  costPrice: number | null; taxClassId: string | null
   trackInventory: boolean; stockCount: number | null; lowStockThreshold: number | null
   outOfStockBehaviour: 'BLOCK' | 'BACKORDER'; weight: number | null; weightUnit: string | null
   dimensionL: number | null; dimensionW: number | null; dimensionH: number | null; dimensionUnit: string | null
@@ -33,7 +34,7 @@ type ImportFields = Partial<{
 
 // Fields stored as SQL numeric, so Prisma hands them back as decimal strings
 // ("10.00") that must be compared as numbers, not text.
-const DECIMAL_FIELDS = new Set(['price', 'compareAtPrice', 'costPrice', 'weight', 'dimensionL', 'dimensionW', 'dimensionH'])
+const DECIMAL_FIELDS = new Set(['price', 'salePrice', 'retailPrice', 'tradePrice', 'costPrice', 'weight', 'dimensionL', 'dimensionW', 'dimensionH'])
 
 // A CSV row carries every column on every export, whether or not the owner
 // actually touched it - so re-importing (and every Google-Sheet Pull) used to
@@ -223,7 +224,9 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
 
       put('description', 'description', cell(row, 'description') || null)
       put('short_description', 'shortDescription', cell(row, 'short_description') || null)
-      put('compare_at_price', 'compareAtPrice', numOrNull(cell(row, 'compare_at_price')))
+      put('sale_price', 'salePrice', numOrNull(cell(row, 'sale_price')))
+      put('retail_price', 'retailPrice', numOrNull(cell(row, 'retail_price')))
+      put('trade_price', 'tradePrice', numOrNull(cell(row, 'trade_price')))
       put('cost_price', 'costPrice', numOrNull(cell(row, 'cost_price')))
       put('tax_class', 'taxClassId', taxClass?.id ?? null)
       put('track_inventory', 'trackInventory', cell(row, 'track_inventory').toLowerCase() === 'true')

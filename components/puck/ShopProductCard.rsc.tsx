@@ -25,7 +25,7 @@ export async function ShopProductCardRsc(props: ShopProductCardProps) {
     resolveCardTemplate(props.layoutRef),
   ])
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
-  const item = { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol) }
+  const item = { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol, config) }
   const cards = template ? await renderCards(template, [item]) : [<MinimalCard key={product.id} {...item} />]
 
   return (

@@ -166,7 +166,7 @@ describe('product CSV format coverage', () => {
   })
 
   it('types numeric and boolean columns for the sheet, and leaves identifiers as text', () => {
-    for (const column of ['price', 'compare_at_price', 'stock_count', 'weight', 'dimension_l', 'related_limit']) {
+    for (const column of ['price', 'sale_price', 'retail_price', 'trade_price', 'stock_count', 'weight', 'dimension_l', 'related_limit']) {
       expect(NUMERIC_CSV_COLUMNS).toContain(column)
     }
     // Leading zeros are meaningful on both, so neither may become a number.

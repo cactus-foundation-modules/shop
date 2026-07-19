@@ -95,12 +95,16 @@ export type ShopDetailGallerySlotProps = SlotBase & {
 
 export type ShopDetailPriceSlotProps = SlotBase & {
   classNames: ShopDetailPriceClassNames
-  // The parent product's own prices (decimal-pound strings, as the query layer
-  // surfaces them). Render `basePrice` until the shopper's choice resolves, so
-  // the price is never blank. `compareAtPrice`/`savePct` describe the parent
-  // only - shop models no per-combination "was" price - so a provider must drop
-  // them once the live price stops matching `basePrice`, or it would advertise a
-  // saving against the wrong number.
+  // The parent product's own prices, already resolved through its price types
+  // (decimal-pound strings). `basePrice` is what the parent would actually be
+  // charged at - its sale price when it is on offer, its normal price otherwise
+  // - so render it until the shopper's choice resolves and the price is never
+  // blank. `compareAtPrice` is the struck-through figure that goes with it (the
+  // normal price during an offer), kept under its original name so a provider
+  // built against the old contract still compiles. Both it and `savePct`
+  // describe the parent only - shop models no per-combination offer - so a
+  // provider must drop them once the live price stops matching `basePrice`, or
+  // it would advertise a saving against the wrong number.
   basePrice: string
   compareAtPrice: string | null
   savePct: number | null

@@ -97,9 +97,13 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
     "sku" TEXT,
     "barcode" TEXT,
 
-    -- Pricing
+    -- Pricing. Only "price" is mandatory; the rest are optional price types the
+    -- owner switches on per shop (config `enabledPriceTypes`). "sale_price" is
+    -- the only one that changes what gets charged - see 005_price_types.sql.
     "price" NUMERIC(10,2) NOT NULL,
-    "compare_at_price" NUMERIC(10,2),
+    "sale_price" NUMERIC(10,2),
+    "retail_price" NUMERIC(10,2),
+    "trade_price" NUMERIC(10,2),
     "cost_price" NUMERIC(10,2),
     "tax_class_id" TEXT,
 

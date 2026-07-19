@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { TabStrip } from '@/components/admin/TabStrip'
 import type { ModuleSettingsTabProps } from '@/lib/modules/hosted-settings'
 import type { ShpConfig } from '@/modules/shop/lib/config'
+import { PRICE_TYPES, PRICE_TYPE_META } from '@/modules/shop/lib/pricing'
 import type { ShpEmailTemplate, ShpEmailTemplateTrigger } from '@/modules/shop/lib/types'
 
 const PAYMENT_METHODS = ['STRIPE', 'PAYPAL', 'BANK_TRANSFER', 'CASH'] as const
@@ -320,6 +321,44 @@ export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: M
             </select>
             <span className="field-hint">The default for every category. Any individual category can override this on the Categories screen.</span>
           </div>
+
+          <hr style={hr} />
+          <h3 style={sectionHeading}>Prices</h3>
+          <p className="field-hint" style={{ marginTop: 0 }}>
+            Every product has a price, and that one is not optional. Switch on any of the others you keep track of and they appear on the Pricing tab of each product.
+          </p>
+          {PRICE_TYPES.map((type) => (
+            <div key={type}>
+              <label style={checkboxRow}>
+                <input
+                  type="checkbox"
+                  checked={config.enabledPriceTypes.includes(type)}
+                  onChange={(e) => set(
+                    'enabledPriceTypes',
+                    (e.target.checked
+                      ? [...config.enabledPriceTypes, type]
+                      : config.enabledPriceTypes.filter((t) => t !== type)) as ShpConfig['enabledPriceTypes'],
+                  )}
+                />
+                {PRICE_TYPE_META[type].label}
+              </label>
+              <p className="field-hint" style={{ marginBottom: '0.5rem' }}>{PRICE_TYPE_META[type].blurb}</p>
+            </div>
+          ))}
+          {config.enabledPriceTypes.includes('retail') && (
+            <>
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.showRetailPrice} onChange={(e) => set('showRetailPrice', e.target.checked)} />
+                Show the retail price to shoppers
+              </label>
+              <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
+                Prints it as &quot;RRP&quot; beside the price, on product pages and cards, whenever it is higher than what you are charging. Leave this off to keep the RRP as your own reference.
+              </p>
+            </>
+          )}
+          <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
+            Switching a price off hides the box but keeps whatever you had typed in it, so switching it back on gets your figures back. While a sale price is switched off, nothing is on offer and shoppers pay the normal price.
+          </p>
 
           <hr style={hr} />
           <h3 style={sectionHeading}>Product images</h3>

@@ -388,9 +388,10 @@ const priceCss = `
 .spd-price-now{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:34px;color:var(--color-primary)}
 .spd-price-was{font-size:15px;color:var(--color-text-muted);text-decoration:line-through}
 .spd-save{background:var(--color-success-subtle);color:var(--color-success);font-size:12px;font-weight:600;border-radius:9999px;padding:4px 11px}
+.spd-price-rrp{font-size:13px;color:var(--color-text-muted)}
 `
 
-type PriceProps = { _ctx?: DetailPartContext; showCompare?: string; showSave?: string }
+type PriceProps = { _ctx?: DetailPartContext; showCompare?: string; showSave?: string; showRrp?: string }
 
 export function ShopDetailPrice(_props: PriceProps) {
   return (
@@ -406,9 +407,11 @@ export function ShopDetailPrice(_props: PriceProps) {
 export function ShopDetailPriceRsc(props: PriceProps) {
   const ctx = props._ctx
   if (!ctx) return null
-  const { product, currencySymbol, hasWas, savePct } = ctx
+  const { product, currencySymbol, prices } = ctx
   const showCompare = props.showCompare !== 'no'
   const showSave = props.showSave !== 'no'
+  const showRrp = props.showRrp !== 'no'
+  const rrp = ctx.showRetailPrice && showRrp ? prices.rrp : null
   // The layout already carries the provider's own price block. Rendering our
   // static parent price beside it would put two different figures for the one
   // product on the page, so this part steps aside - see `covered`.
@@ -425,9 +428,9 @@ export function ShopDetailPriceRsc(props: PriceProps) {
           productId={product.id}
           currencySymbol={currencySymbol}
           layoutBlockTypes={ctx.layoutBlockTypes}
-          basePrice={product.price}
-          compareAtPrice={showCompare && hasWas ? product.compareAtPrice : null}
-          savePct={showSave ? savePct : null}
+          basePrice={prices.now}
+          compareAtPrice={showCompare ? prices.was : null}
+          savePct={showSave ? prices.savePct : null}
           showCompare={showCompare}
           showSave={showSave}
           classNames={{ block: 'spd-price-block', now: 'spd-price-now', was: 'spd-price-was', save: 'spd-save' }}
@@ -439,11 +442,12 @@ export function ShopDetailPriceRsc(props: PriceProps) {
     <>
       <Style css={priceCss} />
       <div className="spd-price-block">
-        <span className="spd-price-now">{formatMoney(product.price, currencySymbol)}</span>
-        {showCompare && hasWas && (
-          <span className="spd-price-was">{formatMoney(product.compareAtPrice, currencySymbol)}</span>
+        <span className="spd-price-now">{formatMoney(prices.now, currencySymbol)}</span>
+        {showCompare && prices.was && (
+          <span className="spd-price-was">{formatMoney(prices.was, currencySymbol)}</span>
         )}
-        {showSave && savePct != null && savePct > 0 && <span className="spd-save">Save {savePct}%</span>}
+        {showSave && prices.savePct != null && <span className="spd-save">Save {prices.savePct}%</span>}
+        {rrp && <span className="spd-price-rrp">RRP {formatMoney(rrp, currencySymbol)}</span>}
       </div>
     </>
   )
@@ -454,8 +458,9 @@ export const shopDetailPricePuckComponent = {
   fields: {
     showCompare: { type: 'select' as const, label: 'Show "was" price', options: yesNo },
     showSave: { type: 'select' as const, label: 'Show "Save X%" badge', options: yesNo },
+    showRrp: { type: 'select' as const, label: 'Show RRP', options: yesNo },
   },
-  defaultProps: { showCompare: 'yes', showSave: 'yes' },
+  defaultProps: { showCompare: 'yes', showSave: 'yes', showRrp: 'yes' },
   render: ShopDetailPrice,
 }
 export const shopDetailPricePuckRscComponent = { ...shopDetailPricePuckComponent, render: ShopDetailPriceRsc }

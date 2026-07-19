@@ -11,7 +11,7 @@
 //     sheet would strand or expose variant children;
 //   - id / created_at / updated_at.
 export const CSV_COLUMNS = [
-  'sku', 'slug', 'name', 'type', 'status', 'description', 'short_description', 'price', 'compare_at_price', 'cost_price',
+  'sku', 'slug', 'name', 'type', 'status', 'description', 'short_description', 'price', 'sale_price', 'retail_price', 'trade_price', 'cost_price',
   'tax_class', 'track_inventory', 'stock_count', 'low_stock_threshold', 'out_of_stock_behaviour', 'weight', 'weight_unit',
   'dimension_l', 'dimension_w', 'dimension_h', 'dimension_unit',
   'download_limit', 'download_expiry',
@@ -33,7 +33,7 @@ export type CsvColumn = (typeof CSV_COLUMNS)[number]
 // bouncing it into the manual mapping step would be a regression. An absent
 // column leaves its field alone on import; it is never read as "blank this".
 const OPTIONAL_CSV_COLUMNS: readonly CsvColumn[] = [
-  'image_alt', 'cost_price', 'slug',
+  'image_alt', 'cost_price', 'sale_price', 'retail_price', 'trade_price', 'slug',
   'dimension_l', 'dimension_w', 'dimension_h', 'dimension_unit',
   'download_limit', 'download_expiry',
   'is_pre_order', 'pre_order_dispatch_date', 'pre_order_note', 'pre_order_max_quantity',
@@ -44,7 +44,7 @@ const OPTIONAL_CSV_COLUMNS: readonly CsvColumn[] = [
 // cell is text there), but the Google-Sheet mirror does: writing "100" as a string
 // makes a text cell, which Sheets shows as '100 and will not sum or sort.
 export const NUMERIC_CSV_COLUMNS: readonly CsvColumn[] = [
-  'price', 'compare_at_price', 'cost_price', 'stock_count', 'low_stock_threshold', 'weight',
+  'price', 'sale_price', 'retail_price', 'trade_price', 'cost_price', 'stock_count', 'low_stock_threshold', 'weight',
   'dimension_l', 'dimension_w', 'dimension_h', 'download_limit', 'download_expiry',
   'pre_order_max_quantity', 'related_limit', 'upsell_limit',
 ]

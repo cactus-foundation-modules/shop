@@ -12,6 +12,12 @@ export async function GET() {
     currency: config.currency,
     currencySymbol: config.currencySymbol,
     taxMode: config.taxMode,
+    // Which optional price types the owner has switched on. The storefront uses
+    // it to know whether an RRP is worth rendering; the admin product editor
+    // uses the same slice to decide which price boxes to offer, which is why it
+    // rides along on the config call it already makes rather than a new one.
+    enabledPriceTypes: config.enabledPriceTypes,
+    showRetailPrice: config.showRetailPrice,
     guestCheckoutEnabled: config.guestCheckoutEnabled,
     minimumOrderValue: config.minimumOrderValue,
     maximumOrderValue: config.maximumOrderValue,

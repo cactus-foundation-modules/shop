@@ -6,6 +6,7 @@ import { getTaxRateForZoneAndClass, listShippingRatesForZone, resolveWeightBased
 import { getCouponByCode, listAutomaticDiscounts } from '@/modules/shop/lib/db/discounts'
 import { countPriorCouponOrdersByEmail } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { effectivePrice } from '@/modules/shop/lib/pricing'
 import { getCartLineResolvers, resolveLineMeta } from '@/modules/shop/lib/line-meta'
 import type { CartLine } from '@/modules/shop/components/public/cart'
 import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
@@ -36,6 +37,7 @@ export type ResolvedCartLine = {
 // truth the checkout flow trusts (spec 8.1 POST /cart/validate).
 export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLine[]> {
   const resolvers = await getCartLineResolvers()
+  const { enabledPriceTypes } = await getShopConfigCached()
   const results: ResolvedCartLine[] = []
   for (const line of cart) {
     const product = await getProductById(line.productId)
@@ -76,7 +78,10 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       availabilityReason = metaResolution.reason ?? 'Please check the options on this item'
     }
 
-    const unitPrice = Number(product.price) + metaResolution.priceAdjust
+    // effectivePrice, not product.price: a product on offer is charged its sale
+    // price. Resolved here rather than at display time so the figure charged is
+    // the one the server worked out, never one the client sent.
+    const unitPrice = effectivePrice(product, enabledPriceTypes) + metaResolution.priceAdjust
     results.push({
       product,
       quantity: line.quantity,

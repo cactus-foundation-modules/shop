@@ -2,6 +2,7 @@ import type { Breakpoints } from '@/modules/shop/lib/breakpoints'
 import type { ShopDetailSlot } from '@/modules/shop/lib/detail-slot'
 import type { ShopDetailTabExtra } from '@/modules/shop/lib/detail-tabs'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
+import type { PriceView } from '@/modules/shop/lib/pricing'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
 // Shared context passed to the shop's part-blocks (the small draggable pieces
@@ -18,7 +19,7 @@ export type PartImage = { url: string; alt: string }
 export type CardBadge = { label: string; variant: 'new' | 'low' | 'trade' | 'muted' }
 
 // Injected onto every Product Detail part-block before the detail template
-// renders. Derived values (outOfStock/lowStock/hasWas/savePct) are precomputed
+// renders. Derived values (outOfStock/lowStock/prices) are precomputed
 // once by the injector so each part stays a dumb view of already-loaded data.
 export type DetailPartContext = {
   product: ShpProduct
@@ -32,8 +33,14 @@ export type DetailPartContext = {
   zoomImages: boolean
   outOfStock: boolean
   lowStock: boolean
-  hasWas: boolean
-  savePct: number | null
+  // Which figure is charged, which is struck through and what the saving is,
+  // worked out once from the product's price types (lib/pricing.ts). Parts read
+  // this rather than product.price, so a product on offer never shows one price
+  // on the card and charges another at the till.
+  prices: PriceView
+  // Whether the shop puts its RRP in front of shoppers. The figure itself is on
+  // `prices.rrp`, and is null unless it sits above what is being charged.
+  showRetailPrice: boolean
   // Set by the injector when a companion module claims this product through the
   // `shop.product-detail-parts` point (see lib/detail-slot.ts). Null on a
   // shop-only site and for every unclaimed product, where the parts below render
@@ -65,5 +72,7 @@ export type CardPartContext = {
   product: ShpProduct
   image: PartImage | null
   currencySymbol: string
+  prices: PriceView
+  showRetailPrice: boolean
   badge: CardBadge | null
 }

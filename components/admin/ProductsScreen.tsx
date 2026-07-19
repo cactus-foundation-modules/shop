@@ -6,12 +6,13 @@ import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { ImportModal } from '@/modules/shop/components/admin/ImportModal'
 import { productsScreenCss } from '@/modules/shop/components/admin/products-screen-css'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { isOnSale as onSale } from '@/modules/shop/lib/pricing'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { usePrompt, useConfirm, useAlert } from '@/modules/shop/components/admin/dialogs'
 
 type ProductRow = {
   id: string; name: string; slug: string; type: string; status: string
-  price: string; compareAtPrice: string | null
+  price: string; salePrice: string | null
   stockCount: number | null; trackInventory: boolean; lowStockThreshold: number | null
   sku: string | null; isPreOrder: boolean
 }
@@ -339,9 +340,9 @@ export function ProductsScreen({ toolbarExtras }: { toolbarExtras?: ReactNode } 
                     <td>{tb ? <span className={`badge ${tb.cls}`}>{tb.label}</span> : p.type}</td>
                     <td>{stb ? <span className={`badge ${stb.cls}`}>{stb.label}</span> : p.status}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      {formatMoney(p.price, currencySymbol)}
-                      {p.compareAtPrice && Number(p.compareAtPrice) > Number(p.price) && (
-                        <span className="sps-price-was">{formatMoney(p.compareAtPrice, currencySymbol)}</span>
+                      {formatMoney(onSale(p) ? p.salePrice : p.price, currencySymbol)}
+                      {onSale(p) && (
+                        <span className="sps-price-was">{formatMoney(p.price, currencySymbol)}</span>
                       )}
                     </td>
                     <td>{sb ? <span className={`badge ${sb.cls}`}>{sb.label}</span> : <span className="sps-muted">—</span>}</td>

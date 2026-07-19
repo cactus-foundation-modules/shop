@@ -40,8 +40,13 @@ export type ShpProduct = {
   shortDescription: string | null
   sku: string | null
   barcode: string | null
+  // Only `price` is mandatory. The rest are optional price types the owner
+  // switches on per shop; `salePrice` is the only one that changes what gets
+  // charged. See lib/pricing.ts for how they resolve.
   price: string
-  compareAtPrice: string | null
+  salePrice: string | null
+  retailPrice: string | null
+  tradePrice: string | null
   costPrice: string | null
   taxClassId: string | null
   trackInventory: boolean

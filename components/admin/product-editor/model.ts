@@ -5,6 +5,8 @@
  * save. Holding them as numbers is what makes a price box fight the cursor.
  */
 
+import type { ShpPriceType } from '@/modules/shop/lib/pricing'
+
 export type ProductStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
 export type RecommendationMode = 'MANUAL' | 'AUTOMATIC'
 export type MediaItem = { type: 'IMAGE' | 'VIDEO_FILE' | 'VIDEO_URL'; url: string; altText?: string | null; isPrimary?: boolean }
@@ -24,7 +26,9 @@ export type ProductForm = {
   sku: string
   barcode: string
   price: string
-  compareAtPrice: string
+  salePrice: string
+  retailPrice: string
+  tradePrice: string
   costPrice: string
   taxClassId: string
   trackInventory: boolean
@@ -74,6 +78,10 @@ export type PanelProps = {
   patch: (fn: (state: EditorState) => EditorState) => void
   errors: Errors
   currency: string
+  /** Which optional price types the shop has switched on. A panel offers a box
+   * only for the ones listed; a value already stored against a switched-off type
+   * is left alone rather than blanked, so switching it back on gets it back. */
+  enabledPriceTypes: ShpPriceType[]
 }
 
 /** What the product GET endpoint sends back. */
@@ -105,7 +113,9 @@ export function toEditorState(payload: ProductPayload): EditorState {
       sku: str(p.sku),
       barcode: str(p.barcode),
       price: str(p.price),
-      compareAtPrice: str(p.compareAtPrice),
+      salePrice: str(p.salePrice),
+      retailPrice: str(p.retailPrice),
+      tradePrice: str(p.tradePrice),
       costPrice: str(p.costPrice),
       taxClassId: str(p.taxClassId),
       trackInventory: bool(p.trackInventory),
@@ -169,7 +179,9 @@ export function toProductBody(s: EditorState): Record<string, unknown> {
     sku: nullable(f.sku),
     barcode: nullable(f.barcode),
     price: num(f.price) ?? 0,
-    compareAtPrice: num(f.compareAtPrice),
+    salePrice: num(f.salePrice),
+    retailPrice: num(f.retailPrice),
+    tradePrice: num(f.tradePrice),
     costPrice: num(f.costPrice),
     taxClassId: nullable(f.taxClassId),
     trackInventory: f.trackInventory,
@@ -221,7 +233,7 @@ export type ShopTabId = keyof typeof SHOP_TAB_ORDER
 const TAB_FIELDS: Record<ShopTabId, ReadonlyArray<keyof ProductForm>> = {
   details: ['name', 'regenerateSlug', 'status', 'sku', 'barcode', 'shortDescription', 'description'],
   media: [],
-  pricing: ['price', 'compareAtPrice', 'costPrice', 'taxClassId'],
+  pricing: ['price', 'salePrice', 'retailPrice', 'tradePrice', 'costPrice', 'taxClassId'],
   stock: [
     'trackInventory', 'stockCount', 'lowStockThreshold', 'outOfStockBehaviour',
     'isPreOrder', 'preOrderDispatchDate', 'preOrderNote', 'preOrderMaxQuantity',
@@ -273,11 +285,16 @@ export function validate(s: EditorState): Errors {
   if (f.price.trim() === '') e.price = 'Set a price. Use 0 for a free product.'
   else if (!positiveNumber(f.price)) e.price = 'Price must be a number, and not negative.'
 
-  if (!positiveNumber(f.compareAtPrice)) e.compareAtPrice = 'Compare-at price must be a number, and not negative.'
-  else if (f.compareAtPrice.trim() !== '' && Number(f.compareAtPrice) <= Number(f.price || 0)) {
-    e.compareAtPrice = 'The compare-at price is what the item used to cost, so it needs to be higher than the price. Otherwise no discount shows.'
+  // A sale price is the only optional figure that changes what a shopper pays,
+  // so it is the only one that has to sit below the normal price. Catching it
+  // here means nobody publishes an "offer" that costs more than not having one.
+  if (!positiveNumber(f.salePrice)) e.salePrice = 'Sale price must be a number, and not negative.'
+  else if (f.salePrice.trim() !== '' && Number(f.salePrice) >= Number(f.price || 0)) {
+    e.salePrice = 'The sale price is what the item drops to, so it needs to be lower than the price. Otherwise it is not an offer.'
   }
 
+  if (!positiveNumber(f.retailPrice)) e.retailPrice = 'Retail price must be a number, and not negative.'
+  if (!positiveNumber(f.tradePrice)) e.tradePrice = 'Trade price must be a number, and not negative.'
   if (!positiveNumber(f.costPrice)) e.costPrice = 'Cost price must be a number, and not negative.'
 
   if (f.trackInventory && f.stockCount.trim() !== '' && !Number.isInteger(Number(f.stockCount))) {

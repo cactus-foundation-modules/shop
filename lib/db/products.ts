@@ -14,7 +14,9 @@ function mapProduct(r: Record<string, unknown>): ShpProduct {
     sku: (r.sku as string | null) ?? null,
     barcode: (r.barcode as string | null) ?? null,
     price: (r.price as { toString(): string }).toString(),
-    compareAtPrice: r.compare_at_price != null ? (r.compare_at_price as { toString(): string }).toString() : null,
+    salePrice: r.sale_price != null ? (r.sale_price as { toString(): string }).toString() : null,
+    retailPrice: r.retail_price != null ? (r.retail_price as { toString(): string }).toString() : null,
+    tradePrice: r.trade_price != null ? (r.trade_price as { toString(): string }).toString() : null,
     costPrice: r.cost_price != null ? (r.cost_price as { toString(): string }).toString() : null,
     taxClassId: (r.tax_class_id as string | null) ?? null,
     trackInventory: r.track_inventory as boolean,
@@ -162,8 +164,12 @@ const SORT_SQL: Record<ProductSort, Prisma.Sql> = {
   oldest: Prisma.sql`p."created_at" ASC`,
   'name-asc': Prisma.sql`p."name" ASC`,
   'name-desc': Prisma.sql`p."name" DESC`,
-  'price-asc': Prisma.sql`p."price" ASC`,
-  'price-desc': Prisma.sql`p."price" DESC`,
+  // Sort on what the shopper is actually charged, so a product on offer sorts
+  // where its offer price puts it rather than where its old price did. Matches
+  // effectivePrice() in lib/pricing.ts: a sale price only counts when it's
+  // genuinely below the normal price.
+  'price-asc': Prisma.sql`(CASE WHEN p."sale_price" IS NOT NULL AND p."sale_price" < p."price" THEN p."sale_price" ELSE p."price" END) ASC`,
+  'price-desc': Prisma.sql`(CASE WHEN p."sale_price" IS NOT NULL AND p."sale_price" < p."price" THEN p."sale_price" ELSE p."price" END) DESC`,
   'stock-asc': Prisma.sql`p."stock_count" ASC NULLS FIRST`,
   'stock-desc': Prisma.sql`p."stock_count" DESC NULLS LAST`,
 }
@@ -257,7 +263,9 @@ export type CreateProductInput = {
   sku?: string | null
   barcode?: string | null
   price: number
-  compareAtPrice?: number | null
+  salePrice?: number | null
+  retailPrice?: number | null
+  tradePrice?: number | null
   costPrice?: number | null
   taxClassId?: string | null
   trackInventory?: boolean
@@ -294,7 +302,7 @@ export async function createProduct(data: CreateProductInput): Promise<{ id: str
   const rows = await prisma.$queryRaw<[{ id: string }]>`
     INSERT INTO "shp_products" (
       "name", "slug", "type", "status", "description", "short_description", "sku", "barcode",
-      "price", "compare_at_price", "cost_price", "tax_class_id",
+      "price", "sale_price", "retail_price", "trade_price", "cost_price", "tax_class_id",
       "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
       "download_limit", "download_expiry", "meta_title", "meta_description",
@@ -302,7 +310,7 @@ export async function createProduct(data: CreateProductInput): Promise<{ id: str
       "related_mode", "upsell_mode", "related_limit", "upsell_limit", "catalogue_hidden"
     ) VALUES (
       ${data.name}, ${data.slug}, ${data.type}, ${data.status ?? 'DRAFT'}, ${data.description ?? null}, ${data.shortDescription ?? null}, ${data.sku ?? null}, ${data.barcode ?? null},
-      ${data.price}, ${data.compareAtPrice ?? null}, ${data.costPrice ?? null}, ${data.taxClassId ?? null},
+      ${data.price}, ${data.salePrice ?? null}, ${data.retailPrice ?? null}, ${data.tradePrice ?? null}, ${data.costPrice ?? null}, ${data.taxClassId ?? null},
       ${data.trackInventory ?? false}, ${data.stockCount ?? null}, ${data.lowStockThreshold ?? null}, ${data.outOfStockBehaviour ?? 'BLOCK'},
       ${data.weight ?? null}, ${data.weightUnit ?? null}, ${data.dimensionL ?? null}, ${data.dimensionW ?? null}, ${data.dimensionH ?? null}, ${data.dimensionUnit ?? null},
       ${data.downloadLimit ?? null}, ${data.downloadExpiry ?? null}, ${data.metaTitle ?? null}, ${data.metaDescription ?? null},
@@ -326,7 +334,9 @@ export type UpdateProductInput = Partial<{
   sku: string | null
   barcode: string | null
   price: number
-  compareAtPrice: number | null
+  salePrice: number | null
+  retailPrice: number | null
+  tradePrice: number | null
   costPrice: number | null
   taxClassId: string | null
   trackInventory: boolean
@@ -359,7 +369,7 @@ export type UpdateProductInput = Partial<{
 
 const COLUMN_MAP: Record<keyof UpdateProductInput, string> = {
   name: 'name', slug: 'slug', status: 'status', description: 'description', shortDescription: 'short_description',
-  sku: 'sku', barcode: 'barcode', price: 'price', compareAtPrice: 'compare_at_price', costPrice: 'cost_price',
+  sku: 'sku', barcode: 'barcode', price: 'price', salePrice: 'sale_price', retailPrice: 'retail_price', tradePrice: 'trade_price', costPrice: 'cost_price',
   taxClassId: 'tax_class_id', trackInventory: 'track_inventory', stockCount: 'stock_count',
   lowStockThreshold: 'low_stock_threshold', outOfStockBehaviour: 'out_of_stock_behaviour',
   weight: 'weight', weightUnit: 'weight_unit', dimensionL: 'dimension_l', dimensionW: 'dimension_w',
@@ -467,7 +477,7 @@ export async function duplicateProduct(sourceId: string, next: { name: string; s
   const created = await prisma.$queryRaw<{ id: string }[]>`
     INSERT INTO "shp_products" (
       "name", "slug", "type", "status", "description", "short_description", "sku", "barcode",
-      "price", "compare_at_price", "cost_price", "tax_class_id",
+      "price", "sale_price", "retail_price", "trade_price", "cost_price", "tax_class_id",
       "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
       "digital_file_id", "download_limit", "download_expiry",
@@ -477,7 +487,7 @@ export async function duplicateProduct(sourceId: string, next: { name: string; s
     )
     SELECT
       ${next.name}, ${next.slug}, "type", 'DRAFT', "description", "short_description", NULL, "barcode",
-      "price", "compare_at_price", "cost_price", "tax_class_id",
+      "price", "sale_price", "retail_price", "trade_price", "cost_price", "tax_class_id",
       "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
       "digital_file_id", "download_limit", "download_expiry",

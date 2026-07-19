@@ -8,6 +8,7 @@ import { getProductBySlug, getProductMedia, getProductTagIds, getDigitalFileById
 import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
+import { priceView } from '@/modules/shop/lib/pricing'
 import { injectShopProductDetailEmbed } from '@/modules/shop/lib/inject-part-context'
 import { resolveShopDetailProvider, narrowShopDetailSlot, collectLayoutBlockTypes } from '@/modules/shop/lib/detail-slot'
 import { resolveShopDetailTabs } from '@/modules/shop/lib/detail-tabs'
@@ -76,10 +77,10 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     product.lowStockThreshold != null &&
     product.stockCount <= product.lowStockThreshold
 
-  const priceNum = Number(product.price)
-  const compareNum = product.compareAtPrice ? Number(product.compareAtPrice) : null
-  const hasWas = compareNum != null && compareNum > priceNum
-  const savePct = hasWas ? Math.round((1 - priceNum / (compareNum as number)) * 100) : null
+  // One resolution of the product's price types for the whole page: the parts
+  // read it, and the structured data below quotes the same figure, so a search
+  // result can never advertise a price the page does not charge.
+  const prices = priceView(product, config.enabledPriceTypes)
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -90,7 +91,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     sku: product.sku ?? undefined,
     offers: {
       '@type': 'Offer',
-      price: product.price,
+      price: prices.now,
       priceCurrency: config.currency,
       availability: product.isPreOrder
         ? 'https://schema.org/PreOrder'
@@ -115,8 +116,8 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     zoomImages: config.imageZoomOnHover,
     outOfStock,
     lowStock,
-    hasWas,
-    savePct,
+    prices,
+    showRetailPrice: config.showRetailPrice,
     slot,
     layoutBlockTypes: [...blockTypes],
     galleryExtras,

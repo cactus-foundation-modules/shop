@@ -46,7 +46,7 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
   const items: CardItem[] = await Promise.all(
     products.map(async (product) => {
       const [media, tagIds] = await Promise.all([getProductMedia(product.id), getProductTagIds(product.id)])
-      return { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol) }
+      return { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol, config) }
     }),
   )
 

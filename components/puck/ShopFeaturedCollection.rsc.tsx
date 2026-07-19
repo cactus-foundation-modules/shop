@@ -30,7 +30,7 @@ export async function ShopFeaturedCollectionRsc(props: ShopFeaturedCollectionPro
   const items: CardItem[] = await Promise.all(
     products.map(async (p) => {
       const [media, tagIds] = await Promise.all([getProductMedia(p.id), getProductTagIds(p.id)])
-      return { product: p, ctx: buildCardContext(p, media, tagById, tagIds, config.currencySymbol) }
+      return { product: p, ctx: buildCardContext(p, media, tagById, tagIds, config.currencySymbol, config) }
     }),
   )
 

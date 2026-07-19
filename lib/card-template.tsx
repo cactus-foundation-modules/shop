@@ -6,6 +6,7 @@ import type { LayoutRef } from '@/lib/puck/LayoutPickerField'
 import type { PuckData, ShpProduct, ShpProductMedia } from '@/modules/shop/lib/types'
 import { injectShopProductCardEmbed } from '@/modules/shop/lib/inject-part-context'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { priceView } from '@/modules/shop/lib/pricing'
 import type { CardPartContext, CardBadge } from '@/modules/shop/components/puck/parts/part-context'
 
 // Server-only helper shared by every product-card surface (grid, related,
@@ -64,11 +65,23 @@ export function buildCardContext(
   tagById: Map<string, string>,
   tagIds: string[],
   currencySymbol: string,
+  // Which optional price types the shop has switched on, and whether an RRP is
+  // shown to shoppers. Optional so a card surface in another module that has not
+  // been rebuilt still compiles; without it a sale price set on a product shows
+  // even if the shop has since switched sale prices off.
+  pricing?: { enabledPriceTypes?: readonly string[]; showRetailPrice?: boolean },
 ): CardPartContext {
   const primary = media.find((m) => m.isPrimary) ?? media[0]
   const image = primary && primary.type !== 'VIDEO_URL' ? { url: primary.url, alt: primary.altText ?? product.name } : null
   const tagSlugs = tagIds.map((id) => tagById.get(id)).filter((s): s is string => Boolean(s))
-  return { product, image, currencySymbol, badge: badgeFor(product, tagSlugs, isOutOfStock(product)) }
+  return {
+    product,
+    image,
+    currencySymbol,
+    prices: priceView(product, pricing?.enabledPriceTypes),
+    showRetailPrice: pricing?.showRetailPrice ?? false,
+    badge: badgeFor(product, tagSlugs, isOutOfStock(product)),
+  }
 }
 
 export type CardItem = { product: ShpProduct; ctx: CardPartContext }
@@ -100,7 +113,8 @@ export function MinimalCard({ product, ctx }: CardItem) {
       </div>
       <h3 className="shop-card-name">{product.name}</h3>
       <div className="shop-card-pricerow">
-        <span className="shop-card-price">{formatMoney(product.price, ctx.currencySymbol)}</span>
+        <span className="shop-card-price">{formatMoney(ctx.prices.now, ctx.currencySymbol)}</span>
+        {ctx.prices.was && <span className="shop-card-compare">{formatMoney(ctx.prices.was, ctx.currencySymbol)}</span>}
       </div>
     </a>
   )

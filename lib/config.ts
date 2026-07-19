@@ -29,6 +29,17 @@ export const ShpConfigSchema = z.object({
   weightUnit: z.enum(['kg', 'lb']).default('kg'),
   dimensionUnit: z.enum(['cm', 'in']).default('cm'),
 
+  // Pricing. `price` is always there and always mandatory; this is the set of
+  // extra price types the owner has switched on, which decides both what the
+  // product editor offers and (for `sale`) what the checkout charges. Defaults
+  // to sale + cost, which is exactly what the shop could already do before the
+  // other types existed, so switching versions changes nothing on its own.
+  enabledPriceTypes: z.array(z.enum(['sale', 'retail', 'trade', 'cost'])).default(['sale', 'cost']),
+  // Show the RRP alongside the price on the storefront. Off by default - an RRP
+  // is often kept purely as a buying reference and putting it in front of
+  // shoppers is a separate decision from recording it.
+  showRetailPrice: z.boolean().default(false),
+
   // Tax
   taxMode: z.enum(['INCLUSIVE', 'EXCLUSIVE']).default('INCLUSIVE'),
 

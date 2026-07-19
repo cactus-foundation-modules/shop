@@ -47,8 +47,8 @@ export async function buildProductCsvRows(opts?: { status?: ShpProductStatus; ca
     const { imageUrls, imageAlt } = serializeMedia(media)
     rows.push({
       sku: p.sku ?? '', slug: p.slug, name: p.name, type: p.type, status: p.status, description: p.description ?? '',
-      short_description: p.shortDescription ?? '', price: p.price, compare_at_price: p.compareAtPrice ?? '',
-      cost_price: p.costPrice ?? '', tax_class: (p.taxClassId && taxCodeById.get(p.taxClassId)) || '',
+      short_description: p.shortDescription ?? '', price: p.price, sale_price: p.salePrice ?? '',
+      retail_price: p.retailPrice ?? '', trade_price: p.tradePrice ?? '', cost_price: p.costPrice ?? '', tax_class: (p.taxClassId && taxCodeById.get(p.taxClassId)) || '',
       track_inventory: String(p.trackInventory), stock_count: num(p.stockCount),
       low_stock_threshold: num(p.lowStockThreshold), out_of_stock_behaviour: p.outOfStockBehaviour,
       weight: p.weight ?? '', weight_unit: p.weightUnit ?? '',

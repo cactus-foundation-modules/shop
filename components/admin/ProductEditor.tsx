@@ -21,6 +21,7 @@ import { DigitalPanel } from '@/modules/shop/components/admin/product-editor/pan
 import { MediaPanel } from '@/modules/shop/components/admin/product-editor/panels/media'
 import { OrganisationPanel } from '@/modules/shop/components/admin/product-editor/panels/organisation'
 import { PricingPanel } from '@/modules/shop/components/admin/product-editor/panels/pricing'
+import type { ShpPriceType } from '@/modules/shop/lib/pricing'
 import { RecommendationsPanel } from '@/modules/shop/components/admin/product-editor/panels/recommendations'
 import { SeoPanel } from '@/modules/shop/components/admin/product-editor/panels/seo'
 import { StockPanel } from '@/modules/shop/components/admin/product-editor/panels/stock'
@@ -47,6 +48,10 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
   const [collections, setCollections] = useState<Term[]>([])
   const [taxClasses, setTaxClasses] = useState<Term[]>([])
   const [currency, setCurrency] = useState('£')
+  // Which optional price boxes the Pricing tab offers. Defaults to the same set
+  // the shop config does, so the tab looks right on the first paint rather than
+  // flickering boxes in once the config call lands.
+  const [enabledPriceTypes, setEnabledPriceTypes] = useState<ShpPriceType[]>(['sale', 'cost'])
   // Only ever cosmetic (the search preview's URL), and nothing renders until the
   // product has loaded client-side, so there is no server render to mismatch.
   const [siteUrl] = useState(() => (typeof window === 'undefined' ? '' : window.location.origin))
@@ -96,7 +101,12 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
     void fetch('/api/m/shop/admin/tags').then(async (r) => { if (r.ok) setTags((await r.json()).tags) }).catch(() => {})
     void fetch('/api/m/shop/admin/collections').then(async (r) => { if (r.ok) setCollections((await r.json()).collections) }).catch(() => {})
     void fetch('/api/m/shop/admin/tax-classes').then(async (r) => { if (r.ok) setTaxClasses((await r.json()).taxClasses) }).catch(() => {})
-    void fetch('/api/m/shop/public/config').then(async (r) => { if (r.ok) setCurrency((await r.json()).currencySymbol ?? '£') }).catch(() => {})
+    void fetch('/api/m/shop/public/config').then(async (r) => {
+      if (!r.ok) return
+      const config = await r.json()
+      setCurrency(config.currencySymbol ?? '£')
+      if (Array.isArray(config.enabledPriceTypes)) setEnabledPriceTypes(config.enabledPriceTypes)
+    }).catch(() => {})
   }, [load])
 
   // --- Dirty tracking ------------------------------------------------------
@@ -234,7 +244,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
 
   const tabs: Tab[] = useMemo(() => {
     if (!state) return []
-    const panelProps: PanelProps = { state, setField, patch, errors: visibleErrors, currency }
+    const panelProps: PanelProps = { state, setField, patch, errors: visibleErrors, currency, enabledPriceTypes }
     const own: Tab[] = [
       { id: 'details', label: 'Details', order: SHOP_TAB_ORDER.details, render: () => <DetailsPanel {...panelProps} /> },
       { id: 'media', label: 'Images', order: SHOP_TAB_ORDER.media, render: () => <MediaPanel {...panelProps} productId={productId} /> },
@@ -254,7 +264,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
       render: () => t.node,
     }))
     return [...own, ...contributed].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
-  }, [state, setField, patch, visibleErrors, currency, taxClasses, categories, tags, collections, productId, siteUrl, extraTabs])
+  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, taxClasses, categories, tags, collections, productId, siteUrl, extraTabs])
 
   // Derived, not stored: a tab that vanishes (the product stopped being digital)
   // or a ?tab= naming a module that isn't installed falls back to the first tab

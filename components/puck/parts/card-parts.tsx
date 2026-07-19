@@ -48,6 +48,7 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
 .shop-card-pricerow{display:flex;gap:8px;align-items:baseline;margin-top:8px;padding:0 16px}
 .shop-card-price{font-size:16px;font-weight:600;color:var(--color-primary)}
 .shop-card-compare{font-size:13px;color:var(--color-text-muted);text-decoration:line-through}
+.shop-card-rrp{font-size:12px;color:var(--color-text-muted)}
 .shop-card-blurb{margin:8px 0 0;padding:0 16px;font-size:12px;color:var(--color-text-muted);line-height:1.4}
 .shop-card-cta{margin-top:auto;padding:12px 16px 0;display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;color:var(--color-primary)}
 .shop-card-cta svg{transition:transform .2s ease}
@@ -188,21 +189,28 @@ export const shopCardNamePuckRscComponent = { ...shopCardNamePuckComponent, rend
 // Price (price + compare-at)
 // ---------------------------------------------------------------------------
 
-type CardPriceProps = PuckPart & { _ctx?: CardPartContext; showCompare?: string }
+type CardPriceProps = PuckPart & { _ctx?: CardPartContext; showCompare?: string; showRrp?: string }
 
 export function ShopCardPrice(props: CardPriceProps) {
   const ctx = props._ctx
   const showCompare = props.showCompare !== 'no'
+  const showRrp = props.showRrp !== 'no'
   const symbol = ctx?.currencySymbol ?? '£'
-  const price = ctx?.product.price ?? '0.00'
-  const compare = ctx ? ctx.product.compareAtPrice : '0.00'
+  // The editor canvas has no product, so fall back to a plausible figure rather
+  // than rendering an empty row the author cannot see or style.
+  const now = ctx?.prices.now ?? '0.00'
+  const was = ctx ? ctx.prices.was : '0.00'
+  const rrp = ctx && ctx.showRetailPrice ? ctx.prices.rrp : null
   return (
     <>
       <EditorStyle ctx={ctx} />
       <div className="shop-card-pricerow" ref={dragRefOf(props)}>
-        <span className="shop-card-price">{formatMoney(price, symbol)}</span>
-        {showCompare && compare && (
-          <span className="shop-card-compare">{formatMoney(compare, symbol)}</span>
+        <span className="shop-card-price">{formatMoney(now, symbol)}</span>
+        {showCompare && was && (
+          <span className="shop-card-compare">{formatMoney(was, symbol)}</span>
+        )}
+        {showRrp && rrp && (
+          <span className="shop-card-rrp">RRP {formatMoney(rrp, symbol)}</span>
         )}
       </div>
     </>
@@ -214,8 +222,9 @@ export const shopCardPricePuckComponent = {
   inline: true,
   fields: {
     showCompare: { type: 'select' as const, label: 'Show "was" price', options: yesNo },
+    showRrp: { type: 'select' as const, label: 'Show RRP', options: yesNo },
   },
-  defaultProps: { showCompare: 'yes' },
+  defaultProps: { showCompare: 'yes', showRrp: 'yes' },
   render: ShopCardPrice,
 }
 export const shopCardPricePuckRscComponent = { ...shopCardPricePuckComponent, render: ShopCardPrice }
