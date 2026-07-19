@@ -3,6 +3,7 @@ import { hasPermission } from '@/lib/permissions/check'
 import { hasShopPermission } from '@/modules/shop/lib/access'
 import { ProductsScreen } from '@/modules/shop/components/admin/ProductsScreen'
 import { prisma } from '@/lib/db/prisma'
+import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 
 export const metadata = { title: 'Shop Products — Admin' }
@@ -16,7 +17,7 @@ type ExtensionPointEntry = { point: string; id: string; permission?: string }
 async function resolveToolbarExtras(user: Awaited<ReturnType<typeof getSessionFromCookie>>) {
   if (!user) return null
   const components = moduleExtensionPointComponents['shop.products-toolbar'] ?? {}
-  const modules = await prisma.module.findMany({ where: { status: { in: ['active', 'update_available'] } }, select: { manifest: true } })
+  const modules = await prisma.module.findMany({ where: { ...INSTALLED_MODULE_WHERE }, select: { manifest: true } })
   const nodes: React.ReactNode[] = []
   for (const mod of modules) {
     const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null

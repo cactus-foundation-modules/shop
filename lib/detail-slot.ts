@@ -15,6 +15,7 @@
 // shopper two prices and two buttons.
 import type { ComponentType } from 'react'
 import { prisma } from '@/lib/db/prisma'
+import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 import type { PuckData, ShpProduct } from '@/modules/shop/lib/types'
@@ -191,7 +192,7 @@ export async function resolveShopDetailProvider(product: ShpProduct): Promise<Sh
   if (Object.keys(providers).length === 0) return null
 
   const modules = await prisma.module.findMany({
-    where: { status: { in: ['active', 'update_available'] } },
+    where: { ...INSTALLED_MODULE_WHERE },
     select: { manifest: true },
   })
 

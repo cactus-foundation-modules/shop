@@ -17,6 +17,7 @@
 // every provider is resolved rather than only the first.
 import type { ComponentType } from 'react'
 import { prisma } from '@/lib/db/prisma'
+import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 
 // What the host gallery hands the provider's thumbnail strip.
@@ -100,7 +101,7 @@ export async function resolveShopGalleryExtras(productId: string): Promise<ShopG
   if (Object.keys(providers).length === 0) return []
 
   const modules = await prisma.module.findMany({
-    where: { status: { in: ['active', 'update_available'] } },
+    where: { ...INSTALLED_MODULE_WHERE },
     select: { manifest: true },
   })
 

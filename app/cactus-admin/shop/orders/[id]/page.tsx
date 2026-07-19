@@ -4,6 +4,7 @@ import { hasShopPermission } from '@/modules/shop/lib/access'
 import { OrderDetailScreen } from '@/modules/shop/components/admin/OrderDetailScreen'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { prisma } from '@/lib/db/prisma'
+import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 
 export const metadata = { title: 'Order — Admin' }
@@ -16,7 +17,7 @@ type ExtensionPointEntry = { point: string; id: string; permission?: string }
 // itself is out of scope here.
 async function resolveOrderMessageSections(user: Awaited<ReturnType<typeof getSessionFromCookie>>) {
   if (!user) return []
-  const modules = await prisma.module.findMany({ where: { status: { in: ['active', 'update_available'] } }, select: { manifest: true } })
+  const modules = await prisma.module.findMany({ where: { ...INSTALLED_MODULE_WHERE }, select: { manifest: true } })
   const ids: string[] = []
   for (const mod of modules) {
     const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null

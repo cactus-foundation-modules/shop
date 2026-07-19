@@ -8,6 +8,7 @@
 // moduleExtensionPointComponents map, discovered via the active modules'
 // manifests. It MUST be server-safe (this file runs inside lib/checkout.ts).
 import { prisma } from '@/lib/db/prisma'
+import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 
@@ -36,7 +37,7 @@ export async function getCartLineResolvers(): Promise<CartLineResolver[]> {
   const fns = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(fns).length === 0) return []
   const modules = await prisma.module.findMany({
-    where: { status: { in: ['active', 'update_available'] } },
+    where: { ...INSTALLED_MODULE_WHERE },
     select: { manifest: true },
   })
   const resolvers: CartLineResolver[] = []
