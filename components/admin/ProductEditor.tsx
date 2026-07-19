@@ -59,6 +59,11 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
   // off, matching the shop config's own default, so a shop that never asked for
   // one never sees it flicker in.
   const [supplierField, setSupplierField] = useState<{ enabled: boolean; label: string }>({ enabled: false, label: 'Supplier' })
+  // Names from the supplier directory (Shop > Suppliers), which is what the
+  // Details tab's dropdown offers. Disabled suppliers are left out by the
+  // endpoint, so a name retired from the list stops being offered without
+  // disturbing the products already filed under it.
+  const [supplierOptions, setSupplierOptions] = useState<string[]>([])
   // Only ever cosmetic (the search preview's URL), and nothing renders until the
   // product has loaded client-side, so there is no server render to mismatch.
   const [siteUrl] = useState(() => (typeof window === 'undefined' ? '' : window.location.origin))
@@ -94,6 +99,38 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
     return toEditorState(await res.json())
   }, [productId])
 
+  const loadSuppliers = useCallback(async () => {
+    try {
+      const res = await fetch('/api/m/shop/admin/suppliers?for=picker')
+      if (!res.ok) return
+      const data = await res.json()
+      if (Array.isArray(data.suppliers)) setSupplierOptions(data.suppliers.map((s: { name: string }) => s.name))
+    } catch {
+      // A missing picker list is not worth an error: the field falls back to
+      // whatever is already on the product.
+    }
+  }, [])
+
+  /**
+   * Add a supplier to the directory from inside the product editor, so recording
+   * a new one never means leaving a half-edited product. Returns the error text
+   * on failure and null on success, with the list refreshed.
+   */
+  const createSupplier = useCallback(async (name: string): Promise<string | null> => {
+    try {
+      const res = await fetch('/api/m/shop/admin/suppliers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) return (await res.json().catch(() => ({}))).error ?? 'Could not add that supplier.'
+      await loadSuppliers()
+      return null
+    } catch {
+      return 'Could not reach the server. Check your connection and try again.'
+    }
+  }, [loadSuppliers])
+
   const load = useCallback(async () => {
     const next = await fetchState()
     if (!next) return
@@ -108,6 +145,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
     void fetch('/api/m/shop/admin/tags').then(async (r) => { if (r.ok) setTags((await r.json()).tags) }).catch(() => {})
     void fetch('/api/m/shop/admin/collections').then(async (r) => { if (r.ok) setCollections((await r.json()).collections) }).catch(() => {})
     void fetch('/api/m/shop/admin/tax-classes').then(async (r) => { if (r.ok) setTaxClasses((await r.json()).taxClasses) }).catch(() => {})
+    void loadSuppliers()
     void fetch('/api/m/shop/public/config').then(async (r) => {
       if (!r.ok) return
       const config = await r.json()
@@ -121,7 +159,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
         })
       }
     }).catch(() => {})
-  }, [load])
+  }, [load, loadSuppliers])
 
   // --- Dirty tracking ------------------------------------------------------
   const ownDirty = state && baseline ? isDirty(state, baseline) : false
@@ -258,7 +296,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
 
   const tabs: Tab[] = useMemo(() => {
     if (!state) return []
-    const panelProps: PanelProps = { state, setField, patch, errors: visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField }
+    const panelProps: PanelProps = { state, setField, patch, errors: visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier }
     const own: Tab[] = [
       { id: 'details', label: 'Details', order: SHOP_TAB_ORDER.details, render: () => <DetailsPanel {...panelProps} /> },
       { id: 'media', label: 'Images', order: SHOP_TAB_ORDER.media, render: () => <MediaPanel {...panelProps} productId={productId} /> },
@@ -278,7 +316,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
       render: () => t.node,
     }))
     return [...own, ...contributed].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
-  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, taxClasses, categories, tags, collections, productId, siteUrl, extraTabs])
+  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier, taxClasses, categories, tags, collections, productId, siteUrl, extraTabs])
 
   // Derived, not stored: a tab that vanishes (the product stopped being digital)
   // or a ?tab= naming a module that isn't installed falls back to the first tab

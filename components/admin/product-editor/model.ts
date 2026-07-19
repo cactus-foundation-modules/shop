@@ -91,6 +91,11 @@ export type PanelProps = {
    * Off means no box; a supplier already recorded is left on the product rather
    * than blanked, so switching it back on gets it back. */
   supplierField: { enabled: boolean; label: string }
+  /** Enabled supplier names from the directory, in the order the dropdown offers them. */
+  supplierOptions: string[]
+  /** Add a supplier to the directory without leaving the product. Resolves to an
+   * error message on failure, or null once it is saved and the options refreshed. */
+  createSupplier: (name: string) => Promise<string | null>
 }
 
 /** What the product GET endpoint sends back. */

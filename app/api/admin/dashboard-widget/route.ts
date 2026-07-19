@@ -1,12 +1,20 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { requireShopUser } from '@/modules/shop/lib/access'
+import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { syncSupplierNavEntry } from '@/modules/shop/lib/supplier-nav'
 
 // Backs ShopDashboardWidget.tsx (spec 8.3, section 11): 30-day revenue/orders/AOV,
 // low-stock count, pending manual-payment count, active pre-order count.
 export async function GET() {
   const gate = await requireShopUser('shop.access', { allowAccess: true })
   if (gate.error) return gate.error
+
+  // The admin dashboard is the page an owner lands on most, which makes this the
+  // quickest place for the Suppliers sidebar link to heal itself after a module
+  // update has reset the stored manifest - see supplier-nav.ts. It no-ops (one
+  // indexed read, no write) whenever the link already matches the setting.
+  await syncSupplierNavEntry((await getShopConfigCached()).supplierFieldEnabled)
 
   const [summaryRows, lowStockRows, pendingManualRows, preOrderRows] = await Promise.all([
     prisma.$queryRaw<Array<{ revenue: string | null; order_count: bigint }>>`

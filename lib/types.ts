@@ -129,6 +129,33 @@ export type ShpCollection = {
   updatedAt: Date
 }
 
+// A supplier in the directory. Products point at one by name (shp_products.supplier),
+// so `name` is the join key as well as the label - see migrations/007_suppliers.sql.
+// discountPercent is a plain number rather than a Decimal because it is only ever
+// displayed and edited, never used in a price calculation.
+export type ShpSupplier = {
+  id: string
+  name: string
+  accountNumber: string | null
+  discountPercent: number | null
+  status: 'ENABLED' | 'DISABLED'
+  contactName: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  notes: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+/** A supplier plus how much of the catalogue is filed against its name. */
+export type ShpSupplierWithCounts = ShpSupplier & {
+  /** Catalogue products (catalogue_hidden = false) naming this supplier. */
+  productCount: number
+  /** Variation child rows (catalogue_hidden = true) naming this supplier. */
+  variationCount: number
+}
+
 export type ShpTaxClass = { id: string; name: string; code: string }
 
 export type ShpShippingZone = {

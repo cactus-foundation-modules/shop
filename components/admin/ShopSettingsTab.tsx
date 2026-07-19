@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { TabStrip } from '@/components/admin/TabStrip'
 import type { ModuleSettingsTabProps } from '@/lib/modules/hosted-settings'
 import type { ShpConfig } from '@/modules/shop/lib/config'
@@ -87,6 +88,7 @@ const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: '
 // rendered by the core config page and handed down (see HOSTED_SUB_TAB_SLOT
 // above, and lib/modules/hosted-settings.ts for the two shapes).
 export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: ModuleSettingsTabProps = {}) {
+  const router = useRouter()
   const [config, setConfig] = useState<ShpConfig | null>(null)
   const [envStatus, setEnvStatus] = useState<{ stripe: boolean; paypal: boolean } | null>(null)
   const [saving, setSaving] = useState(false)
@@ -185,6 +187,10 @@ export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: M
       if (res.ok) {
         setConfig((await res.json()).config)
         setMessage('Settings saved.')
+        // The sidebar is rendered by the server layout, and switching suppliers
+        // on or off adds/removes its link - so ask for a fresh render rather
+        // than leaving a stale menu until the next full navigation.
+        router.refresh()
       } else {
         // Never fail silently - a swallowed non-2xx is exactly what makes a save
         // look like it did nothing.
@@ -374,10 +380,10 @@ export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: M
           <h3 style={sectionHeading}>Suppliers</h3>
           <label style={checkboxRow}>
             <input type="checkbox" checked={config.supplierFieldEnabled} onChange={(e) => set('supplierFieldEnabled', e.target.checked)} />
-            Add supplier name to product
+            Enable suppliers support
           </label>
           <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
-            Adds a box for recording who you got the thing from. Switching it off later hides the box but keeps whatever you had typed in it.
+            Adds a Suppliers screen to the menu for keeping their account numbers, discounts and contact details, and a box on each product for picking who you got the thing from. Switching it off later hides both but keeps everything you had recorded.
           </p>
           {config.supplierFieldEnabled && (
             <>
