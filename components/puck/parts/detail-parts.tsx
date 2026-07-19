@@ -1,7 +1,9 @@
 import { AddToCartButton } from '@/modules/shop/components/public/AddToCartButton'
 import { GalleryViewportFit } from '@/modules/shop/components/public/GalleryViewportFit'
 import { ProductGallery, ProductTabs, type ProductTab } from '@/modules/shop/components/public/ProductDetailIslands'
-import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints'
+// breakpoints-shared, not breakpoints: these preview components land in the page
+// builder's client bundle, and ./breakpoints reaches prisma via lib/config/site.
+import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
 import { formatMoney } from '@/modules/shop/lib/money'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'

@@ -1,4 +1,6 @@
-import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints'
+// breakpoints-shared, not breakpoints: these preview components land in the page
+// builder's client bundle, and ./breakpoints reaches prisma via lib/config/site.
+import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
 import { formatMoney } from '@/modules/shop/lib/money'
 import type { CardPartContext } from '@/modules/shop/components/puck/parts/part-context'
 

@@ -1,16 +1,17 @@
 import { getSiteConfig } from '@/lib/config/site'
 import { resolveBreakpoints } from '@/lib/design/tokens'
+import type { Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
 
 // The shop's responsive grids collapse at the site's own Styles > Spacing &
 // Breakpoints widths (same source as core Grid/Split blocks) rather than
 // bespoke hardcoded pixels. Media queries can't read CSS custom properties, so
 // the resolved width has to be baked into each block's <style> at render time.
-export type Breakpoints = { tabletBp: string; mobileBp: string }
-
-// Editor-canvas fallback: the sync Puck preview components can't await a config
-// fetch, so they render at the platform default (still sourced from core's
-// single DEFAULT_DESIGN_TOKENS, never a literal in this module).
-export const DEFAULT_BREAKPOINTS: Breakpoints = resolveBreakpoints(undefined)
+//
+// The type and the editor-canvas default live in ./breakpoints-shared, which
+// touches no database, so the Puck preview components can import them without
+// dragging prisma into the page builder's client bundle. Re-exported here so
+// every server-side import of this file keeps working exactly as before.
+export { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
 
 // RSC/server path: resolve the live site setting.
 export async function getShopBreakpoints(): Promise<Breakpoints> {
