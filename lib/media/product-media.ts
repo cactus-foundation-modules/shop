@@ -113,6 +113,51 @@ export async function findProductMediaFolderId(
   return parentId
 }
 
+/** One rename in a renumber, in the order it has to happen. */
+export type ImageRenameStep = {
+  mediaId: string
+  name: string
+  /** Set on a parking step: the name this rename releases for somebody else. */
+  frees?: string
+}
+
+/**
+ * Order the renames a renumber needs so that no image is ever asked to take a
+ * name one of its siblings is still using.
+ *
+ * Renumbering is a permutation, and renaming a permutation in place collides
+ * with itself: reorder two pictures and the one now third asks for the name the
+ * one now second still holds. The core relocate is told to 'replace' on a clash,
+ * and replace supersedes and deletes what it finds - so an innocent reorder
+ * would delete a picture that is still on the product, after overwriting its
+ * blob. (An exact-name key is derived from the name, so taking the name takes
+ * the storage key with it.)
+ *
+ * The fix is the one you'd use to renumber anything in place: park first. Any
+ * image whose current name is on somebody else's wish list moves to a name no
+ * image can ask for, and every target is free before a single one is claimed.
+ * A parked image keeps serving - its references move with it - and gets its real
+ * name in the second pass.
+ *
+ * Pure so the ordering can be tested without a database or a storage provider.
+ */
+export function planImageRenames(
+  items: Array<{ mediaId: string; currentName: string | null; target: string }>,
+  parkingName: (mediaId: string) => string,
+): ImageRenameStep[] {
+  const wanted = new Set(items.map((i) => i.target))
+  const steps: ImageRenameStep[] = []
+
+  for (const item of items) {
+    if (!item.currentName || item.currentName === item.target) continue
+    if (!wanted.has(item.currentName)) continue
+    steps.push({ mediaId: item.mediaId, name: parkingName(item.mediaId), frees: item.currentName })
+  }
+  for (const item of items) steps.push({ mediaId: item.mediaId, name: item.target })
+
+  return steps
+}
+
 export async function reorganiseProductMedia(
   productId: string,
   options: { folderProductId?: string } = {},
@@ -131,32 +176,64 @@ export async function reorganiseProductMedia(
     ORDER BY "position" ASC
   `
 
+  // Resolve every managed image to its Media row and the name it should end up
+  // with. The index counts unmanaged entries too, so an externally-hosted url in
+  // the middle of the list doesn't shift the numbering of the images around it.
+  type Planned = { mediaId: string; url: string; currentName: string | null; target: string }
+  const planned: Planned[] = []
   let index = 0
   for (const { url } of images) {
     index += 1
-    const media = await prisma.media.findFirst({ where: { url }, select: { id: true } })
+    const media = await prisma.media.findFirst({ where: { url }, select: { id: true, originalName: true } })
     if (!media) continue // externally-hosted or otherwise unmanaged - leave as-is
+    planned.push({ mediaId: media.id, url, currentName: media.originalName, target: `${product.slug}${index}` })
+  }
 
+  const file = async (item: Planned, newName: string): Promise<boolean> => {
     try {
-      const updated = await moveOrRenameMedia(media.id, {
+      const updated = await moveOrRenameMedia(item.mediaId, {
         targetFolderId: folderId,
-        newName: `${product.slug}${index}`,
+        newName,
         exactName: true,
         collision: 'replace',
       })
-      if (updated && updated.url !== url) {
+      if (!updated) return false
+      if (updated.url !== item.url) {
         await prisma.$executeRaw`
           UPDATE "shp_product_media" SET "url" = ${updated.url}
-          WHERE "product_id" = ${productId} AND "url" = ${url}
+          WHERE "product_id" = ${productId} AND "url" = ${item.url}
         `
+        item.url = updated.url
       }
+      item.currentName = updated.originalName
+      return true
     } catch (err) {
       // A single image failing to relocate (provider hiccup, missing blob) must
       // not fail the whole save - the row keeps its current url and can be
       // re-filed on the next save. Say so in the log though: swallowing this
       // silently is how every product image ended up sat in the library root
       // with nothing anywhere reporting a problem.
-      console.warn(`[shop] could not file image ${url} for product ${productId}:`, err)
+      console.warn(`[shop] could not file image ${item.url} for product ${productId}:`, err)
+      return false
     }
+  }
+
+  const byId = new Map(planned.map((p) => [p.mediaId, p]))
+  const unavailable = new Set<string>()
+
+  for (const step of planImageRenames(planned, (id) => `${product.slug}-parking-${id}`)) {
+    const item = byId.get(step.mediaId)
+    if (!item) continue
+
+    // The image sitting on this name could not be moved aside. Claiming it now
+    // would delete that image, so leave this one where it is: it keeps its
+    // current url, and the next save re-files it.
+    if (!step.frees && unavailable.has(step.name)) {
+      console.warn(`[shop] leaving image ${item.url} unfiled for product ${productId}: ${step.name} is still held`)
+      continue
+    }
+
+    const ok = await file(item, step.name)
+    if (!ok && step.frees) unavailable.add(step.frees)
   }
 }
