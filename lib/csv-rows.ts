@@ -64,6 +64,7 @@ export async function buildProductCsvRows(opts?: { status?: ShpProductStatus; ca
       collections: collectionIds.map((id) => collectionById.get(id)).filter(Boolean).join('|'),
       meta_title: p.metaTitle ?? '', meta_description: p.metaDescription ?? '',
       image_urls: imageUrls, image_alt: imageAlt, barcode: p.barcode ?? '',
+      supplier: p.supplier ?? '',
     })
   }
   return rows

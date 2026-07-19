@@ -55,6 +55,10 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
   // Whether the Stock tab offers a weight box at all. Same first-paint reasoning
   // as the price types: start on the shop config's own default.
   const [weightBasedShippingEnabled, setWeightBasedShippingEnabled] = useState(true)
+  // Whether the Details tab offers a supplier box, and what it is called. Starts
+  // off, matching the shop config's own default, so a shop that never asked for
+  // one never sees it flicker in.
+  const [supplierField, setSupplierField] = useState<{ enabled: boolean; label: string }>({ enabled: false, label: 'Supplier' })
   // Only ever cosmetic (the search preview's URL), and nothing renders until the
   // product has loaded client-side, so there is no server render to mismatch.
   const [siteUrl] = useState(() => (typeof window === 'undefined' ? '' : window.location.origin))
@@ -110,6 +114,12 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
       setCurrency(config.currencySymbol ?? '£')
       if (Array.isArray(config.enabledPriceTypes)) setEnabledPriceTypes(config.enabledPriceTypes)
       setWeightBasedShippingEnabled(config.weightBasedShippingEnabled !== false)
+      if (config.supplierField) {
+        setSupplierField({
+          enabled: config.supplierField.enabled === true,
+          label: typeof config.supplierField.label === 'string' && config.supplierField.label ? config.supplierField.label : 'Supplier',
+        })
+      }
     }).catch(() => {})
   }, [load])
 
@@ -248,7 +258,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
 
   const tabs: Tab[] = useMemo(() => {
     if (!state) return []
-    const panelProps: PanelProps = { state, setField, patch, errors: visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled }
+    const panelProps: PanelProps = { state, setField, patch, errors: visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField }
     const own: Tab[] = [
       { id: 'details', label: 'Details', order: SHOP_TAB_ORDER.details, render: () => <DetailsPanel {...panelProps} /> },
       { id: 'media', label: 'Images', order: SHOP_TAB_ORDER.media, render: () => <MediaPanel {...panelProps} productId={productId} /> },
@@ -268,7 +278,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
       render: () => t.node,
     }))
     return [...own, ...contributed].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
-  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, taxClasses, categories, tags, collections, productId, siteUrl, extraTabs])
+  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, taxClasses, categories, tags, collections, productId, siteUrl, extraTabs])
 
   // Derived, not stored: a tab that vanishes (the product stopped being digital)
   // or a ?tab= naming a module that isn't installed falls back to the first tab

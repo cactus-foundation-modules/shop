@@ -30,6 +30,7 @@ type ImportFields = Partial<{
   isPreOrder: boolean; preOrderDispatchDate: Date | null; preOrderNote: string | null; preOrderMaxQuantity: number | null
   relatedMode: ShpRecommendationMode; upsellMode: ShpRecommendationMode; relatedLimit: number; upsellLimit: number
   metaTitle: string | null; metaDescription: string | null; barcode: string | null
+  supplier: string | null
 }>
 
 // Fields stored as SQL numeric, so Prisma hands them back as decimal strings
@@ -252,6 +253,7 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       put('meta_title', 'metaTitle', cell(row, 'meta_title') || null)
       put('meta_description', 'metaDescription', cell(row, 'meta_description') || null)
       put('barcode', 'barcode', cell(row, 'barcode') || null)
+      put('supplier', 'supplier', cell(row, 'supplier') || null)
       // Status is honoured on both create and update: the sheet gives the owner a
       // DRAFT/ACTIVE/ARCHIVED dropdown, so a Pull that ignored it would silently
       // discard the one edit they most expect to stick. An unreadable or blank

@@ -41,6 +41,7 @@ const Body = z.object({
   shortDescription: z.string().nullable().optional(),
   sku: z.string().nullable().optional(),
   barcode: z.string().nullable().optional(),
+  supplier: z.string().nullable().optional(),
   price: z.number().nonnegative().optional(),
   salePrice: z.number().nonnegative().nullable().optional(),
   retailPrice: z.number().nonnegative().nullable().optional(),

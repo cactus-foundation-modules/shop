@@ -5,6 +5,7 @@ import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakp
 import { formatMoney } from '@/modules/shop/lib/money'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
+import type { ReactNode } from 'react'
 
 // Product Detail part-blocks. Each is a small draggable piece of a Product
 // Detail layout (admin > Layouts > Shop > Product Detail). The markup and class
@@ -716,7 +717,7 @@ const TAB_ORDER = { desc: 10, spec: 20, dims: 30, downloads: 40 } as const
 
 type OrderedTab = ProductTab & { order: number }
 
-function FactsTable({ rows }: { rows: Array<[string, string]> }) {
+function FactsTable({ rows }: { rows: Array<[string, ReactNode]> }) {
   return (
     <table className="spd-facts">
       <tbody>
@@ -748,7 +749,7 @@ export function ShopDetailTabs(_props: PartProps) {
 
 export function ShopDetailTabsRsc({ _ctx }: PartProps) {
   if (!_ctx) return null
-  const { product, digitalFile, detailTabs } = _ctx
+  const { product, digitalFile, detailTabs, supplierLabel, slot, currencySymbol, layoutBlockTypes } = _ctx
 
   const weightStr = product.weight ? `${product.weight}${product.weightUnit ? ` ${product.weightUnit}` : ''}` : null
   const dimUnit = product.dimensionUnit ? ` ${product.dimensionUnit}` : ''
@@ -757,9 +758,26 @@ export function ShopDetailTabsRsc({ _ctx }: PartProps) {
       ? `${product.dimensionL} × ${product.dimensionW} × ${product.dimensionH}${dimUnit}`
       : null
 
-  const specRows: Array<[string, string]> = []
+  const specRows: Array<[string, ReactNode]> = []
   if (product.sku) specRows.push(['SKU', product.sku])
   specRows.push(['Type', TYPE_LABEL[product.type]])
+  if (supplierLabel && product.supplier) {
+    const SupplierValue = slot?.SupplierValue
+    specRows.push([
+      supplierLabel,
+      SupplierValue
+        ? (
+          <SupplierValue
+            slug={product.slug}
+            productId={product.id}
+            currencySymbol={currencySymbol}
+            layoutBlockTypes={layoutBlockTypes}
+            fallback={product.supplier}
+          />
+        )
+        : product.supplier,
+    ])
+  }
   if (weightStr) specRows.push(['Weight', weightStr])
   if (dimsCombined) specRows.push(['Dimensions (L × W × H)', dimsCombined])
 

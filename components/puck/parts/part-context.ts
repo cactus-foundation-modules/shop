@@ -41,6 +41,11 @@ export type DetailPartContext = {
   // Whether the shop puts its RRP in front of shoppers. The figure itself is on
   // `prices.rrp`, and is null unless it sits above what is being charged.
   showRetailPrice: boolean
+  // What to call the supplier on the storefront, or null when the shop either
+  // does not record one or keeps it to itself (shop settings > General >
+  // Suppliers). Parts read this rather than the config, so the two switches are
+  // resolved once per page rather than once per part.
+  supplierLabel: string | null
   // Set by the injector when a companion module claims this product through the
   // `shop.product-detail-parts` point (see lib/detail-slot.ts). Null on a
   // shop-only site and for every unclaimed product, where the parts below render

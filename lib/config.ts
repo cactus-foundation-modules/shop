@@ -111,6 +111,15 @@ export const ShpConfigSchema = z.object({
 
 export type ShpConfig = z.infer<typeof ShpConfigSchema>
 
+// What the supplier field is actually called on screen. 'custom' with nothing
+// typed falls back to "Supplier" rather than rendering a nameless box.
+export function resolveSupplierLabel(
+  config: Pick<ShpConfig, 'supplierLabelPreset' | 'supplierLabelCustom'>,
+): string {
+  if (config.supplierLabelPreset === 'custom') return config.supplierLabelCustom.trim() || 'Supplier'
+  return config.supplierLabelPreset
+}
+
 export const SHP_CONFIG_DEFAULTS: ShpConfig = ShpConfigSchema.parse({})
 
 export function parseShpConfig(raw: unknown): ShpConfig {

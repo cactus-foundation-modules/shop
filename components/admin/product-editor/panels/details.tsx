@@ -3,7 +3,7 @@
 import { Control, Field, Grid, Section, Switch, TextArea } from '@/modules/shop/components/admin/product-editor/fields'
 import type { PanelProps } from '@/modules/shop/components/admin/product-editor/model'
 
-export function DetailsPanel({ state, setField, errors }: PanelProps) {
+export function DetailsPanel({ state, setField, errors, supplierField }: PanelProps) {
   const f = state.form
 
   return (
@@ -62,6 +62,16 @@ export function DetailsPanel({ state, setField, errors }: PanelProps) {
           </Field>
         </Grid>
       </Section>
+
+      {supplierField.enabled && (
+        <Section title={supplierField.label} blurb="Where this one came from. Switched on in shop settings, and renamed there too.">
+          <Grid>
+            <Field label={`${supplierField.label} name`} optional hint="Whatever you would recognise them by on an invoice.">
+              {(p) => <Control {...p} value={f.supplier} onChange={(e) => setField('supplier', e.target.value)} placeholder="e.g. Northern Clay Co." />}
+            </Field>
+          </Grid>
+        </Section>
+      )}
     </div>
   )
 }

@@ -13,6 +13,7 @@ function mapProduct(r: Record<string, unknown>): ShpProduct {
     shortDescription: (r.short_description as string | null) ?? null,
     sku: (r.sku as string | null) ?? null,
     barcode: (r.barcode as string | null) ?? null,
+    supplier: (r.supplier as string | null) ?? null,
     price: (r.price as { toString(): string }).toString(),
     salePrice: r.sale_price != null ? (r.sale_price as { toString(): string }).toString() : null,
     retailPrice: r.retail_price != null ? (r.retail_price as { toString(): string }).toString() : null,
@@ -262,6 +263,7 @@ export type CreateProductInput = {
   shortDescription?: string | null
   sku?: string | null
   barcode?: string | null
+  supplier?: string | null
   price: number
   salePrice?: number | null
   retailPrice?: number | null
@@ -301,7 +303,7 @@ export type CreateProductInput = {
 export async function createProduct(data: CreateProductInput): Promise<{ id: string }> {
   const rows = await prisma.$queryRaw<[{ id: string }]>`
     INSERT INTO "shp_products" (
-      "name", "slug", "type", "status", "description", "short_description", "sku", "barcode",
+      "name", "slug", "type", "status", "description", "short_description", "sku", "barcode", "supplier",
       "price", "sale_price", "retail_price", "trade_price", "cost_price", "tax_class_id",
       "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
@@ -309,7 +311,7 @@ export async function createProduct(data: CreateProductInput): Promise<{ id: str
       "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity",
       "related_mode", "upsell_mode", "related_limit", "upsell_limit", "catalogue_hidden"
     ) VALUES (
-      ${data.name}, ${data.slug}, ${data.type}, ${data.status ?? 'DRAFT'}, ${data.description ?? null}, ${data.shortDescription ?? null}, ${data.sku ?? null}, ${data.barcode ?? null},
+      ${data.name}, ${data.slug}, ${data.type}, ${data.status ?? 'DRAFT'}, ${data.description ?? null}, ${data.shortDescription ?? null}, ${data.sku ?? null}, ${data.barcode ?? null}, ${data.supplier ?? null},
       ${data.price}, ${data.salePrice ?? null}, ${data.retailPrice ?? null}, ${data.tradePrice ?? null}, ${data.costPrice ?? null}, ${data.taxClassId ?? null},
       ${data.trackInventory ?? false}, ${data.stockCount ?? null}, ${data.lowStockThreshold ?? null}, ${data.outOfStockBehaviour ?? 'BLOCK'},
       ${data.weight ?? null}, ${data.weightUnit ?? null}, ${data.dimensionL ?? null}, ${data.dimensionW ?? null}, ${data.dimensionH ?? null}, ${data.dimensionUnit ?? null},
@@ -333,6 +335,7 @@ export type UpdateProductInput = Partial<{
   shortDescription: string | null
   sku: string | null
   barcode: string | null
+  supplier: string | null
   price: number
   salePrice: number | null
   retailPrice: number | null
@@ -369,7 +372,7 @@ export type UpdateProductInput = Partial<{
 
 const COLUMN_MAP: Record<keyof UpdateProductInput, string> = {
   name: 'name', slug: 'slug', status: 'status', description: 'description', shortDescription: 'short_description',
-  sku: 'sku', barcode: 'barcode', price: 'price', salePrice: 'sale_price', retailPrice: 'retail_price', tradePrice: 'trade_price', costPrice: 'cost_price',
+  sku: 'sku', barcode: 'barcode', supplier: 'supplier', price: 'price', salePrice: 'sale_price', retailPrice: 'retail_price', tradePrice: 'trade_price', costPrice: 'cost_price',
   taxClassId: 'tax_class_id', trackInventory: 'track_inventory', stockCount: 'stock_count',
   lowStockThreshold: 'low_stock_threshold', outOfStockBehaviour: 'out_of_stock_behaviour',
   weight: 'weight', weightUnit: 'weight_unit', dimensionL: 'dimension_l', dimensionW: 'dimension_w',
@@ -476,7 +479,7 @@ export async function getPrimaryProductImages(productIds: string[]): Promise<Rec
 export async function duplicateProduct(sourceId: string, next: { name: string; slug: string }): Promise<{ id: string } | null> {
   const created = await prisma.$queryRaw<{ id: string }[]>`
     INSERT INTO "shp_products" (
-      "name", "slug", "type", "status", "description", "short_description", "sku", "barcode",
+      "name", "slug", "type", "status", "description", "short_description", "sku", "barcode", "supplier",
       "price", "sale_price", "retail_price", "trade_price", "cost_price", "tax_class_id",
       "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
@@ -486,7 +489,7 @@ export async function duplicateProduct(sourceId: string, next: { name: string; s
       "related_mode", "upsell_mode", "related_limit", "upsell_limit"
     )
     SELECT
-      ${next.name}, ${next.slug}, "type", 'DRAFT', "description", "short_description", NULL, "barcode",
+      ${next.name}, ${next.slug}, "type", 'DRAFT', "description", "short_description", NULL, "barcode", "supplier",
       "price", "sale_price", "retail_price", "trade_price", "cost_price", "tax_class_id",
       "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",

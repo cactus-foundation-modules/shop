@@ -40,6 +40,9 @@ export type ShpProduct = {
   shortDescription: string | null
   sku: string | null
   barcode: string | null
+  // Who the shop got it from. Always carried on the row; whether it is offered
+  // in the editor or shown to shoppers is a settings question, not a data one.
+  supplier: string | null
   // Only `price` is mandatory. The rest are optional price types the owner
   // switches on per shop; `salePrice` is the only one that changes what gets
   // charged. See lib/pricing.ts for how they resolve.

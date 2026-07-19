@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getShopConfigCached, getAvailablePaymentMethods } from '@/modules/shop/lib/config'
+import { getShopConfigCached, getAvailablePaymentMethods, resolveSupplierLabel } from '@/modules/shop/lib/config'
 import { getPaymentMethodLabels } from '@/modules/shop/lib/payments/registry'
 
 // Client-safe config slice the storefront needs (spec 8.1 GET /config).
@@ -22,6 +22,16 @@ export async function GET() {
     // it to decide whether a weight box is worth showing, which is why it rides
     // along on the config call it already makes rather than a new one.
     weightBasedShippingEnabled: config.weightBasedShippingEnabled,
+    // Supplier field settings. Storefront rendering is decided server-side, so
+    // this slice exists for the admin product editor, which reads its config
+    // from here: whether to offer the box, what to call it, and whether the
+    // variations grid gets a column of its own.
+    supplierField: {
+      enabled: config.supplierFieldEnabled,
+      label: resolveSupplierLabel(config),
+      showOnFrontend: config.supplierShowOnFrontend,
+      scope: config.supplierFieldScope,
+    },
     guestCheckoutEnabled: config.guestCheckoutEnabled,
     minimumOrderValue: config.minimumOrderValue,
     maximumOrderValue: config.maximumOrderValue,

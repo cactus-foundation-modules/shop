@@ -118,7 +118,16 @@ export type ShopDetailPurchaseSlotProps = SlotBase & {
   label: string
 }
 
-export type ShopDetailSlotName = 'Gallery' | 'Price' | 'PurchaseArea'
+export type ShopDetailSupplierValueSlotProps = SlotBase & {
+  // The parent product's own supplier name, already resolved server-side (shop
+  // only renders this row at all when the parent has one - see
+  // ShopDetailTabsRsc). A provider should render this until the shopper's choice
+  // resolves its own, exactly as Price does with basePrice, so the row is never
+  // blank on first paint.
+  fallback: string
+}
+
+export type ShopDetailSlotName = 'Gallery' | 'Price' | 'PurchaseArea' | 'SupplierValue'
 
 export type ShopDetailPartsProvider = {
   // True when this provider owns how the product is priced and bought. Called
@@ -139,6 +148,11 @@ export type ShopDetailPartsProvider = {
   Gallery?: ComponentType<ShopDetailGallerySlotProps>
   Price?: ComponentType<ShopDetailPriceSlotProps>
   PurchaseArea?: ComponentType<ShopDetailPurchaseSlotProps>
+  // Swaps the Specification tab's Supplier value for the chosen combination's
+  // own. Unlike the other three, shop still renders the row itself (label and
+  // table row are shop's) - this only replaces the value cell, and only when
+  // the parent product already has a supplier worth a row in the first place.
+  SupplierValue?: ComponentType<ShopDetailSupplierValueSlotProps>
 }
 
 // What the parts actually see: the components of the provider that claimed this
@@ -160,8 +174,8 @@ export function narrowShopDetailSlot(
   blockTypes: Set<string>,
 ): ShopDetailSlot | null {
   if (!provider) return null
-  const { Gallery, Price, PurchaseArea } = provider
-  return { Gallery, Price, PurchaseArea, covered: provider.coveredSlots?.(blockTypes) ?? [] }
+  const { Gallery, Price, PurchaseArea, SupplierValue } = provider
+  return { Gallery, Price, PurchaseArea, SupplierValue, covered: provider.coveredSlots?.(blockTypes) ?? [] }
 }
 
 // Every block type in a saved layout, zones included, so a provider can see what

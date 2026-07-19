@@ -371,6 +371,53 @@ export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: M
           </p>
 
           <hr style={hr} />
+          <h3 style={sectionHeading}>Suppliers</h3>
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.supplierFieldEnabled} onChange={(e) => set('supplierFieldEnabled', e.target.checked)} />
+            Add supplier name to product
+          </label>
+          <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
+            Adds a box for recording who you got the thing from. Switching it off later hides the box but keeps whatever you had typed in it.
+          </p>
+          {config.supplierFieldEnabled && (
+            <>
+              <div className="field">
+                <label>Call it</label>
+                <select value={config.supplierLabelPreset} onChange={(e) => set('supplierLabelPreset', e.target.value as ShpConfig['supplierLabelPreset'])}>
+                  <option value="Supplier">Supplier</option>
+                  <option value="Manufacturer">Manufacturer</option>
+                  <option value="Retailer">Retailer</option>
+                  <option value="Importer">Importer</option>
+                  <option value="custom">Something else</option>
+                </select>
+                <span className="field-hint">The wording used wherever the field appears.</span>
+              </div>
+              {config.supplierLabelPreset === 'custom' && (
+                <div className="field">
+                  <label>Your wording</label>
+                  <input value={config.supplierLabelCustom} onChange={(e) => set('supplierLabelCustom', e.target.value)} placeholder="Supplier" />
+                  <span className="field-hint">Leave this empty and it falls back to &quot;Supplier&quot;.</span>
+                </div>
+              )}
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.supplierShowOnFrontend} onChange={(e) => set('supplierShowOnFrontend', e.target.checked)} />
+                Show the supplier&apos;s name to shoppers
+              </label>
+              <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
+                Off keeps it as your own reference, on prints it on the product page.
+              </p>
+              <div className="field">
+                <label>Add supplier field to</label>
+                <select value={config.supplierFieldScope} onChange={(e) => set('supplierFieldScope', e.target.value as ShpConfig['supplierFieldScope'])}>
+                  <option value="PRODUCTS">Products only</option>
+                  <option value="PRODUCTS_AND_VARIATIONS">Products and variations</option>
+                </select>
+                <span className="field-hint">Pick the second one when different variations of the same product come from different places.</span>
+              </div>
+            </>
+          )}
+
+          <hr style={hr} />
           <h3 style={sectionHeading}>SEO</h3>
           <div className="field"><label>Shop title</label><input value={config.shopTitle} onChange={(e) => set('shopTitle', e.target.value)} /></div>
           <div className="field"><label>Meta description</label><textarea rows={3} value={config.shopMetaDescription} onChange={(e) => set('shopMetaDescription', e.target.value)} /></div>

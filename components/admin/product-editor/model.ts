@@ -25,6 +25,7 @@ export type ProductForm = {
   shortDescription: string
   sku: string
   barcode: string
+  supplier: string
   price: string
   salePrice: string
   retailPrice: string
@@ -86,6 +87,10 @@ export type PanelProps = {
    * weight already recorded is left on the product rather than blanked, so
    * switching it back on gets it back. */
   weightBasedShippingEnabled: boolean
+  /** Whether the shop records who supplied a product, and what it calls them.
+   * Off means no box; a supplier already recorded is left on the product rather
+   * than blanked, so switching it back on gets it back. */
+  supplierField: { enabled: boolean; label: string }
 }
 
 /** What the product GET endpoint sends back. */
@@ -116,6 +121,7 @@ export function toEditorState(payload: ProductPayload): EditorState {
       shortDescription: str(p.shortDescription),
       sku: str(p.sku),
       barcode: str(p.barcode),
+      supplier: str(p.supplier),
       price: str(p.price),
       salePrice: str(p.salePrice),
       retailPrice: str(p.retailPrice),
@@ -182,6 +188,7 @@ export function toProductBody(s: EditorState): Record<string, unknown> {
     shortDescription: nullable(f.shortDescription),
     sku: nullable(f.sku),
     barcode: nullable(f.barcode),
+    supplier: nullable(f.supplier),
     price: num(f.price) ?? 0,
     salePrice: num(f.salePrice),
     retailPrice: num(f.retailPrice),
@@ -235,7 +242,7 @@ export type ShopTabId = keyof typeof SHOP_TAB_ORDER
 
 /** Which form fields each tab owns, so an unsaved edit dots the tab it came from. */
 const TAB_FIELDS: Record<ShopTabId, ReadonlyArray<keyof ProductForm>> = {
-  details: ['name', 'regenerateSlug', 'status', 'sku', 'barcode', 'shortDescription', 'description'],
+  details: ['name', 'regenerateSlug', 'status', 'sku', 'barcode', 'supplier', 'shortDescription', 'description'],
   media: [],
   pricing: ['price', 'salePrice', 'retailPrice', 'tradePrice', 'costPrice', 'taxClassId'],
   stock: [
