@@ -353,7 +353,12 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
       {action?.kind === 'configure' && (
         <a
           href={`#${action.anchor}`}
-          className="spd-tab-btn spd-tab-action"
+          // Configure is a jump to the buy area, not a fire-once button: light it
+          // like a section tab (solid) only while that area is the active scroll
+          // target, so it dims once the shopper reads on into Description etc.
+          // instead of staying permanently filled beside the real active tab.
+          className={`spd-tab-btn${active === leadAnchor ? ' on' : ''}`}
+          aria-current={active === leadAnchor ? 'true' : undefined}
           onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => {
             // Land the shopper at the top of the configure area - the product
             // name (#spd-top), with the option pickers just below it - rather
