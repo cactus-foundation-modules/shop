@@ -367,16 +367,6 @@ export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: M
           </p>
 
           <hr style={hr} />
-          <h3 style={sectionHeading}>Product images</h3>
-          <label style={checkboxRow}>
-            <input type="checkbox" checked={config.imageZoomOnHover} onChange={(e) => set('imageZoomOnHover', e.target.checked)} />
-            Zoom the image on hover
-          </label>
-          <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
-            Magnifies whichever part of the main product image the shopper points at. On a touchscreen, a tap magnifies that spot, a drag moves it around, and a second tap zooms back out.
-          </p>
-
-          <hr style={hr} />
           <h3 style={sectionHeading}>Suppliers</h3>
           <label style={checkboxRow}>
             <input type="checkbox" checked={config.supplierFieldEnabled} onChange={(e) => set('supplierFieldEnabled', e.target.checked)} />

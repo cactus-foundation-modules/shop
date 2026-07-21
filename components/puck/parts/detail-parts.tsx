@@ -173,7 +173,7 @@ const galleryCss = ({ tabletBp, mobileBp }: Breakpoints, maxPct: number) => `
 @media (max-width:${mobileBp}){.spd-stage-col{width:100%}}
 `
 
-type GalleryProps = { _ctx?: DetailPartContext; thumbPosition?: string; maxWidthPct?: number }
+type GalleryProps = { _ctx?: DetailPartContext; thumbPosition?: string; maxWidthPct?: number; zoomOnHover?: boolean }
 
 // The cap is a percentage of the Split row, so anything outside 10-90 is either
 // no cap at all or no buy column - clamp rather than trust the field, and fall
@@ -243,7 +243,7 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
           productName={ctx.product.name}
           images={ctx.images}
           thumbPosition={props.thumbPosition}
-          zoom={ctx.zoomImages}
+          zoom={props.zoomOnHover}
           extras={extras}
           classNames={{
             col: `spd-stage-col${props.thumbPosition === 'beside' ? ' beside' : ''}`,
@@ -255,7 +255,7 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
           }}
         />
       ) : (
-        <ProductGallery images={ctx.images} productName={ctx.product.name} thumbPosition={props.thumbPosition} zoom={ctx.zoomImages} extras={extras} />
+        <ProductGallery images={ctx.images} productName={ctx.product.name} thumbPosition={props.thumbPosition} zoom={props.zoomOnHover} extras={extras} />
       )}
     </>
   )
@@ -266,8 +266,9 @@ export const shopDetailGalleryPuckComponent = {
   fields: {
     thumbPosition: { type: 'select' as const, label: 'Thumbnails', options: [{ value: 'below', label: 'Below image' }, { value: 'beside', label: 'Beside image' }] },
     maxWidthPct: { type: 'number' as const, label: 'Max media width (% of row)', min: 10, max: 90 },
+    zoomOnHover: { type: 'radio' as const, label: 'Zoom the image on hover', options: [{ value: true, label: 'On' }, { value: false, label: 'Off' }] },
   },
-  defaultProps: { thumbPosition: 'below', maxWidthPct: DEFAULT_MAX_WIDTH_PCT },
+  defaultProps: { thumbPosition: 'below', maxWidthPct: DEFAULT_MAX_WIDTH_PCT, zoomOnHover: false },
   render: ShopDetailGallery,
 }
 export const shopDetailGalleryPuckRscComponent = { ...shopDetailGalleryPuckComponent, render: ShopDetailGalleryRsc }

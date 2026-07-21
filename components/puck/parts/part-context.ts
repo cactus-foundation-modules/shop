@@ -28,9 +28,6 @@ export type DetailPartContext = {
   tagSlugs: string[]
   digitalFile: { filename: string; size: number } | null
   bp: Breakpoints
-  // Shop-wide "magnify the image under the pointer" setting (shop settings >
-  // General > Product images), read once per page rather than per part.
-  zoomImages: boolean
   outOfStock: boolean
   lowStock: boolean
   // Which figure is charged, which is struck through and what the saving is,
