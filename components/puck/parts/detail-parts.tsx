@@ -684,16 +684,47 @@ export const shopDetailReassurePuckRscComponent = { ...shopDetailReassurePuckCom
 // Tabs (description / specification / dimensions / downloads)
 // ---------------------------------------------------------------------------
 
+// The divider (top rule + 40px gap) used to be baked onto .spd-tabs and read as
+// stray white space the moment the block was dragged to the top of the page,
+// where nothing sits above it. It is now the opt-out `.divider` class (default
+// on, so an existing page is unchanged) - drop it via the block's "Divider
+// above" field when the tabs lead the page. The standalone section-links block
+// (.spd-section-nav) carries the nav styling too, so its links look identical.
+// Content styling (h3/p/facts/downloads) is scoped to .spd-tabs rather than
+// .spd-panel so the stacked and accordion layouts inherit it unchanged.
 const tabsCss = `
-.spd-tabs{border-top:1px solid var(--color-border);margin-top:40px}
+.spd-tabs.divider{border-top:1px solid var(--color-border);margin-top:40px}
 .spd-tab-nav{display:flex;gap:6px;overflow-x:auto;padding:16px 0}
-.spd-tab-btn{border:1px solid var(--color-border);background:var(--color-surface);border-radius:9999px;padding:9px 18px;font:inherit;font-size:14px;font-weight:600;color:var(--color-text-muted);cursor:pointer;white-space:nowrap;transition:background .12s ease,color .12s ease,border-color .12s ease}
+.spd-tab-nav.align-center{justify-content:center}
+.spd-tab-nav.align-right{justify-content:flex-end}
+/* Sticky pins the strip under the site header (its measured height is published
+   as --spd-header-h by GalleryViewportFit; the fallback covers a page with no
+   gallery). A solid page-bg fill stops the panel showing through as it scrolls
+   under. */
+.spd-tab-nav.sticky{position:sticky;top:calc(var(--spd-header-h,72px) + 8px);z-index:20;background:var(--color-page-bg,var(--color-bg))}
+.spd-tab-btn{border:1px solid var(--color-border);background:var(--color-surface);border-radius:9999px;padding:9px 18px;font:inherit;font-size:14px;font-weight:600;color:var(--color-text-muted);cursor:pointer;white-space:nowrap;transition:background .12s ease,color .12s ease,border-color .12s ease;text-decoration:none;display:inline-block}
 /* !important on hover/active so the site theme's !important button fill can't turn tabs mustard */
 .spd-tab-btn:hover{background:var(--color-surface) !important;border-color:var(--color-primary);color:var(--color-primary) !important}
 .spd-tab-btn.on{background:var(--color-primary) !important;border-color:var(--color-primary);color:var(--color-on-primary) !important}
 .spd-panel{padding:20px 0 8px;max-width:900px}
-.spd-panel h3{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:24px;margin:0 0 14px;color:var(--color-fg)}
-.spd-panel p{color:var(--color-text-muted);max-width:70ch;margin:0 0 14px;white-space:pre-wrap}
+/* Stacked: every section on the page at once, a rule between each. Accordion:
+   native <details> so it needs no client JS, and a jump-link from the standalone
+   nav auto-opens the closed section it targets. scroll-margin keeps a sticky
+   header from covering the section a jump-link lands on. */
+.spd-section{padding:20px 0 8px;max-width:900px;border-top:1px solid var(--color-border);scroll-margin-top:calc(var(--spd-header-h,72px) + 16px)}
+.spd-section:first-child{border-top:none}
+.spd-acc{border-top:1px solid var(--color-border);scroll-margin-top:calc(var(--spd-header-h,72px) + 16px)}
+.spd-acc summary{cursor:pointer;list-style:none;padding:16px 0;font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:20px;color:var(--color-fg);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.spd-acc summary::-webkit-details-marker{display:none}
+.spd-acc summary::after{content:'+';font-size:22px;line-height:1;color:var(--color-text-muted);flex:none}
+.spd-acc[open] summary::after{content:'\\2212'}
+.spd-acc-body{padding:0 0 16px}
+.spd-tabs h3{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:24px;margin:0 0 14px;color:var(--color-fg)}
+.spd-tabs p{color:var(--color-text-muted);max-width:70ch;margin:0 0 14px;white-space:pre-wrap}
+/* Standalone "Section links" block: the same nav strip, on its own, so it can
+   sit above the image while the sections stay below. Links jump to the section
+   anchors the Tabs block renders in stacked/accordion mode. */
+.spd-section-nav .spd-tab-nav{margin:0}
 .spd-facts{width:100%;border-collapse:collapse;font-size:14px}
 .spd-facts td{padding:11px 14px;border-bottom:1px solid var(--color-border);vertical-align:top}
 .spd-facts td:first-child{color:var(--color-text-muted);width:38%}
@@ -734,24 +765,18 @@ function FactsTable({ rows }: { rows: Array<[string, ReactNode]> }) {
   )
 }
 
-export function ShopDetailTabs(_props: PartProps) {
-  return (
-    <>
-      <Style css={tabsCss} />
-      <div className="spd-tabs">
-        <div className="spd-tab-nav">
-          {['Description', 'Specification', 'Dimensions'].map((t, i) => (
-            <span key={t} className={`spd-tab-btn${i === 0 ? ' on' : ''}`}>{t}</span>
-          ))}
-        </div>
-      </div>
-    </>
-  )
-}
+// Anchor id a section carries in stacked/accordion mode, and the target the
+// standalone "Section links" block jumps to. One prefix, one place, so the nav
+// and the sections can never drift apart.
+const SECTION_ID_PREFIX = 'spd-sec-'
+const sectionAnchorId = (id: string) => `${SECTION_ID_PREFIX}${id}`
 
-export function ShopDetailTabsRsc({ _ctx }: PartProps) {
-  if (!_ctx) return null
-  const { product, digitalFile, detailTabs, supplierLabel, slot, currencySymbol, layoutBlockTypes } = _ctx
+// The one source of truth for what sections a product has, in what order, with
+// what labels. Both the Tabs/stacked/accordion block and the standalone Section
+// links block build from this, so a link can never point at a section that
+// isn't there. Carved out of the old ShopDetailTabsRsc body unchanged.
+function buildDetailSections(ctx: DetailPartContext): OrderedTab[] {
+  const { product, digitalFile, detailTabs, supplierLabel, slot, currencySymbol, layoutBlockTypes } = ctx
 
   const weightStr = product.weight ? `${product.weight}${product.weightUnit ? ` ${product.weightUnit}` : ''}` : null
   const dimUnit = product.dimensionUnit ? ` ${product.dimensionUnit}` : ''
@@ -829,16 +854,184 @@ export function ShopDetailTabsRsc({ _ctx }: PartProps) {
 
   // Shop's own first on a tie: sort is stable, and a contributed tab landing on
   // the same number as the description should not be what the shopper opens on.
-  const tabs = [...own, ...contributed].sort((a, b) => a.order - b.order)
+  return [...own, ...contributed].sort((a, b) => a.order - b.order)
+}
 
-  if (tabs.length === 0) return null
+// `align`/`sticky` come off the block as 'center'/'right'/'yes'; keep the flag
+// translation in one place so the Tabs block and the Section links block agree.
+const navClassFor = (align?: string, sticky?: string) =>
+  `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${sticky === 'yes' ? ' sticky' : ''}`
+
+type TabsProps = { _ctx?: DetailPartContext; display?: string; align?: string; sticky?: string; divider?: string }
+
+export function ShopDetailTabs(props: TabsProps) {
+  const display = props.display === 'stacked' || props.display === 'accordion' ? props.display : 'tabs'
+  const divider = props.divider !== 'no'
+  const labels = ['Description', 'Specification', 'Dimensions']
   return (
     <>
       <Style css={tabsCss} />
-      <ProductTabs tabs={tabs} />
+      <div className={`spd-tabs${divider ? ' divider' : ''}`}>
+        {display === 'tabs' ? (
+          <div className={navClassFor(props.align, props.sticky)}>
+            {labels.map((t, i) => (
+              <span key={t} className={`spd-tab-btn${i === 0 ? ' on' : ''}`}>{t}</span>
+            ))}
+          </div>
+        ) : (
+          labels.map((t) => (
+            <div key={t} className="spd-section" style={{ opacity: 0.6 }}>
+              <h3>{t}</h3>
+            </div>
+          ))
+        )}
+      </div>
     </>
   )
 }
 
-export const shopDetailTabsPuckComponent = { label: 'Product: Tabs (spec/dimensions/downloads)', fields: {}, defaultProps: {}, render: ShopDetailTabs }
+export function ShopDetailTabsRsc(props: TabsProps) {
+  const ctx = props._ctx
+  if (!ctx) return null
+  const display = props.display === 'stacked' || props.display === 'accordion' ? props.display : 'tabs'
+  const divider = props.divider !== 'no'
+  const sections = buildDetailSections(ctx)
+  if (sections.length === 0) return null
+
+  if (display === 'tabs') {
+    return (
+      <>
+        <Style css={tabsCss} />
+        <ProductTabs tabs={sections} align={props.align} sticky={props.sticky === 'yes'} divider={divider} />
+      </>
+    )
+  }
+
+  // Stacked and accordion are pure server markup - no tab state to hold, so no
+  // client island. Each section carries its anchor id so the standalone Section
+  // links block can jump to it (and a jump-link auto-opens a closed accordion).
+  return (
+    <>
+      <Style css={tabsCss} />
+      <div className={`spd-tabs${divider ? ' divider' : ''}`}>
+        {display === 'accordion'
+          ? sections.map((s, i) => (
+              <details key={s.id} id={sectionAnchorId(s.id)} className="spd-acc" open={i === 0}>
+                <summary>{s.label}</summary>
+                <div className="spd-acc-body">{s.content}</div>
+              </details>
+            ))
+          : sections.map((s) => (
+              <section key={s.id} id={sectionAnchorId(s.id)} className="spd-section">
+                <h3>{s.label}</h3>
+                {s.content}
+              </section>
+            ))}
+      </div>
+    </>
+  )
+}
+
+export const shopDetailTabsPuckComponent = {
+  label: 'Product: Tabs / Sections',
+  fields: {
+    display: {
+      type: 'select' as const,
+      label: 'Section display',
+      options: [
+        { value: 'tabs', label: 'Tabs' },
+        { value: 'stacked', label: 'Stacked (all open)' },
+        { value: 'accordion', label: 'Accordion (collapsible)' },
+      ],
+    },
+    align: {
+      type: 'select' as const,
+      label: 'Tab alignment (tabs mode)',
+      options: [
+        { value: 'left', label: 'Left' },
+        { value: 'center', label: 'Centre' },
+        { value: 'right', label: 'Right' },
+      ],
+    },
+    sticky: {
+      type: 'select' as const,
+      label: 'Sticky tab bar (tabs mode)',
+      options: yesNo,
+    },
+    divider: {
+      type: 'select' as const,
+      label: 'Divider above',
+      options: yesNo,
+    },
+  },
+  defaultProps: { display: 'tabs', align: 'left', sticky: 'no', divider: 'yes' },
+  render: ShopDetailTabs,
+}
 export const shopDetailTabsPuckRscComponent = { ...shopDetailTabsPuckComponent, render: ShopDetailTabsRsc }
+
+// ---------------------------------------------------------------------------
+// Section links (standalone nav - jumps to the sections above/below)
+// ---------------------------------------------------------------------------
+// The nav strip on its own, so it can sit above the image while the sections
+// stay below. It jumps to the anchors the Tabs block renders in stacked or
+// accordion mode; pair it with one of those (tabs mode keeps its own nav).
+
+type SectionNavProps = { _ctx?: DetailPartContext; align?: string; sticky?: string }
+
+export function ShopDetailSectionNav(props: SectionNavProps) {
+  const labels = ['Description', 'Specification', 'Dimensions']
+  return (
+    <>
+      <Style css={tabsCss} />
+      <div className="spd-section-nav" style={{ opacity: 0.6 }}>
+        <div className={navClassFor(props.align, props.sticky)}>
+          {labels.map((t) => (
+            <span key={t} className="spd-tab-btn">{t}</span>
+          ))}
+        </div>
+      </div>
+    </>
+  )
+}
+
+export function ShopDetailSectionNavRsc(props: SectionNavProps) {
+  const ctx = props._ctx
+  if (!ctx) return null
+  const sections = buildDetailSections(ctx)
+  if (sections.length === 0) return null
+  return (
+    <>
+      <Style css={tabsCss} />
+      <div className="spd-section-nav">
+        <nav className={navClassFor(props.align, props.sticky)} aria-label="Product information">
+          {sections.map((s) => (
+            <a key={s.id} className="spd-tab-btn" href={`#${sectionAnchorId(s.id)}`}>{s.label}</a>
+          ))}
+        </nav>
+      </div>
+    </>
+  )
+}
+
+export const shopDetailSectionNavPuckComponent = {
+  label: 'Product: Section links',
+  fields: {
+    align: {
+      type: 'select' as const,
+      label: 'Alignment',
+      options: [
+        { value: 'left', label: 'Left' },
+        { value: 'center', label: 'Centre' },
+        { value: 'right', label: 'Right' },
+      ],
+    },
+    sticky: {
+      type: 'select' as const,
+      label: 'Sticky',
+      options: yesNo,
+    },
+  },
+  defaultProps: { align: 'left', sticky: 'no' },
+  render: ShopDetailSectionNav,
+}
+export const shopDetailSectionNavPuckRscComponent = { ...shopDetailSectionNavPuckComponent, render: ShopDetailSectionNavRsc }

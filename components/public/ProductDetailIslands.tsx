@@ -193,15 +193,21 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
 
 export type ProductTab = { id: string; label: string; content: ReactNode }
 
-export function ProductTabs({ tabs }: { tabs: ProductTab[] }) {
+// `align` shifts the nav strip (left default / center / right); `sticky` pins it
+// below the site header as the shopper scrolls the panel. Both are layout-editor
+// choices on the Tabs block, passed through as class flags so the styling stays
+// in the scoped `spd-*` <style> beside them.
+export function ProductTabs({ tabs, align, sticky, divider = true }: { tabs: ProductTab[]; align?: string; sticky?: boolean; divider?: boolean }) {
   const [active, setActive] = useState(tabs[0]?.id)
 
   const current = tabs.find((t) => t.id === active) ?? tabs[0]
   if (!current) return null
 
+  const navClass = `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${sticky ? ' sticky' : ''}`
+
   return (
-    <div className="spd-tabs">
-      <div className="spd-tab-nav" role="tablist" aria-label="Product information">
+    <div className={`spd-tabs${divider ? ' divider' : ''}`}>
+      <div className={navClass} role="tablist" aria-label="Product information">
         {tabs.map((t) => (
           <button
             key={t.id}

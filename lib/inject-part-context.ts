@@ -20,6 +20,7 @@ const DETAIL_PART_TYPES = new Set([
   'ShopDetailAddToCart',
   'ShopDetailReassure',
   'ShopDetailTabs',
+  'ShopDetailSectionNav',
 ])
 
 const CARD_PART_TYPES = new Set([
