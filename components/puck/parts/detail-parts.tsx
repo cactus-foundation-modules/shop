@@ -705,7 +705,7 @@ export const shopDetailReassurePuckRscComponent = { ...shopDetailReassurePuckCom
 // where the gap would otherwise look like a mistake. Content styling
 // (h3/p/facts/downloads) is scoped to .spd-tabs, the wrapper the Sections block
 // renders, so the stacked and accordion layouts inherit it.
-const tabsCss = `
+const tabsCss = ({ mobileBp }: Breakpoints) => `
 .spd-tabs.divider{border-top:1px solid var(--color-border);margin-top:40px}
 /* Same rule for the standalone Tabs nav, which carries no .spd-tabs wrapper. */
 .spd-tab-nav.divider{border-top:1px solid var(--color-border);margin-top:40px}
@@ -757,6 +757,18 @@ const tabsCss = `
 .spd-dl b{font-size:15px;display:block}
 .spd-dl small{font-size:12px;color:var(--color-text-muted)}
 .spd-dl .get{margin-left:auto;color:var(--color-text-muted);font-weight:600;font-size:13px;white-space:nowrap}
+/* On a phone the tab strip stops scrolling sideways and shares the row instead:
+   the jump-link tabs flex to equal widths and shrink (smaller padding/type, an
+   ellipsis for a label too long to fit) so the whole strip lands on one screen.
+   min-width:0 is what lets a flex item shrink below its content's width, so the
+   ellipsis can actually engage. The action CTA keeps its own width (flex:0 1 auto)
+   so "Add to cart" stays legible while the links give way around it. Desktop is
+   untouched - it has the room and keeps the natural, non-scrolling row. */
+@media (max-width:${mobileBp}){
+.spd-tab-nav{overflow-x:hidden;gap:4px}
+.spd-tab-btn{flex:1 1 0;min-width:0;padding-left:8px;padding-right:8px;font-size:12px;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.spd-tab-btn.spd-tab-action{flex:0 1 auto}
+}
 `
 
 const TYPE_LABEL: Record<ShpProduct['type'], string> = {
@@ -895,7 +907,7 @@ export function ShopDetailTabs(props: TabsProps) {
   const labels = ['Description', 'Specification', 'Dimensions']
   return (
     <>
-      <Style css={tabsCss} />
+      <Style css={tabsCss(DEFAULT_BREAKPOINTS)} />
       <nav className={navClassFor(props.align, props.sticky, divider)} aria-label="Product information">
         {labels.map((t, i) => (
           <span key={t} className={`spd-tab-btn${i === 0 ? ' on' : ''}`}>{t}</span>
@@ -932,7 +944,7 @@ export function ShopDetailTabsRsc(props: TabsProps) {
       : { kind: 'add', productId: ctx.product.id, label: 'Add to cart' }
   return (
     <>
-      <Style css={tabsCss} />
+      <Style css={tabsCss(ctx.bp)} />
       <ProductSectionTabs tabs={tabs} align={props.align} sticky={props.sticky === 'yes'} divider={divider} action={action} />
     </>
   )
@@ -977,7 +989,7 @@ export function ShopDetailSections(props: SectionsProps) {
   const labels = ['Description', 'Specification', 'Dimensions']
   return (
     <>
-      <Style css={tabsCss} />
+      <Style css={tabsCss(DEFAULT_BREAKPOINTS)} />
       <div className={`spd-tabs${divider ? ' divider' : ''}`}>
         {labels.map((t) => (
           <div key={t} className="spd-section" style={{ opacity: 0.6 }}>
@@ -1002,7 +1014,7 @@ export function ShopDetailSectionsRsc(props: SectionsProps) {
   // links block can jump to it (and a jump-link auto-opens a closed accordion).
   return (
     <>
-      <Style css={tabsCss} />
+      <Style css={tabsCss(ctx.bp)} />
       <div className={`spd-tabs${divider ? ' divider' : ''}`}>
         {display === 'accordion'
           ? sections.map((s, i) => (
@@ -1057,7 +1069,7 @@ export function ShopDetailSectionNav(props: SectionNavProps) {
   const labels = ['Description', 'Specification', 'Dimensions']
   return (
     <>
-      <Style css={tabsCss} />
+      <Style css={tabsCss(DEFAULT_BREAKPOINTS)} />
       <div className="spd-section-nav" style={{ opacity: 0.6 }}>
         <div className={navClassFor(props.align, props.sticky)}>
           {labels.map((t) => (
@@ -1076,7 +1088,7 @@ export function ShopDetailSectionNavRsc(props: SectionNavProps) {
   if (sections.length === 0) return null
   return (
     <>
-      <Style css={tabsCss} />
+      <Style css={tabsCss(ctx.bp)} />
       <div className="spd-section-nav">
         <nav className={navClassFor(props.align, props.sticky)} aria-label="Product information">
           {sections.map((s) => (
