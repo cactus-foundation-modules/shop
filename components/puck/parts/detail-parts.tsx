@@ -724,7 +724,7 @@ const tabsCss = `
 .spd-tabs p{color:var(--color-text-muted);max-width:70ch;margin:0 0 14px;white-space:pre-wrap}
 /* Standalone "Section links" block: the same nav strip, on its own, so it can
    sit above the image while the sections stay below. Links jump to the section
-   anchors the Tabs block renders in stacked/accordion mode. */
+   anchors the Sections block renders in stacked/accordion mode. */
 .spd-section-nav .spd-tab-nav{margin:0}
 .spd-facts{width:100%;border-collapse:collapse;font-size:14px}
 .spd-facts td{padding:11px 14px;border-bottom:1px solid var(--color-border);vertical-align:top}
@@ -773,8 +773,8 @@ const SECTION_ID_PREFIX = 'spd-sec-'
 const sectionAnchorId = (id: string) => `${SECTION_ID_PREFIX}${id}`
 
 // The one source of truth for what sections a product has, in what order, with
-// what labels. Both the Tabs/stacked/accordion block and the standalone Section
-// links block build from this, so a link can never point at a section that
+// what labels. The Tabs block, the Sections block, and the standalone Section
+// links block all build from this, so a link can never point at a section that
 // isn't there. Carved out of the old ShopDetailTabsRsc body unchanged.
 function buildDetailSections(ctx: DetailPartContext): OrderedTab[] {
   const { product, digitalFile, detailTabs, supplierLabel, slot, currencySymbol, layoutBlockTypes } = ctx
@@ -863,29 +863,20 @@ function buildDetailSections(ctx: DetailPartContext): OrderedTab[] {
 const navClassFor = (align?: string, sticky?: string) =>
   `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${sticky === 'yes' ? ' sticky' : ''}`
 
-type TabsProps = { _ctx?: DetailPartContext; display?: string; align?: string; sticky?: string; divider?: string }
+type TabsProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; divider?: string }
 
 export function ShopDetailTabs(props: TabsProps) {
-  const display = props.display === 'stacked' || props.display === 'accordion' ? props.display : 'tabs'
   const divider = props.divider !== 'no'
   const labels = ['Description', 'Specification', 'Dimensions']
   return (
     <>
       <Style css={tabsCss} />
       <div className={`spd-tabs${divider ? ' divider' : ''}`}>
-        {display === 'tabs' ? (
-          <div className={navClassFor(props.align, props.sticky)}>
-            {labels.map((t, i) => (
-              <span key={t} className={`spd-tab-btn${i === 0 ? ' on' : ''}`}>{t}</span>
-            ))}
-          </div>
-        ) : (
-          labels.map((t) => (
-            <div key={t} className="spd-section" style={{ opacity: 0.6 }}>
-              <h3>{t}</h3>
-            </div>
-          ))
-        )}
+        <div className={navClassFor(props.align, props.sticky)}>
+          {labels.map((t, i) => (
+            <span key={t} className={`spd-tab-btn${i === 0 ? ' on' : ''}`}>{t}</span>
+          ))}
+        </div>
       </div>
     </>
   )
@@ -894,19 +885,76 @@ export function ShopDetailTabs(props: TabsProps) {
 export function ShopDetailTabsRsc(props: TabsProps) {
   const ctx = props._ctx
   if (!ctx) return null
-  const display = props.display === 'stacked' || props.display === 'accordion' ? props.display : 'tabs'
   const divider = props.divider !== 'no'
   const sections = buildDetailSections(ctx)
   if (sections.length === 0) return null
 
-  if (display === 'tabs') {
-    return (
-      <>
-        <Style css={tabsCss} />
-        <ProductTabs tabs={sections} align={props.align} sticky={props.sticky === 'yes'} divider={divider} />
-      </>
-    )
-  }
+  return (
+    <>
+      <Style css={tabsCss} />
+      <ProductTabs tabs={sections} align={props.align} sticky={props.sticky === 'yes'} divider={divider} />
+    </>
+  )
+}
+
+export const shopDetailTabsPuckComponent = {
+  label: 'Product: Tabs',
+  fields: {
+    align: {
+      type: 'select' as const,
+      label: 'Tab alignment',
+      options: [
+        { value: 'left', label: 'Left' },
+        { value: 'center', label: 'Centre' },
+        { value: 'right', label: 'Right' },
+      ],
+    },
+    sticky: {
+      type: 'select' as const,
+      label: 'Sticky tab bar',
+      options: yesNo,
+    },
+    divider: {
+      type: 'select' as const,
+      label: 'Divider above',
+      options: yesNo,
+    },
+  },
+  defaultProps: { align: 'left', sticky: 'no', divider: 'yes' },
+  render: ShopDetailTabs,
+}
+export const shopDetailTabsPuckRscComponent = { ...shopDetailTabsPuckComponent, render: ShopDetailTabsRsc }
+
+// ---------------------------------------------------------------------------
+// Sections (stacked / accordion - no tab bar, own "Section display" setting)
+// ---------------------------------------------------------------------------
+
+type SectionsProps = { _ctx?: DetailPartContext; display?: string; divider?: string }
+
+export function ShopDetailSections(props: SectionsProps) {
+  const divider = props.divider !== 'no'
+  const labels = ['Description', 'Specification', 'Dimensions']
+  return (
+    <>
+      <Style css={tabsCss} />
+      <div className={`spd-tabs${divider ? ' divider' : ''}`}>
+        {labels.map((t) => (
+          <div key={t} className="spd-section" style={{ opacity: 0.6 }}>
+            <h3>{t}</h3>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
+export function ShopDetailSectionsRsc(props: SectionsProps) {
+  const ctx = props._ctx
+  if (!ctx) return null
+  const display = props.display === 'accordion' ? 'accordion' : 'stacked'
+  const divider = props.divider !== 'no'
+  const sections = buildDetailSections(ctx)
+  if (sections.length === 0) return null
 
   // Stacked and accordion are pure server markup - no tab state to hold, so no
   // client island. Each section carries its anchor id so the standalone Section
@@ -933,31 +981,16 @@ export function ShopDetailTabsRsc(props: TabsProps) {
   )
 }
 
-export const shopDetailTabsPuckComponent = {
-  label: 'Product: Tabs / Sections',
+export const shopDetailSectionsPuckComponent = {
+  label: 'Product: Sections',
   fields: {
     display: {
       type: 'select' as const,
       label: 'Section display',
       options: [
-        { value: 'tabs', label: 'Tabs' },
         { value: 'stacked', label: 'Stacked (all open)' },
         { value: 'accordion', label: 'Accordion (collapsible)' },
       ],
-    },
-    align: {
-      type: 'select' as const,
-      label: 'Tab alignment (tabs mode)',
-      options: [
-        { value: 'left', label: 'Left' },
-        { value: 'center', label: 'Centre' },
-        { value: 'right', label: 'Right' },
-      ],
-    },
-    sticky: {
-      type: 'select' as const,
-      label: 'Sticky tab bar (tabs mode)',
-      options: yesNo,
     },
     divider: {
       type: 'select' as const,
@@ -965,17 +998,17 @@ export const shopDetailTabsPuckComponent = {
       options: yesNo,
     },
   },
-  defaultProps: { display: 'tabs', align: 'left', sticky: 'no', divider: 'yes' },
-  render: ShopDetailTabs,
+  defaultProps: { display: 'stacked', divider: 'yes' },
+  render: ShopDetailSections,
 }
-export const shopDetailTabsPuckRscComponent = { ...shopDetailTabsPuckComponent, render: ShopDetailTabsRsc }
+export const shopDetailSectionsPuckRscComponent = { ...shopDetailSectionsPuckComponent, render: ShopDetailSectionsRsc }
 
 // ---------------------------------------------------------------------------
 // Section links (standalone nav - jumps to the sections above/below)
 // ---------------------------------------------------------------------------
 // The nav strip on its own, so it can sit above the image while the sections
-// stay below. It jumps to the anchors the Tabs block renders in stacked or
-// accordion mode; pair it with one of those (tabs mode keeps its own nav).
+// stay below. It jumps to the anchors the Sections block renders in stacked or
+// accordion mode; pair it with that block (the Tabs block keeps its own nav).
 
 type SectionNavProps = { _ctx?: DetailPartContext; align?: string; sticky?: string }
 
