@@ -413,7 +413,7 @@ export function shopProductDetailStarters() {
       description: 'The classic two-column product page: gallery on the left, buy column on the right, tabs below.',
       publishByDefault: true,
       data: {
-        content: [detailSplit('pdp-cols', 'auto'), block('ShopDetailTabs', 'pdp-tabs')],
+        content: [detailSplit('pdp-cols', 'auto'), block('ShopDetailTabs', 'pdp-tabs'), block('ShopDetailSections', 'pdp-sections', { display: 'stacked', divider: 'no' })],
         root: { props: {} },
         zones: {
           'pdp-cols:left': [block('ShopDetailGallery', 'pdp-gallery', { thumbPosition: 'below' })],
@@ -450,6 +450,7 @@ export function shopProductDetailStarters() {
             ],
           }),
           block('ShopDetailTabs', 'tabs-1'),
+          block('ShopDetailSections', 'sections-1', { display: 'stacked', divider: 'no' }),
         ],
         root: { props: {} },
         zones: {},
@@ -471,6 +472,7 @@ export function shopProductDetailStarters() {
               block('ShopDetailAddToCart', 'add-1', { showStepper: 'no' }),
               block('ShopDetailBlurb', 'blurb-1'),
               block('ShopDetailTabs', 'tabs-1'),
+              block('ShopDetailSections', 'sections-1', { display: 'stacked', divider: 'no' }),
             ],
           }),
         ],

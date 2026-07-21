@@ -1,6 +1,6 @@
 import { AddToCartButton } from '@/modules/shop/components/public/AddToCartButton'
 import { GalleryViewportFit } from '@/modules/shop/components/public/GalleryViewportFit'
-import { ProductGallery, ProductTabs, type ProductTab } from '@/modules/shop/components/public/ProductDetailIslands'
+import { ProductGallery, ProductSectionTabs, type ProductTab } from '@/modules/shop/components/public/ProductDetailIslands'
 // breakpoints-shared, not breakpoints: these preview components land in the page
 // builder's client bundle, and ./breakpoints reaches prisma via lib/config/site.
 import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
@@ -682,19 +682,23 @@ export const shopDetailReassurePuckComponent = {
 export const shopDetailReassurePuckRscComponent = { ...shopDetailReassurePuckComponent, render: ShopDetailReassureRsc }
 
 // ---------------------------------------------------------------------------
-// Tabs (description / specification / dimensions / downloads)
+// Tabs (nav strip only - jumps to the Product: Sections block)
 // ---------------------------------------------------------------------------
 
-// The divider (top rule + 40px gap) used to be baked onto .spd-tabs and read as
-// stray white space the moment the block was dragged to the top of the page,
-// where nothing sits above it. It is now the opt-out `.divider` class (default
-// on, so an existing page is unchanged) - drop it via the block's "Divider
-// above" field when the tabs lead the page. The standalone section-links block
-// (.spd-section-nav) carries the nav styling too, so its links look identical.
-// Content styling (h3/p/facts/downloads) is scoped to .spd-tabs rather than
-// .spd-panel so the stacked and accordion layouts inherit it unchanged.
+// The Tabs block is a navigation strip: it shows Description / Specification /
+// Dimensions / Downloads as pill links and jumps to the matching section the
+// separate Product: Sections block renders. It carries no content of its own -
+// pair it with a Sections block set to stacked or accordion.
+//
+// The divider (top rule + 40px gap) is the opt-out `.divider` class (default on)
+// - drop it via the block's "Divider above" field when the nav leads the page,
+// where the gap would otherwise look like a mistake. Content styling
+// (h3/p/facts/downloads) is scoped to .spd-tabs, the wrapper the Sections block
+// renders, so the stacked and accordion layouts inherit it.
 const tabsCss = `
 .spd-tabs.divider{border-top:1px solid var(--color-border);margin-top:40px}
+/* Same rule for the standalone Tabs nav, which carries no .spd-tabs wrapper. */
+.spd-tab-nav.divider{border-top:1px solid var(--color-border);margin-top:40px}
 .spd-tab-nav{display:flex;gap:6px;overflow-x:auto;padding:16px 0}
 .spd-tab-nav.align-center{justify-content:center}
 .spd-tab-nav.align-right{justify-content:flex-end}
@@ -707,12 +711,12 @@ const tabsCss = `
 /* !important on hover/active so the site theme's !important button fill can't turn tabs mustard */
 .spd-tab-btn:hover{background:var(--color-surface) !important;border-color:var(--color-primary);color:var(--color-primary) !important}
 .spd-tab-btn.on{background:var(--color-primary) !important;border-color:var(--color-primary);color:var(--color-on-primary) !important}
-.spd-panel{padding:20px 0 8px;max-width:900px}
 /* Stacked: every section on the page at once, a rule between each. Accordion:
-   native <details> so it needs no client JS, and a jump-link from the standalone
-   nav auto-opens the closed section it targets. scroll-margin keeps a sticky
-   header from covering the section a jump-link lands on. */
-.spd-section{padding:20px 0 8px;max-width:900px;border-top:1px solid var(--color-border);scroll-margin-top:calc(var(--spd-header-h,72px) + 16px)}
+   native <details> so it needs no client JS, and a jump-link from the Tabs nav
+   auto-opens the closed section it targets. scroll-margin keeps a sticky header
+   from covering the section a jump-link lands on. Sections fill their container
+   (no reading-width cap) so a full-width slot doesn't leave a gap on the right. */
+.spd-section{padding:20px 0 8px;border-top:1px solid var(--color-border);scroll-margin-top:calc(var(--spd-header-h,72px) + 16px)}
 .spd-section:first-child{border-top:none}
 .spd-acc{border-top:1px solid var(--color-border);scroll-margin-top:calc(var(--spd-header-h,72px) + 16px)}
 .spd-acc summary{cursor:pointer;list-style:none;padding:16px 0;font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:20px;color:var(--color-fg);display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -721,7 +725,7 @@ const tabsCss = `
 .spd-acc[open] summary::after{content:'\\2212'}
 .spd-acc-body{padding:0 0 16px}
 .spd-tabs h3{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:24px;margin:0 0 14px;color:var(--color-fg)}
-.spd-tabs p{color:var(--color-text-muted);max-width:70ch;margin:0 0 14px;white-space:pre-wrap}
+.spd-tabs p{color:var(--color-text-muted);margin:0 0 14px;white-space:pre-wrap}
 /* Standalone "Section links" block: the same nav strip, on its own, so it can
    sit above the image while the sections stay below. Links jump to the section
    anchors the Sections block renders in stacked/accordion mode. */
@@ -860,24 +864,25 @@ function buildDetailSections(ctx: DetailPartContext): OrderedTab[] {
 
 // `align`/`sticky` come off the block as 'center'/'right'/'yes'; keep the flag
 // translation in one place so the Tabs block and the Section links block agree.
-const navClassFor = (align?: string, sticky?: string) =>
-  `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${sticky === 'yes' ? ' sticky' : ''}`
+const navClassFor = (align?: string, sticky?: string, divider?: boolean) =>
+  `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${sticky === 'yes' ? ' sticky' : ''}${divider ? ' divider' : ''}`
 
 type TabsProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; divider?: string }
 
+// Editor preview: the nav strip only, no panel and no .spd-tabs wrapper - it
+// mirrors the frontend ProductSectionTabs island so the markup and classes
+// match (span here, <a> there, as the standalone Section links block also does).
 export function ShopDetailTabs(props: TabsProps) {
   const divider = props.divider !== 'no'
   const labels = ['Description', 'Specification', 'Dimensions']
   return (
     <>
       <Style css={tabsCss} />
-      <div className={`spd-tabs${divider ? ' divider' : ''}`}>
-        <div className={navClassFor(props.align, props.sticky)}>
-          {labels.map((t, i) => (
-            <span key={t} className={`spd-tab-btn${i === 0 ? ' on' : ''}`}>{t}</span>
-          ))}
-        </div>
-      </div>
+      <nav className={navClassFor(props.align, props.sticky, divider)} aria-label="Product information">
+        {labels.map((t, i) => (
+          <span key={t} className={`spd-tab-btn${i === 0 ? ' on' : ''}`}>{t}</span>
+        ))}
+      </nav>
     </>
   )
 }
@@ -889,10 +894,13 @@ export function ShopDetailTabsRsc(props: TabsProps) {
   const sections = buildDetailSections(ctx)
   if (sections.length === 0) return null
 
+  // The nav points at the anchors the Product: Sections block renders; content
+  // itself lives in that block, so this carries labels and targets only.
+  const tabs = sections.map((s) => ({ label: s.label, anchor: sectionAnchorId(s.id) }))
   return (
     <>
       <Style css={tabsCss} />
-      <ProductTabs tabs={sections} align={props.align} sticky={props.sticky === 'yes'} divider={divider} />
+      <ProductSectionTabs tabs={tabs} align={props.align} sticky={props.sticky === 'yes'} divider={divider} />
     </>
   )
 }

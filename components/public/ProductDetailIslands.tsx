@@ -1,13 +1,13 @@
 'use client'
 
 // Client islands for the product detail block: an image gallery with
-// thumbnail swap, and a tabbed detail area. The styling lives in the scoped
-// `spd-*` <style> emitted by ShopProductDetail (RSC) on the same page, so
-// these only carry behaviour and markup. The tab panels are server-rendered
-// (real product data) and passed in as ReactNode `content` across the RSC
-// boundary - the "slots" pattern - so no data fetching happens client-side.
+// thumbnail swap, and the section-tabs nav strip. The styling lives in the
+// scoped `spd-*` <style> emitted alongside them (RSC) on the same page, so
+// these only carry behaviour and markup. Section content is server-rendered by
+// the separate Product: Sections block (real product data) - these islands hold
+// no product data, so no data fetching happens client-side.
 
-import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useEffect, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { GalleryThumbStrip } from '@/modules/shop/components/public/GalleryThumbStrip'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 
@@ -193,37 +193,66 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
 
 export type ProductTab = { id: string; label: string; content: ReactNode }
 
-// `align` shifts the nav strip (left default / center / right); `sticky` pins it
-// below the site header as the shopper scrolls the panel. Both are layout-editor
-// choices on the Tabs block, passed through as class flags so the styling stays
-// in the scoped `spd-*` <style> beside them.
-export function ProductTabs({ tabs, align, sticky, divider = true }: { tabs: ProductTab[]; align?: string; sticky?: boolean; divider?: boolean }) {
-  const [active, setActive] = useState(tabs[0]?.id)
+// The Tabs block is a navigation strip, not a panel: it carries no content of
+// its own, it points at the sections the separate Product: Sections block
+// renders. Each link jumps to that section's `spd-sec-<id>` anchor (native
+// hash scroll, with scroll-margin-top set on the sections so a sticky header
+// doesn't cover the landing), and a scroll-spy lights the link whose section is
+// nearest the top of the viewport as the shopper reads down the page.
+//
+// It has to be a client island only for that active-highlight; the jump itself
+// is a plain anchor and works with JS off. `align`/`sticky`/`divider` are the
+// layout-editor choices, passed through as class flags so the styling stays in
+// the scoped `spd-*` <style> beside them. There is no wrapping `.spd-tabs` div
+// (unlike the Sections block): the nav must be a direct child of the layout
+// zone so a `position:sticky` on it can travel past the sibling Sections block
+// rather than being trapped inside a wrapper only as tall as itself.
+export function ProductSectionTabs({ tabs, align, sticky, divider = true }: { tabs: { label: string; anchor: string }[]; align?: string; sticky?: boolean; divider?: boolean }) {
+  const [active, setActive] = useState(tabs[0]?.anchor)
 
-  const current = tabs.find((t) => t.id === active) ?? tabs[0]
-  if (!current) return null
+  useEffect(() => {
+    const anchors = tabs.map((t) => t.anchor)
+    const els = anchors
+      .map((a) => document.getElementById(a))
+      .filter((el): el is HTMLElement => el !== null)
+    if (els.length === 0) return
 
-  const navClass = `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${sticky ? ' sticky' : ''}`
+    // A section counts as "current" while it crosses a thin band near the top of
+    // the viewport; of those in the band, the topmost in document order wins, so
+    // the highlight advances one link at a time as the reader scrolls down.
+    const inBand = new Set<string>()
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) inBand.add(e.target.id)
+          else inBand.delete(e.target.id)
+        }
+        const first = anchors.find((a) => inBand.has(a))
+        if (first) setActive(first)
+      },
+      { rootMargin: '-15% 0px -75% 0px', threshold: 0 },
+    )
+    els.forEach((el) => io.observe(el))
+    return () => io.disconnect()
+  }, [tabs])
+
+  if (tabs.length === 0) return null
+
+  const navClass = `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${sticky ? ' sticky' : ''}${divider ? ' divider' : ''}`
 
   return (
-    <div className={`spd-tabs${divider ? ' divider' : ''}`}>
-      <div className={navClass} role="tablist" aria-label="Product information">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={t.id === current.id}
-            className={`spd-tab-btn${t.id === current.id ? ' on' : ''}`}
-            onClick={() => setActive(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <div className="spd-panel" role="tabpanel">
-        {current.content}
-      </div>
-    </div>
+    <nav className={navClass} aria-label="Product information">
+      {tabs.map((t) => (
+        <a
+          key={t.anchor}
+          href={`#${t.anchor}`}
+          className={`spd-tab-btn${t.anchor === active ? ' on' : ''}`}
+          aria-current={t.anchor === active ? 'true' : undefined}
+          onClick={() => setActive(t.anchor)}
+        >
+          {t.label}
+        </a>
+      ))}
+    </nav>
   )
 }
