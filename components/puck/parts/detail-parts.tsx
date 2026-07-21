@@ -711,6 +711,12 @@ export const shopDetailReassurePuckRscComponent = { ...shopDetailReassurePuckCom
 // where the gap would otherwise look like a mistake. Content styling
 // (h3/p/facts/downloads) is scoped to .spd-tabs, the wrapper the Sections block
 // renders, so the stacked and accordion layouts inherit it.
+// Below this width even shrunk-to-fit tabs can't keep their labels readable, so
+// the strip switches to the admin-style edge-to-edge horizontal scroll. Fixed
+// (not a design token): it's a "labels no longer fit" threshold, sized to catch
+// the common portrait phones (375-430px), not a layout-collapse breakpoint.
+const SMALL_PHONE_BP = '480px'
+
 const tabsCss = ({ mobileBp }: Breakpoints) => `
 .spd-tabs.divider{border-top:1px solid var(--color-border);margin-top:40px}
 /* Same rule for the standalone Tabs nav, which carries no .spd-tabs wrapper. */
@@ -763,17 +769,38 @@ const tabsCss = ({ mobileBp }: Breakpoints) => `
 .spd-dl b{font-size:15px;display:block}
 .spd-dl small{font-size:12px;color:var(--color-text-muted)}
 .spd-dl .get{margin-left:auto;color:var(--color-text-muted);font-weight:600;font-size:13px;white-space:nowrap}
-/* On a phone the tab strip stops scrolling sideways and shares the row instead:
-   the jump-link tabs flex to equal widths and shrink (smaller padding/type, an
-   ellipsis for a label too long to fit) so the whole strip lands on one screen.
-   min-width:0 is what lets a flex item shrink below its content's width, so the
-   ellipsis can actually engage. The action CTA keeps its own width (flex:0 1 auto)
+/* Larger phones (down to the small-phone cutoff): the strip stops scrolling
+   sideways and shares one row - the jump-link tabs flex to equal widths and
+   shrink to fit. They shrink on BOTH axes: padding and type come down together
+   (not just the sides) so the pills keep their proportion instead of squashing
+   into wide, thin lozenges. No ellipsis - at this width the shrunk labels still
+   fit whole and stay readable. The action CTA keeps its own width (flex:0 1 auto)
    so "Add to cart" stays legible while the links give way around it. Desktop is
    untouched - it has the room and keeps the natural, non-scrolling row. */
 @media (max-width:${mobileBp}){
 .spd-tab-nav{overflow-x:hidden;gap:4px}
-.spd-tab-btn{flex:1 1 0;min-width:0;padding-left:8px;padding-right:8px;font-size:12px;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.spd-tab-btn{flex:1 1 0;min-width:0;padding:6px 10px;font-size:12px;line-height:1.2;text-align:center}
 .spd-tab-btn.spd-tab-action{flex:0 1 auto}
+}
+/* Small phones: the labels can no longer shrink to fit AND stay readable, so
+   the strip gives up sharing the row and scrolls sideways instead - the same
+   move the admin tab bars make. It breaks out to the full viewport width so the
+   tabs run edge-to-edge and can scroll clean off both screen edges; the
+   scrollbar is hidden like the admin strip. Pills return to their natural size
+   and never shrink (flex:0 0 auto), so every label reads in full. Only the left
+   and right padding are set here (the full-bleed inset) - the vertical padding
+   stays on --spd-tabnav-pt/pb from the base rule. */
+@media (max-width:${SMALL_PHONE_BP}){
+.spd-tab-nav{overflow-x:auto;overflow-y:hidden;gap:8px;flex-wrap:nowrap;justify-content:flex-start;margin-inline:calc(50% - 50vw);padding-left:calc(50vw - 50%);padding-right:calc(50vw - 50%);scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.spd-tab-nav.align-center,.spd-tab-nav.align-right{justify-content:flex-start}
+.spd-tab-nav::-webkit-scrollbar{display:none}
+/* Standalone Section links block sits inside its own slot (margin:0 above beats
+   the full-bleed margin on specificity), so drop the bleed inset too - otherwise
+   the padding lands with no negative margin to answer it and shoves the tabs off
+   the right. It still scrolls; it just stays in-flow rather than edge-to-edge. */
+.spd-section-nav .spd-tab-nav{padding-left:0;padding-right:0}
+.spd-tab-btn{flex:0 0 auto;min-width:auto;padding:9px 16px;font-size:13px}
+.spd-tab-btn.spd-tab-action{flex:0 0 auto}
 }
 `
 
