@@ -1,6 +1,6 @@
 import { AddToCartButton } from '@/modules/shop/components/public/AddToCartButton'
 import { GalleryViewportFit } from '@/modules/shop/components/public/GalleryViewportFit'
-import { ProductGallery, ProductSectionTabs, type ProductTab } from '@/modules/shop/components/public/ProductDetailIslands'
+import { ProductGallery, ProductSectionTabs, type ProductTab, type TabAction } from '@/modules/shop/components/public/ProductDetailIslands'
 // breakpoints-shared, not breakpoints: these preview components land in the page
 // builder's client bundle, and ./breakpoints reaches prisma via lib/config/site.
 import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
@@ -552,6 +552,10 @@ const buyCss = `
 .spd-add{flex:1;min-width:200px;height:52px;border:none;border-radius:9999px;font:inherit;font-weight:600;font-size:16px;cursor:pointer;transition:transform .06s ease}
 .spd-add:active{transform:scale(.99)}
 .spd-oos{margin-top:16px;color:var(--color-text-muted);font-weight:600}
+/* The Tabs strip's "Configure" action jumps here; clear the site header (the
+   strip itself is below this point on the page, so its height need not be in
+   the offset). */
+.spd-buy-anchor{scroll-margin-top:calc(var(--spd-header-h,72px) + 16px)}
 `
 
 type AddProps = { _ctx?: DetailPartContext; showStepper?: string }
@@ -561,9 +565,11 @@ export function ShopDetailAddToCart(props: AddProps) {
   return (
     <>
       <Style css={buyCss} />
-      <div className="spd-buy-row" style={{ opacity: 0.6 }}>
-        {showStepper && <div className="spd-stepper" style={{ width: 148 }} />}
-        <div className="spd-add" style={{ maxWidth: 240, background: 'var(--color-border)' }} />
+      <div id="spd-buy" className="spd-buy-anchor">
+        <div className="spd-buy-row" style={{ opacity: 0.6 }}>
+          {showStepper && <div className="spd-stepper" style={{ width: 148 }} />}
+          <div className="spd-add" style={{ maxWidth: 240, background: 'var(--color-border)' }} />
+        </div>
       </div>
     </>
   )
@@ -587,26 +593,30 @@ export function ShopDetailAddToCartRsc(props: AddProps) {
     return (
       <>
         <Style css={buyCss} />
-        <SlotPurchase
-          slug={product.slug}
-          productId={product.id}
-          currencySymbol={ctx.currencySymbol}
-          layoutBlockTypes={ctx.layoutBlockTypes}
-          showStepper={showStepper}
-          label={label}
-          classNames={{ row: 'spd-buy-row', stepper: 'spd-stepper', add: 'spd-add', outOfStock: 'spd-oos' }}
-        />
+        <div id="spd-buy" className="spd-buy-anchor">
+          <SlotPurchase
+            slug={product.slug}
+            productId={product.id}
+            currencySymbol={ctx.currencySymbol}
+            layoutBlockTypes={ctx.layoutBlockTypes}
+            showStepper={showStepper}
+            label={label}
+            classNames={{ row: 'spd-buy-row', stepper: 'spd-stepper', add: 'spd-add', outOfStock: 'spd-oos' }}
+          />
+        </div>
       </>
     )
   }
   return (
     <>
       <Style css={buyCss} />
-      {outOfStock ? (
-        <p className="spd-oos">Out of stock</p>
-      ) : (
-        <AddToCartButton productId={product.id} label={label} showStepper={showStepper} />
-      )}
+      <div id="spd-buy" className="spd-buy-anchor">
+        {outOfStock ? (
+          <p className="spd-oos">Out of stock</p>
+        ) : (
+          <AddToCartButton productId={product.id} label={label} showStepper={showStepper} />
+        )}
+      </div>
     </>
   )
 }
@@ -702,23 +712,31 @@ const tabsCss = `
 .spd-tab-nav{display:flex;gap:6px;overflow-x:auto;padding:16px 0}
 .spd-tab-nav.align-center{justify-content:center}
 .spd-tab-nav.align-right{justify-content:flex-end}
-/* Sticky pins the strip under the site header (its measured height is published
-   as --spd-header-h by GalleryViewportFit; the fallback covers a page with no
-   gallery). A solid page-bg fill stops the panel showing through as it scrolls
-   under. */
-.spd-tab-nav.sticky{position:sticky;top:calc(var(--spd-header-h,72px) + 8px);z-index:20;background:var(--color-page-bg,var(--color-bg))}
+/* Sticky pins the strip flush under the site header (its measured height is
+   published as --spd-header-h by GalleryViewportFit; the fallback covers a page
+   with no gallery). Pin flush, not header+8px: an offset leaves a transparent
+   band above the pinned strip that page content scrolls through - the strip's
+   own 16px top padding is the breathing room and its bg fills it. A solid
+   page-bg fill stops the panel showing through as it scrolls under. */
+.spd-tab-nav.sticky{position:sticky;top:var(--spd-header-h,72px);z-index:20;background:var(--color-page-bg,var(--color-bg))}
 .spd-tab-btn{border:1px solid var(--color-border);background:var(--color-surface);border-radius:9999px;padding:9px 18px;font:inherit;font-size:14px;font-weight:600;color:var(--color-text-muted);cursor:pointer;white-space:nowrap;transition:background .12s ease,color .12s ease,border-color .12s ease;text-decoration:none;display:inline-block}
 /* !important on hover/active so the site theme's !important button fill can't turn tabs mustard */
 .spd-tab-btn:hover{background:var(--color-surface) !important;border-color:var(--color-primary);color:var(--color-primary) !important}
 .spd-tab-btn.on{background:var(--color-primary) !important;border-color:var(--color-primary);color:var(--color-on-primary) !important}
+/* Action tab: the CTA that closes the strip - "Add to cart" (no options) or
+   "Configure" (options), pushed to the far end and filled like the primary
+   button so it reads as an action, not another jump-link. margin auto sends it
+   to the end whatever the strip's alignment. */
+.spd-tab-btn.spd-tab-action{margin-inline-start:auto;background:var(--color-primary) !important;border-color:var(--color-primary) !important;color:var(--color-on-primary) !important}
+.spd-tab-btn.spd-tab-action:hover{background:var(--color-primary) !important;border-color:var(--color-primary) !important;color:var(--color-on-primary) !important;filter:brightness(.94)}
 /* Stacked: every section on the page at once, a rule between each. Accordion:
    native <details> so it needs no client JS, and a jump-link from the Tabs nav
    auto-opens the closed section it targets. scroll-margin keeps a sticky header
    from covering the section a jump-link lands on. Sections fill their container
    (no reading-width cap) so a full-width slot doesn't leave a gap on the right. */
-.spd-section{padding:20px 0 8px;border-top:1px solid var(--color-border);scroll-margin-top:calc(var(--spd-header-h,72px) + 16px)}
+.spd-section{padding:20px 0 8px;border-top:1px solid var(--color-border);scroll-margin-top:calc(var(--spd-header-h,72px) + var(--spd-tabnav-h,0px) + 16px)}
 .spd-section:first-child{border-top:none}
-.spd-acc{border-top:1px solid var(--color-border);scroll-margin-top:calc(var(--spd-header-h,72px) + 16px)}
+.spd-acc{border-top:1px solid var(--color-border);scroll-margin-top:calc(var(--spd-header-h,72px) + var(--spd-tabnav-h,0px) + 16px)}
 .spd-acc summary{cursor:pointer;list-style:none;padding:16px 0;font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:20px;color:var(--color-fg);display:flex;align-items:center;justify-content:space-between;gap:12px}
 .spd-acc summary::-webkit-details-marker{display:none}
 .spd-acc summary::after{content:'+';font-size:22px;line-height:1;color:var(--color-text-muted);flex:none}
@@ -882,6 +900,10 @@ export function ShopDetailTabs(props: TabsProps) {
         {labels.map((t, i) => (
           <span key={t} className={`spd-tab-btn${i === 0 ? ' on' : ''}`}>{t}</span>
         ))}
+        {/* The CTA that closes the strip on the storefront (Add to cart, or
+            Configure for a product with options); a static label here so the
+            author sees it in the layout. */}
+        <span className="spd-tab-btn spd-tab-action">Add to cart</span>
       </nav>
     </>
   )
@@ -897,10 +919,21 @@ export function ShopDetailTabsRsc(props: TabsProps) {
   // The nav points at the anchors the Product: Sections block renders; content
   // itself lives in that block, so this carries labels and targets only.
   const tabs = sections.map((s) => ({ label: s.label, anchor: sectionAnchorId(s.id) }))
+  // The strip closes on a CTA. A product bought as a chosen combination (a
+  // provider owns its purchase area) sends the shopper up to configure it; a
+  // plain product goes straight into the basket. Out-of-stock plain products
+  // get no add action - there is nothing to add. Both jump/act on the buy block
+  // (id="spd-buy") the Add to Cart part renders.
+  const hasOptions = Boolean(ctx.slot?.PurchaseArea) || Boolean(ctx.slot?.covered.includes('PurchaseArea'))
+  const action: TabAction | undefined = hasOptions
+    ? { kind: 'configure', anchor: 'spd-buy', label: 'Configure' }
+    : ctx.outOfStock
+      ? undefined
+      : { kind: 'add', productId: ctx.product.id, label: 'Add to cart' }
   return (
     <>
       <Style css={tabsCss} />
-      <ProductSectionTabs tabs={tabs} align={props.align} sticky={props.sticky === 'yes'} divider={divider} />
+      <ProductSectionTabs tabs={tabs} align={props.align} sticky={props.sticky === 'yes'} divider={divider} action={action} />
     </>
   )
 }

@@ -7,7 +7,8 @@
 // the separate Product: Sections block (real product data) - these islands hold
 // no product data, so no data fetching happens client-side.
 
-import { useEffect, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { addToCart } from '@/modules/shop/components/public/cart'
 import { GalleryThumbStrip } from '@/modules/shop/components/public/GalleryThumbStrip'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 
@@ -207,8 +208,39 @@ export type ProductTab = { id: string; label: string; content: ReactNode }
 // (unlike the Sections block): the nav must be a direct child of the layout
 // zone so a `position:sticky` on it can travel past the sibling Sections block
 // rather than being trapped inside a wrapper only as tall as itself.
-export function ProductSectionTabs({ tabs, align, sticky, divider = true }: { tabs: { label: string; anchor: string }[]; align?: string; sticky?: boolean; divider?: boolean }) {
+// The CTA that closes the strip. `add` puts the product straight in the basket
+// (no options to pick), `configure` jumps to the buy area so the shopper can
+// choose a combination first. Undefined leaves the strip links-only.
+export type TabAction =
+  | { kind: 'add'; productId: string; label: string }
+  | { kind: 'configure'; anchor: string; label: string }
+
+export function ProductSectionTabs({ tabs, align, sticky, divider = true, action }: { tabs: { label: string; anchor: string }[]; align?: string; sticky?: boolean; divider?: boolean; action?: TabAction }) {
   const [active, setActive] = useState(tabs[0]?.anchor)
+  const [added, setAdded] = useState(false)
+  const navRef = useRef<HTMLElement>(null)
+
+  // When the strip is pinned it sits below the header, so a jump-link landing
+  // must clear the header AND the strip's own height or the section title lands
+  // behind it. The sections' scroll-margin-top reads --spd-tabnav-h; publish the
+  // measured strip height there (0 when not sticky, so non-sticky pages are
+  // unaffected). Re-measure on resize since the strip wraps taller when narrow.
+  useEffect(() => {
+    const root = document.documentElement
+    if (!sticky || !navRef.current) {
+      root.style.removeProperty('--spd-tabnav-h')
+      return
+    }
+    const nav = navRef.current
+    const publish = () => root.style.setProperty('--spd-tabnav-h', `${nav.offsetHeight}px`)
+    publish()
+    const ro = new ResizeObserver(publish)
+    ro.observe(nav)
+    return () => {
+      ro.disconnect()
+      root.style.removeProperty('--spd-tabnav-h')
+    }
+  }, [sticky, tabs])
 
   useEffect(() => {
     const anchors = tabs.map((t) => t.anchor)
@@ -241,7 +273,7 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true }: { ta
   const navClass = `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${sticky ? ' sticky' : ''}${divider ? ' divider' : ''}`
 
   return (
-    <nav className={navClass} aria-label="Product information">
+    <nav ref={navRef} className={navClass} aria-label="Product information">
       {tabs.map((t) => (
         <a
           key={t.anchor}
@@ -253,6 +285,24 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true }: { ta
           {t.label}
         </a>
       ))}
+      {action?.kind === 'configure' && (
+        <a href={`#${action.anchor}`} className="spd-tab-btn spd-tab-action">
+          {action.label}
+        </a>
+      )}
+      {action?.kind === 'add' && (
+        <button
+          type="button"
+          className="spd-tab-btn spd-tab-action"
+          onClick={() => {
+            addToCart(action.productId, 1)
+            setAdded(true)
+            setTimeout(() => setAdded(false), 2000)
+          }}
+        >
+          {added ? 'Added to basket' : action.label}
+        </button>
+      )}
     </nav>
   )
 }
