@@ -216,7 +216,14 @@ export type TabAction =
   | { kind: 'configure'; anchor: string; label: string }
 
 export function ProductSectionTabs({ tabs, align, sticky, divider = true, action, navStyle }: { tabs: { label: string; anchor: string }[]; align?: string; sticky?: boolean; divider?: boolean; action?: TabAction; navStyle?: CSSProperties }) {
-  const [active, setActive] = useState(tabs[0]?.anchor)
+  // The strip opens on its action (Add to cart / Configure), which leads the
+  // row: at the top of the page the buy area is in view, so the action reads as
+  // the current step and no section link should light up until the shopper
+  // scrolls into a section. `#spd-buy` (rendered by the Add to Cart part) is
+  // tracked as the leading scroll-spy target so the highlight starts there
+  // instead of defaulting onto the first section (Description).
+  const leadAnchor = action ? 'spd-buy' : undefined
+  const [active, setActive] = useState(leadAnchor ?? tabs[0]?.anchor)
   const [added, setAdded] = useState(false)
   const navRef = useRef<HTMLElement>(null)
 
@@ -243,8 +250,9 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
   }, [sticky, tabs])
 
   useEffect(() => {
-    const els = tabs
-      .map((t) => document.getElementById(t.anchor))
+    const anchors = leadAnchor ? [leadAnchor, ...tabs.map((t) => t.anchor)] : tabs.map((t) => t.anchor)
+    const els = anchors
+      .map((id) => document.getElementById(id))
       .filter((el): el is HTMLElement => el !== null)
     const first = els[0]
     if (!first) return
@@ -284,7 +292,7 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
       window.removeEventListener('scroll', schedule)
       window.removeEventListener('resize', schedule)
     }
-  }, [tabs])
+  }, [tabs, leadAnchor])
 
   if (tabs.length === 0) return null
 
@@ -292,30 +300,21 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
 
   return (
     <nav ref={navRef} className={navClass} style={navStyle} aria-label="Product information">
-      {tabs.map((t) => (
-        <a
-          key={t.anchor}
-          href={`#${t.anchor}`}
-          className={`spd-tab-btn${t.anchor === active ? ' on' : ''}`}
-          aria-current={t.anchor === active ? 'true' : undefined}
-          onClick={() => setActive(t.anchor)}
-        >
-          {t.label}
-        </a>
-      ))}
       {action?.kind === 'configure' && (
         <a
           href={`#${action.anchor}`}
           className="spd-tab-btn spd-tab-action"
           onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => {
-            // Land the shopper on the option pickers, not the button under them.
-            // A provider marks its options area with data-spd-configure (a
-            // documented hook, so shop stays ignorant of which module renders
-            // it); on a layout where the options sit above the buy row inside
-            // their own block, the buy anchor alone would sail straight past
-            // them to the Add to basket button. The href keeps the buy-row
-            // anchor as the no-JS and no-options fallback.
-            const el = document.querySelector<HTMLElement>('[data-spd-configure]')
+            // Land the shopper at the top of the configure area - the product
+            // name (#spd-top), with the option pickers just below it - rather
+            // than scrolling the pickers up under the header and cutting the
+            // title off. Falling back to the pickers (data-spd-configure, a
+            // provider's documented hook so shop stays ignorant of which module
+            // renders it) and then the buy-row anchor (the href) keeps it
+            // working when a layout omits the title block or has no options.
+            const el =
+              document.getElementById('spd-top') ??
+              document.querySelector<HTMLElement>('[data-spd-configure]')
             if (el) {
               e.preventDefault()
               el.scrollIntoView({ block: 'start' })
@@ -338,6 +337,17 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
           {added ? 'Added to basket' : action.label}
         </button>
       )}
+      {tabs.map((t) => (
+        <a
+          key={t.anchor}
+          href={`#${t.anchor}`}
+          className={`spd-tab-btn${t.anchor === active ? ' on' : ''}`}
+          aria-current={t.anchor === active ? 'true' : undefined}
+          onClick={() => setActive(t.anchor)}
+        >
+          {t.label}
+        </a>
+      ))}
     </nav>
   )
 }

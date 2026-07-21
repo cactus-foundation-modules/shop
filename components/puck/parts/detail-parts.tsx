@@ -331,7 +331,10 @@ export const shopDetailBadgesPuckRscComponent = { ...shopDetailBadgesPuckCompone
 // Title
 // ---------------------------------------------------------------------------
 
-const titleCss = `.spd-title{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:34px;line-height:1.2;margin:6px 0;color:var(--color-fg)}`
+// scroll-margin-top so the Tabs strip's "Configure" action can land the shopper
+// at the top of the configure area (the product name) without the site header
+// or a pinned tab bar covering it - same resting line the sections use.
+const titleCss = `.spd-title{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:34px;line-height:1.2;margin:6px 0;color:var(--color-fg);scroll-margin-top:calc(var(--spd-header-h,72px) + var(--spd-tabnav-h,0px) + 16px)}`
 
 export function ShopDetailTitle(_props: PartProps) {
   return (
@@ -347,7 +350,10 @@ export function ShopDetailTitleRsc({ _ctx }: PartProps) {
   return (
     <>
       <Style css={titleCss} />
-      <h1 className="spd-title">{_ctx.product.name}</h1>
+      {/* id="spd-top" is the Configure action's landing target - the top of the
+          configure area, so the shopper sees the name and the option pickers
+          together. */}
+      <h1 id="spd-top" className="spd-title">{_ctx.product.name}</h1>
     </>
   )
 }
@@ -723,11 +729,11 @@ const tabsCss = ({ mobileBp }: Breakpoints) => `
 /* !important on hover/active so the site theme's !important button fill can't turn tabs mustard */
 .spd-tab-btn:hover{background:var(--color-surface) !important;border-color:var(--color-primary);color:var(--color-primary) !important}
 .spd-tab-btn.on{background:var(--color-primary) !important;border-color:var(--color-primary);color:var(--color-on-primary) !important}
-/* Action tab: the CTA that closes the strip - "Add to cart" (no options) or
-   "Configure" (options), pushed to the far end and filled like the primary
-   button so it reads as an action, not another jump-link. margin auto sends it
-   to the end whatever the strip's alignment. */
-.spd-tab-btn.spd-tab-action{margin-inline-start:auto;background:var(--color-primary) !important;border-color:var(--color-primary) !important;color:var(--color-on-primary) !important}
+/* Action tab: the CTA that leads the strip - "Add to cart" (no options) or
+   "Configure" (options) - filled like the primary button so it reads as an
+   action, not another jump-link. It sits first in the row and flows with the
+   strip's chosen alignment; no margin-auto forcing it to the far end. */
+.spd-tab-btn.spd-tab-action{background:var(--color-primary) !important;border-color:var(--color-primary) !important;color:var(--color-on-primary) !important}
 .spd-tab-btn.spd-tab-action:hover{background:var(--color-primary) !important;border-color:var(--color-primary) !important;color:var(--color-on-primary) !important;filter:brightness(.94)}
 /* Stacked: every section on the page at once, a rule between each. Accordion:
    native <details> so it needs no client JS, and a jump-link from the Tabs nav
@@ -922,13 +928,14 @@ export function ShopDetailTabs(props: TabsProps) {
     <>
       <Style css={tabsCss(DEFAULT_BREAKPOINTS)} />
       <nav className={navClassFor(props.align, props.sticky, divider)} style={navPadStyle(props.padTop, props.padBottom)} aria-label="Product information">
-        {labels.map((t, i) => (
-          <span key={t} className={`spd-tab-btn${i === 0 ? ' on' : ''}`}>{t}</span>
-        ))}
-        {/* The CTA that closes the strip on the storefront (Add to cart, or
-            Configure for a product with options); a static label here so the
-            author sees it in the layout. */}
+        {/* The CTA leads the strip on the storefront (Add to cart, or Configure
+            for a product with options); a static label here so the author sees
+            it in the layout. No jump tab is pre-highlighted - the storefront
+            opens on the action, not the first section. */}
         <span className="spd-tab-btn spd-tab-action">Add to cart</span>
+        {labels.map((t) => (
+          <span key={t} className="spd-tab-btn">{t}</span>
+        ))}
       </nav>
     </>
   )
