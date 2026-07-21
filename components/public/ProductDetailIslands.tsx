@@ -201,13 +201,16 @@ export type ProductTab = { id: string; label: string; content: ReactNode }
 // doesn't cover the landing), and a scroll-spy lights the link whose section is
 // nearest the top of the viewport as the shopper reads down the page.
 //
-// It has to be a client island only for that active-highlight; the jump itself
-// is a plain anchor and works with JS off. `align`/`sticky`/`divider` are the
-// layout-editor choices, passed through as class flags so the styling stays in
-// the scoped `spd-*` <style> beside them. There is no wrapping `.spd-tabs` div
-// (unlike the Sections block): the nav must be a direct child of the layout
-// zone so a `position:sticky` on it can travel past the sibling Sections block
-// rather than being trapped inside a wrapper only as tall as itself.
+// It has to be a client island only for that active-highlight (plus the scroll
+// fade/arrow overlay below); the jump itself is a plain anchor and works with JS
+// off. `align`/`sticky`/`divider` are the layout-editor choices, passed through
+// as class flags so the styling stays in the scoped `spd-*` <style> beside them.
+// The only wrapper is a thin `.spd-tab-shell` sized to the nav itself (NOT the
+// `.spd-tabs` div the Sections block uses, which also wraps the sections): the
+// shell carries `position:sticky`, so it travels past the sibling Sections block
+// as a direct child of the layout zone while the nav scrolls inside it and the
+// fades/arrows pin over it. A wrapper only as tall as the nav keeps sticky free
+// to move - the trap was wrapping the sections in with it.
 // The CTA that closes the strip. `add` puts the product straight in the basket
 // (no options to pick), `configure` jumps to the buy area so the shopper can
 // choose a combination first. Undefined leaves the strip links-only.
@@ -226,6 +229,12 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
   const [active, setActive] = useState(leadAnchor ?? tabs[0]?.anchor)
   const [added, setAdded] = useState(false)
   const navRef = useRef<HTMLElement>(null)
+  // Whether the strip overflows its shell in each direction - drives the admin
+  // -style edge fades and arrow buttons. Both stay false on desktop and on the
+  // larger-phone tier (the nav doesn't scroll there), so the overlay renders
+  // only when the strip genuinely scrolls, matching the admin TabStrip.
+  const [canLeft, setCanLeft] = useState(false)
+  const [canRight, setCanRight] = useState(false)
 
   // When the strip is pinned it sits below the header, so a jump-link landing
   // must clear the header AND the strip's own height or the section title lands
@@ -294,11 +303,52 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
     }
   }, [tabs, leadAnchor])
 
+  // Track how far the strip can still scroll each way, so the fades/arrows show
+  // only where there's more to reveal - same logic as the admin TabStrip.
+  useEffect(() => {
+    const el = navRef.current
+    if (!el) return
+    const check = () => {
+      setCanLeft(el.scrollLeft > 1)
+      setCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 1)
+    }
+    check()
+    el.addEventListener('scroll', check, { passive: true })
+    window.addEventListener('resize', check)
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => {
+      el.removeEventListener('scroll', check)
+      window.removeEventListener('resize', check)
+      ro.disconnect()
+    }
+  }, [tabs])
+
+  function scrollNav(delta: number) {
+    navRef.current?.scrollBy({ left: delta, behavior: 'smooth' })
+  }
+
   if (tabs.length === 0) return null
 
-  const navClass = `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${sticky ? ' sticky' : ''}${divider ? ' divider' : ''}`
+  // Sticky moves to the shell so its fade/arrow overlay pins with the strip; the
+  // nav inside just scrolls. align/divider stay on the nav (they shape the row).
+  const navClass = `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${divider ? ' divider' : ''}`
+  const shellClass = `spd-tab-shell${sticky ? ' sticky' : ''}`
 
   return (
+    <div className={shellClass}>
+      {canLeft && (
+        <>
+          <div aria-hidden className="spd-tab-fade left" />
+          <button type="button" className="spd-tab-arrow left" aria-label="Scroll tabs left" onClick={() => scrollNav(-160)}>‹</button>
+        </>
+      )}
+      {canRight && (
+        <>
+          <div aria-hidden className="spd-tab-fade right" />
+          <button type="button" className="spd-tab-arrow right" aria-label="Scroll tabs right" onClick={() => scrollNav(160)}>›</button>
+        </>
+      )}
     <nav ref={navRef} className={navClass} style={navStyle} aria-label="Product information">
       {action?.kind === 'configure' && (
         <a
@@ -349,5 +399,6 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
         </a>
       ))}
     </nav>
+    </div>
   )
 }

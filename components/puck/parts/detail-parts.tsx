@@ -721,7 +721,9 @@ const tabsCss = ({ mobileBp }: Breakpoints) => `
 .spd-tabs.divider{border-top:1px solid var(--color-border);margin-top:40px}
 /* Same rule for the standalone Tabs nav, which carries no .spd-tabs wrapper. */
 .spd-tab-nav.divider{border-top:1px solid var(--color-border);margin-top:40px}
-.spd-tab-nav{display:flex;gap:6px;overflow-x:auto;padding:var(--spd-tabnav-pt,16px) 0 var(--spd-tabnav-pb,16px)}
+.spd-tab-nav{display:flex;gap:6px;overflow-x:auto;padding:var(--spd-tabnav-pt,16px) 0 var(--spd-tabnav-pb,16px);scrollbar-width:none;-webkit-overflow-scrolling:touch}
+/* Scrollbar hidden like the admin tab bar - the fades/arrows are the scroll cue. */
+.spd-tab-nav::-webkit-scrollbar{display:none}
 .spd-tab-nav.align-center{justify-content:center}
 .spd-tab-nav.align-right{justify-content:flex-end}
 /* Sticky pins the strip flush under the site header (its measured height is
@@ -729,8 +731,26 @@ const tabsCss = ({ mobileBp }: Breakpoints) => `
    with no gallery). Pin flush, not header+8px: an offset leaves a transparent
    band above the pinned strip that page content scrolls through - the strip's
    own 16px top padding is the breathing room and its bg fills it. A solid
-   page-bg fill stops the panel showing through as it scrolls under. */
+   page-bg fill stops the panel showing through as it scrolls under.
+   The standalone Section links block has no shell wrapper, so it stays sticky on
+   the nav itself; the Tabs island moves sticky up to .spd-tab-shell (below) so
+   its fade/arrow overlay pins with the strip instead of scrolling away. */
 .spd-tab-nav.sticky{position:sticky;top:var(--spd-header-h,72px);z-index:20;background:var(--color-page-bg,var(--color-bg))}
+/* Shell wraps the Tabs island's scrolling nav so the admin-style edge fades and
+   arrow buttons (rendered only when the strip actually overflows) can sit over
+   it without scrolling away. relative for the absolute overlay; when the block
+   is sticky the shell carries the pin so the overlay travels with the strip. */
+.spd-tab-shell{position:relative}
+.spd-tab-shell.sticky{position:sticky;top:var(--spd-header-h,72px);z-index:20;background:var(--color-page-bg,var(--color-bg))}
+/* Fade + arrow match the admin TabStrip: 2rem fade sitting inboard of a 1.5rem
+   arrow, both filled with the page background so tabs dissolve into / out from
+   under them. pointer-events:none on the fade so only the arrow takes the tap. */
+.spd-tab-fade{position:absolute;top:0;bottom:0;width:2rem;pointer-events:none;z-index:1}
+.spd-tab-fade.left{left:1.5rem;background:linear-gradient(to right,var(--color-page-bg,var(--color-bg)),transparent)}
+.spd-tab-fade.right{right:1.5rem;background:linear-gradient(to left,var(--color-page-bg,var(--color-bg)),transparent)}
+.spd-tab-arrow{position:absolute;top:0;bottom:0;width:1.5rem;display:flex;align-items:center;justify-content:center;border:none;padding:0;cursor:pointer;background:var(--color-page-bg,var(--color-bg));color:var(--color-text-muted);font:inherit;font-size:1rem;z-index:2}
+.spd-tab-arrow.left{left:0}
+.spd-tab-arrow.right{right:0}
 .spd-tab-btn{border:1px solid var(--color-border);background:var(--color-surface);border-radius:9999px;padding:9px 18px;font:inherit;font-size:14px;font-weight:600;color:var(--color-text-muted);cursor:pointer;white-space:nowrap;transition:background .12s ease,color .12s ease,border-color .12s ease;text-decoration:none;display:inline-block}
 /* !important on hover/active so the site theme's !important button fill can't turn tabs mustard */
 .spd-tab-btn:hover{background:var(--color-surface) !important;border-color:var(--color-primary);color:var(--color-primary) !important}
@@ -784,21 +804,15 @@ const tabsCss = ({ mobileBp }: Breakpoints) => `
 }
 /* Small phones: the labels can no longer shrink to fit AND stay readable, so
    the strip gives up sharing the row and scrolls sideways instead - the same
-   move the admin tab bars make. It breaks out to the full viewport width so the
-   tabs run edge-to-edge and can scroll clean off both screen edges; the
-   scrollbar is hidden like the admin strip. Pills return to their natural size
-   and never shrink (flex:0 0 auto), so every label reads in full. Only the left
-   and right padding are set here (the full-bleed inset) - the vertical padding
-   stays on --spd-tabnav-pt/pb from the base rule. */
+   move the admin tab bars make, complete with the edge fades and arrow buttons
+   the shell renders over it. It stays within the reading column (not full-bleed)
+   so the arrows land on the strip's own edges exactly like the admin bar. Pills
+   return to their natural size and never shrink (flex:0 0 auto), so every label
+   reads in full. flex-start start-aligns them regardless of the block's chosen
+   alignment - centre/right can't survive an overflowing scroll row. */
 @media (max-width:${SMALL_PHONE_BP}){
-.spd-tab-nav{overflow-x:auto;overflow-y:hidden;gap:8px;flex-wrap:nowrap;justify-content:flex-start;margin-inline:calc(50% - 50vw);padding-left:calc(50vw - 50%);padding-right:calc(50vw - 50%);scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.spd-tab-nav{overflow-x:auto;overflow-y:hidden;gap:8px;flex-wrap:nowrap;justify-content:flex-start}
 .spd-tab-nav.align-center,.spd-tab-nav.align-right{justify-content:flex-start}
-.spd-tab-nav::-webkit-scrollbar{display:none}
-/* Standalone Section links block sits inside its own slot (margin:0 above beats
-   the full-bleed margin on specificity), so drop the bleed inset too - otherwise
-   the padding lands with no negative margin to answer it and shoves the tabs off
-   the right. It still scrolls; it just stays in-flow rather than edge-to-edge. */
-.spd-section-nav .spd-tab-nav{padding-left:0;padding-right:0}
 .spd-tab-btn{flex:0 0 auto;min-width:auto;padding:9px 16px;font-size:13px}
 .spd-tab-btn.spd-tab-action{flex:0 0 auto}
 }
@@ -951,19 +965,24 @@ const navPadStyle = (padTop: unknown, padBottom: unknown) =>
 export function ShopDetailTabs(props: TabsProps) {
   const divider = props.divider !== 'no'
   const labels = ['Description', 'Specification', 'Dimensions']
+  // Mirror the storefront island's markup: the nav sits inside a .spd-tab-shell
+  // (which carries sticky and, live, the fade/arrow overlay). The editor preview
+  // is static, so no overlay renders - the wrapper only keeps the DOM in parity.
   return (
     <>
       <Style css={tabsCss(DEFAULT_BREAKPOINTS)} />
-      <nav className={navClassFor(props.align, props.sticky, divider)} style={navPadStyle(props.padTop, props.padBottom)} aria-label="Product information">
-        {/* The CTA leads the strip on the storefront (Add to cart, or Configure
-            for a product with options); a static label here so the author sees
-            it in the layout. No jump tab is pre-highlighted - the storefront
-            opens on the action, not the first section. */}
-        <span className="spd-tab-btn spd-tab-action">Add to cart</span>
-        {labels.map((t) => (
-          <span key={t} className="spd-tab-btn">{t}</span>
-        ))}
-      </nav>
+      <div className={`spd-tab-shell${props.sticky === 'yes' ? ' sticky' : ''}`}>
+        <nav className={navClassFor(props.align, undefined, divider)} style={navPadStyle(props.padTop, props.padBottom)} aria-label="Product information">
+          {/* The CTA leads the strip on the storefront (Add to cart, or Configure
+              for a product with options); a static label here so the author sees
+              it in the layout. No jump tab is pre-highlighted - the storefront
+              opens on the action, not the first section. */}
+          <span className="spd-tab-btn spd-tab-action">Add to cart</span>
+          {labels.map((t) => (
+            <span key={t} className="spd-tab-btn">{t}</span>
+          ))}
+        </nav>
+      </div>
     </>
   )
 }
