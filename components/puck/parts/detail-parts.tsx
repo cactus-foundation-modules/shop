@@ -7,7 +7,7 @@ import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakp
 import { formatMoney } from '@/modules/shop/lib/money'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 
 // Product Detail part-blocks. Each is a small draggable piece of a Product
 // Detail layout (admin > Layouts > Shop > Product Detail). The markup and class
@@ -709,7 +709,7 @@ const tabsCss = ({ mobileBp }: Breakpoints) => `
 .spd-tabs.divider{border-top:1px solid var(--color-border);margin-top:40px}
 /* Same rule for the standalone Tabs nav, which carries no .spd-tabs wrapper. */
 .spd-tab-nav.divider{border-top:1px solid var(--color-border);margin-top:40px}
-.spd-tab-nav{display:flex;gap:6px;overflow-x:auto;padding:16px 0}
+.spd-tab-nav{display:flex;gap:6px;overflow-x:auto;padding:var(--spd-tabnav-pt,16px) 0 var(--spd-tabnav-pb,16px)}
 .spd-tab-nav.align-center{justify-content:center}
 .spd-tab-nav.align-right{justify-content:flex-end}
 /* Sticky pins the strip flush under the site header (its measured height is
@@ -897,7 +897,20 @@ function buildDetailSections(ctx: DetailPartContext): OrderedTab[] {
 const navClassFor = (align?: string, sticky?: string, divider?: boolean) =>
   `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${sticky === 'yes' ? ' sticky' : ''}${divider ? ' divider' : ''}`
 
-type TabsProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; divider?: string }
+type TabsProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; divider?: string; padTop?: number; padBottom?: number }
+
+// The strip's own vertical padding, adjustable per block. Blank or non-numeric
+// (Puck's number field hands back an empty string while the box is cleared)
+// falls back to the long-standing 16px; zero is a legitimate choice and kept.
+const NAV_PAD_DEFAULT = 16
+function navPadPx(value: unknown): number {
+  if (value === '' || value == null) return NAV_PAD_DEFAULT
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 0) return NAV_PAD_DEFAULT
+  return Math.min(64, Math.round(n))
+}
+const navPadStyle = (padTop: unknown, padBottom: unknown) =>
+  ({ '--spd-tabnav-pt': `${navPadPx(padTop)}px`, '--spd-tabnav-pb': `${navPadPx(padBottom)}px` }) as CSSProperties
 
 // Editor preview: the nav strip only, no panel and no .spd-tabs wrapper - it
 // mirrors the frontend ProductSectionTabs island so the markup and classes
@@ -908,7 +921,7 @@ export function ShopDetailTabs(props: TabsProps) {
   return (
     <>
       <Style css={tabsCss(DEFAULT_BREAKPOINTS)} />
-      <nav className={navClassFor(props.align, props.sticky, divider)} aria-label="Product information">
+      <nav className={navClassFor(props.align, props.sticky, divider)} style={navPadStyle(props.padTop, props.padBottom)} aria-label="Product information">
         {labels.map((t, i) => (
           <span key={t} className={`spd-tab-btn${i === 0 ? ' on' : ''}`}>{t}</span>
         ))}
@@ -945,7 +958,7 @@ export function ShopDetailTabsRsc(props: TabsProps) {
   return (
     <>
       <Style css={tabsCss(ctx.bp)} />
-      <ProductSectionTabs tabs={tabs} align={props.align} sticky={props.sticky === 'yes'} divider={divider} action={action} />
+      <ProductSectionTabs tabs={tabs} align={props.align} sticky={props.sticky === 'yes'} divider={divider} action={action} navStyle={navPadStyle(props.padTop, props.padBottom)} />
     </>
   )
 }
@@ -972,8 +985,10 @@ export const shopDetailTabsPuckComponent = {
       label: 'Divider above',
       options: yesNo,
     },
+    padTop: { type: 'number' as const, label: 'Padding above tabs (px)', min: 0, max: 64 },
+    padBottom: { type: 'number' as const, label: 'Padding below tabs (px)', min: 0, max: 64 },
   },
-  defaultProps: { align: 'left', sticky: 'no', divider: 'yes' },
+  defaultProps: { align: 'left', sticky: 'no', divider: 'yes', padTop: NAV_PAD_DEFAULT, padBottom: NAV_PAD_DEFAULT },
   render: ShopDetailTabs,
 }
 export const shopDetailTabsPuckRscComponent = { ...shopDetailTabsPuckComponent, render: ShopDetailTabsRsc }

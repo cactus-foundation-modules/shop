@@ -7,7 +7,7 @@
 // the separate Product: Sections block (real product data) - these islands hold
 // no product data, so no data fetching happens client-side.
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { addToCart } from '@/modules/shop/components/public/cart'
 import { GalleryThumbStrip } from '@/modules/shop/components/public/GalleryThumbStrip'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
@@ -215,7 +215,7 @@ export type TabAction =
   | { kind: 'add'; productId: string; label: string }
   | { kind: 'configure'; anchor: string; label: string }
 
-export function ProductSectionTabs({ tabs, align, sticky, divider = true, action }: { tabs: { label: string; anchor: string }[]; align?: string; sticky?: boolean; divider?: boolean; action?: TabAction }) {
+export function ProductSectionTabs({ tabs, align, sticky, divider = true, action, navStyle }: { tabs: { label: string; anchor: string }[]; align?: string; sticky?: boolean; divider?: boolean; action?: TabAction; navStyle?: CSSProperties }) {
   const [active, setActive] = useState(tabs[0]?.anchor)
   const [added, setAdded] = useState(false)
   const navRef = useRef<HTMLElement>(null)
@@ -243,29 +243,47 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
   }, [sticky, tabs])
 
   useEffect(() => {
-    const anchors = tabs.map((t) => t.anchor)
-    const els = anchors
-      .map((a) => document.getElementById(a))
+    const els = tabs
+      .map((t) => document.getElementById(t.anchor))
       .filter((el): el is HTMLElement => el !== null)
-    if (els.length === 0) return
+    const first = els[0]
+    if (!first) return
 
-    // A section counts as "current" while it crosses a thin band near the top of
-    // the viewport; of those in the band, the topmost in document order wins, so
-    // the highlight advances one link at a time as the reader scrolls down.
-    const inBand = new Set<string>()
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) inBand.add(e.target.id)
-          else inBand.delete(e.target.id)
-        }
-        const first = anchors.find((a) => inBand.has(a))
-        if (first) setActive(first)
-      },
-      { rootMargin: '-15% 0px -75% 0px', threshold: 0 },
-    )
-    els.forEach((el) => io.observe(el))
-    return () => io.disconnect()
+    // The current section is the LAST one whose top has reached its own resting
+    // line - the spot a jump-link lands it on, which is exactly what
+    // scroll-margin-top computes (header + pinned strip + breathing room). The
+    // old intersection band got this wrong on arrival: after a jump the previous
+    // section's tail still crossed the band, and topmost-in-document-order put
+    // the highlight back on the tab the shopper had just left.
+    let raf = 0
+    const pick = () => {
+      raf = 0
+      let current = first.id
+      for (const el of els) {
+        const rest = parseFloat(getComputedStyle(el).scrollMarginTop) || 0
+        if (el.getBoundingClientRect().top <= rest + 1) current = el.id
+        else break
+      }
+      // The page bottom can arrive before a short last section's top does; once
+      // there is nothing further to scroll, the last section is what's being read.
+      const doc = document.documentElement
+      const last = els[els.length - 1]
+      if (last && window.innerHeight + window.scrollY >= doc.scrollHeight - 2) {
+        current = last.id
+      }
+      setActive(current)
+    }
+    const schedule = () => {
+      if (raf === 0) raf = requestAnimationFrame(pick)
+    }
+    pick()
+    window.addEventListener('scroll', schedule, { passive: true })
+    window.addEventListener('resize', schedule)
+    return () => {
+      if (raf !== 0) cancelAnimationFrame(raf)
+      window.removeEventListener('scroll', schedule)
+      window.removeEventListener('resize', schedule)
+    }
   }, [tabs])
 
   if (tabs.length === 0) return null
@@ -273,7 +291,7 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
   const navClass = `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${sticky ? ' sticky' : ''}${divider ? ' divider' : ''}`
 
   return (
-    <nav ref={navRef} className={navClass} aria-label="Product information">
+    <nav ref={navRef} className={navClass} style={navStyle} aria-label="Product information">
       {tabs.map((t) => (
         <a
           key={t.anchor}
@@ -286,7 +304,24 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
         </a>
       ))}
       {action?.kind === 'configure' && (
-        <a href={`#${action.anchor}`} className="spd-tab-btn spd-tab-action">
+        <a
+          href={`#${action.anchor}`}
+          className="spd-tab-btn spd-tab-action"
+          onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => {
+            // Land the shopper on the option pickers, not the button under them.
+            // A provider marks its options area with data-spd-configure (a
+            // documented hook, so shop stays ignorant of which module renders
+            // it); on a layout where the options sit above the buy row inside
+            // their own block, the buy anchor alone would sail straight past
+            // them to the Add to basket button. The href keeps the buy-row
+            // anchor as the no-JS and no-options fallback.
+            const el = document.querySelector<HTMLElement>('[data-spd-configure]')
+            if (el) {
+              e.preventDefault()
+              el.scrollIntoView({ block: 'start' })
+            }
+          }}
+        >
           {action.label}
         </a>
       )}
