@@ -8,6 +8,7 @@ import { formatMoney } from '@/modules/shop/lib/money'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { SiteColourField } from '@/lib/puck/SiteColourField'
+import { ClearableNumberField } from '@/lib/puck/ClearableNumberField'
 import { splitLightDark, composeLightDark } from '@/lib/puck/lightDark'
 import type { CSSProperties, ReactNode } from 'react'
 
@@ -958,8 +959,8 @@ const navClassFor = (align?: string, sticky?: string, divider?: boolean) =>
 type TabsProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; divider?: string; padTop?: number; padBottom?: number; bgColour?: string; bgOpacity?: number }
 
 // The strip's own vertical padding, adjustable per block. Blank or non-numeric
-// (Puck's number field hands back an empty string while the box is cleared)
-// falls back to the long-standing 16px; zero is a legitimate choice and kept.
+// (the clearable field stores undefined for an emptied box) falls back to the
+// long-standing 16px; zero is a legitimate choice and kept.
 const NAV_PAD_DEFAULT = 16
 function navPadPx(value: unknown): number {
   if (value === '' || value == null) return NAV_PAD_DEFAULT
@@ -991,8 +992,21 @@ const mixOpacity = (colour: string, pct: number, over: string) =>
   !colour || pct >= 100 ? colour : `color-mix(in srgb, ${colour} ${pct}%, ${over})`
 function navBgVars(bgColour: unknown, bgOpacity: unknown): CSSProperties | undefined {
   const raw = typeof bgColour === 'string' ? bgColour.trim() : ''
-  if (!raw) return undefined
   const pct = bgOpacityPct(bgOpacity)
+  // No colour chosen: opacity still means something - it thins the strip's
+  // default fill (the page background the sticky fallback paints), so a sticky
+  // strip can go translucent without the author having to re-pick the page
+  // colour by hand. The fades/arrows stay on the opaque page background - they
+  // sit over the fill and a see-through fade painted twice darkens the edges.
+  // At 100% nothing is set, keeping the long-standing transparent / sticky
+  // fallback behaviour byte-identical.
+  if (!raw) {
+    if (pct >= 100) return undefined
+    return {
+      '--spd-tabnav-bg': `color-mix(in srgb, var(--color-page-bg, var(--color-bg)) ${pct}%, transparent)`,
+      '--spd-tabnav-fade': 'var(--color-page-bg, var(--color-bg))',
+    } as CSSProperties
+  }
   const { light, dark } = splitLightDark(raw)
   const compose = (over: string) =>
     composeLightDark(mixOpacity(light, pct, over), dark ? mixOpacity(dark, pct, over) : '')
@@ -1081,8 +1095,8 @@ export const shopDetailTabsPuckComponent = {
       label: 'Divider above',
       options: yesNo,
     },
-    padTop: { type: 'number' as const, label: 'Padding above tabs (px)', min: 0, max: 64 },
-    padBottom: { type: 'number' as const, label: 'Padding below tabs (px)', min: 0, max: 64 },
+    padTop: { type: 'custom' as const, label: 'Padding above tabs (px)', render: ClearableNumberField },
+    padBottom: { type: 'custom' as const, label: 'Padding below tabs (px)', render: ClearableNumberField },
     // One field carries both arms: the swatch row sets the light colour and a
     // second row underneath sets the dark-mode one (blank = same as light).
     bgColour: {
@@ -1090,7 +1104,10 @@ export const shopDetailTabsPuckComponent = {
       label: 'Background colour',
       render: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => <SiteColourField value={value} onChange={onChange} />,
     },
-    bgOpacity: { type: 'number' as const, label: 'Background opacity (%)', min: 0, max: 100 },
+    // Custom clearable field: Puck's built-in number field turns a cleared box
+    // into Number('') = 0, so the author could never get back to "default".
+    // Clearing this one genuinely stores nothing and falls back to 100%.
+    bgOpacity: { type: 'custom' as const, label: 'Background opacity (%)', render: ClearableNumberField },
   },
   defaultProps: { align: 'left', sticky: 'no', divider: 'yes', padTop: NAV_PAD_DEFAULT, padBottom: NAV_PAD_DEFAULT, bgColour: '', bgOpacity: BG_OPACITY_DEFAULT },
   render: ShopDetailTabs,
