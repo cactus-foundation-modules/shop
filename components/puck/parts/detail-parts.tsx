@@ -7,6 +7,8 @@ import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakp
 import { formatMoney } from '@/modules/shop/lib/money'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
+import { SiteColourField } from '@/lib/puck/SiteColourField'
+import { splitLightDark, composeLightDark } from '@/lib/puck/lightDark'
 import type { CSSProperties, ReactNode } from 'react'
 
 // Product Detail part-blocks. Each is a small draggable piece of a Product
@@ -740,15 +742,24 @@ const tabsCss = ({ mobileBp }: Breakpoints) => `
    arrow buttons (rendered only when the strip actually overflows) can sit over
    it without scrolling away. relative for the absolute overlay; when the block
    is sticky the shell carries the pin so the overlay travels with the strip. */
-.spd-tab-shell{position:relative}
-.spd-tab-shell.sticky{position:sticky;top:var(--spd-header-h,72px);z-index:20;background:var(--color-page-bg,var(--color-bg))}
+/* The block's own background colour rides --spd-tabnav-bg (set inline by the
+   block when the author picks one, dark arm and opacity already folded in). Left
+   unset it stays transparent, so a strip with no chosen colour looks exactly as
+   it did; sticky still falls back to the page background, which is what stops
+   the panel showing through as it scrolls under. */
+.spd-tab-shell{position:relative;background:var(--spd-tabnav-bg,transparent)}
+.spd-tab-shell.sticky{position:sticky;top:var(--spd-header-h,72px);z-index:20;background:var(--spd-tabnav-bg,var(--color-page-bg,var(--color-bg)))}
 /* Fade + arrow match the admin TabStrip: 2rem fade sitting inboard of a 1.5rem
    arrow, both filled with the page background so tabs dissolve into / out from
-   under them. pointer-events:none on the fade so only the arrow takes the tap. */
+   under them. pointer-events:none on the fade so only the arrow takes the tap.
+   These sit OVER the shell's own fill, so they use --spd-tabnav-fade - the same
+   author colour already composited onto the page background - rather than
+   --spd-tabnav-bg. A see-through colour painted twice would darken the two
+   edges; the composited one matches what the middle of the strip looks like. */
 .spd-tab-fade{position:absolute;top:0;bottom:0;width:2rem;pointer-events:none;z-index:1}
-.spd-tab-fade.left{left:1.5rem;background:linear-gradient(to right,var(--color-page-bg,var(--color-bg)),transparent)}
-.spd-tab-fade.right{right:1.5rem;background:linear-gradient(to left,var(--color-page-bg,var(--color-bg)),transparent)}
-.spd-tab-arrow{position:absolute;top:0;bottom:0;width:1.5rem;display:flex;align-items:center;justify-content:center;border:none;padding:0;cursor:pointer;background:var(--color-page-bg,var(--color-bg));color:var(--color-text-muted);font:inherit;font-size:1rem;z-index:2}
+.spd-tab-fade.left{left:1.5rem;background:linear-gradient(to right,var(--spd-tabnav-fade,var(--color-page-bg,var(--color-bg))),transparent)}
+.spd-tab-fade.right{right:1.5rem;background:linear-gradient(to left,var(--spd-tabnav-fade,var(--color-page-bg,var(--color-bg))),transparent)}
+.spd-tab-arrow{position:absolute;top:0;bottom:0;width:1.5rem;display:flex;align-items:center;justify-content:center;border:none;padding:0;cursor:pointer;background:var(--spd-tabnav-fade,var(--color-page-bg,var(--color-bg)));color:var(--color-text-muted);font:inherit;font-size:1rem;z-index:2}
 .spd-tab-arrow.left{left:0}
 .spd-tab-arrow.right{right:0}
 .spd-tab-btn{border:1px solid var(--color-border);background:var(--color-surface);border-radius:9999px;padding:9px 18px;font:inherit;font-size:14px;font-weight:600;color:var(--color-text-muted);cursor:pointer;white-space:nowrap;transition:background .12s ease,color .12s ease,border-color .12s ease;text-decoration:none;display:inline-block}
@@ -944,7 +955,7 @@ function buildDetailSections(ctx: DetailPartContext): OrderedTab[] {
 const navClassFor = (align?: string, sticky?: string, divider?: boolean) =>
   `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${sticky === 'yes' ? ' sticky' : ''}${divider ? ' divider' : ''}`
 
-type TabsProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; divider?: string; padTop?: number; padBottom?: number }
+type TabsProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; divider?: string; padTop?: number; padBottom?: number; bgColour?: string; bgOpacity?: number }
 
 // The strip's own vertical padding, adjustable per block. Blank or non-numeric
 // (Puck's number field hands back an empty string while the box is cleared)
@@ -959,6 +970,38 @@ function navPadPx(value: unknown): number {
 const navPadStyle = (padTop: unknown, padBottom: unknown) =>
   ({ '--spd-tabnav-pt': `${navPadPx(padTop)}px`, '--spd-tabnav-pb': `${navPadPx(padBottom)}px` }) as CSSProperties
 
+// The strip's own background colour. The stored value already carries an
+// optional dark-mode arm as `light-dark(light, dark)` (lib/puck/lightDark.ts),
+// so opacity is folded into each arm separately rather than wrapped round the
+// whole thing - the same shape SectionBgColorField writes, and the one CSS is
+// certain to resolve. rgba() can't wrap a `var(--color-N)` swatch, hence
+// color-mix. Blank colour leaves both vars unset, so the CSS falls back to the
+// long-standing transparent / page-background behaviour untouched.
+const BG_OPACITY_DEFAULT = 100
+function bgOpacityPct(value: unknown): number {
+  if (value === '' || value == null) return BG_OPACITY_DEFAULT
+  const n = Number(value)
+  if (!Number.isFinite(n)) return BG_OPACITY_DEFAULT
+  return Math.min(100, Math.max(0, Math.round(n)))
+}
+// `over` is what the translucent colour is composited onto: `transparent` for
+// the strip's own fill (so the page shows through), the page background for the
+// edge fades and arrows, which sit over that fill and must stay opaque.
+const mixOpacity = (colour: string, pct: number, over: string) =>
+  !colour || pct >= 100 ? colour : `color-mix(in srgb, ${colour} ${pct}%, ${over})`
+function navBgVars(bgColour: unknown, bgOpacity: unknown): CSSProperties | undefined {
+  const raw = typeof bgColour === 'string' ? bgColour.trim() : ''
+  if (!raw) return undefined
+  const pct = bgOpacityPct(bgOpacity)
+  const { light, dark } = splitLightDark(raw)
+  const compose = (over: string) =>
+    composeLightDark(mixOpacity(light, pct, over), dark ? mixOpacity(dark, pct, over) : '')
+  return {
+    '--spd-tabnav-bg': compose('transparent'),
+    '--spd-tabnav-fade': compose('var(--color-page-bg, var(--color-bg))'),
+  } as CSSProperties
+}
+
 // Editor preview: the nav strip only, no panel and no .spd-tabs wrapper - it
 // mirrors the frontend ProductSectionTabs island so the markup and classes
 // match (span here, <a> there, as the standalone Section links block also does).
@@ -971,7 +1014,7 @@ export function ShopDetailTabs(props: TabsProps) {
   return (
     <>
       <Style css={tabsCss(DEFAULT_BREAKPOINTS)} />
-      <div className={`spd-tab-shell${props.sticky === 'yes' ? ' sticky' : ''}`}>
+      <div className={`spd-tab-shell${props.sticky === 'yes' ? ' sticky' : ''}`} style={navBgVars(props.bgColour, props.bgOpacity)}>
         <nav className={navClassFor(props.align, undefined, divider)} style={navPadStyle(props.padTop, props.padBottom)} aria-label="Product information">
           {/* The CTA leads the strip on the storefront (Add to cart, or Configure
               for a product with options); a static label here so the author sees
@@ -1011,7 +1054,7 @@ export function ShopDetailTabsRsc(props: TabsProps) {
   return (
     <>
       <Style css={tabsCss(ctx.bp)} />
-      <ProductSectionTabs tabs={tabs} align={props.align} sticky={props.sticky === 'yes'} divider={divider} action={action} navStyle={navPadStyle(props.padTop, props.padBottom)} />
+      <ProductSectionTabs tabs={tabs} align={props.align} sticky={props.sticky === 'yes'} divider={divider} action={action} navStyle={navPadStyle(props.padTop, props.padBottom)} shellStyle={navBgVars(props.bgColour, props.bgOpacity)} />
     </>
   )
 }
@@ -1040,8 +1083,16 @@ export const shopDetailTabsPuckComponent = {
     },
     padTop: { type: 'number' as const, label: 'Padding above tabs (px)', min: 0, max: 64 },
     padBottom: { type: 'number' as const, label: 'Padding below tabs (px)', min: 0, max: 64 },
+    // One field carries both arms: the swatch row sets the light colour and a
+    // second row underneath sets the dark-mode one (blank = same as light).
+    bgColour: {
+      type: 'custom' as const,
+      label: 'Background colour',
+      render: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => <SiteColourField value={value} onChange={onChange} />,
+    },
+    bgOpacity: { type: 'number' as const, label: 'Background opacity (%)', min: 0, max: 100 },
   },
-  defaultProps: { align: 'left', sticky: 'no', divider: 'yes', padTop: NAV_PAD_DEFAULT, padBottom: NAV_PAD_DEFAULT },
+  defaultProps: { align: 'left', sticky: 'no', divider: 'yes', padTop: NAV_PAD_DEFAULT, padBottom: NAV_PAD_DEFAULT, bgColour: '', bgOpacity: BG_OPACITY_DEFAULT },
   render: ShopDetailTabs,
 }
 export const shopDetailTabsPuckRscComponent = { ...shopDetailTabsPuckComponent, render: ShopDetailTabsRsc }

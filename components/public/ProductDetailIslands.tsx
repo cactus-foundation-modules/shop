@@ -218,7 +218,7 @@ export type TabAction =
   | { kind: 'add'; productId: string; label: string }
   | { kind: 'configure'; anchor: string; label: string }
 
-export function ProductSectionTabs({ tabs, align, sticky, divider = true, action, navStyle }: { tabs: { label: string; anchor: string }[]; align?: string; sticky?: boolean; divider?: boolean; action?: TabAction; navStyle?: CSSProperties }) {
+export function ProductSectionTabs({ tabs, align, sticky, divider = true, action, navStyle, shellStyle }: { tabs: { label: string; anchor: string }[]; align?: string; sticky?: boolean; divider?: boolean; action?: TabAction; navStyle?: CSSProperties; shellStyle?: CSSProperties }) {
   // The strip opens on its action (Add to cart / Configure), which leads the
   // row: at the top of the page the buy area is in view, so the action reads as
   // the current step and no section link should light up until the shopper
@@ -324,6 +324,34 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
     }
   }, [tabs])
 
+  // Keep the lit tab visible. On a phone the strip scrolls sideways, so a tab
+  // the scroll-spy lights while the shopper reads down the page (Downloads, say)
+  // could sit off the right-hand edge - the highlight was there, but only for
+  // someone who thought to drag the strip across. Nudge the strip so the active
+  // pill is on screen, clearing the arrow/fade overlay at whichever edge it came
+  // in from. Runs on `active` only: while the strip isn't overflowing there is
+  // nothing to scroll, and a shopper dragging it by hand isn't fought.
+  useEffect(() => {
+    const nav = navRef.current
+    if (!nav || !active) return
+    if (nav.scrollWidth <= nav.clientWidth + 1) return
+    const el = Array.from(nav.querySelectorAll<HTMLElement>('[data-spd-anchor]')).find(
+      (n) => n.dataset.spdAnchor === active,
+    )
+    if (!el) return
+    // Arrow (1.5rem) plus a little air, so the pill lands beside the control
+    // rather than half under it.
+    const EDGE = 32
+    const navBox = nav.getBoundingClientRect()
+    const box = el.getBoundingClientRect()
+    const behavior: ScrollBehavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+    if (box.left < navBox.left + EDGE) {
+      nav.scrollTo({ left: nav.scrollLeft + (box.left - navBox.left) - EDGE, behavior })
+    } else if (box.right > navBox.right - EDGE) {
+      nav.scrollTo({ left: nav.scrollLeft + (box.right - navBox.right) + EDGE, behavior })
+    }
+  }, [active])
+
   function scrollNav(delta: number) {
     navRef.current?.scrollBy({ left: delta, behavior: 'smooth' })
   }
@@ -336,7 +364,7 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
   const shellClass = `spd-tab-shell${sticky ? ' sticky' : ''}`
 
   return (
-    <div className={shellClass}>
+    <div className={shellClass} style={shellStyle}>
       {canLeft && (
         <>
           <div aria-hidden className="spd-tab-fade left" />
@@ -359,6 +387,7 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
           // instead of staying permanently filled beside the real active tab.
           className={`spd-tab-btn${active === leadAnchor ? ' on' : ''}`}
           aria-current={active === leadAnchor ? 'true' : undefined}
+          data-spd-anchor={leadAnchor}
           onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => {
             // Land the shopper at the top of the configure area - the product
             // name (#spd-top), with the option pickers just below it - rather
@@ -383,6 +412,9 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
         <button
           type="button"
           className="spd-tab-btn spd-tab-action"
+          // Not a jump-link, but it is the leading target the scroll-spy starts
+          // on - tagged so scrolling back up brings the CTA into view with it.
+          data-spd-anchor={leadAnchor}
           onClick={() => {
             addToCart(action.productId, 1)
             setAdded(true)
@@ -398,6 +430,7 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
           href={`#${t.anchor}`}
           className={`spd-tab-btn${t.anchor === active ? ' on' : ''}`}
           aria-current={t.anchor === active ? 'true' : undefined}
+          data-spd-anchor={t.anchor}
           onClick={() => setActive(t.anchor)}
         >
           {t.label}
