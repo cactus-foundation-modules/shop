@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
+import { decrementPreOrderCount, getProductById } from '@/modules/shop/lib/db/products'
 import type { LineMeta, ShpAddress, ShpOrder, ShpOrderItem, ShpOrderStatus, ShpPaymentMethod, ShpPaymentStatus } from '@/modules/shop/lib/types'
 
 function mapOrder(r: Record<string, unknown>): ShpOrder {
@@ -69,6 +70,16 @@ export async function getOrderByNumberAndEmail(orderNumber: string, email: strin
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
     SELECT * FROM "shp_orders" WHERE "order_number" = ${orderNumber} AND lower("customer_email") = lower(${email}) LIMIT 1
   `
+  return rows[0] ? mapOrder(rows[0]) : null
+}
+
+// Resolve an order from the provider reference stored by markOrderPaid (for
+// Stripe that reference is the PaymentIntent id). Stripe's charge.refunded
+// event only carries the intent id on the charge, not the shpOrderId metadata
+// (that lives on the PaymentIntent and Stripe never copies it to the charge),
+// so a dashboard refund has to be matched back to the order this way.
+export async function getOrderByPaymentReference(reference: string): Promise<ShpOrder | null> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_orders" WHERE "payment_reference" = ${reference} LIMIT 1`
   return rows[0] ? mapOrder(rows[0]) : null
 }
 
@@ -157,8 +168,83 @@ export async function createPendingOrder(data: CreateOrderInput): Promise<{ id: 
   })
 }
 
-export async function updateOrderStatus(id: string, status: ShpOrderStatus): Promise<void> {
-  await prisma.$executeRaw`UPDATE "shp_orders" SET "status" = ${status}, "updated_at" = CURRENT_TIMESTAMP WHERE "id" = ${id}`
+// Idempotent, in the same spirit as markOrderPaid below: the `status != status`
+// guard means re-sending a status the order already has changes nothing and
+// returns false. That boolean is not decoration - anything a caller runs once
+// per transition has to be gated on it.
+//
+// This used to be a bare UPDATE returning nothing, and the admin status route
+// decremented pre-order stock whenever the new status was SHIPPED. Walking an
+// order SHIPPED -> COMPLETED -> SHIPPED therefore decremented the same
+// pre-order units twice, and decrementStockOnShip clamps with GREATEST(...,0),
+// so the shop quietly undercounted its own stock rather than erroring.
+export async function updateOrderStatus(id: string, status: ShpOrderStatus): Promise<boolean> {
+  const result = await prisma.$executeRaw`
+    UPDATE "shp_orders" SET "status" = ${status}, "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${id} AND "status" != ${status}
+  `
+  return result > 0
+}
+
+// Which pre-order lines on this order are still waiting on stock.
+//
+// The dispatch date snapshotted on the line is the primary signal: a date still
+// in the future means the stock is not due yet. A date that has passed means it
+// has landed, so the line is ready.
+//
+// A line with no date is the awkward one - a "coming soon, date to be confirmed"
+// pre-order. There the product's own is_pre_order flag stands in for the date:
+// while the owner still has the product marked as a pre-order, nothing has
+// arrived. Unticking it once stock lands is what clears the line, and it is the
+// owner's escape hatch out of an otherwise permanent hold. If the product row
+// has gone altogether the owner has no lever left to pull, so the line is
+// treated as ready rather than jamming the order shut for good.
+//
+// This lives here rather than in a route because two callers need the SAME
+// answer: the status route ENFORCES the HOLD_ALL policy with it, and the
+// dispatch route EXPLAINS the hold to the owner with it. Two copies of a rule
+// that decides whether an order may go out would drift, and the two would then
+// disagree about whether the shop is holding the order.
+export async function outstandingPreOrderItems(items: ShpOrderItem[]): Promise<ShpOrderItem[]> {
+  const now = Date.now()
+  const outstanding: ShpOrderItem[] = []
+  for (const item of items) {
+    if (!item.isPreOrder) continue
+    if (item.preOrderDispatchDate) {
+      if (item.preOrderDispatchDate.getTime() > now) outstanding.push(item)
+      continue
+    }
+    if (!item.productId) continue
+    const product = await getProductById(item.productId)
+    if (product?.isPreOrder) outstanding.push(item)
+  }
+  return outstanding
+}
+
+// Hands back the pre-order allocation an order is holding, for a cancellation.
+// Two guards keep it honest:
+//  - `paid_at IS NOT NULL`, because the allocation is only ever consumed by
+//    fulfillPaidOrder, which runs off markOrderPaid. An order cancelled before
+//    it paid never took a slot, so releasing one would invent allocation.
+//  - `quantity - refunded_qty`, so only the units still held are released. If a
+//    refund already gave some units back, cancelling the remainder cannot
+//    double-release them.
+// Call it only on a genuine transition into CANCELLED (see updateOrderStatus).
+export async function releasePreOrderAllocationForOrder(orderId: string): Promise<void> {
+  const rows = await prisma.$queryRaw<{ product_id: string; qty: number }[]>`
+    SELECT oi."product_id" AS product_id, SUM(oi."quantity" - oi."refunded_qty")::int AS qty
+    FROM "shp_order_items" oi
+    JOIN "shp_orders" o ON o."id" = oi."order_id"
+    WHERE oi."order_id" = ${orderId}
+      AND oi."is_pre_order" = true
+      AND oi."product_id" IS NOT NULL
+      AND o."paid_at" IS NOT NULL
+    GROUP BY oi."product_id"
+    HAVING SUM(oi."quantity" - oi."refunded_qty") > 0
+  `
+  for (const row of rows) {
+    await decrementPreOrderCount(row.product_id, row.qty)
+  }
 }
 
 // Idempotent - replayed webhook events must be no-ops (spec 7.1/7.2). Only
@@ -173,7 +259,38 @@ export async function markOrderPaid(id: string, paymentReference: string): Promi
   return result > 0
 }
 
-export async function markOrderPaymentFailed(id: string): Promise<void> {
+// Two distinct events land here:
+//  - reason 'FAILED' (the default, and what the Stripe/PayPal failure webhooks
+//    and the confirm route pass): a payment attempt that never cleared. Only a
+//    still-PENDING order is touched, so a stray late failure can never quietly
+//    undo an order that has already been paid.
+//  - reason 'CHARGEBACK' (the GoCardless settle handler passes this when a
+//    settled payment is later charged back or fails at the bank): the money has
+//    been clawed back AFTER the order was marked PAID, and the goods may already
+//    have shipped. That must be loud, not a silent no-op - flip the order to a
+//    visible reversed state and leave the owner a note.
+export async function markOrderPaymentFailed(id: string, reason: 'FAILED' | 'CHARGEBACK' = 'FAILED'): Promise<void> {
+  if (reason === 'CHARGEBACK') {
+    const reversed = await prisma.$executeRaw`
+      UPDATE "shp_orders" SET "payment_status" = 'FAILED', "status" = 'ON_HOLD', "updated_at" = CURRENT_TIMESTAMP
+      WHERE "id" = ${id} AND "payment_status" = 'PAID'
+    `
+    // Only when a PAID order actually flipped (guards against a replayed webhook
+    // re-noting an order that has already been reversed).
+    if (reversed > 0) {
+      await prisma.$executeRaw`
+        INSERT INTO "shp_order_notes" ("order_id", "content", "is_internal", "created_by")
+        VALUES (
+          ${id},
+          ${'Payment was reversed after this order was marked paid (chargeback or a late bank failure). The order has been placed on hold - check whether anything shipped against funds that have now been clawed back.'},
+          true,
+          ${null}
+        )
+      `
+    }
+    return
+  }
+
   await prisma.$executeRaw`
     UPDATE "shp_orders" SET "payment_status" = 'FAILED', "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${id} AND "payment_status" = 'PENDING'
@@ -273,11 +390,14 @@ export async function countPriorOrdersByEmail(email: string, excludeOrderId?: st
 // Counts prior PAID orders by this email that actually used the given coupon -
 // the correct basis for a coupon's per-customer limit (countPriorOrdersByEmail
 // counts every order regardless of coupon, which both over- and under-counts).
-export async function countPriorCouponOrdersByEmail(email: string, couponCode: string): Promise<number> {
+// Keyed on the resolved coupon_id, never the raw coupon_code: a code is only
+// stored on an order when it genuinely resolved to a coupon, and the id is
+// immune to a coupon later being renamed.
+export async function countPriorCouponOrdersByEmail(email: string, couponId: string): Promise<number> {
   const rows = await prisma.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*)::bigint AS count FROM "shp_orders"
     WHERE lower("customer_email") = lower(${email}) AND "payment_status" = 'PAID'
-      AND lower("coupon_code") = lower(${couponCode})
+      AND "coupon_id" = ${couponId}
   `
   return Number(rows[0]?.count ?? 0)
 }

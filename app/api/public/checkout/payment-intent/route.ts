@@ -5,6 +5,7 @@ import { findShippingZoneForPostcode, getShippingRateById } from '@/modules/shop
 import { createPendingOrder } from '@/modules/shop/lib/db/orders'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
 import { getShopConfigCached, getAvailablePaymentMethods } from '@/modules/shop/lib/config'
+import { formatMoney } from '@/modules/shop/lib/money'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
@@ -68,6 +69,33 @@ export async function POST(request: NextRequest) {
     customerEmail: data.customerEmail,
   })
 
+  // Enforce the same min/max order-value gate the checkout-session route applies.
+  // The session route only advises the browser; this route actually creates a
+  // payable order, so a direct POST that skips the session step must be caught
+  // here or a below-minimum (or over-maximum) cart yields a chargeable order.
+  if (config.minimumOrderValue != null && totals.subtotal < config.minimumOrderValue) {
+    return NextResponse.json({ error: `Minimum order value is ${formatMoney(config.minimumOrderValue, config.currencySymbol)}` }, { status: 400 })
+  }
+  if (config.maximumOrderValue != null && totals.subtotal > config.maximumOrderValue) {
+    return NextResponse.json({ error: `Maximum order value is ${formatMoney(config.maximumOrderValue, config.currencySymbol)}` }, { status: 400 })
+  }
+
+  // No mixed-cart gate here, and that is deliberate rather than an oversight.
+  // `preOrderMixedCartBehaviour` has exactly two values and neither one forbids
+  // a cart that mixes pre-order and in-stock items:
+  //   HOLD_ALL     - accept the order, hold the whole dispatch until every item
+  //                  is in stock. A fulfilment policy, not a checkout rule.
+  //   PROMPT_SPLIT - accept the order and offer to ship the in-stock items
+  //                  separately. A shipping choice, not a checkout rule.
+  // The storefront agrees: nothing on the client reads the setting, and the
+  // checkout review step uses `hasPreOrderItems` only to print a notice - it
+  // never blocks the Place order button. Rejecting a mixed cart here would
+  // invent a restriction the shop owner never asked for and would stop real
+  // customers paying, so the setting stays advisory until it gains a value
+  // that actually means "refuse". The genuine pre-order limit - the per-product
+  // `preOrderMaxQuantity` cap - is already enforced above, via resolveCartLines
+  // marking the line unavailable and the 409 that follows.
+
   const shippingRate = data.shippingRateId ? await getShippingRateById(data.shippingRateId) : null
   const member = await getMemberFromCookie().catch(() => null)
   const orderNumber = await generateOrderNumber()
@@ -88,7 +116,10 @@ export async function POST(request: NextRequest) {
     taxMode: totals.taxMode,
     currency: config.currency,
     couponId: totals.couponId, // the coupon actually resolved server-side, if any
-    couponCode: data.couponCode ?? null,
+    // Only record the code when a coupon genuinely resolved. Storing the raw
+    // client code for a rejected coupon (expired/maxed) let fulfilment later
+    // burn that coupon's usage against an order it never discounted.
+    couponCode: totals.couponId ? (data.couponCode ?? null) : null,
     paymentMethod: data.paymentMethod,
     shippingRateId: shippingRate?.id ?? null,
     shippingRateName: shippingRate?.name ?? null,

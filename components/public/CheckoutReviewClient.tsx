@@ -7,6 +7,19 @@ import { getCheckoutState, isContactAndShippingComplete, subscribeCheckoutState 
 type SessionSummary = {
   subtotal: number; discountAmount: number; shippingAmount: number; taxAmount: number; total: number
   currencySymbol: string; hasPreOrderItems: boolean
+  // Mirrors the shop's preOrderMixedCartBehaviour setting, returned by the
+  // checkout session route. Optional so a response from an older cached bundle
+  // still renders; the fallback matches the setting's own default.
+  preOrderMixedCartBehaviour?: 'HOLD_ALL' | 'PROMPT_SPLIT'
+}
+
+// Both values are fulfilment policies, so this notice is the only place the
+// setting reaches the shopper. It tells them what will actually happen to their
+// parcel - it never gates the Place order button, because a mixed basket is
+// always purchasable.
+const PRE_ORDER_NOTICE: Record<'HOLD_ALL' | 'PROMPT_SPLIT', string> = {
+  HOLD_ALL: 'This order contains a pre-order item, so the whole order is sent together once everything has arrived.',
+  PROMPT_SPLIT: 'This order contains a pre-order item. Anything in stock can be sent straight away, with the pre-order to follow.',
 }
 
 // Client island for the checkout review step (order summary + place order).
@@ -68,7 +81,7 @@ export function CheckoutReviewClient() {
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Order review</h2>
       {summary.hasPreOrderItems && (
         <p style={{ background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem', fontSize: '0.875rem' }}>
-          This order contains a pre-order item.
+          {PRE_ORDER_NOTICE[summary.preOrderMixedCartBehaviour ?? 'HOLD_ALL']}
         </p>
       )}
       <dl style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.25rem 1rem', margin: 0 }}>

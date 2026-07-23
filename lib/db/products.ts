@@ -429,12 +429,64 @@ export async function incrementPreOrderCount(productId: string, qty: number): Pr
   `
 }
 
+// The counterpart to incrementPreOrderCount, for a pre-order that is cancelled
+// or refunded. Without it the allocation only ever runs one way: a cancelled
+// pre-order kept its slot forever, and once pre_order_count had touched the cap
+// the auto-flip above left is_pre_order = false permanently, quietly taking the
+// product out of pre-order mode even though nobody was actually waiting on
+// those units.
+//
+// One statement, so it is safe to repeat and cannot leave the counter and the
+// flag disagreeing. Every column on the right-hand side reads the pre-update
+// row, which is what makes the re-enable condition legible: "the count was at
+// or above the cap before this release, and is below it after".
+//
+// GREATEST(...,0) means a double call clamps instead of going negative, but the
+// counter is still only correct if callers release each unit once - the status
+// route gates on a genuine transition, and the cancel path releases only the
+// units that have not already been released by a refund.
+//
+// Re-enabling is deliberately narrow. It fires only when the product was sitting
+// at its cap, which is precisely the state incrementPreOrderCount creates, so a
+// product the owner switched off by hand while it was below its cap is never
+// switched back on. A product with no cap is never re-enabled either - nothing
+// auto-disabled it, so the flag is the owner's and stays the owner's.
+export async function decrementPreOrderCount(productId: string, qty: number): Promise<void> {
+  if (qty <= 0) return
+  await prisma.$executeRaw`
+    UPDATE "shp_products" SET
+      "pre_order_count" = GREATEST("pre_order_count" - ${qty}, 0),
+      "is_pre_order" = CASE
+        WHEN "is_pre_order" = false
+         AND "pre_order_max_quantity" IS NOT NULL
+         AND "pre_order_count" >= "pre_order_max_quantity"
+         AND GREATEST("pre_order_count" - ${qty}, 0) < "pre_order_max_quantity"
+        THEN true
+        ELSE "is_pre_order"
+      END,
+      "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${productId}
+  `
+}
+
 export async function decrementStockOnShip(orderItemIds: string[]): Promise<void> {
   if (orderItemIds.length === 0) return
+  // Aggregate the ordered quantity per product FIRST, then join that one row per
+  // product to the product row. A plain join to shp_order_items applies the
+  // UPDATE only once per product even when several order-item rows point at the
+  // same product (a personalised cart deliberately allows two lines of the same
+  // product), so an order of qty 1 + qty 3 of one product would decrement by 3,
+  // not 4, and silently oversell. Summing first decrements by the true total
+  // exactly once.
   await prisma.$executeRaw`
-    UPDATE "shp_products" p SET "stock_count" = GREATEST(COALESCE(p."stock_count", 0) - oi."quantity", 0)
-    FROM "shp_order_items" oi
-    WHERE oi."id" IN (${Prisma.join(orderItemIds)}) AND oi."product_id" = p."id" AND p."track_inventory" = true
+    UPDATE "shp_products" p SET "stock_count" = GREATEST(COALESCE(p."stock_count", 0) - agg."ordered_qty", 0)
+    FROM (
+      SELECT oi."product_id" AS product_id, SUM(oi."quantity")::int AS ordered_qty
+      FROM "shp_order_items" oi
+      WHERE oi."id" IN (${Prisma.join(orderItemIds)}) AND oi."product_id" IS NOT NULL
+      GROUP BY oi."product_id"
+    ) agg
+    WHERE agg."product_id" = p."id" AND p."track_inventory" = true
   `
 }
 

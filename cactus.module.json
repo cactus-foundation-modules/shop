@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.89",
+  "version": "0.1.90",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.571",
@@ -104,6 +104,10 @@
     {
       "path": "/api/m/shop/cron/low-stock-alerts",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/m/shop/cron/reconcile-refunds",
+      "schedule": "30 6 * * *"
     }
   ],
   "puckBlocks": [

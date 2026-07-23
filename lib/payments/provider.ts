@@ -27,7 +27,20 @@ export interface ShpPaymentProvider {
   confirmPayment(order: ShpOrderDraft, payload: unknown): Promise<ShpPaymentResult>
   refundOrder(refund: ShpRefundRequest): Promise<ShpRefundResult>
   handleWebhook?(req: Request): Promise<ShpWebhookResult>
+  // Optional: answers "did this refund actually happen?" for a refund row whose
+  // outcome was never recorded. Only the stale-PENDING reconciler calls it. A
+  // provider that cannot answer simply omits it, and its stale rows are reported
+  // to the owner instead of being resolved automatically.
+  getRefundStatus?(refundRowId: string, providerReference: string | null): Promise<ShpRefundStatusLookup>
 }
+
+// Deliberately three-valued. 'unknown' is not a failure - it means do not touch
+// the row, because guessing about money in either direction is worse than
+// leaving it flagged for a human.
+export type ShpRefundStatusLookup =
+  | { status: 'succeeded'; providerRefundId: string | null }
+  | { status: 'failed' }
+  | { status: 'unknown' }
 
 export type ShpPaymentIntent = {
   clientSecret?: string // Stripe
@@ -51,6 +64,11 @@ export type ShpRefundRequest = {
   amount: number
   currency: string
   items: Array<{ name: string; quantity: number; amount: number }>
+  // Deterministic per-refund key (the shop passes the refund row id). Providers
+  // that support it forward it as the upstream idempotency key so a retried
+  // refund call can never charge the same refund twice. Optional: providers may
+  // ignore it.
+  idempotencyKey?: string
 }
 
 export type ShpRefundResult = {

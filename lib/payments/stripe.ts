@@ -2,8 +2,9 @@
 // re-validates the PaymentIntent's own status/amount/currency before trusting
 // a client-reported "confirmed" - never trust the client alone.
 import type {
-  ShpOrderDraft, ShpPaymentIntent, ShpPaymentProvider, ShpPaymentResult, ShpRefundRequest, ShpRefundResult, ShpWebhookResult,
+  ShpOrderDraft, ShpPaymentIntent, ShpPaymentProvider, ShpPaymentResult, ShpRefundRequest, ShpRefundResult, ShpRefundStatusLookup, ShpWebhookResult,
 } from '@/modules/shop/lib/payments/provider'
+import { getOrderByPaymentReference } from '@/modules/shop/lib/db/orders'
 
 let stripeClient: import('stripe').default | null = null
 
@@ -52,13 +53,53 @@ async function confirmPayment(order: ShpOrderDraft, payload: unknown): Promise<S
 async function refundOrder(refund: ShpRefundRequest): Promise<ShpRefundResult> {
   const stripe = await getStripe()
   try {
-    const result = await stripe.refunds.create({
-      payment_intent: refund.providerReference,
-      amount: toMinorUnits(refund.amount),
-    })
+    const result = await stripe.refunds.create(
+      {
+        payment_intent: refund.providerReference,
+        amount: toMinorUnits(refund.amount),
+        // Stamped so a refund whose outcome we never learned (the process died
+        // between issuing it and recording it) can be found again later and
+        // matched back to its row - see getRefundStatus.
+        ...(refund.idempotencyKey ? { metadata: { shpRefundId: refund.idempotencyKey } } : {}),
+      },
+      // Stripe dedupes on the idempotency key, so a retried refund of the same
+      // refund row never issues a second refund.
+      refund.idempotencyKey ? { idempotencyKey: refund.idempotencyKey } : undefined
+    )
     return { success: true, providerRefundId: result.id }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Stripe refund failed' }
+  }
+}
+
+// Did a refund we are unsure about actually happen?
+//
+// Used only by the stale-PENDING reconciler: a refund row can be left in limbo if
+// the process died after the provider call was issued but before the outcome was
+// written. Rather than guess (and guessing wrong means either refunding twice or
+// telling a customer they were refunded when they were not), ask Stripe.
+//
+// Matched on the shpRefundId metadata stamped at creation, which is the refund
+// row id. Returns 'unknown' whenever we cannot answer confidently - the caller
+// must leave the row alone in that case.
+async function getRefundStatus(refundRowId: string, providerReference: string | null): Promise<ShpRefundStatusLookup> {
+  if (!providerReference) return { status: 'unknown' }
+  const stripe = await getStripe()
+  try {
+    const refunds = await stripe.refunds.list({ payment_intent: providerReference, limit: 100 })
+    const match = refunds.data.find((r) => r.metadata?.shpRefundId === refundRowId)
+    if (!match) {
+      // Nothing carrying our id on a payment intent whose refunds we can see: the
+      // request never landed. Safe to call failed - a refund Stripe has no record
+      // of did not move any money.
+      return { status: 'failed' }
+    }
+    if (match.status === 'succeeded') return { status: 'succeeded', providerRefundId: match.id }
+    if (match.status === 'failed' || match.status === 'canceled') return { status: 'failed' }
+    // 'pending' / 'requires_action' - still in flight, ask again next run.
+    return { status: 'unknown' }
+  } catch {
+    return { status: 'unknown' }
   }
 }
 
@@ -95,9 +136,15 @@ async function handleWebhook(req: Request): Promise<ShpWebhookResult> {
 
   if (event.type === 'charge.refunded') {
     const charge = event.data.object as import('stripe').default.Charge
-    const orderId = charge.metadata?.shpOrderId
-    if (!orderId) return {}
-    return { orderId, status: charge.refunded ? 'REFUNDED' : 'PARTIALLY_REFUNDED' }
+    // The shpOrderId metadata is only ever set on the PaymentIntent, and Stripe
+    // does NOT copy it onto the Charge - so resolve the order via the charge's
+    // payment_intent (the reference we stored when the order was marked paid)
+    // rather than charge.metadata, which is always empty here.
+    const paymentIntentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id
+    if (!paymentIntentId) return {}
+    const order = await getOrderByPaymentReference(paymentIntentId)
+    if (!order) return {}
+    return { orderId: order.id, status: charge.refunded ? 'REFUNDED' : 'PARTIALLY_REFUNDED' }
   }
 
   return {}
@@ -110,4 +157,5 @@ export const stripeProvider: ShpPaymentProvider = {
   confirmPayment,
   refundOrder,
   handleWebhook,
+  getRefundStatus,
 }

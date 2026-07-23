@@ -1,0 +1,14 @@
+-- A refund is recorded as PENDING, then sent to the payment provider with no
+-- database transaction held, then settled. If the process dies in that middle
+-- step (module routes are hard-capped at 60s), the row is left PENDING and its
+-- real outcome at the provider is unknown.
+--
+-- Settling such a row later needs to know which units it covered, but
+-- shp_refund_items is only written on success - by design, so those rows never
+-- claim a customer was refunded when they were not. The breakdown was therefore
+-- simply lost, and a stranded refund could never be completed automatically.
+--
+-- So the intent is parked here at PENDING time: [{orderItemId, quantity, amount}].
+-- It is what was ASKED FOR, never proof of what happened. shp_refund_items
+-- remains the record of fact.
+ALTER TABLE "shp_refunds" ADD COLUMN IF NOT EXISTS "intended_items" JSONB;

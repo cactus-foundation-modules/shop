@@ -1,7 +1,7 @@
 import { getSiteUrl } from '@/lib/config/env'
 import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { decrementStockOnShip, incrementPreOrderCount, getProductById } from '@/modules/shop/lib/db/products'
-import { getCouponByCode, incrementCouponUsage } from '@/modules/shop/lib/db/discounts'
+import { incrementCouponUsage } from '@/modules/shop/lib/db/discounts'
 import { createDigitalDownload } from '@/modules/shop/lib/db/digital'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { sendShopEmail } from '@/modules/shop/lib/email'
@@ -28,9 +28,14 @@ export async function fulfillPaidOrder(orderId: string): Promise<void> {
     if (item.productId) await incrementPreOrderCount(item.productId, item.quantity)
   }
 
-  if (order.couponCode) {
-    const coupon = await getCouponByCode(order.couponCode)
-    if (coupon) await incrementCouponUsage(coupon.id)
+  // Only burn a coupon redemption when a coupon was genuinely resolved at
+  // checkout (coupon_id is non-null). The raw coupon_code the shopper typed is
+  // never the basis for this: an expired or maxed-out code is dropped by
+  // resolveDiscounts and left off the order, so it must never bump usage_count
+  // or a later "you have already used this coupon" would fire against a code
+  // that never actually applied.
+  if (order.couponId) {
+    await incrementCouponUsage(order.couponId)
   }
 
   for (const item of items.filter((i) => i.productType === 'DIGITAL')) {

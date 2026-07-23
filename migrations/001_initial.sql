@@ -478,6 +478,10 @@ CREATE TABLE IF NOT EXISTS "shp_refunds" (
     "reason" TEXT,
     "provider_refund_id" TEXT,
     "status" TEXT NOT NULL DEFAULT 'PENDING',
+    -- What this refund was asked to cover: [{orderItemId, quantity, amount}].
+    -- Intent only, so a refund stranded mid-flight can still be settled later.
+    -- shp_refund_items stays the record of what was actually refunded.
+    "intended_items" JSONB,
     "created_by" TEXT NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -502,6 +506,50 @@ CREATE TABLE IF NOT EXISTS "shp_refund_items" (
 
 CREATE INDEX IF NOT EXISTS "shp_refund_items_refund_id_idx" ON "shp_refund_items" ("refund_id");
 CREATE INDEX IF NOT EXISTS "shp_refund_items_order_item_id_idx" ON "shp_refund_items" ("order_item_id");
+
+-- ---------------------------------------------------------------------------
+-- Shipments (partial dispatch)
+--
+-- Same shape as the refunds pair above: a header row per dispatch event and a
+-- line per order item with the quantity that went out, so an order can be part
+-- shipped. Dispatched quantity is DERIVED by summing shp_shipment_items - there
+-- is deliberately no dispatched_qty counter column to drift.
+--
+-- Also shipped as migrations/008_shipments.sql for installs that predate this
+-- block; both are idempotent, so the overlap is harmless.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS "shp_shipments" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "order_id" TEXT NOT NULL,
+    -- When the parcel actually left, which is not always when it was recorded.
+    "shipped_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "tracking_number" TEXT,
+    "carrier" TEXT,
+    "notes" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "shp_shipments_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "shp_shipments_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "shp_shipments_order_id_idx" ON "shp_shipments" ("order_id");
+
+CREATE TABLE IF NOT EXISTS "shp_shipment_items" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "shipment_id" TEXT NOT NULL,
+    "order_item_id" TEXT NOT NULL,
+    "quantity" INTEGER NOT NULL,
+
+    CONSTRAINT "shp_shipment_items_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "shp_shipment_items_quantity_check" CHECK ("quantity" > 0),
+    CONSTRAINT "shp_shipment_items_shipment_id_fkey" FOREIGN KEY ("shipment_id") REFERENCES "shp_shipments"("id") ON DELETE CASCADE,
+    CONSTRAINT "shp_shipment_items_order_item_id_fkey" FOREIGN KEY ("order_item_id") REFERENCES "shp_order_items"("id") ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS "shp_shipment_items_shipment_id_idx" ON "shp_shipment_items" ("shipment_id");
+CREATE INDEX IF NOT EXISTS "shp_shipment_items_order_item_id_idx" ON "shp_shipment_items" ("order_item_id");
 
 -- ---------------------------------------------------------------------------
 -- Order notes and email log
@@ -582,6 +630,17 @@ INSERT INTO "shp_email_templates" ("trigger", "subject", "body_html") VALUES
     ('LOW_STOCK', 'Low stock alert: {{productName}}', '<p>{{productName}} is running low on stock ({{stockCount}} remaining).</p>'),
     ('BACK_IN_STOCK', '{{productName}} is back in stock', '<p>Good news - {{productName}} is back in stock.</p><p><a href="{{productUrl}}">View product</a></p><p><a href="{{unsubscribeUrl}}">Unsubscribe from this alert</a></p>'),
     ('IMPORT_COMPLETE', 'Product import complete: {{createdCount}} created, {{updatedCount}} updated', '<p>Your product import has finished.</p><p>Created: {{createdCount}}, Updated: {{updatedCount}}, Skipped: {{skippedCount}}.</p>')
+ON CONFLICT ("trigger") DO NOTHING;
+
+-- Part-dispatch (see migrations/008_shipments.sql, which seeds the same row for
+-- installs that already exist). Kept as its own statement so the block above is
+-- left exactly as it was. STATUS_SHIPPED cannot cover this: it tells the
+-- customer the whole order is on its way, which is a lie when three of five
+-- items are still on the shelf. The {{#if}} blocks are the same
+-- literal-'true' flags lib/email.ts supports, and they carry the final parcel
+-- too, so one template serves every shipment.
+INSERT INTO "shp_email_templates" ("trigger", "subject", "body_html") VALUES
+    ('PARTIAL_SHIPPED', '{{#if hasOutstanding}}Part of your order {{orderNumber}} is on its way{{/if}}{{#if isFinalPart}}The last part of your order {{orderNumber}} is on its way{{/if}}', '<p>Hi {{customerName}},</p>{{#if hasOutstanding}}<p>Good news - part of your order <strong>{{orderNumber}}</strong> is on its way. The rest of it is still with us, and we will email you again as soon as it is dispatched.</p>{{/if}}{{#if isFinalPart}}<p>Good news - the last part of your order <strong>{{orderNumber}}</strong> is on its way. That is everything from this order now dispatched.</p>{{/if}}<p><strong>In this parcel:</strong></p><p>{{dispatchedItems}}</p>{{#if hasOutstanding}}<p><strong>Still to come:</strong></p><p>{{outstandingItems}}</p>{{/if}}{{#if hasCarrier}}<p>Sent with {{carrier}}.</p>{{/if}}{{#if hasTracking}}<p>Tracking number: {{trackingNumber}}</p>{{/if}}<p>Parcels sent separately can arrive a day or two apart, so please do not worry if they turn up at different times.</p><p>Thanks for shopping with {{shopName}}.</p>')
 ON CONFLICT ("trigger") DO NOTHING;
 
 -- ---------------------------------------------------------------------------

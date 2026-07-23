@@ -1,6 +1,7 @@
 // PROTECTED - PayPal payment provider integration (spec 7.2). Raw REST calls,
 // no SDK dependency, to keep the bundle lean (spec's own instruction).
 import { getPayPalApiBase } from '@/modules/shop/lib/env'
+import { getOrderById } from '@/modules/shop/lib/db/orders'
 import type {
   ShpOrderDraft, ShpPaymentIntent, ShpPaymentProvider, ShpPaymentResult, ShpRefundRequest, ShpRefundResult, ShpWebhookResult,
 } from '@/modules/shop/lib/payments/provider'
@@ -82,6 +83,9 @@ async function refundOrder(refund: ShpRefundRequest): Promise<ShpRefundResult> {
   try {
     const res = await paypalFetch(`/v2/payments/captures/${refund.providerReference}/refund`, {
       method: 'POST',
+      // PayPal-Request-Id makes the refund idempotent: a retry with the same key
+      // returns the original refund rather than issuing a second one.
+      headers: refund.idempotencyKey ? { 'PayPal-Request-Id': refund.idempotencyKey } : {},
       body: JSON.stringify({ amount: { currency_code: refund.currency, value: refund.amount.toFixed(2) } }),
     })
     if (!res.ok) return { success: false, error: `PayPal refund failed: ${res.status}` }
@@ -120,7 +124,15 @@ async function handleWebhook(req: Request): Promise<ShpWebhookResult> {
   const verified = await verifyWebhookSignature(req, rawBody)
   if (!verified) return { error: 'Webhook signature verification failed' }
 
-  const event = JSON.parse(rawBody) as { event_type: string; resource: { custom_id?: string; id: string } }
+  const event = JSON.parse(rawBody) as {
+    event_type: string
+    resource: {
+      custom_id?: string
+      id: string
+      amount?: { value?: string }
+      seller_payable_breakdown?: { total_refunded_amount?: { value?: string } }
+    }
+  }
 
   if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED') {
     const orderId = event.resource.custom_id
@@ -131,7 +143,34 @@ async function handleWebhook(req: Request): Promise<ShpWebhookResult> {
   if (event.event_type === 'PAYMENT.CAPTURE.REFUNDED') {
     const orderId = event.resource.custom_id
     if (!orderId) return {}
-    return { orderId, status: 'REFUNDED' }
+
+    // PayPal fires this same event for a PARTIAL refund, so reporting REFUNDED
+    // unconditionally marked a £200 order fully refunded off the back of a £5
+    // refund. There is no "fully refunded" flag on the resource (unlike Stripe's
+    // charge.refunded), so compare what PayPal says has been refunded in total
+    // against what the order was actually charged.
+    //
+    // seller_payable_breakdown.total_refunded_amount is CUMULATIVE across every
+    // refund on that capture, which is what we want - a second partial refund
+    // that happens to complete the order still resolves to REFUNDED. Where it is
+    // absent, fall back to this refund's own amount, which is correct for the
+    // common single-refund case and errs towards PARTIALLY_REFUNDED otherwise.
+    const order = await getOrderById(orderId)
+    if (!order) return {}
+
+    const refundedSoFar = Number(
+      event.resource.seller_payable_breakdown?.total_refunded_amount?.value ?? event.resource.amount?.value ?? '0'
+    )
+    const orderTotal = Number(order.total)
+    if (!Number.isFinite(refundedSoFar) || !Number.isFinite(orderTotal) || orderTotal <= 0) {
+      // Cannot tell. Say partial rather than declaring an order fully refunded
+      // on a number we do not trust - understating is the recoverable direction.
+      return { orderId, status: 'PARTIALLY_REFUNDED' }
+    }
+
+    // Penny tolerance for rounding on the way through PayPal.
+    const fully = refundedSoFar + 0.01 >= orderTotal
+    return { orderId, status: fully ? 'REFUNDED' : 'PARTIALLY_REFUNDED' }
   }
 
   return {}

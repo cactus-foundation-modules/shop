@@ -191,7 +191,7 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       if (!['PHYSICAL', 'DIGITAL', 'SERVICE'].includes(type)) { errors.push({ row: rowNumber, reason: `Invalid type "${type}"` }); skipped++; continue }
       const priceRaw = cell(row, 'price')
       const price = Number(priceRaw)
-      if (!priceRaw || Number.isNaN(price)) { errors.push({ row: rowNumber, reason: 'Missing or invalid price' }); skipped++; continue }
+      if (!priceRaw || Number.isNaN(price) || price < 0) { errors.push({ row: rowNumber, reason: 'Missing or invalid price' }); skipped++; continue }
 
       const taxClassCode = cell(row, 'tax_class')
       let taxClass = taxClassCode ? taxClassByCode.get(taxClassCode) ?? null : null

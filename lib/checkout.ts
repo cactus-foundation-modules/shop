@@ -126,7 +126,7 @@ export async function resolveDiscounts(subtotal: number, couponCode: string | nu
     // Q14: per-customer limit enforced by prior PAID orders BY THIS EMAIL THAT
     // USED THIS COUPON - not every order the customer has ever placed.
     if (coupon.perCustomerLimit != null && customerEmail) {
-      const priorUses = await countPriorCouponOrdersByEmail(customerEmail, coupon.code)
+      const priorUses = await countPriorCouponOrdersByEmail(customerEmail, coupon.id)
       if (priorUses >= coupon.perCustomerLimit) return { discountAmount: 0, freeShipping: false, couponId: null, couponCode: null, error: 'You have already used this coupon' }
     }
 

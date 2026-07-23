@@ -22,6 +22,7 @@ const TEMPLATE_LABELS: Record<ShpEmailTemplateTrigger, string> = {
   STATUS_SHIPPED: 'Order shipped',
   STATUS_COMPLETED: 'Order completed',
   STATUS_CANCELLED: 'Order cancelled',
+  PARTIAL_SHIPPED: 'Part of an order dispatched',
   ADMIN_NEW_ORDER: 'New order (admin alert)',
   LOW_STOCK: 'Low stock (admin alert)',
   BACK_IN_STOCK: 'Back in stock',

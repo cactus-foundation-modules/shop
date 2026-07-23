@@ -298,6 +298,47 @@ export type ShpRefund = {
 
 export type ShpRefundItem = { id: string; refundId: string; orderItemId: string; quantity: number; amount: string }
 
+export type ShpShipment = {
+  id: string
+  orderId: string
+  shippedAt: Date
+  trackingNumber: string | null
+  carrier: string | null
+  notes: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type ShpShipmentItem = { id: string; shipmentId: string; orderItemId: string; quantity: number }
+
+export type ShpShipmentWithItems = ShpShipment & { items: ShpShipmentItem[] }
+
+// One order line's dispatch position. dispatchedQty is always summed from
+// shp_shipment_items - there is no counter column on the order line - and
+// outstandingQty is what is still owed to the customer once refunded units are
+// taken off, i.e. quantity - refundedQty - dispatchedQty, floored at zero.
+export type ShpOrderItemDispatch = {
+  orderItemId: string
+  productName: string
+  quantity: number
+  refundedQty: number
+  dispatchedQty: number
+  outstandingQty: number
+}
+
+// Derived display state for a whole order. Deliberately NOT an order status:
+// the ShpOrderStatus list is fixed, and dispatch progress is worked out from
+// the lines every time it is shown.
+export type ShpOrderDispatchSummary = {
+  orderId: string
+  lines: ShpOrderItemDispatch[]
+  // Every dispatchable unit has gone out. False when there is nothing to
+  // dispatch at all (a fully refunded or empty order).
+  fullyDispatched: boolean
+  // Something has gone out, but not everything.
+  partiallyDispatched: boolean
+}
+
 export type ShpOrderNote = {
   id: string
   orderId: string
@@ -321,6 +362,10 @@ export type ShpSavedAddress = {
 
 export type ShpEmailTemplateTrigger =
   | 'ORDER_CONFIRMED' | 'STATUS_PROCESSING' | 'STATUS_SHIPPED' | 'STATUS_COMPLETED' | 'STATUS_CANCELLED'
+  // Sent per shipment when only some of an order's lines have gone out.
+  // STATUS_SHIPPED says the whole order is on its way, so it cannot stand in
+  // for this one. See lib/shipment-email.ts.
+  | 'PARTIAL_SHIPPED'
   | 'ADMIN_NEW_ORDER' | 'LOW_STOCK' | 'BACK_IN_STOCK' | 'IMPORT_COMPLETE'
 export type ShpEmailTemplate = {
   id: string
