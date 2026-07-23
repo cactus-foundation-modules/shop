@@ -179,6 +179,19 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
   const productsBySlug = await getProductsBySlugs([...slugSet])
   // Tax classes are looked up by a short code many rows share; resolve each once.
   const taxClassByCode = new Map<string, Awaited<ReturnType<typeof getTaxClassByCode>>>()
+  // Category, tag and collection cells repeat across most rows (a catalogue has
+  // few distinct terms), yet each used to cost a slug lookup per name per row.
+  // Resolve each distinct cell value to its ids once and reuse it - creates
+  // included, since a term created for one row exists for every later one.
+  const termIdCache = new Map<string, string[]>()
+  async function cachedTermIds(kind: string, names: string[], resolve: () => Promise<string[]>): Promise<string[]> {
+    const key = `${kind}:${names.join('|')}`
+    const hit = termIdCache.get(key)
+    if (hit) return hit
+    const ids = await resolve()
+    termIdCache.set(key, ids)
+    return ids
+  }
 
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i]!
@@ -295,15 +308,15 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       const mediaCells = parseMediaCells(cell(row, 'image_urls'), cell(row, 'image_alt'))
 
       if (categoryNames.length) {
-        const ids = await resolveTermIds(categoryNames, getCategoryBySlug, (n, s) => createCategory({ name: n, slug: s }))
+        const ids = await cachedTermIds('cat', categoryNames, () => resolveTermIds(categoryNames, getCategoryBySlug, (n, s) => createCategory({ name: n, slug: s })))
         if (!productId || !sameIdSet(ids, await getProductCategoryIds(resolvedId))) { await setProductCategories(resolvedId, ids); rowChanged = true }
       }
       if (tagNames.length) {
-        const ids = await resolveTagIds(tagNames)
+        const ids = await cachedTermIds('tag', tagNames, () => resolveTagIds(tagNames))
         if (!productId || !sameIdSet(ids, await getProductTagIds(resolvedId))) { await setProductTags(resolvedId, ids); rowChanged = true }
       }
       if (collectionNames.length) {
-        const ids = await resolveTermIds(collectionNames, getCollectionBySlug, (n, s) => createCollection({ name: n, slug: s }))
+        const ids = await cachedTermIds('col', collectionNames, () => resolveTermIds(collectionNames, getCollectionBySlug, (n, s) => createCollection({ name: n, slug: s })))
         if (!productId || !sameIdOrder(ids, await getProductCollectionIds(resolvedId))) { await setProductCollections(resolvedId, ids); rowChanged = true }
       }
       if (mediaCells.length) {
