@@ -113,18 +113,18 @@ export async function listSuppliersWithCounts(): Promise<ShpSupplierWithCounts[]
 }
 
 /**
- * Supplier names with their catalogues, name-ordered - the shape an export wants
- * (the Google Sheet module's Supplier Catalogues tab), without the per-product
+ * Supplier names with their discount and catalogues, name-ordered - the shape an
+ * export wants (the Google Sheet module's Suppliers tab), without the per-product
  * count aggregate that only the admin screen needs. Disabled suppliers are
  * included: the record and its catalogues still exist, they are simply not
  * offered on new products.
  */
 export async function listSupplierCatalogues(): Promise<
-  Array<{ id: string; name: string; status: 'ENABLED' | 'DISABLED'; catalogues: ShpSupplierCatalogue[] }>
+  Array<{ id: string; name: string; status: 'ENABLED' | 'DISABLED'; discountPercent: number | null; catalogues: ShpSupplierCatalogue[] }>
 > {
   const [suppliers, catalogues] = await Promise.all([
-    prisma.$queryRaw<Array<{ id: string; name: string; status: 'ENABLED' | 'DISABLED' }>>`
-      SELECT "id", "name", "status" FROM "shp_suppliers" ORDER BY "name" ASC
+    prisma.$queryRaw<Array<{ id: string; name: string; status: 'ENABLED' | 'DISABLED'; discount_percent: unknown }>>`
+      SELECT "id", "name", "status", "discount_percent" FROM "shp_suppliers" ORDER BY "name" ASC
     `,
     prisma.$queryRaw<Record<string, unknown>[]>`
       SELECT * FROM "shp_supplier_catalogues" ORDER BY "position" ASC, "name" ASC
@@ -139,7 +139,14 @@ export async function listSupplierCatalogues(): Promise<
     else bySupplier.set(c.supplierId, [c])
   }
 
-  return suppliers.map((s) => ({ ...s, catalogues: bySupplier.get(s.id) ?? [] }))
+  return suppliers.map((s) => ({
+    id: s.id,
+    name: s.name,
+    status: s.status,
+    // numeric(5,2) comes back from Prisma raw as a Decimal - see decimalToNumber.
+    discountPercent: decimalToNumber(s.discount_percent),
+    catalogues: bySupplier.get(s.id) ?? [],
+  }))
 }
 
 /**

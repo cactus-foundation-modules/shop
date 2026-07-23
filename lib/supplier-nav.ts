@@ -11,9 +11,10 @@ import { prisma } from '@/lib/db/prisma'
 // Two things to know about the stored copy:
 //   - It is written from cactus.module.json at install and at module update, so
 //     an update resets it back to "no Suppliers link". syncSupplierNavEntry is
-//     therefore called on read paths an admin hits often (shop settings and the
-//     dashboard widget), not only when the setting is saved, so the link comes
-//     back on its own rather than needing the setting toggled again.
+//     therefore called on the read paths an admin hits soonest after a deploy -
+//     the dashboard widget, the Products and Orders lists, and shop settings - not
+//     only when the setting is saved, so the link comes back on its own within a
+//     click or two rather than needing the setting toggled again.
 //   - It is only ever patched, never rewritten: the manifest is spread and only
 //     navEntries replaced, so a field a newer core added survives untouched.
 // ---------------------------------------------------------------------------

@@ -6,10 +6,16 @@ import { resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkou
 import { findShippingZoneForPostcode } from '@/modules/shop/lib/db/tax-shipping'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { syncSupplierNavEntry } from '@/modules/shop/lib/supplier-nav'
 
 export async function GET(request: NextRequest) {
   const gate = await requireShopUser('shop.orders', { allowAccess: true })
   if (gate.error) return gate.error
+
+  // Orders is a daily-driver shop screen, so heal the Suppliers sidebar link here
+  // too - a module update resets it and it should return without the owner having
+  // to visit Settings. No-ops when it already matches the setting (supplier-nav.ts).
+  await syncSupplierNavEntry((await getShopConfigCached()).supplierFieldEnabled)
 
   const params = request.nextUrl.searchParams
   const { orders, total } = await listOrders({

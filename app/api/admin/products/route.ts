@@ -5,6 +5,8 @@ import { requireShopUser } from '@/modules/shop/lib/access'
 import { listProducts, createProduct, getBackInStockSubscriberCounts, getPrimaryProductImages } from '@/modules/shop/lib/db'
 import type { ProductSort, ProductStockFilter } from '@/modules/shop/lib/db'
 import { slugify, ensureUniqueProductSlug } from '@/modules/shop/lib/slug'
+import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { syncSupplierNavEntry } from '@/modules/shop/lib/supplier-nav'
 
 const SORTS: ProductSort[] = ['newest', 'oldest', 'name-asc', 'name-desc', 'price-asc', 'price-desc', 'stock-asc', 'stock-desc']
 const STOCKS: ProductStockFilter[] = ['in', 'low', 'out']
@@ -12,6 +14,12 @@ const STOCKS: ProductStockFilter[] = ['in', 'low', 'out']
 export async function GET(request: NextRequest) {
   const gate = await requireShopUser('shop.products', { allowAccess: true })
   if (gate.error) return gate.error
+
+  // Products is the shop's landing screen, so this is the earliest place the
+  // Suppliers sidebar link heals itself after a module update reset the stored
+  // manifest - see supplier-nav.ts. No-ops (one indexed read, no write) whenever
+  // the link already matches the setting.
+  await syncSupplierNavEntry((await getShopConfigCached()).supplierFieldEnabled)
 
   const params = request.nextUrl.searchParams
   const sortParam = params.get('sort')
