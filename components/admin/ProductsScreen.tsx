@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
+import { TabStrip } from '@/components/admin/TabStrip'
 import { ImportModal } from '@/modules/shop/components/admin/ImportModal'
 import { productsScreenCss } from '@/modules/shop/components/admin/products-screen-css'
 import { formatMoney } from '@/modules/shop/lib/money'
@@ -45,10 +46,21 @@ function stockBadge(p: ProductRow): { cls: string; label: string } | null {
   return { cls: 'badge-success', label: `${p.stockCount} in stock` }
 }
 
+// A whole-page tab another module hangs beside "Products" via the
+// `shop.products-tabs` extension point (e.g. shop-variations' Variations list).
+// Its `node` is server-resolved on the page and only mounted while its tab is the
+// active one, so a plain shop - which gets an empty list - renders no tab bar and
+// behaves exactly as before.
+export type ProductsTab = { id: string; label: string; order: number; node: ReactNode }
+
 // `toolbarExtras` are controls other modules hang beside the header buttons via
 // the `shop.products-toolbar` extension point (e.g. the Google Sheet dropdown).
 // Server-resolved on the page and passed straight through; empty on a plain shop.
-export function ProductsScreen({ toolbarExtras }: { toolbarExtras?: ReactNode } = {}) {
+export function ProductsScreen({ toolbarExtras, productsTabs = [], initialTab }: {
+  toolbarExtras?: ReactNode
+  productsTabs?: ProductsTab[]
+  initialTab?: string
+} = {}) {
   const adminPath = useAdminPath()
   const currencySymbol = useCurrencySymbol()
   const [promptText, promptNode] = usePrompt()
@@ -75,6 +87,13 @@ export function ProductsScreen({ toolbarExtras }: { toolbarExtras?: ReactNode } 
 
   const [importJobs, setImportJobs] = useState<Array<{ id: string; status: string; createdCount: number; updatedCount: number; skippedCount: number }>>([])
   const [importOpen, setImportOpen] = useState(false)
+
+  // Which tab is showing. The built-in Products list is the default; `initialTab`
+  // deep-links straight into a contributed tab (validated against what exists).
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const ids = new Set(['products', ...productsTabs.map((t) => t.id)])
+    return initialTab && ids.has(initialTab) ? initialTab : 'products'
+  })
 
   // Debounce the search box, and snap back to page one whenever the query
   // changes (batched so it is a single fetch).
@@ -111,8 +130,10 @@ export function ProductsScreen({ toolbarExtras }: { toolbarExtras?: ReactNode } 
 
   // refresh() flips `loading` on before awaiting the fetch - a deliberate single
   // re-render, not a cascade; every other setState it makes runs after the await.
+  // Guarded so landing straight on a contributed tab (initialTab) does not fire the
+  // products fetch; `activeTab` (not the derived `onProducts`) keeps the dep honest.
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => { if (activeTab === 'products') refresh() }, [refresh, activeTab])
 
   // Close the row menu on scroll, resize or Escape - a fixed-position menu would
   // otherwise drift away from its button.
@@ -214,6 +235,12 @@ export function ProductsScreen({ toolbarExtras }: { toolbarExtras?: ReactNode } 
   const hasFilters = Boolean(searchDebounced || status || type || stock)
   const menuProduct = menuFor ? products.find((p) => p.id === menuFor.id) : null
 
+  // The built-in Products list is always the first tab; contributed tabs follow in
+  // their declared order, and only the active one's panel is mounted.
+  const orderedTabs = [...productsTabs].sort((a, b) => a.order - b.order)
+  const onProducts = activeTab === 'products'
+  const activeNode = onProducts ? null : orderedTabs.find((t) => t.id === activeTab)?.node ?? null
+
   return (
     <div>
       <style dangerouslySetInnerHTML={{ __html: productsScreenCss }} />
@@ -221,17 +248,30 @@ export function ProductsScreen({ toolbarExtras }: { toolbarExtras?: ReactNode } 
       <div className="page-header">
         <div>
           <h1 className="page-title">Products</h1>
-          {!loading && <p className="sps-count">{total} product{total === 1 ? '' : 's'}</p>}
+          {onProducts && !loading && <p className="sps-count">{total} product{total === 1 ? '' : 's'}</p>}
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <Link href="/api/m/shop/admin/products/export" className="btn btn-secondary btn-sm">Export CSV</Link>
-          <Link href="/api/m/shop/admin/products/import-template" className="btn btn-secondary btn-sm">Import template</Link>
-          <button onClick={() => setImportOpen(true)} className="btn btn-secondary btn-sm">Import CSV</button>
-          <button onClick={createProduct} className="btn btn-primary btn-sm">New product</button>
-          {toolbarExtras}
-        </div>
+        {onProducts && (
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <Link href="/api/m/shop/admin/products/export" className="btn btn-secondary btn-sm">Export CSV</Link>
+            <Link href="/api/m/shop/admin/products/import-template" className="btn btn-secondary btn-sm">Import template</Link>
+            <button onClick={() => setImportOpen(true)} className="btn btn-secondary btn-sm">Import CSV</button>
+            <button onClick={createProduct} className="btn btn-primary btn-sm">New product</button>
+            {toolbarExtras}
+          </div>
+        )}
       </div>
 
+      {orderedTabs.length > 0 && (
+        <TabStrip
+          items={[
+            { key: 'products', label: 'Products', active: onProducts, onClick: () => setActiveTab('products') },
+            ...orderedTabs.map((t) => ({ key: t.id, label: t.label, active: activeTab === t.id, onClick: () => setActiveTab(t.id) })),
+          ]}
+        />
+      )}
+
+      {!onProducts ? activeNode : (
+      <>
       {importOpen && <ImportModal onClose={() => setImportOpen(false)} onDone={refresh} />}
 
       <div className="sps-toolbar">
@@ -396,6 +436,8 @@ export function ProductsScreen({ toolbarExtras }: { toolbarExtras?: ReactNode } 
             ))}
           </ul>
         </div>
+      )}
+      </>
       )}
 
       {promptNode}
