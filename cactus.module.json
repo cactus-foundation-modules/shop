@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.90",
+  "version": "0.1.91",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.571",
@@ -98,6 +98,7 @@
     "shp_upsell_products",
     "shp_auto_exclude_products",
     "shp_settings",
+    "shp_supplier_catalogues",
     "shp_suppliers"
   ],
   "cronJobs": [

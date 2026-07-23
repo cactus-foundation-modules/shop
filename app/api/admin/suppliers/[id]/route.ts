@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireShopUser } from '@/modules/shop/lib/access'
-import { getSupplierById, getSupplierByName, updateSupplier, renameSupplier, deleteSupplier } from '@/modules/shop/lib/db'
+import { getSupplierById, getSupplierByName, updateSupplier, renameSupplier, deleteSupplier, replaceSupplierCatalogues } from '@/modules/shop/lib/db'
 import { SupplierBody } from '@/modules/shop/lib/supplier-schema'
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -14,7 +14,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const existing = await getSupplierById(id)
   if (!existing) return NextResponse.json({ error: 'That supplier no longer exists.' }, { status: 404 })
 
-  const { name, ...fields } = parsed.data
+  const { name, catalogues, ...fields } = parsed.data
 
   // A rename has to move the products filed under the old name too, so it goes
   // through its own transactional path rather than the generic field update.
@@ -25,6 +25,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
   await updateSupplier(id, fields)
   if (name !== existing.name) await renameSupplier(id, existing.name, name)
+  // Omitted entirely means the caller was not editing catalogues; an empty array
+  // means the owner removed the last one.
+  if (catalogues) await replaceSupplierCatalogues(id, catalogues)
 
   return NextResponse.json({ success: true })
 }

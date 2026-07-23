@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireShopUser } from '@/modules/shop/lib/access'
-import { listSuppliersWithCounts, listSupplierNames, createSupplier, getSupplierByName } from '@/modules/shop/lib/db'
+import { listSuppliersWithCounts, listSupplierNames, createSupplier, getSupplierByName, replaceSupplierCatalogues } from '@/modules/shop/lib/db'
 import { SupplierBody } from '@/modules/shop/lib/supplier-schema'
 
 /**
@@ -33,6 +33,8 @@ export async function POST(request: NextRequest) {
   const clash = await getSupplierByName(parsed.data.name)
   if (clash) return NextResponse.json({ error: `"${clash.name}" is already in your supplier list.` }, { status: 409 })
 
-  const { id } = await createSupplier(parsed.data)
+  const { catalogues, ...supplier } = parsed.data
+  const { id } = await createSupplier(supplier)
+  if (catalogues) await replaceSupplierCatalogues(id, catalogues)
   return NextResponse.json({ id, name: parsed.data.name }, { status: 201 })
 }

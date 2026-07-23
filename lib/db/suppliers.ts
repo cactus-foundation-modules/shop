@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
-import type { ShpSupplier, ShpSupplierWithCounts } from '@/modules/shop/lib/types'
+import type { ShpSupplier, ShpSupplierCatalogue, ShpSupplierWithCounts } from '@/modules/shop/lib/types'
 
 // ---------------------------------------------------------------------------
 // Suppliers
@@ -36,6 +36,21 @@ function mapSupplier(r: Record<string, unknown>): ShpSupplier {
   }
 }
 
+function mapCatalogue(r: Record<string, unknown>): ShpSupplierCatalogue {
+  return {
+    id: r.id as string,
+    supplierId: r.supplier_id as string,
+    name: r.name as string,
+    sheetUrl: (r.sheet_url as string | null) ?? null,
+    position: Number(r.position ?? 0),
+  }
+}
+
+export type SupplierCatalogueFields = {
+  name: string
+  sheetUrl?: string | null
+}
+
 export type SupplierFields = {
   name: string
   accountNumber?: string | null
@@ -59,7 +74,7 @@ export type SupplierFields = {
  * work whether or not the variations module is installed.
  */
 export async function listSuppliersWithCounts(): Promise<ShpSupplierWithCounts[]> {
-  const [rows, counts] = await Promise.all([
+  const [rows, counts, catalogues] = await Promise.all([
     prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_suppliers" ORDER BY "name" ASC`,
     prisma.$queryRaw<Array<{ supplier: string; products: bigint; variations: bigint }>>`
       SELECT LOWER("supplier") AS supplier,
@@ -69,9 +84,22 @@ export async function listSuppliersWithCounts(): Promise<ShpSupplierWithCounts[]
       WHERE "supplier" IS NOT NULL AND "supplier" <> ''
       GROUP BY LOWER("supplier")
     `,
+    // Every catalogue in one pass, grouped in JS below - same reasoning as the
+    // counts: one query however many suppliers the directory holds.
+    prisma.$queryRaw<Record<string, unknown>[]>`
+      SELECT * FROM "shp_supplier_catalogues" ORDER BY "position" ASC, "name" ASC
+    `,
   ])
 
   const byName = new Map(counts.map((c) => [c.supplier, c]))
+  const bySupplier = new Map<string, ShpSupplierCatalogue[]>()
+  for (const row of catalogues) {
+    const c = mapCatalogue(row)
+    const list = bySupplier.get(c.supplierId)
+    if (list) list.push(c)
+    else bySupplier.set(c.supplierId, [c])
+  }
+
   return rows.map((r) => {
     const supplier = mapSupplier(r)
     const hit = byName.get(supplier.name.toLowerCase())
@@ -79,8 +107,60 @@ export async function listSuppliersWithCounts(): Promise<ShpSupplierWithCounts[]
       ...supplier,
       productCount: Number(hit?.products ?? 0),
       variationCount: Number(hit?.variations ?? 0),
+      catalogues: bySupplier.get(supplier.id) ?? [],
     }
   })
+}
+
+/**
+ * Supplier names with their catalogues, name-ordered - the shape an export wants
+ * (the Google Sheet module's Supplier Catalogues tab), without the per-product
+ * count aggregate that only the admin screen needs. Disabled suppliers are
+ * included: the record and its catalogues still exist, they are simply not
+ * offered on new products.
+ */
+export async function listSupplierCatalogues(): Promise<
+  Array<{ id: string; name: string; status: 'ENABLED' | 'DISABLED'; catalogues: ShpSupplierCatalogue[] }>
+> {
+  const [suppliers, catalogues] = await Promise.all([
+    prisma.$queryRaw<Array<{ id: string; name: string; status: 'ENABLED' | 'DISABLED' }>>`
+      SELECT "id", "name", "status" FROM "shp_suppliers" ORDER BY "name" ASC
+    `,
+    prisma.$queryRaw<Record<string, unknown>[]>`
+      SELECT * FROM "shp_supplier_catalogues" ORDER BY "position" ASC, "name" ASC
+    `,
+  ])
+
+  const bySupplier = new Map<string, ShpSupplierCatalogue[]>()
+  for (const row of catalogues) {
+    const c = mapCatalogue(row)
+    const list = bySupplier.get(c.supplierId)
+    if (list) list.push(c)
+    else bySupplier.set(c.supplierId, [c])
+  }
+
+  return suppliers.map((s) => ({ ...s, catalogues: bySupplier.get(s.id) ?? [] }))
+}
+
+/**
+ * Replace a supplier's catalogues with exactly the list given, in the order
+ * given. Delete-then-insert rather than a diff: the editor hands over the whole
+ * list every save, ids are never shown to the owner, and nothing else in the
+ * database points at a catalogue row, so there is no identity worth preserving.
+ * Both halves run in one transaction, so a failure cannot leave the supplier
+ * with no catalogues at all.
+ */
+export async function replaceSupplierCatalogues(supplierId: string, catalogues: SupplierCatalogueFields[]): Promise<void> {
+  const statements: Prisma.PrismaPromise<unknown>[] = [
+    prisma.$executeRaw`DELETE FROM "shp_supplier_catalogues" WHERE "supplier_id" = ${supplierId}`,
+  ]
+  catalogues.forEach((c, index) => {
+    statements.push(prisma.$executeRaw`
+      INSERT INTO "shp_supplier_catalogues" ("supplier_id", "name", "sheet_url", "position")
+      VALUES (${supplierId}, ${c.name}, ${c.sheetUrl ?? null}, ${index})
+    `)
+  })
+  await prisma.$transaction(statements)
 }
 
 /** Enabled suppliers only, name-ordered - what the product/variation picker offers. */

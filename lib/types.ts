@@ -148,12 +148,28 @@ export type ShpSupplier = {
   updatedAt: Date
 }
 
+/**
+ * One of a supplier's own catalogues - the price list or brochure they publish,
+ * usually as a Google Sheet. Owned by the supplier row (ON DELETE CASCADE), and
+ * unrelated to the shop's own product catalogue despite sharing the word.
+ */
+export type ShpSupplierCatalogue = {
+  id: string
+  supplierId: string
+  name: string
+  /** Web address the catalogue lives at, typically a Google Sheet. */
+  sheetUrl: string | null
+  position: number
+}
+
 /** A supplier plus how much of the catalogue is filed against its name. */
 export type ShpSupplierWithCounts = ShpSupplier & {
   /** Catalogue products (catalogue_hidden = false) naming this supplier. */
   productCount: number
   /** Variation child rows (catalogue_hidden = true) naming this supplier. */
   variationCount: number
+  /** The supplier's own catalogues, in the owner's order. */
+  catalogues: ShpSupplierCatalogue[]
 }
 
 export type ShpTaxClass = { id: string; name: string; code: string }

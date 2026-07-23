@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useConfirm, useAlert } from '@/modules/shop/components/admin/dialogs'
 
+type Catalogue = {
+  id: string
+  name: string
+  sheetUrl: string | null
+}
+
 type Supplier = {
   id: string
   name: string
@@ -16,7 +22,12 @@ type Supplier = {
   notes: string | null
   productCount: number
   variationCount: number
+  catalogues: Catalogue[]
 }
+
+// The form's catalogue rows carry no id: the save replaces the whole list, so
+// nothing downstream needs to tell one row from another (see replaceSupplierCatalogues).
+type CatalogueRow = { name: string; sheetUrl: string }
 
 type SupplierForm = {
   name: string
@@ -28,11 +39,12 @@ type SupplierForm = {
   email: string
   address: string
   notes: string
+  catalogues: CatalogueRow[]
 }
 
 const emptyForm: SupplierForm = {
   name: '', accountNumber: '', discountPercent: '', status: 'ENABLED',
-  contactName: '', phone: '', email: '', address: '', notes: '',
+  contactName: '', phone: '', email: '', address: '', notes: '', catalogues: [],
 }
 
 function numOrNull(v: string): number | null {
@@ -69,6 +81,7 @@ export function SuppliersScreen({ label, enabled }: { label: string; enabled: bo
         email: s.email ?? '',
         address: s.address ?? '',
         notes: s.notes ?? '',
+        catalogues: s.catalogues.map((c) => ({ name: c.name, sheetUrl: c.sheetUrl ?? '' })),
       })
     } else {
       setEditingId(null)
@@ -76,11 +89,23 @@ export function SuppliersScreen({ label, enabled }: { label: string; enabled: bo
     }
   }
 
+  function setCatalogue(index: number, patch: Partial<CatalogueRow>) {
+    setForm((f) => (f ? { ...f, catalogues: f.catalogues.map((c, i) => (i === index ? { ...c, ...patch } : c)) } : f))
+  }
+
   async function save() {
     if (!form || saving) return
     setSaving(true)
     try {
-      const body = { ...form, discountPercent: numOrNull(form.discountPercent) }
+      const body = {
+        ...form,
+        discountPercent: numOrNull(form.discountPercent),
+        // A row the owner added and then left blank is not a catalogue - drop it
+        // rather than bouncing the whole save on "give the catalogue a name".
+        catalogues: form.catalogues
+          .filter((c) => c.name.trim() !== '')
+          .map((c) => ({ name: c.name.trim(), sheetUrl: c.sheetUrl.trim() || null })),
+      }
       const url = editingId ? `/api/m/shop/admin/suppliers/${editingId}` : '/api/m/shop/admin/suppliers'
       const res = await fetch(url, {
         method: editingId ? 'PUT' : 'POST',
@@ -137,6 +162,7 @@ export function SuppliersScreen({ label, enabled }: { label: string; enabled: bo
                 <th style={cell}>Account no.</th>
                 <th style={cell}>Discount</th>
                 <th style={cell}>Contact</th>
+                <th style={cell}>Catalogues</th>
                 <th style={cell}>Products</th>
                 <th style={cell}>Variations</th>
                 <th style={cell}>Status</th>
@@ -153,6 +179,15 @@ export function SuppliersScreen({ label, enabled }: { label: string; enabled: bo
                     {s.contactName ?? '—'}
                     {s.email && <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>{s.email}</div>}
                     {s.phone && <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>{s.phone}</div>}
+                  </td>
+                  <td style={cell}>
+                    {s.catalogues.length === 0 ? '—' : s.catalogues.map((c) => (
+                      <div key={c.id}>
+                        {c.sheetUrl
+                          ? <a href={c.sheetUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)' }}>{c.name}</a>
+                          : c.name}
+                      </div>
+                    ))}
                   </td>
                   <td style={cell}>{s.productCount}</td>
                   <td style={cell}>{s.variationCount}</td>
@@ -194,6 +229,49 @@ export function SuppliersScreen({ label, enabled }: { label: string; enabled: bo
           <label>Email<input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} /></label>
           <label>Address<textarea rows={3} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} style={inputStyle} /></label>
           <label>Notes<textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} style={inputStyle} /></label>
+
+          <fieldset style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.75rem', margin: 0 }}>
+            <legend style={{ padding: '0 0.375rem', fontSize: '0.875rem' }}>Catalogues</legend>
+            <p className="field-hint" style={{ marginTop: 0 }}>
+              The catalogues this supplier publishes, and the Google Sheet each one lives in.
+            </p>
+            {form.catalogues.map((c, i) => (
+              <div key={i} style={{ display: 'grid', gap: '0.25rem', marginBottom: '0.5rem' }}>
+                <input
+                  value={c.name}
+                  onChange={(e) => setCatalogue(i, { name: e.target.value })}
+                  style={inputStyle}
+                  placeholder="Catalogue name, e.g. Spring 2026"
+                  aria-label={`Catalogue ${i + 1} name`}
+                />
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    type="url"
+                    value={c.sheetUrl}
+                    onChange={(e) => setCatalogue(i, { sheetUrl: e.target.value })}
+                    style={{ ...inputStyle, marginTop: 0 }}
+                    placeholder="https://docs.google.com/spreadsheets/..."
+                    aria-label={`Catalogue ${i + 1} Google Sheet link`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, catalogues: form.catalogues.filter((_, n) => n !== i) })}
+                    style={{ ...linkButton, color: 'var(--color-danger)', whiteSpace: 'nowrap' }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, catalogues: [...form.catalogues, { name: '', sheetUrl: '' }] })}
+              className="btn btn-secondary"
+            >
+              Add catalogue
+            </button>
+          </fieldset>
+
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button onClick={save} className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
             <button onClick={() => { setForm(null); setEditingId(null) }} className="btn btn-secondary">Cancel</button>

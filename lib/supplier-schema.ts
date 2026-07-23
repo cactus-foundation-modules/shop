@@ -13,6 +13,26 @@ const optionalText = (max: number) =>
     return trimmed === '' ? null : trimmed
   })
 
+// A catalogue the supplier publishes: a name, and usually the Google Sheet it
+// lives in. The URL is optional so a catalogue can be recorded before anyone has
+// found the link for it, but anything typed there has to be a real web address -
+// a half-typed one saved silently would only be discovered by clicking it.
+const catalogueUrl = z
+  .string()
+  .max(2000)
+  .nullable()
+  .optional()
+  .transform((v) => (v == null || v.trim() === '' ? null : v.trim()))
+  .refine(
+    (v) => v == null || /^https?:\/\/\S+$/i.test(v),
+    'A catalogue link has to start with http:// or https://',
+  )
+
+export const SupplierCatalogueInput = z.object({
+  name: z.string().min(1, 'Give the catalogue a name').max(200).transform((v) => v.trim()),
+  sheetUrl: catalogueUrl,
+})
+
 export const SupplierBody = z.object({
   name: z.string().min(1, 'Give the supplier a name').max(200).transform((v) => v.trim()),
   accountNumber: optionalText(100),
@@ -29,4 +49,24 @@ export const SupplierBody = z.object({
   email: optionalText(200),
   address: optionalText(500),
   notes: optionalText(2000),
+  // Absent means "leave the catalogues alone" (an older client, or a caller that
+  // only touches contact details); an empty array means "this supplier has none".
+  catalogues: z
+    .array(SupplierCatalogueInput)
+    .max(50, 'That is more catalogues than one supplier is likely to have')
+    .optional()
+    .superRefine((list, ctx) => {
+      if (!list) return
+      // Matches the (supplier_id, LOWER(name)) unique index, so the owner gets a
+      // sentence rather than a Postgres constraint error.
+      const seen = new Set<string>()
+      for (const c of list) {
+        const key = c.name.toLowerCase()
+        if (seen.has(key)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `"${c.name}" is listed twice. Catalogue names have to be different.` })
+          return
+        }
+        seen.add(key)
+      }
+    }),
 })
