@@ -1,18 +1,21 @@
 import { prisma } from '@/lib/db/prisma'
-import { cleanFolderName, getOrCreateFolderByPath, moveOrRenameMedia, sanitizeFolderSegment } from '@/lib/media/organise'
+import { cleanFolderName, getOrCreateFolderByPath, moveFolder, moveOrRenameMedia, sanitizeFolderSegment } from '@/lib/media/organise'
 import { getProductById } from '@/modules/shop/lib/db/products'
-import { getCategoryById } from '@/modules/shop/lib/db/catalogue'
+import { getCategoryAncestorPath } from '@/modules/shop/lib/db/catalogue'
 
 // ---------------------------------------------------------------------------
 // Product image filing.
 //
 // Every image attached to a product is filed in the core media library under
-//   shop / <master category> / <product> / <product-slug><n>
+//   shop / <master category trail> / <product> / <product-slug><n>
 // (n is the image's 1-based position; the folder names are lower-cased to match
 // the storage path, so images share a folder with the product's 3D models and
-// downloads rather than a parallel upper-case one). The master category names the category
-// folder and the product name names the folder inside it; products with no
-// master land under "Uncategorised". Only images that resolve to a managed core
+// downloads rather than a parallel upper-case one). The master category's whole
+// ancestor trail names the folders - a product in a sub-category is filed inside
+// its parent category's folder (shop / office-tables / meeting-boardroom-tables /
+// <product>), not a flat folder named only for the leaf - and the product name
+// names the folder inside it; products with no master land under "Uncategorised".
+// Only images that resolve to a managed core
 // Media row are moved - externally-hosted urls and video embeds are left
 // untouched. Runs on every product save, after the media list has been written,
 // and is idempotent: an image already in the right place with the right name is
@@ -39,8 +42,10 @@ const UNCATEGORISED_FOLDER = 'Uncategorised'
 
 /**
  * The library folder a product's images belong in, created if it does not exist
- * yet: shop / <master category> / <product> (names lower-cased to match the
- * storage path, so 3D models and downloads file alongside the images).
+ * yet: shop / <master category trail> / <product> (names lower-cased to match the
+ * storage path, so 3D models and downloads file alongside the images). The master
+ * category's full ancestor trail is used, so a sub-category nests inside its
+ * parent's folder rather than sitting in a flat folder of its own.
  *
  * `masterCategoryId` overrides the product's saved master, which is what lets
  * the editor file an upload under the category currently picked on screen
@@ -59,10 +64,15 @@ async function productFolderSegments(
     ? options.masterCategoryId
     : folderProduct.masterCategoryId
 
-  let categoryName = UNCATEGORISED_FOLDER
+  // The master category's whole ancestor trail, root -> ... -> the master itself,
+  // so a product in a sub-category is filed inside its parent category's folder
+  // (shop / office-tables / meeting-boardroom-tables / <product>) rather than in a
+  // flat folder named only for the leaf. A product with no master, or one whose
+  // master has since been deleted, lands under "Uncategorised".
+  let categorySegments: string[] = [UNCATEGORISED_FOLDER]
   if (masterCategoryId) {
-    const category = await getCategoryById(masterCategoryId)
-    if (category) categoryName = category.name
+    const trail = await getCategoryAncestorPath(masterCategoryId)
+    if (trail.length > 0) categorySegments = trail.map((c) => c.name)
   }
 
   // The segments are lower-cased to the same form the storage path uses, so a
@@ -71,7 +81,7 @@ async function productFolderSegments(
   // path, and an upper-case tree here left images sitting in a parallel folder.
   return [
     sanitizeFolderSegment('Shop'),
-    sanitizeFolderSegment(categoryName),
+    ...categorySegments.map((name) => sanitizeFolderSegment(name)),
     sanitizeFolderSegment(folderProduct.name),
   ]
 }
@@ -158,12 +168,91 @@ export function planImageRenames(
   return steps
 }
 
+/**
+ * The folder a product's images currently sit in, read off an existing managed
+ * image rather than rebuilt from the category path - by the time this runs the
+ * save has already written the product's new category, so the old path can no
+ * longer be reconstructed. Images are filed directly in the product folder (its
+ * 3D models and downloads live in subfolders below), so an image's folder IS the
+ * product folder. Null when the product has no managed image to read it from.
+ */
+async function currentProductFolderId(productId: string): Promise<string | null> {
+  const rows = await prisma.$queryRaw<{ url: string }[]>`
+    SELECT "url" FROM "shp_product_media"
+    WHERE "product_id" = ${productId} AND "type" = 'IMAGE'
+    ORDER BY "position" ASC
+  `
+  for (const { url } of rows) {
+    const media = await prisma.media.findFirst({ where: { url }, select: { folderId: true } })
+    if (media?.folderId) return media.folderId
+  }
+  return null
+}
+
+/**
+ * Bring a product's existing media folder to the place its category tree now puts
+ * it. When a product moves into (or out of) a sub-category its folder path gains
+ * or loses a level; the folder keeps its name (the product's) and simply gains
+ * its new parent. Moving the folder itself re-keys every descendant in one go -
+ * the product's images, its 3D models and its downloads - and each module's
+ * stored url follows automatically: the registered media-reference rewriters
+ * repoint the image and variant tables, and the downloads route heals its own
+ * copy from the media id on the next read.
+ *
+ * A no-op when the folder is already in the right place, when the product has no
+ * folder yet (nothing filed), or when the destination already holds a folder of
+ * this name - two products sharing a name. In that last case the per-image filing
+ * still relocates the images one by one, and any 3D models or downloads are
+ * re-filed on their next upload.
+ */
+async function relocateProductFolderIfMoved(
+  productId: string,
+  options: { folderProductId?: string; masterCategoryId?: string | null } = {},
+): Promise<void> {
+  const folderProductId = options.folderProductId ?? productId
+  const folderProduct = await getProductById(folderProductId)
+  if (!folderProduct) return
+
+  const segments = await productFolderSegments(productId, options)
+  if (segments === null) return
+  const targetParentId = await getOrCreateFolderByPath(segments.slice(0, -1))
+  if (targetParentId === null) return
+
+  const currentId = await currentProductFolderId(folderProductId)
+  if (currentId === null) return
+
+  const folder = await prisma.folder.findUnique({ where: { id: currentId }, select: { parentId: true, name: true } })
+  if (!folder) return
+  if (folder.parentId === targetParentId) return // already in place
+
+  // Only move a folder that is genuinely this product's own - its name is the
+  // product's. Guards against relocating a shared or mis-read folder.
+  if (folder.name !== cleanFolderName(sanitizeFolderSegment(folderProduct.name))) return
+
+  try {
+    await moveFolder(currentId, targetParentId)
+  } catch (err) {
+    // A name clash in the destination (another product of the same name already
+    // there) or a provider hiccup must not fail the whole save - the per-image
+    // filing below still relocates the images one by one as a fallback.
+    console.warn(`[shop] could not relocate media folder for product ${productId}:`, err)
+  }
+}
+
 export async function reorganiseProductMedia(
   productId: string,
   options: { folderProductId?: string } = {},
 ): Promise<void> {
   const product = await getProductById(productId)
   if (!product) return
+
+  // Bring the product's whole media folder to its category's current home before
+  // filing anything. When a product moves into or out of a sub-category the path
+  // gains or loses a level, and a plain per-image move would relocate the pictures
+  // while leaving the 3D models and downloads in the old, now-orphaned folder.
+  // Moving the folder itself carries all three across together; the per-image
+  // filing below then runs inside the folder's final home.
+  await relocateProductFolderIfMoved(productId, options)
 
   // Images are normally filed under their own product; `folderProductId` files
   // them under another product's folder instead (see the header note).
