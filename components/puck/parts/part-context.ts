@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Breakpoints } from '@/modules/shop/lib/breakpoints'
 import type { ShopDetailSlot } from '@/modules/shop/lib/detail-slot'
+import type { ShopDetailSpecExtra } from '@/modules/shop/lib/detail-spec'
 import type { ShopDetailTabExtra } from '@/modules/shop/lib/detail-tabs'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 import type { PriceView } from '@/modules/shop/lib/pricing'
@@ -66,6 +67,15 @@ export type DetailPartContext = {
   // renders synchronously and cannot await a provider itself. Empty on a
   // shop-only site.
   detailTabs: ShopDetailTabExtra[]
+  // The Specification tab body a companion module has taken over for this product
+  // through `shop.product-detail-spec` (see lib/detail-spec.ts) - a set of headed
+  // attribute groups, say, in place of shop's own SKU/Type/Weight/Dimensions
+  // facts. A single winner, not a list, because it REPLACES the tab body rather
+  // than adding to it, so unlike `detailTabs` it is one or none. Null on a
+  // shop-only site and for every product no provider claimed, where the tab
+  // renders shop's own facts table unchanged. Resolved once here for the same
+  // reason as the rest: buildDetailSections runs synchronously.
+  specOverride: ShopDetailSpecExtra | null
   // The product's opt-in designed description, already rendered from its Puck
   // doc (shp_products.description_puck) by the RSC block. Null when the product
   // has no designed body, where the Description tab falls back to the plain-text

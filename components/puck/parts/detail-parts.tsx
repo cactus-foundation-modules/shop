@@ -870,7 +870,7 @@ const sectionAnchorId = (id: string) => `${SECTION_ID_PREFIX}${id}`
 // links block all build from this, so a link can never point at a section that
 // isn't there. Carved out of the old ShopDetailTabsRsc body unchanged.
 function buildDetailSections(ctx: DetailPartContext): OrderedTab[] {
-  const { product, digitalFile, detailTabs, supplierLabel, slot, currencySymbol, layoutBlockTypes, descriptionBody } = ctx
+  const { product, digitalFile, detailTabs, supplierLabel, slot, currencySymbol, layoutBlockTypes, descriptionBody, specOverride } = ctx
 
   const weightStr = product.weight ? `${product.weight}${product.weightUnit ? ` ${product.weightUnit}` : ''}` : null
   const dimUnit = product.dimensionUnit ? ` ${product.dimensionUnit}` : ''
@@ -914,7 +914,15 @@ function buildDetailSections(ctx: DetailPartContext): OrderedTab[] {
   if (desc) {
     own.push({ id: 'desc', order: TAB_ORDER.desc, label: 'Description', content: desc })
   }
-  own.push({ id: 'spec', order: TAB_ORDER.spec, label: 'Specification', content: <FactsTable rows={specRows} /> })
+  // A companion module may take over the whole Specification body for this
+  // product (lib/detail-spec.ts) - its own headed groups in place of shop's
+  // facts. Null on a shop-only site and for any product no provider claimed,
+  // where shop's own facts table renders unchanged. The tab, its name and its
+  // place in the strip stay shop's either way.
+  const specContent = specOverride
+    ? <specOverride.Panel payload={specOverride.payload} />
+    : <FactsTable rows={specRows} />
+  own.push({ id: 'spec', order: TAB_ORDER.spec, label: 'Specification', content: specContent })
   if (dimRows.length > 0) {
     own.push({ id: 'dims', order: TAB_ORDER.dims, label: 'Dimensions', content: <FactsTable rows={dimRows} /> })
   }

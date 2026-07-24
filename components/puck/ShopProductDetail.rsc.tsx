@@ -12,6 +12,7 @@ import { priceView } from '@/modules/shop/lib/pricing'
 import { injectShopProductDetailEmbed } from '@/modules/shop/lib/inject-part-context'
 import { resolveShopDetailProvider, narrowShopDetailSlot, collectLayoutBlockTypes } from '@/modules/shop/lib/detail-slot'
 import { resolveShopDetailTabs } from '@/modules/shop/lib/detail-tabs'
+import { resolveShopDetailSpec } from '@/modules/shop/lib/detail-spec'
 import { resolveShopGalleryExtras } from '@/modules/shop/lib/gallery-media'
 import type { PuckData } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
@@ -47,7 +48,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   // Extra gallery media and contributed tabs are additive and need only the
   // product, so they resolve alongside everything else rather than behind the
   // template.
-  const [media, config, bp, tags, tagIds, template, provider, galleryExtras, detailTabs] = await Promise.all([
+  const [media, config, bp, tags, tagIds, template, provider, galleryExtras, detailTabs, specOverride] = await Promise.all([
     getProductMedia(product.id),
     getShopConfigCached(),
     getShopBreakpoints(),
@@ -57,6 +58,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     resolveShopDetailProvider(product),
     resolveShopGalleryExtras(product.id),
     resolveShopDetailTabs(product.id),
+    resolveShopDetailSpec(product.id),
   ])
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
   const tagSlugs = tagIds.map((id) => tagById.get(id)).filter((s): s is string => Boolean(s))
@@ -136,6 +138,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     layoutBlockTypes: [...blockTypes],
     galleryExtras,
     detailTabs,
+    specOverride,
     descriptionBody,
   }
   const data = injectShopProductDetailEmbed(template, ctx)
