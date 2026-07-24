@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
     "type" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'DRAFT',
     "description" TEXT,
+    "description_puck" JSONB,
     "short_description" TEXT,
     "sku" TEXT,
     "barcode" TEXT,

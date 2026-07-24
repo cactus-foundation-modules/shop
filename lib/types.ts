@@ -37,6 +37,10 @@ export type ShpProduct = {
   type: ShpProductType
   status: ShpProductStatus
   description: string | null
+  // Opt-in designed description. A Puck content-block document that, when
+  // present, renders in place of `description` in the storefront's Description
+  // tab (shp_products.description_puck). NULL means the plain-text box wins.
+  descriptionPuck: PuckData | null
   shortDescription: string | null
   sku: string | null
   barcode: string | null

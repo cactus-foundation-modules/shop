@@ -106,6 +106,20 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   const blockTypes = collectLayoutBlockTypes(template)
   const slot = narrowShopDetailSlot(provider, blockTypes)
 
+  // config.rsc pulls in next/headers via other modules' RSC blocks, so it stays a
+  // dynamic import kept off the client editor bundle. Loaded once here and reused
+  // for both the designed-description body and the detail template render below.
+  const { getModuleLayoutPuckRscConfig } = await import('@/lib/puck/config.rsc')
+
+  // The product's opt-in designed description. Rendered from its own Puck doc
+  // with the same content-only shared parts the editor uses, so editor and
+  // storefront markup match. An empty (seeded-but-unused) doc counts as absent,
+  // so the Description tab falls back to the plain-text `description`.
+  const descriptionBody =
+    product.descriptionPuck && Array.isArray(product.descriptionPuck.content) && product.descriptionPuck.content.length > 0
+      ? <Render config={getModuleLayoutPuckRscConfig('shopProductDescription') as any} data={product.descriptionPuck as Data} />
+      : undefined
+
   const ctx: DetailPartContext = {
     product,
     images,
@@ -122,10 +136,10 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     layoutBlockTypes: [...blockTypes],
     galleryExtras,
     detailTabs,
+    descriptionBody,
   }
   const data = injectShopProductDetailEmbed(template, ctx)
 
-  const { getModuleLayoutPuckRscConfig } = await import('@/lib/puck/config.rsc')
   return (
     <div>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />

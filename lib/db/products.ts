@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
-import type { ShpProduct, ShpProductMedia, ShpProductStatus, ShpProductType } from '@/modules/shop/lib/types'
+import type { PuckData, ShpProduct, ShpProductMedia, ShpProductStatus, ShpProductType } from '@/modules/shop/lib/types'
 
 function mapProduct(r: Record<string, unknown>): ShpProduct {
   return {
@@ -10,6 +10,7 @@ function mapProduct(r: Record<string, unknown>): ShpProduct {
     type: r.type as ShpProductType,
     status: r.status as ShpProductStatus,
     description: (r.description as string | null) ?? null,
+    descriptionPuck: (r.description_puck as PuckData | null) ?? null,
     shortDescription: (r.short_description as string | null) ?? null,
     sku: (r.sku as string | null) ?? null,
     barcode: (r.barcode as string | null) ?? null,
@@ -332,6 +333,7 @@ export type UpdateProductInput = Partial<{
   slug: string
   status: ShpProductStatus
   description: string | null
+  descriptionPuck: PuckData | null
   shortDescription: string | null
   sku: string | null
   barcode: string | null
@@ -370,7 +372,9 @@ export type UpdateProductInput = Partial<{
   catalogueHidden: boolean
 }>
 
-const COLUMN_MAP: Record<keyof UpdateProductInput, string> = {
+// descriptionPuck is jsonb and needs an explicit ::jsonb cast, so it is set by a
+// dedicated fragment in updateProduct rather than the generic assignment below.
+const COLUMN_MAP: Record<Exclude<keyof UpdateProductInput, 'descriptionPuck'>, string> = {
   name: 'name', slug: 'slug', status: 'status', description: 'description', shortDescription: 'short_description',
   sku: 'sku', barcode: 'barcode', supplier: 'supplier', price: 'price', salePrice: 'sale_price', retailPrice: 'retail_price', tradePrice: 'trade_price', costPrice: 'cost_price',
   taxClassId: 'tax_class_id', trackInventory: 'track_inventory', stockCount: 'stock_count',
@@ -386,7 +390,13 @@ const COLUMN_MAP: Record<keyof UpdateProductInput, string> = {
 
 export async function updateProduct(id: string, fields: UpdateProductInput): Promise<void> {
   const sets: Prisma.Sql[] = []
+  // jsonb column: the generic assignment below can't cast a JS value to jsonb,
+  // so stringify and cast explicitly (same idiom as tax-shipping/import-jobs).
+  if (fields.descriptionPuck !== undefined) {
+    sets.push(Prisma.sql`"description_puck" = ${fields.descriptionPuck ? JSON.stringify(fields.descriptionPuck) : null}::jsonb`)
+  }
   for (const key of Object.keys(fields) as (keyof UpdateProductInput)[]) {
+    if (key === 'descriptionPuck') continue
     const value = fields[key]
     if (value === undefined) continue
     const column = COLUMN_MAP[key]

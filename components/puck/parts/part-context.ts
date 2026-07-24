@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { Breakpoints } from '@/modules/shop/lib/breakpoints'
 import type { ShopDetailSlot } from '@/modules/shop/lib/detail-slot'
 import type { ShopDetailTabExtra } from '@/modules/shop/lib/detail-tabs'
@@ -65,6 +66,11 @@ export type DetailPartContext = {
   // renders synchronously and cannot await a provider itself. Empty on a
   // shop-only site.
   detailTabs: ShopDetailTabExtra[]
+  // The product's opt-in designed description, already rendered from its Puck
+  // doc (shp_products.description_puck) by the RSC block. Null when the product
+  // has no designed body, where the Description tab falls back to the plain-text
+  // `description`. Built once here so the parts stay synchronous.
+  descriptionBody?: ReactNode
 }
 
 // Injected onto every Product Card part-block, once per product, when a card

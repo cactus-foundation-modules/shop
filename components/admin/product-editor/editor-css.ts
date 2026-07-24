@@ -118,4 +118,11 @@ select.spe-control{cursor:pointer}
 .spe-margin-value{font-size:1rem;font-weight:600}
 .spe-margin-value[data-tone="bad"]{color:var(--color-danger)}
 .spe-margin-value[data-tone="good"]{color:var(--color-success)}
+
+/* --- Designed description (embedded page builder) ----------------------- */
+.spe-desc-design{margin-top:1rem}
+/* Puck owns its own full-region layout, so give it a tall, bordered box to
+   fill rather than letting it size to the form panel. */
+.spe-desc-builder{height:70vh;min-height:520px;border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden;position:relative;background:var(--color-bg)}
+.spe-desc-builder .Puck{height:100%}
 `

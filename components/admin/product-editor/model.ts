@@ -6,6 +6,7 @@
  */
 
 import type { ShpPriceType } from '@/modules/shop/lib/pricing'
+import type { PuckData } from '@/modules/shop/lib/types'
 
 export type ProductStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
 export type RecommendationMode = 'MANUAL' | 'AUTOMATIC'
@@ -61,6 +62,11 @@ export type ProductForm = {
 
 export type EditorState = {
   form: ProductForm
+  // Opt-in designed description. Held here (not on ProductForm, whose values are
+  // all strings/bools) alongside media. null means the plain-text "description"
+  // box is in charge; a Puck doc (even empty) switches the Details tab to the
+  // page builder and, when it has content, wins on the storefront.
+  descriptionPuck: PuckData | null
   media: MediaItem[]
   categoryIds: string[]
   tagIds: string[]
@@ -159,6 +165,7 @@ export function toEditorState(payload: ProductPayload): EditorState {
       upsellMode: (str(p.upsellMode) || 'MANUAL') as RecommendationMode,
       upsellLimit: str(p.upsellLimit) || '4',
     },
+    descriptionPuck: (p.descriptionPuck as PuckData | null) ?? null,
     media: payload.media.map((m) => ({ type: m.type as MediaItem['type'], url: m.url, altText: m.altText, isPrimary: m.isPrimary })),
     categoryIds: payload.categoryIds,
     tagIds: payload.tagIds,
@@ -190,6 +197,8 @@ export function toProductBody(s: EditorState): Record<string, unknown> {
     regenerateSlug: f.regenerateSlug,
     status: f.status,
     description: nullable(f.description),
+    // Send the Puck doc verbatim, or null to clear the design back to plain text.
+    descriptionPuck: s.descriptionPuck,
     shortDescription: nullable(f.shortDescription),
     sku: nullable(f.sku),
     barcode: nullable(f.barcode),
@@ -263,6 +272,7 @@ const TAB_FIELDS: Record<ShopTabId, ReadonlyArray<keyof ProductForm>> = {
 
 /** The non-form slices each tab owns. */
 const TAB_EXTRAS: Partial<Record<ShopTabId, (s: EditorState) => unknown>> = {
+  details: (s) => s.descriptionPuck,
   media: (s) => s.media,
   organisation: (s) => [s.categoryIds, s.tagIds, s.collectionIds],
   recommendations: (s) => [s.related, s.upsells, s.excluded],

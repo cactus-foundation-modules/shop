@@ -870,7 +870,7 @@ const sectionAnchorId = (id: string) => `${SECTION_ID_PREFIX}${id}`
 // links block all build from this, so a link can never point at a section that
 // isn't there. Carved out of the old ShopDetailTabsRsc body unchanged.
 function buildDetailSections(ctx: DetailPartContext): OrderedTab[] {
-  const { product, digitalFile, detailTabs, supplierLabel, slot, currencySymbol, layoutBlockTypes } = ctx
+  const { product, digitalFile, detailTabs, supplierLabel, slot, currencySymbol, layoutBlockTypes, descriptionBody } = ctx
 
   const weightStr = product.weight ? `${product.weight}${product.weightUnit ? ` ${product.weightUnit}` : ''}` : null
   const dimUnit = product.dimensionUnit ? ` ${product.dimensionUnit}` : ''
@@ -909,8 +909,10 @@ function buildDetailSections(ctx: DetailPartContext): OrderedTab[] {
   if (product.dimensionH) dimRows.push(['Height', `${product.dimensionH}${dimUnit}`])
 
   const own: OrderedTab[] = []
-  if (product.description) {
-    own.push({ id: 'desc', order: TAB_ORDER.desc, label: 'Description', content: <p>{product.description}</p> })
+  // A designed description wins when present; otherwise the plain-text paragraph.
+  const desc = descriptionBody ?? (product.description ? <p>{product.description}</p> : null)
+  if (desc) {
+    own.push({ id: 'desc', order: TAB_ORDER.desc, label: 'Description', content: desc })
   }
   own.push({ id: 'spec', order: TAB_ORDER.spec, label: 'Specification', content: <FactsTable rows={specRows} /> })
   if (dimRows.length > 0) {

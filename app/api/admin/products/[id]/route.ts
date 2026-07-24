@@ -38,6 +38,10 @@ const Body = z.object({
   name: z.string().min(1).optional(),
   status: z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED']).optional(),
   description: z.string().nullable().optional(),
+  // Opt-in designed description: a Puck content-block document stored verbatim
+  // as jsonb. Passed through unvalidated (the editor produces it, same trust as
+  // Layout.builderData); null clears it back to the plain-text box.
+  descriptionPuck: z.any().nullable().optional(),
   shortDescription: z.string().nullable().optional(),
   sku: z.string().nullable().optional(),
   barcode: z.string().nullable().optional(),
