@@ -145,7 +145,11 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
 
   return (
     <div>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      {/* `</` escaped so a description carrying markup (a supplier-imported embed,
+          say) cannot terminate this script element early - unescaped, the spilled
+          remainder parses as garbage JavaScript and breaks React's hydration of
+          the whole product page. Same treatment as ultimate-seo's jsonLdEscape. */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }} />
       <Render config={getModuleLayoutPuckRscConfig('shopProductDetail') as any} data={data as Data} />
     </div>
   )
