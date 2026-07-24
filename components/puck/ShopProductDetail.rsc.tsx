@@ -14,6 +14,7 @@ import { resolveShopDetailProvider, narrowShopDetailSlot, collectLayoutBlockType
 import { resolveShopDetailTabs } from '@/modules/shop/lib/detail-tabs'
 import { resolveShopDetailSpec } from '@/modules/shop/lib/detail-spec'
 import { resolveShopGalleryExtras } from '@/modules/shop/lib/gallery-media'
+import { stripHtmlToPlainText } from '@/modules/shop/lib/strip-html'
 import type { PuckData } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { shopProductDetailPuckComponent, type ShopProductDetailProps } from './ShopProductDetail'
@@ -88,7 +89,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: product.name,
-    description: product.shortDescription ?? product.description ?? undefined,
+    description: stripHtmlToPlainText(product.shortDescription ?? product.description ?? '') || undefined,
     image: media.map((m) => m.url),
     sku: product.sku ?? undefined,
     offers: {
