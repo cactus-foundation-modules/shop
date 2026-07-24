@@ -125,4 +125,13 @@ select.spe-control{cursor:pointer}
    fill rather than letting it size to the form panel. */
 .spe-desc-builder{height:70vh;min-height:520px;border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden;position:relative;background:var(--color-bg)}
 .spe-desc-builder .Puck{height:100%}
+/* The Description tab embeds a Puck canvas that mounts the site's design tokens
+   into the host <head> (Puck's iframe mirrors host <style>s so the canvas renders
+   with real site styling). Those tokens redefine :root --radius-lg to 9999px,
+   which would otherwise bend the surrounding admin chrome - sidebar, cards, these
+   very panels - into ellipses. Re-pin --radius-lg to the injection-immune admin
+   token on .admin-shell, which lives in the host DOM only: the mirrored copy of
+   this rule matches nothing inside the canvas iframe, so the description still
+   renders with the site's own corner radii. */
+.admin-shell{--radius-lg:var(--admin-radius-lg)}
 `
