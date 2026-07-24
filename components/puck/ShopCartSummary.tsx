@@ -53,8 +53,10 @@ export const shopCartSummaryPuckComponent = {
     // Total + behaviour
     showSubtotal: { type: 'select' as const, label: 'Show subtotal', options: yesNo },
     hideWhenEmpty: { type: 'select' as const, label: 'Hide widget when cart empty', options: yesNo },
-    // Audience
-    visibility: { type: 'select' as const, label: 'Who can see this', options: [
+    // Audience. NB: keep this key as `audience`, never `visibility` - core owns a
+    // responsive-visibility field of that exact name on every block and strips it
+    // from render props, which would silently disable this gate.
+    audience: { type: 'select' as const, label: 'Who can see this', options: [
       { value: 'everyone', label: 'Everyone' },
       { value: 'admin', label: 'Admins only' },
     ] },
@@ -64,7 +66,7 @@ export const shopCartSummaryPuckComponent = {
     variant: 'bordered', bgColour: '', borderColour: '', textColour: '', borderRadius: 8,
     showCount: 'yes', countStyle: 'badge', itemWord: 'item', itemWordPlural: 'items',
     badgeBg: 'var(--color-primary)', badgeText: 'var(--color-on-primary)', hideBadgeWhenZero: 'yes',
-    showSubtotal: 'no', hideWhenEmpty: 'no', visibility: 'everyone',
+    showSubtotal: 'no', hideWhenEmpty: 'no', audience: 'everyone',
   } as ShopCartSummaryProps,
   render: ShopCartSummary,
 }

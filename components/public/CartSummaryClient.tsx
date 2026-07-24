@@ -31,7 +31,10 @@ export type CartSummaryOptions = {
   // gate is enforced server-side (ShopCartSummary.rsc), never here - this island
   // is client-only and its markup is trivially inspectable, so it can't be a
   // security boundary. This field is carried purely so the type stays complete.
-  visibility: 'everyone' | 'admin'
+  // NB: NOT named `visibility` - core injects a responsive-visibility field of
+  // that exact name into every Puck block and strips it from render props, which
+  // silently swallowed the gate. See ShopCartSummary.rsc.
+  audience: 'everyone' | 'admin'
 }
 
 const DEFAULTS: CartSummaryOptions = {
@@ -39,7 +42,7 @@ const DEFAULTS: CartSummaryOptions = {
   variant: 'bordered', bgColour: '', borderColour: '', textColour: '', borderRadius: 8,
   showCount: 'yes', countStyle: 'badge', itemWord: 'item', itemWordPlural: 'items',
   badgeBg: 'var(--color-primary)', badgeText: 'var(--color-on-primary)', hideBadgeWhenZero: 'yes',
-  showSubtotal: 'no', hideWhenEmpty: 'no', visibility: 'everyone',
+  showSubtotal: 'no', hideWhenEmpty: 'no', audience: 'everyone',
 }
 
 // Stroked line icons (feather / lucide geometry), drawn in currentColor so they
