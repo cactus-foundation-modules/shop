@@ -26,6 +26,12 @@ export type CartSummaryOptions = {
   hideBadgeWhenZero: 'yes' | 'no'
   showSubtotal: 'yes' | 'no'
   hideWhenEmpty: 'yes' | 'no'
+  // Frontend audience. 'everyone' shows the widget to all visitors; 'admin' hides
+  // it from the public and only renders it when a site admin is signed in. The
+  // gate is enforced server-side (ShopCartSummary.rsc), never here - this island
+  // is client-only and its markup is trivially inspectable, so it can't be a
+  // security boundary. This field is carried purely so the type stays complete.
+  visibility: 'everyone' | 'admin'
 }
 
 const DEFAULTS: CartSummaryOptions = {
@@ -33,7 +39,7 @@ const DEFAULTS: CartSummaryOptions = {
   variant: 'bordered', bgColour: '', borderColour: '', textColour: '', borderRadius: 8,
   showCount: 'yes', countStyle: 'badge', itemWord: 'item', itemWordPlural: 'items',
   badgeBg: 'var(--color-primary)', badgeText: 'var(--color-on-primary)', hideBadgeWhenZero: 'yes',
-  showSubtotal: 'no', hideWhenEmpty: 'no',
+  showSubtotal: 'no', hideWhenEmpty: 'no', visibility: 'everyone',
 }
 
 // Stroked line icons (feather / lucide geometry), drawn in currentColor so they

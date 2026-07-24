@@ -53,24 +53,23 @@ export const shopCartSummaryPuckComponent = {
     // Total + behaviour
     showSubtotal: { type: 'select' as const, label: 'Show subtotal', options: yesNo },
     hideWhenEmpty: { type: 'select' as const, label: 'Hide widget when cart empty', options: yesNo },
+    // Audience
+    visibility: { type: 'select' as const, label: 'Who can see this', options: [
+      { value: 'everyone', label: 'Everyone' },
+      { value: 'admin', label: 'Admins only' },
+    ] },
   },
   defaultProps: {
     icon: 'cart', iconSize: 20, iconColour: '', label: '',
     variant: 'bordered', bgColour: '', borderColour: '', textColour: '', borderRadius: 8,
     showCount: 'yes', countStyle: 'badge', itemWord: 'item', itemWordPlural: 'items',
     badgeBg: 'var(--color-primary)', badgeText: 'var(--color-on-primary)', hideBadgeWhenZero: 'yes',
-    showSubtotal: 'no', hideWhenEmpty: 'no',
+    showSubtotal: 'no', hideWhenEmpty: 'no', visibility: 'everyone',
   } as ShopCartSummaryProps,
   render: ShopCartSummary,
 }
 
-// RSC half: server wrapper renders the live client island (no preview seeding),
-// passing only plain props across the boundary.
-export function ShopCartSummaryRsc(props: ShopCartSummaryProps) {
-  return <CartSummaryClient {...props} />
-}
-
-export const shopCartSummaryPuckRscComponent = {
-  ...shopCartSummaryPuckComponent,
-  render: ShopCartSummaryRsc,
-}
+// RSC half lives in ShopCartSummary.rsc.tsx (wired via `rscImport` in
+// cactus.module.json): the 'Admins only' visibility gate reads the admin session
+// cookie, which pulls next/headers + Prisma - server-only, must stay out of this
+// editor-safe bundle.

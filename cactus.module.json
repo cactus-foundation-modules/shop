@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.98",
+  "version": "0.1.99",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.571",
@@ -170,6 +170,7 @@
       "import": "./components/puck/ShopCartSummary",
       "component": "shopCartSummaryPuckComponent",
       "rscComponent": "shopCartSummaryPuckRscComponent",
+      "rscImport": "./components/puck/ShopCartSummary.rsc",
       "layoutTypes": [
         "header"
       ]
