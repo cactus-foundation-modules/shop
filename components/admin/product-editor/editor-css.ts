@@ -121,6 +121,8 @@ select.spe-control{cursor:pointer}
 
 /* --- Designed description (embedded page builder) ----------------------- */
 .spe-desc-design{margin-top:1rem}
+.spe-desc-design-top{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:.5rem}
+.spe-desc-popout{flex-shrink:0;white-space:nowrap}
 /* Puck owns its own full-region layout, so give it a tall, bordered box to
    fill rather than letting it size to the form panel. */
 .spe-desc-builder{height:70vh;min-height:520px;border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden;position:relative;background:var(--color-bg)}

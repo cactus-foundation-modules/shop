@@ -12,6 +12,7 @@ import {
   type ProductEditorRegistration,
 } from '@/modules/shop/components/admin/product-editor/context'
 import { productEditorCss } from '@/modules/shop/components/admin/product-editor/editor-css'
+import { DESCRIPTION_SYNC_CHANNEL, type DescriptionSyncMessage } from '@/modules/shop/components/admin/product-editor/description-puck'
 import {
   SHOP_TAB_ORDER, isDirty, isTabDirty, tabForField, toEditorState, toProductBody, validate,
   type CategoryTerm, type EditorState, type Errors, type PanelProps, type ProductForm, type ShopTabId, type Term,
@@ -74,6 +75,9 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
   const [showErrors, setShowErrors] = useState(false)
   const [registrations, setRegistrations] = useState<Record<string, ProductEditorRegistration>>({})
   const [badges, setBadges] = useState<Record<string, string | null>>({})
+  // Bumped when the full-screen pop-out saves a new description, to remount the
+  // inline builder so its Puck canvas reloads with the adopted document.
+  const [descriptionRev, setDescriptionRev] = useState(0)
 
   // --- Registry for contributed tabs ---------------------------------------
   const register = useCallback((key: string, registration: ProductEditorRegistration) => {
@@ -178,6 +182,8 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
   // --- Save ----------------------------------------------------------------
   const stateRef = useRef(state)
   useEffect(() => { stateRef.current = state })
+  const baselineRef = useRef(baseline)
+  useEffect(() => { baselineRef.current = baseline })
 
   const save = useCallback(async (): Promise<boolean> => {
     const current = stateRef.current
@@ -261,6 +267,74 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
     }
   }, [productId, registrations, fetchState])
 
+  // --- Full-screen description pop-out --------------------------------------
+  // Open the designed description on its own chrome-free page, in a new tab. The
+  // pop-out edits the same product's description and saves it independently, so
+  // persist any inline description edit first - just that field, not the whole
+  // product (which validation might block) - so the pop-out opens on the latest
+  // copy rather than a stale server one.
+  const openDescriptionEditor = useCallback(async () => {
+    const current = stateRef.current
+    if (!current) return
+    const url = `/${adminPath}/m/shop/products/${productId}/description`
+    const base = baselineRef.current
+    const changed = JSON.stringify(current.descriptionPuck) !== JSON.stringify(base?.descriptionPuck)
+
+    // No unsaved inline edit: open straight away, synchronously in the click so
+    // the pop-up blocker lets it through, and the pop-out loads the saved copy.
+    if (!changed) {
+      window.open(url, '_blank', 'noopener')
+      return
+    }
+
+    // Unsaved inline edits: open a blank tab first (still inside the click, so it
+    // is allowed), persist just the description - not the whole product, which
+    // validation might block - then point the tab at the builder so it loads the
+    // copy we just saved rather than a stale one.
+    const win = window.open('about:blank', '_blank')
+    try {
+      const res = await fetch(`/api/m/shop/admin/products/${productId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descriptionPuck: current.descriptionPuck }),
+      })
+      if (!res.ok) {
+        setSaveError((await res.json().catch(() => ({}))).error ?? 'Could not save the description before opening it in a new tab.')
+        win?.close()
+        return
+      }
+      setBaseline((b) => (b ? { ...b, descriptionPuck: current.descriptionPuck } : b))
+      if (win) win.location.href = url
+      else setSaveError('Allow pop-ups for this site to open the builder in a new tab, then try again.')
+    } catch {
+      setSaveError('Could not reach the server to save the description. Check your connection and try again.')
+      win?.close()
+    }
+  }, [productId, adminPath])
+
+  // Adopt a description the pop-out has just saved, so this editor shows it and,
+  // crucially, its own Save button no longer holds a stale copy that would
+  // overwrite it. Skipped while the inline description is itself dirty: the two
+  // have diverged and last-save-wins, rather than silently binning local edits.
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return
+    const channel = new BroadcastChannel(DESCRIPTION_SYNC_CHANNEL)
+    channel.onmessage = (e: MessageEvent<DescriptionSyncMessage>) => {
+      const msg = e.data
+      if (!msg || msg.productId !== productId) return
+      const current = stateRef.current
+      const base = baselineRef.current
+      if (!current || !base) return
+      if (JSON.stringify(current.descriptionPuck) !== JSON.stringify(base.descriptionPuck)) return
+      const incoming = msg.descriptionPuck ?? null
+      if (JSON.stringify(incoming) === JSON.stringify(current.descriptionPuck)) return
+      setState((s) => (s ? { ...s, descriptionPuck: incoming } : s))
+      setBaseline((b) => (b ? { ...b, descriptionPuck: incoming } : b))
+      setDescriptionRev((n) => n + 1)
+    }
+    return () => channel.close()
+  }, [productId])
+
   // --- Duplicate / delete --------------------------------------------------
   // Both navigate away with a hard load, so clear the dirty guard first to skip
   // the "unsaved changes" prompt - the product is being replaced or removed, so
@@ -298,7 +372,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
     if (!state) return []
     const panelProps: PanelProps = { state, setField, patch, errors: visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier }
     const own: Tab[] = [
-      { id: 'details', label: 'Details', order: SHOP_TAB_ORDER.details, render: () => <DetailsPanel {...panelProps} /> },
+      { id: 'details', label: 'Details', order: SHOP_TAB_ORDER.details, render: () => <DetailsPanel {...panelProps} productId={productId} onOpenDescriptionEditor={openDescriptionEditor} descriptionRev={descriptionRev} /> },
       { id: 'media', label: 'Images', order: SHOP_TAB_ORDER.media, render: () => <MediaPanel {...panelProps} productId={productId} /> },
       { id: 'pricing', label: 'Pricing', order: SHOP_TAB_ORDER.pricing, render: () => <PricingPanel {...panelProps} taxClasses={taxClasses} /> },
       { id: 'stock', label: 'Stock & delivery', order: SHOP_TAB_ORDER.stock, render: () => <StockPanel {...panelProps} /> },
@@ -316,7 +390,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
       render: () => t.node,
     }))
     return [...own, ...contributed].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
-  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier, taxClasses, categories, tags, collections, productId, siteUrl, extraTabs])
+  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier, taxClasses, categories, tags, collections, productId, siteUrl, extraTabs, openDescriptionEditor, descriptionRev])
 
   // Derived, not stored: a tab that vanishes (the product stopped being digital)
   // or a ?tab= naming a module that isn't installed falls back to the first tab

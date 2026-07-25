@@ -4,20 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Puck } from '@puckeditor/core'
 import type { Data } from '@puckeditor/core'
 import '@puckeditor/core/no-external.css'
-import { getModuleLayoutPuckConfig } from '@/lib/puck/config'
-import { withImagePickerFields } from '@/lib/puck/MediaPickerField'
 import { registerEditorFields } from '@/lib/puck/fields/editor'
+import { buildDescriptionConfig, emptyDescriptionPuck } from '@/modules/shop/components/admin/product-editor/description-puck'
 import type { PuckData } from '@/modules/shop/lib/types'
 
-// A per-product designed description, edited with an embedded Puck. The layout
-// type is deliberately one nothing registers blocks against, so the config is
-// core's shared content parts only (headings, text, images, columns, callouts)
-// with a bare root - no site header/footer/menu chrome. Same shared parts drive
-// the storefront render, so editor and frontend markup match automatically.
-const LAYOUT_TYPE = 'shopProductDescription'
-
-// Puck's minimal empty document. Seeded when the admin first chooses to design.
-export const emptyDescriptionPuck: PuckData = { content: [], root: {} }
+// The empty document and Puck config are shared with the full-screen pop-out
+// editor (see description-puck.ts) so the two surfaces can never drift.
+export { emptyDescriptionPuck }
 
 // Hands the real sidebar field widgets (media picker, etc.) to the registry the
 // shared config renders through. Module scope so it runs before Puck's first
@@ -29,9 +22,9 @@ export function DescriptionBuilder({ value, onChange }: {
   onChange: (data: PuckData) => void
 }) {
   // Content-only config: an unregistered layout type yields core's shared parts
-  // and a bare root. withImagePickerFields wires the media library into every
-  // image field, the same wrap the core layout editor applies.
-  const config = useMemo(() => withImagePickerFields(getModuleLayoutPuckConfig(LAYOUT_TYPE)), [])
+  // and a bare root, with the media library wired into every image field. Shared
+  // with the full-screen pop-out so both surfaces stamp identical markup.
+  const config = useMemo(() => buildDescriptionConfig(), [])
 
   // Puck fires onChange once on mount with its normalised copy of the initial
   // data. Swallow that first call so merely opening a saved design does not mark
