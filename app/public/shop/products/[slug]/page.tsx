@@ -5,6 +5,7 @@ import type { Data } from '@puckeditor/core'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getProductBySlug } from '@/modules/shop/lib/db/products'
+import { resolveAliasedProduct } from '@/modules/shop/lib/product-page-resolver'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { injectProductContext } from '@/modules/shop/lib/inject-product-context'
@@ -21,15 +22,26 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   // A closed shop must not publish its product names either, so the title is
   // withheld from anyone the page itself would turn away.
   if ((await getShopGate()).blocked) return {}
-  const product = await getProduct(slug)
+  const found = await getProduct(slug)
   // Mirrors the page's visibility gate below. Next currently discards this
   // metadata once the page calls notFound(), but only while no
   // global-not-found convention exists - adding one flips metadata resolution
   // back to the page and would publish a hidden product's name.
-  if (!product || product.status !== 'ACTIVE' || product.catalogueHidden) return {}
+  if (found && found.status === 'ACTIVE' && !found.catalogueHidden) {
+    return {
+      title: found.metaTitle || found.name,
+      description: found.metaDescription || found.shortDescription || undefined,
+    }
+  }
+  // A slug shop won't show on its own may still be a variant's deep link. If a
+  // module aliases it to a real product, title the tab after the variant itself
+  // (its own descriptive name), so a shared link reads true, and take the
+  // description from the parent it resolved to.
+  const parent = await resolveAliasedProduct(slug, found)
+  if (!parent) return {}
   return {
-    title: product.metaTitle || product.name,
-    description: product.metaDescription || product.shortDescription || undefined,
+    title: found?.name || parent.metaTitle || parent.name,
+    description: parent.metaDescription || parent.shortDescription || undefined,
   }
 }
 
@@ -38,16 +50,28 @@ export default async function ShopProductPage({ params }: { params: Promise<{ sl
   const gate = await getShopGate()
   if (gate.blocked) return <ShopClosedNotice message={gate.message} />
 
-  const product = await getProduct(slug)
+  let product = await getProduct(slug)
   // Catalogue-hidden rows (variant children) are reached only through their
-  // parent's selector, never on their own URL.
-  if (!product || product.status !== 'ACTIVE' || product.catalogueHidden) notFound()
+  // parent's selector, never on their own URL - except a companion module may
+  // alias such a URL to the product whose page should stand in for it (a
+  // variation deep link resolving to its parent, opened on that combination).
+  // The same door catches an inactive or unknown slug; nothing claims those, so
+  // the page 404s exactly as before.
+  if (!product || product.status !== 'ACTIVE' || product.catalogueHidden) {
+    const aliased = await resolveAliasedProduct(slug, product)
+    if (!aliased) notFound()
+    product = aliased
+  }
 
-  const layout = await resolveThemeLayout('shopProduct', { moduleName: 'shop', slug })
+  // From here `product` is the visible, active product to render: the one the URL
+  // names, or the parent a deep link resolved to. Its own slug drives the layout
+  // choice and the context shop injects into its blocks, so the parent's page
+  // renders while the address bar keeps the variant's tidy link.
+  const layout = await resolveThemeLayout('shopProduct', { moduleName: 'shop', slug: product.slug })
   if (!layout?.builderData) notFound()
 
   const inStock = !product.trackInventory || (product.stockCount ?? 0) > 0 || product.outOfStockBehaviour === 'BACKORDER' || product.isPreOrder
-  const data = injectProductContext(layout.builderData as PuckData, slug, product.id, inStock)
+  const data = injectProductContext(layout.builderData as PuckData, product.slug, product.id, inStock)
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
