@@ -30,6 +30,18 @@ export const CART_LINE_CSS = `
 .scl-deliv{min-width:0}
 .scl-deliv select{max-width:100%}
 .scl-deliv label,.scl-deliv legend{min-width:0;flex-wrap:wrap}
+/* On desktop each line is its own flex row, so a wider delivery column on one
+   line would push that line's qty/price/remove further left than the next
+   line's - the columns "chunk" out of alignment. A fixed basis pins the
+   delivery column to one width on every line, so the trailing columns line up
+   down the cart. The width is sized to hold a full option label - tier name +
+   its promised date + price - on a single line ("Standard Pre-built Delivery by
+   Monday 10th of August (+£15.00)"); a label longer than that simply wraps.
+   Off below 640px, where the whole line restacks onto the grid above and the
+   delivery row spans full width (wrapping onto two lines there is fine). */
+@media (min-width:641px){
+  .scl-deliv{flex:0 0 25rem;width:25rem}
+}
 @media (max-width:640px){
   .scl{
     display:grid!important;

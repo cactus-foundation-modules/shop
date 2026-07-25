@@ -30,6 +30,15 @@ export type CartLineControl = {
   value: string
   options: { value: string; label: string; priceAdjust?: number }[]
   renderAs?: 'select' | 'radios'
+  // Opt-in: the options' own labels already state their outcome in full (e.g. a
+  // delivery tier whose label carries its promised date), so the cart renders
+  // the picker bare - it drops the group's "<label>:" heading and skips the one
+  // restated confirmation field (the persisted meta field whose label matches
+  // this control's), which would only repeat what every option already says.
+  // Absent/false keeps the generic look: a visible heading plus that field
+  // shown beside the picker. A shop too old to read it just renders the generic
+  // look regardless, so a module can set it safely.
+  optionsSelfLabelled?: boolean
 }
 
 // How a line is titled in the cart. A resolver may hand back a base `name` (shown

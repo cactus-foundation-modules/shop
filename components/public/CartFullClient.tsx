@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { getCart, setLineQuantity, setLineMeta, removeFromCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } from '@/modules/shop/components/public/validated-cache'
@@ -66,6 +66,9 @@ export type CartFullOptions = {
   borderRadius?: number       // panel radius (cards)
 }
 
+// Visually-hidden but present for assistive tech (screen-reader-only).
+const SR_ONLY: CSSProperties = { position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0 }
+
 const SAMPLE_LINES: ValidatedLine[] = [
   // The first sample carries a split title and a delivery control so the editor
   // preview shows the name/variation lines and the delivery column in place.
@@ -73,8 +76,7 @@ const SAMPLE_LINES: ValidatedLine[] = [
     productId: 'sample-1', name: 'Terracotta Plant Pot - Large / Matte', slug: 'terracotta-plant-pot',
     quantity: 2, unitPrice: 18, lineSubtotal: 36, available: true, availabilityReason: null, isPreOrder: false, imageUrl: null,
     displayTitle: { name: 'Terracotta Plant Pot', secondary: 'Large / Matte' },
-    control: { key: 'shippingTier', label: 'Delivery', value: 'standard', options: [{ value: 'standard', label: 'Standard (included)' }, { value: 'express', label: 'Express (+£4.95)' }] },
-    lineMeta: { fields: [{ label: 'Delivery', value: 'Standard - by 12 Aug' }] },
+    control: { key: 'shippingTier', label: 'Delivery', value: 'standard', optionsSelfLabelled: true, options: [{ value: 'standard', label: 'Standard by Tuesday (included)' }, { value: 'express', label: 'Express by Monday (+£4.95)' }] },
   },
   { productId: 'sample-2', name: 'Watering Can (Brass)', slug: 'watering-can-brass', quantity: 1, unitPrice: 42.5, lineSubtotal: 42.5, available: true, availabilityReason: null, isPreOrder: true, imageUrl: null },
 ]
@@ -323,7 +325,9 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
       const groupName = `${lineKey(line)}:${control.key}`
       return (
         <fieldset style={{ border: 'none', margin: '0.375rem 0 0', padding: 0, display: 'grid', gap: '0.25rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-          <legend style={{ fontWeight: 500, padding: 0 }}>{control.label}:</legend>
+          {/* A self-labelling control needs no visible heading (each option states
+              its own outcome), but the group stays labelled for assistive tech. */}
+          <legend style={control.optionsSelfLabelled ? SR_ONLY : { fontWeight: 500, padding: 0 }}>{control.label}{control.optionsSelfLabelled ? '' : ':'}</legend>
           {control.options.map((o) => (
             <label key={o.value} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', cursor: preview ? 'default' : 'pointer' }}>
               <input
@@ -343,8 +347,11 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
     }
     return (
       <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', margin: '0.375rem 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-        <span style={{ fontWeight: 500 }}>{control.label}:</span>
+        {control.optionsSelfLabelled
+          ? null
+          : <span style={{ fontWeight: 500 }}>{control.label}:</span>}
         <select
+          aria-label={control.optionsSelfLabelled ? control.label : undefined}
           value={control.value}
           disabled={preview}
           onChange={(e) => onControl(lineKey(line), control.key, e.target.value)}
@@ -378,14 +385,16 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
 
   // The delivery column: a per-line control's picker plus its confirmed value
   // (the promised date), lifted out of the name column into a column of its own
-  // between the product and the price. Null for a line no resolver offered a
-  // control for, so a plain shop's cart keeps its original shape.
+  // between the product and the price. A self-labelling control skips the
+  // confirmation line - each option already states its own outcome. Null for a
+  // line no resolver offered a control for, so a plain shop's cart keeps its
+  // original shape.
   function renderDelivery(line: ValidatedLine) {
     if (!line.control || line.control.options.length === 0) return null
     return (
       <div className="scl-deliv" style={{ display: 'grid', gap: '0.25rem', minWidth: 0, alignContent: 'center' }}>
         {renderControl(line)}
-        {renderLineMeta(deliveryMetaFields(line))}
+        {!line.control.optionsSelfLabelled && renderLineMeta(deliveryMetaFields(line))}
       </div>
     )
   }
