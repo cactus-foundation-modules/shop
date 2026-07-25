@@ -41,10 +41,15 @@ export type ResolvedCartLine = {
 export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLine[]> {
   const resolvers = await getCartLineResolvers()
   const { enabledPriceTypes } = await getShopConfigCached()
-  const results: ResolvedCartLine[] = []
-  for (const line of cart) {
+  // Resolve every line concurrently. Each line is an independent read (product
+  // lookup + any cart-line resolvers), and a resolver like advanced-shipping
+  // fires a handful of DB round-trips of its own; walking the cart sequentially
+  // multiplied that by the line count and made a full cart take seconds. Order
+  // is preserved (Promise.all keeps input order); a skipped line returns null
+  // and is filtered out, exactly as the old `continue` dropped it.
+  const resolved = await Promise.all(cart.map(async (line): Promise<ResolvedCartLine | null> => {
     const product = await getProductById(line.productId)
-    if (!product || product.status !== 'ACTIVE') continue
+    if (!product || product.status !== 'ACTIVE') return null
 
     let available = true
     let availabilityReason: string | undefined
@@ -85,7 +90,7 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
     // price. Resolved here rather than at display time so the figure charged is
     // the one the server worked out, never one the client sent.
     const unitPrice = effectivePrice(product, enabledPriceTypes) + metaResolution.priceAdjust
-    results.push({
+    return {
       product,
       quantity: line.quantity,
       unitPrice,
@@ -96,9 +101,9 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       lineId: line.lineId,
       lineMeta: metaResolution.persistMeta,
       control: metaResolution.control ?? null,
-    })
-  }
-  return results
+    }
+  }))
+  return resolved.filter((line): line is ResolvedCartLine => line !== null)
 }
 
 export type DiscountResolution = {

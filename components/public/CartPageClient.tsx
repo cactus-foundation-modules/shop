@@ -58,7 +58,26 @@ export function CartPageClient() {
 
   const subtotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
 
-  if (!hasLoaded) return null
+  // Shimmer skeleton while the localStorage cart is validated, so the page
+  // never flashes blank (the validate call folds delivery/personalisation
+  // resolvers and can take a moment).
+  if (!hasLoaded) {
+    return (
+      <div style={{ display: 'grid', gap: '1rem', maxWidth: 640 }} aria-busy="true" aria-label="Loading your cart">
+        {[0, 1].map((i) => (
+          <div key={i} style={{ display: 'flex', gap: '1rem', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
+            <div className="skeleton" style={{ width: 64, height: 64, borderRadius: 6, flexShrink: 0 }} />
+            <div style={{ flex: 1, display: 'grid', gap: '0.4rem' }}>
+              <div className="skeleton" style={{ height: 14, width: '65%' }} />
+              <div className="skeleton" style={{ height: 12, width: '35%' }} />
+            </div>
+            <div className="skeleton" style={{ height: 14, width: 60 }} />
+          </div>
+        ))}
+        <div className="skeleton" style={{ height: 44, width: '100%', borderRadius: 8 }} />
+      </div>
+    )
+  }
 
   if (lines.length === 0) {
     return <p style={{ color: 'var(--color-text-muted)' }}>Your cart is empty. <Link href="/shop">Continue shopping</Link>.</p>
