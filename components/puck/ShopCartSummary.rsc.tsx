@@ -25,7 +25,14 @@ export async function ShopCartSummaryRsc(props: ShopCartSummaryProps) {
     const admin = await getSessionFromCookie()
     if (!admin) return null
   }
-  return <CartSummaryClient {...props} />
+  // Strip Puck's injected `puck`/`editMode` bag (live functions) before crossing
+  // the client boundary - spreading it would trip React's "Functions cannot be
+  // passed directly to Client Components" the moment this block lands in a
+  // published header layout (the exact 500 ShopCartFull hit on the cart page).
+  const options = { ...props } as Record<string, unknown>
+  delete options.puck
+  delete options.editMode
+  return <CartSummaryClient {...(options as ShopCartSummaryProps)} />
 }
 
 export const shopCartSummaryPuckRscComponent = {

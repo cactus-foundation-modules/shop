@@ -83,8 +83,17 @@ export const shopCartFullPuckComponent = {
 }
 
 // RSC half: server wrapper renders the client island with live props (no preview).
+// Puck's RSC <Render> hands every block a `puck` bag (renderDropZone, dragRef,
+// metadata, isEditing - all live functions) alongside its own props. Spreading
+// that straight into the client island trips React's "Functions cannot be passed
+// directly to Client Components" and 500s the whole cart page (digest 3816856056).
+// Forward only the block's own plain options - same discipline ShopUpsellProducts
+// already keeps by hand-picking its props.
 export function ShopCartFullRsc(props: ShopCartFullProps) {
-  return <CartFullClient {...props} />
+  const options = { ...props } as Record<string, unknown>
+  delete options.puck
+  delete options.editMode
+  return <CartFullClient {...(options as ShopCartFullProps)} />
 }
 
 export const shopCartFullPuckRscComponent = {
