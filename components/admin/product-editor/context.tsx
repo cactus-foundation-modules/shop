@@ -29,6 +29,12 @@ type Registry = {
   unregister: (key: string) => void
   setBadge: (tabId: string, badge: string | null) => void
   currency: string
+  // True when a contributed tab has taken over how this product is priced, so
+  // the shop's own Price boxes must not be editable (they would set a figure the
+  // storefront never shows). Shop knows nothing about why - a module signals it
+  // through useSetProductEditorPriceManaged and the Pricing tab reads it back.
+  priceManaged: boolean
+  setPriceManaged: (managed: boolean) => void
 }
 
 const RegistryContext = createContext<Registry | null>(null)
@@ -95,6 +101,30 @@ export function useProductEditorTabBadge(badge: string | null) {
  */
 export function useProductEditorCurrency(): string {
   return useContext(RegistryContext)?.currency ?? '£'
+}
+
+/**
+ * Whether some contributed tab has taken ownership of this product's price.
+ * The Pricing tab reads this to lock its own Price boxes; false everywhere the
+ * product is priced normally (and on a standalone screen with no registry).
+ */
+export function useProductEditorPriceManaged(): boolean {
+  return useContext(RegistryContext)?.priceManaged ?? false
+}
+
+/**
+ * Declare that this tab owns how the product is priced, so the shop's own Price
+ * boxes stand down. Call it unconditionally from a client component inside a
+ * product editor tab, passing whether ownership currently applies; it is inert
+ * outside the editor, and clears itself when the tab unmounts.
+ */
+export function useSetProductEditorPriceManaged(managed: boolean) {
+  const registry = useContext(RegistryContext)
+  useEffect(() => {
+    if (!registry) return
+    registry.setPriceManaged(managed)
+    return () => registry.setPriceManaged(false)
+  }, [registry, managed])
 }
 
 export type { Registry as ProductEditorRegistry, Registration as ProductEditorRegistration }

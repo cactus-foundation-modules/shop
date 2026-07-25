@@ -70,6 +70,10 @@ export function buildCardContext(
   // been rebuilt still compiles; without it a sale price set on a product shows
   // even if the shop has since switched sale prices off.
   pricing?: { enabledPriceTypes?: readonly string[]; showRetailPrice?: boolean },
+  // The cheapest figure when a companion module prices this product as a range
+  // (shop-variations), resolved once for the whole grid via resolveCardFromPrices
+  // and passed in per product. Null/absent leaves the card on shop's own price.
+  fromPrice?: string | null,
 ): CardPartContext {
   const primary = media.find((m) => m.isPrimary) ?? media[0]
   const image = primary && primary.type !== 'VIDEO_URL' ? { url: primary.url, alt: primary.altText ?? product.name } : null
@@ -81,6 +85,7 @@ export function buildCardContext(
     prices: priceView(product, pricing?.enabledPriceTypes),
     showRetailPrice: pricing?.showRetailPrice ?? false,
     badge: badgeFor(product, tagSlugs, isOutOfStock(product)),
+    fromPrice: fromPrice ?? null,
   }
 }
 
@@ -113,8 +118,14 @@ export function MinimalCard({ product, ctx }: CardItem) {
       </div>
       <h3 className="shop-card-name">{product.name}</h3>
       <div className="shop-card-pricerow">
-        <span className="shop-card-price">{formatMoney(ctx.prices.now, ctx.currencySymbol)}</span>
-        {ctx.prices.was && <span className="shop-card-compare">{formatMoney(ctx.prices.was, ctx.currencySymbol)}</span>}
+        {ctx.fromPrice != null ? (
+          <span className="shop-card-price">From {formatMoney(ctx.fromPrice, ctx.currencySymbol)}</span>
+        ) : (
+          <>
+            <span className="shop-card-price">{formatMoney(ctx.prices.now, ctx.currencySymbol)}</span>
+            {ctx.prices.was && <span className="shop-card-compare">{formatMoney(ctx.prices.was, ctx.currencySymbol)}</span>}
+          </>
+        )}
       </div>
     </a>
   )

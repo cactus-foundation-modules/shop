@@ -75,6 +75,10 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
   const [showErrors, setShowErrors] = useState(false)
   const [registrations, setRegistrations] = useState<Record<string, ProductEditorRegistration>>({})
   const [badges, setBadges] = useState<Record<string, string | null>>({})
+  // Set by a contributed tab (the Variations tab) when the product is priced
+  // per variation, so the Pricing tab locks its own Price boxes rather than
+  // letting an owner set a figure the storefront never shows.
+  const [priceManaged, setPriceManaged] = useState(false)
 
   // --- Registry for contributed tabs ---------------------------------------
   const register = useCallback((key: string, registration: ProductEditorRegistration) => {
@@ -91,7 +95,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
   const setBadge = useCallback((tabId: string, badge: string | null) => {
     setBadges((prev) => (prev[tabId] === badge ? prev : { ...prev, [tabId]: badge }))
   }, [])
-  const registry = useMemo(() => ({ register, unregister, setBadge, currency }), [register, unregister, setBadge, currency])
+  const registry = useMemo(() => ({ register, unregister, setBadge, currency, priceManaged, setPriceManaged }), [register, unregister, setBadge, currency, priceManaged])
 
   // --- Load ----------------------------------------------------------------
   const fetchState = useCallback(async (): Promise<EditorState | null> => {

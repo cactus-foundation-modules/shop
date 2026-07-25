@@ -5,6 +5,7 @@ import { resolveRelatedProducts } from '@/modules/shop/lib/db/recommendations'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
+import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { shopRelatedProductsPuckComponent, type ShopRelatedProductsProps } from './ShopRelatedProducts'
 
@@ -27,10 +28,11 @@ export async function ShopRelatedProductsRsc(props: ShopRelatedProductsProps) {
   ])
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
 
+  const fromPrices = await resolveCardFromPrices(related.map((p) => p.id))
   const items: CardItem[] = await Promise.all(
     related.map(async (p) => {
       const [media, tagIds] = await Promise.all([getProductMedia(p.id), getProductTagIds(p.id)])
-      return { product: p, ctx: buildCardContext(p, media, tagById, tagIds, config.currencySymbol, config) }
+      return { product: p, ctx: buildCardContext(p, media, tagById, tagIds, config.currencySymbol, config, fromPrices.get(p.id) ?? null) }
     }),
   )
 

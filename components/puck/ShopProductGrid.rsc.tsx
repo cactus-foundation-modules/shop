@@ -4,6 +4,7 @@ import { listTags, resolveCategoryProductFilter } from '@/modules/shop/lib/db/ca
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
+import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { shopProductGridPuckComponent, type ShopProductGridProps } from './ShopProductGrid'
 
@@ -42,11 +43,13 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
   }
 
   // Load each product's media + tags once, up front - the injected context
-  // carries them into the card so no part re-queries.
+  // carries them into the card so no part re-queries. The "From £…" figure for
+  // any variation-priced product is resolved for the whole grid in one go.
+  const fromPrices = await resolveCardFromPrices(products.map((p) => p.id))
   const items: CardItem[] = await Promise.all(
     products.map(async (product) => {
       const [media, tagIds] = await Promise.all([getProductMedia(product.id), getProductTagIds(product.id)])
-      return { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol, config) }
+      return { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol, config, fromPrices.get(product.id) ?? null) }
     }),
   )
 

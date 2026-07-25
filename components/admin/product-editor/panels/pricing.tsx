@@ -1,6 +1,7 @@
 'use client'
 
 import { Control, Field, Grid, Section, Select } from '@/modules/shop/components/admin/product-editor/fields'
+import { useProductEditorPriceManaged } from '@/modules/shop/components/admin/product-editor/context'
 import type { PanelProps, ProductForm, Term } from '@/modules/shop/components/admin/product-editor/model'
 import { PRICE_TYPE_META, type ShpPriceType } from '@/modules/shop/lib/pricing'
 
@@ -17,6 +18,11 @@ const PRICE_FIELDS: Record<ShpPriceType, keyof ProductForm> = {
 export function PricingPanel({ state, setField, errors, currency, enabledPriceTypes, taxClasses }: PanelProps & { taxClasses: Term[] }) {
   const f = state.form
   const on = (type: ShpPriceType) => enabledPriceTypes.includes(type)
+  // A product with variations is priced per variation on the Variations tab, so
+  // the shop shows its price as a "From £…" range built from the cheapest one.
+  // Its own Price boxes would set a figure no shopper ever sees, so they stand
+  // down. The stored price is left untouched, which keeps it valid.
+  const priceManaged = useProductEditorPriceManaged()
 
   // Margin is worked out against what the shopper actually pays, so a product
   // on offer shows the margin of the offer rather than of a price nobody is
@@ -51,6 +57,31 @@ export function PricingPanel({ state, setField, errors, currency, enabledPriceTy
   }
 
   const internal = (['retail', 'trade', 'cost'] as const).filter(on)
+
+  if (priceManaged) {
+    return (
+      <div className="spe-panel">
+        <Section title="Price" blurb="This product is priced by its variations.">
+          <p className="spe-hint">
+            Each variation carries its own price, set over on the Variations tab. The shop shows this product as a &ldquo;From&rdquo; price built from the cheapest one, so there is nothing to set here.
+          </p>
+        </Section>
+
+        <Section title="Tax" blurb="Which tax class this product falls under. The rate itself is set per zone under Tax & shipping.">
+          <Grid cols={2}>
+            <Field label="Tax class" hint={taxClasses.length === 0 ? 'No tax classes set up yet. Add them under Shop, then Tax & shipping.' : undefined}>
+              {(p) => (
+                <Select {...p} value={f.taxClassId} onChange={(e) => setField('taxClassId', e.target.value)}>
+                  <option value="">No tax class</option>
+                  {taxClasses.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </Select>
+              )}
+            </Field>
+          </Grid>
+        </Section>
+      </div>
+    )
+  }
 
   return (
     <div className="spe-panel">

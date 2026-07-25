@@ -203,16 +203,27 @@ export function ShopCardPrice(props: CardPriceProps) {
   const now = ctx?.prices.now ?? '0.00'
   const was = ctx ? ctx.prices.was : '0.00'
   const rrp = ctx && ctx.showRetailPrice ? ctx.prices.rrp : null
+  // A product priced as a range (variations) shows its cheapest as "From £…".
+  // There is no single "was" to strike or RRP to sit against a range, so those
+  // stand down; the shopper sees the range and the exact figures on the product
+  // page once they choose.
+  const fromPrice = ctx?.fromPrice ?? null
   return (
     <>
       <EditorStyle ctx={ctx} />
       <div className="shop-card-pricerow" ref={dragRefOf(props)}>
-        <span className="shop-card-price">{formatMoney(now, symbol)}</span>
-        {showCompare && was && (
-          <span className="shop-card-compare">{formatMoney(was, symbol)}</span>
-        )}
-        {showRrp && rrp && (
-          <span className="shop-card-rrp">RRP {formatMoney(rrp, symbol)}</span>
+        {fromPrice != null ? (
+          <span className="shop-card-price">From {formatMoney(fromPrice, symbol)}</span>
+        ) : (
+          <>
+            <span className="shop-card-price">{formatMoney(now, symbol)}</span>
+            {showCompare && was && (
+              <span className="shop-card-compare">{formatMoney(was, symbol)}</span>
+            )}
+            {showRrp && rrp && (
+              <span className="shop-card-rrp">RRP {formatMoney(rrp, symbol)}</span>
+            )}
+          </>
         )}
       </div>
     </>
