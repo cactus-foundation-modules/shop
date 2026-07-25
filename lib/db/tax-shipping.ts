@@ -34,6 +34,27 @@ export async function getTaxClassByCode(code: string): Promise<ShpTaxClass | nul
   return rows[0] ?? null
 }
 
+// A lookup that resolves a sheet/CSV tax-class cell to its class, matching on
+// EITHER the code or the name, case-insensitively. The Google-Sheet mirror writes
+// the code (e.g. "vat"), but an owner filling a blank cell types the name they see
+// in Shop settings ("VAT") - the old code matched the code exactly and only in
+// that case, so "VAT" against a "vat" code resolved to nothing and the import
+// quietly dropped the tax class. Built once per import/diff and reused for every
+// row. Keyed by trimmed lower-case ref; code and name both point at the class, so
+// either spelling lands it.
+export async function buildTaxClassRefIndex(): Promise<Map<string, ShpTaxClass>> {
+  const classes = await listTaxClasses()
+  const map = new Map<string, ShpTaxClass>()
+  for (const c of classes) {
+    if (c.code) map.set(c.code.trim().toLowerCase(), c)
+    // Name added after code so a name that happens to equal another class's code
+    // wins for the human-facing spelling; a collision here is a mis-configured
+    // shop either way.
+    if (c.name) map.set(c.name.trim().toLowerCase(), c)
+  }
+  return map
+}
+
 // Reverse of getTaxClassByCode, batched: maps tax-class ids to their codes so
 // the CSV export can write the real code per product in one query rather than
 // N. Ids with no matching class (or a null code) are simply absent from the map.

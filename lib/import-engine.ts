@@ -6,7 +6,7 @@ import {
   setProductMedia, setProductCategories, setProductTags, setProductCollections,
 } from '@/modules/shop/lib/db/products'
 import { findOrCreateTagBySlug, getCategoryBySlug, createCategory, getCollectionBySlug, createCollection } from '@/modules/shop/lib/db/catalogue'
-import { getTaxClassByCode } from '@/modules/shop/lib/db/tax-shipping'
+import { buildTaxClassRefIndex } from '@/modules/shop/lib/db/tax-shipping'
 import { slugify, ensureUniqueProductSlug } from '@/modules/shop/lib/slug'
 import { updateImportJobProgress, markImportJobCompleted } from '@/modules/shop/lib/db/import-jobs'
 import { sendShopEmail } from '@/modules/shop/lib/email'
@@ -177,8 +177,10 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
   }
   const productsBySku = await getProductsBySkus([...skuSet])
   const productsBySlug = await getProductsBySlugs([...slugSet])
-  // Tax classes are looked up by a short code many rows share; resolve each once.
-  const taxClassByCode = new Map<string, Awaited<ReturnType<typeof getTaxClassByCode>>>()
+  // Tax classes: resolved against every class's code AND name, case-insensitively,
+  // so an owner filling the cell with the name they see ("VAT") lands the same
+  // class the mirror wrote as a code ("vat"). Loaded once for the whole import.
+  const taxClassIndex = await buildTaxClassRefIndex()
   // Category, tag and collection cells repeat across most rows (a catalogue has
   // few distinct terms), yet each used to cost a slug lookup per name per row.
   // Resolve each distinct cell value to its ids once and reuse it - creates
@@ -206,11 +208,22 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       const price = Number(priceRaw)
       if (!priceRaw || Number.isNaN(price) || price < 0) { errors.push({ row: rowNumber, reason: 'Missing or invalid price' }); skipped++; continue }
 
-      const taxClassCode = cell(row, 'tax_class')
-      let taxClass = taxClassCode ? taxClassByCode.get(taxClassCode) ?? null : null
-      if (taxClassCode && !taxClassByCode.has(taxClassCode)) {
-        taxClass = await getTaxClassByCode(taxClassCode)
-        taxClassByCode.set(taxClassCode, taxClass)
+      // Resolve the tax class from its cell. A blank cell clears the class (the
+      // sheet is the truth); a value matching a code or name sets it; a non-empty
+      // value matching nothing is surfaced as a row error and leaves the product's
+      // current class untouched - the old code set null on any miss, so a
+      // mistyped or wrong-case value silently removed the tax class with no word
+      // why. `undefined` here means "leave alone", which put() honours.
+      let taxClassId: string | null | undefined
+      if (hasColumn('tax_class')) {
+        const taxClassRef = cell(row, 'tax_class').trim()
+        if (!taxClassRef) {
+          taxClassId = null
+        } else {
+          const taxClass = taxClassIndex.get(taxClassRef.toLowerCase())
+          if (taxClass) taxClassId = taxClass.id
+          else errors.push({ row: rowNumber, reason: `Unknown tax class "${taxClassRef}" - use the name or code exactly as shown in Shop settings > Tax` })
+        }
       }
 
       // Match an existing product by SKU when the row carries one; otherwise fall
@@ -242,7 +255,7 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       put('retail_price', 'retailPrice', numOrNull(cell(row, 'retail_price')))
       put('trade_price', 'tradePrice', numOrNull(cell(row, 'trade_price')))
       put('cost_price', 'costPrice', numOrNull(cell(row, 'cost_price')))
-      put('tax_class', 'taxClassId', taxClass?.id ?? null)
+      put('tax_class', 'taxClassId', taxClassId)
       put('track_inventory', 'trackInventory', cell(row, 'track_inventory').toLowerCase() === 'true')
       put('stock_count', 'stockCount', numOrNull(cell(row, 'stock_count')))
       put('low_stock_threshold', 'lowStockThreshold', numOrNull(cell(row, 'low_stock_threshold')))
