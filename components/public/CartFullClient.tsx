@@ -6,6 +6,7 @@ import { getCart, setLineQuantity, setLineMeta, removeFromCart, subscribeCart } 
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import type { LineMeta } from '@/modules/shop/lib/types'
 import type { CartLineControl } from '@/modules/shop/lib/line-meta'
+import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 
 // Full cart-display island. ONE render path, shared by the Puck editor preview
 // (seeded with SAMPLE_LINES, no fetch, controls inert) and the live frontend
@@ -218,9 +219,9 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
     if (!showImage) return null
     if (line.imageUrl) {
       // eslint-disable-next-line @next/next/no-img-element
-      return <img src={line.imageUrl} alt="" style={{ width: imageSize, height: imageSize, objectFit: 'cover', borderRadius: imageRadius, flexShrink: 0 }} />
+      return <img className="scl-thumb" src={line.imageUrl} alt="" style={{ width: imageSize, height: imageSize, objectFit: 'cover', borderRadius: imageRadius, flexShrink: 0 }} />
     }
-    return <div aria-hidden style={{ width: imageSize, height: imageSize, borderRadius: imageRadius, background: 'var(--color-bg-subtle)', flexShrink: 0 }} />
+    return <div className="scl-thumb" aria-hidden style={{ width: imageSize, height: imageSize, borderRadius: imageRadius, background: 'var(--color-bg-subtle)', flexShrink: 0 }} />
   }
 
   function renderName(line: ValidatedLine) {
@@ -290,12 +291,12 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
 
   function renderQty(line: ValidatedLine) {
     if (quantityControl === 'readonly') {
-      return <span style={{ minWidth: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>× {line.quantity}</span>
+      return <span className="scl-qty" style={{ minWidth: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>× {line.quantity}</span>
     }
     if (quantityControl === 'stepper') {
       const btn = { width: 28, height: 28, borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-bg-subtle)', cursor: preview ? 'default' : 'pointer', lineHeight: 1 } as const
       return (
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+        <div className="scl-qty" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
           <button type="button" aria-label="Decrease quantity" onClick={() => onQty(lineKey(line), line.quantity - 1)} style={btn}>−</button>
           <span style={{ minWidth: 24, textAlign: 'center' }}>{line.quantity}</span>
           <button type="button" aria-label="Increase quantity" onClick={() => onQty(lineKey(line), line.quantity + 1)} style={btn}>＋</button>
@@ -304,6 +305,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
     }
     return (
       <input
+        className="scl-qty"
         type="number" min={0} value={line.quantity} readOnly={preview}
         onChange={(e) => onQty(lineKey(line), Number(e.target.value))}
         style={{ width: 56, padding: '0.375rem', borderRadius: 6, border: '1px solid var(--color-border)' }}
@@ -315,6 +317,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
     if (!showRemove) return null
     return (
       <button
+        className="scl-remove"
         type="button" aria-label="Remove item" title="Remove" onClick={() => onRemove(lineKey(line))}
         style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: preview ? 'default' : 'pointer', fontSize: removeIcon ? '1.1rem' : '0.9375rem' }}
       >
@@ -324,7 +327,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   }
 
   const renderLinePrice = (line: ValidatedLine) =>
-    showLinePrice ? <span style={{ minWidth: 70, textAlign: 'right', color: accent, fontWeight: 600 }}>{money(line.lineSubtotal)}</span> : null
+    showLinePrice ? <span className="scl-price" style={{ minWidth: 70, textAlign: 'right', color: accent, fontWeight: 600 }}>{money(line.lineSubtotal)}</span> : null
 
   // ---- Line list (rows / cards) ----
   function renderItemsFlow() {
@@ -333,6 +336,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
         {lines.map((line) => (
           <li
             key={lineKey(line)}
+            className="scl"
             style={{
               display: 'flex', gap: '1rem', alignItems: 'center', paddingBottom: density.padY,
               ...(layoutStyle === 'cards'
@@ -341,7 +345,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
             }}
           >
             {renderThumb(line)}
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="scl-main" style={{ flex: 1, minWidth: 0 }}>
               {renderName(line)}
               {renderMeta(line)}
             </div>
@@ -401,6 +405,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
 
   return (
     <div style={{ display: 'grid', gap: '1rem', maxWidth, width: '100%' }}>
+      <style dangerouslySetInnerHTML={{ __html: CART_LINE_CSS }} />
       {props.heading && <h2 style={{ fontSize: headingSize, margin: 0 }}>{props.heading}</h2>}
 
       {layoutStyle === 'table' ? renderItemsTable() : renderItemsFlow()}
