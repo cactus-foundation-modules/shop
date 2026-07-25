@@ -19,11 +19,16 @@ import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 // ships a component into shop's cart, only data. The options carry their own
 // already-formatted labels (e.g. a price suffix). `renderAs` is optional: an
 // older shop that does not read it simply renders the dropdown regardless.
+// An option may carry its numeric price adjustment (the same figure already
+// baked into its label). The cart uses it to move the line price optimistically
+// the moment the shopper picks an option, then reconciles with the server's
+// re-validate. Optional: a resolver that omits it still works - the price just
+// waits for the round-trip as before.
 export type CartLineControl = {
   key: string
   label: string
   value: string
-  options: { value: string; label: string }[]
+  options: { value: string; label: string; priceAdjust?: number }[]
   renderAs?: 'select' | 'radios'
 }
 
@@ -60,49 +65,56 @@ type ExtensionPointEntry = { point: string; id: string; permission?: string }
 const POINT = 'shop.cart-line-resolver'
 const PREFETCH_POINT = 'shop.cart-line-resolver-prefetch'
 
-// Collected once per checkout resolution rather than per line. Returns [] when
-// no module contributes (a shop-only site), so every code path below no-ops.
-export async function getCartLineResolvers(): Promise<CartLineResolver[]> {
-  const fns = moduleExtensionPointComponents[POINT] ?? {}
-  if (Object.keys(fns).length === 0) return []
-  const modules = await prisma.module.findMany({
+// Installed modules' manifests, shared by both gatherers below and memoised
+// across requests for a short window. This used to be a separate
+// Module.findMany per gatherer per validate - two identical queries per cart
+// interaction for a list that changes only when a module is installed or
+// removed. A rejected read clears the slot so the next call retries.
+const REGISTRY_TTL_MS = 30_000
+let manifestSlot: { promise: Promise<{ manifest: unknown }[]>; at: number } | null = null
+function getInstalledManifests(): Promise<{ manifest: unknown }[]> {
+  const now = Date.now()
+  if (manifestSlot && now - manifestSlot.at < REGISTRY_TTL_MS) return manifestSlot.promise
+  const promise = prisma.module.findMany({
     where: { ...INSTALLED_MODULE_WHERE },
     select: { manifest: true },
   })
-  const resolvers: CartLineResolver[] = []
+  const mine = { promise, at: now }
+  manifestSlot = mine
+  promise.catch(() => { if (manifestSlot === mine) manifestSlot = null })
+  return promise
+}
+
+// Extension-point functions declared by installed modules' manifests for one
+// point, in manifest order.
+async function gatherPoint<T>(point: string): Promise<T[]> {
+  const fns = moduleExtensionPointComponents[point] ?? {}
+  if (Object.keys(fns).length === 0) return []
+  const modules = await getInstalledManifests()
+  const gathered: T[] = []
   for (const mod of modules) {
     const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null
     if (!manifest?.extensionPoints) continue
     for (const entry of manifest.extensionPoints) {
-      if (entry.point !== POINT) continue
-      const fn = fns[entry.id] as CartLineResolver | undefined
-      if (fn) resolvers.push(fn)
+      if (entry.point !== point) continue
+      const fn = fns[entry.id] as T | undefined
+      if (fn) gathered.push(fn)
     }
   }
-  return resolvers
+  return gathered
+}
+
+// Collected once per checkout resolution rather than per line. Returns [] when
+// no module contributes (a shop-only site), so every code path below no-ops.
+export async function getCartLineResolvers(): Promise<CartLineResolver[]> {
+  return gatherPoint<CartLineResolver>(POINT)
 }
 
 // The batch prefetchers contributed by installed modules, gathered once per
 // resolution (mirrors getCartLineResolvers' installed-module gating). Returns []
 // when no module offers one, so the caller simply skips the prefetch phase.
 export async function getCartLineResolverPrefetchers(): Promise<CartLineResolverPrefetch[]> {
-  const fns = moduleExtensionPointComponents[PREFETCH_POINT] ?? {}
-  if (Object.keys(fns).length === 0) return []
-  const modules = await prisma.module.findMany({
-    where: { ...INSTALLED_MODULE_WHERE },
-    select: { manifest: true },
-  })
-  const prefetchers: CartLineResolverPrefetch[] = []
-  for (const mod of modules) {
-    const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null
-    if (!manifest?.extensionPoints) continue
-    for (const entry of manifest.extensionPoints) {
-      if (entry.point !== PREFETCH_POINT) continue
-      const fn = fns[entry.id] as CartLineResolverPrefetch | undefined
-      if (fn) prefetchers.push(fn)
-    }
-  }
-  return prefetchers
+  return gatherPoint<CartLineResolverPrefetch>(PREFETCH_POINT)
 }
 
 // Runs every provider for one line and folds the results: prices sum, fields

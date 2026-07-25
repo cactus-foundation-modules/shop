@@ -28,34 +28,44 @@ export function UpsellClient({ heading }: { heading?: string }) {
   const [currencySymbol, setCurrencySymbol] = useState('£')
 
   useEffect(() => {
+    if (getCart().length > 0) {
+      let cancelled = false
+      fetch('/api/m/shop/public/config')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => { if (!cancelled && data) setCurrencySymbol(data.currencySymbol) })
+        .catch(() => {})
+      return () => { cancelled = true }
+    }
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
+    // Suggestions depend only on WHICH products are in the cart, so refresh
+    // only when that membership changes. Quantity tweaks and per-line option
+    // picks (a delivery tier, say) fire cart events too, and each used to
+    // re-run the whole strip - now they're ignored.
+    let lastMembership = ''
 
     async function refresh() {
-      const cart = getCart()
-      if (cart.length === 0) { setProducts([]); return }
+      const ids = [...new Set(getCart().map((l) => l.productId))].sort()
+      const membership = ids.join(',')
+      if (membership === lastMembership) return
+      lastMembership = membership
+      if (ids.length === 0) { setProducts([]); return }
 
-      const configRes = await fetch('/api/m/shop/public/config')
-      if (configRes.ok) setCurrencySymbol((await configRes.json()).currencySymbol)
-
-      const detailRes = await fetch('/api/m/shop/public/products?perPage=100')
-      const { products: allProducts } = detailRes.ok ? await detailRes.json() : { products: [] }
-      const inCartIds = new Set(cart.map((l) => l.productId))
-      const cartSlugs = allProducts.filter((p: { id: string }) => inCartIds.has(p.id)).map((p: { slug: string }) => p.slug)
-
-      const seen = new Map<string, UpsellProduct>()
-      for (const slug of cartSlugs) {
-        const res = await fetch(`/api/m/shop/public/products/${slug}/upsells`)
-        if (!res.ok) continue
-        const { products: upsells } = await res.json()
-        for (const p of upsells) {
-          if (!inCartIds.has(p.id) && !seen.has(p.id)) seen.set(p.id, p)
-        }
-      }
-      if (!cancelled) setProducts([...seen.values()].slice(0, 4))
+      // One request for the whole cart - the strip used to list the entire
+      // catalogue and then fetch each cart product's upsells one by one.
+      const res = await fetch('/api/m/shop/public/cart/upsells', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productIds: ids }),
+      })
+      if (cancelled || !res.ok) return
+      const { products: suggested } = await res.json()
+      if (!cancelled) setProducts((suggested as UpsellProduct[]).slice(0, 4))
     }
 
     refresh()
-    return subscribeCart(refresh)
+    const unsubscribe = subscribeCart(refresh)
+    return () => { cancelled = true; unsubscribe() }
   }, [])
 
   if (products.length === 0) return null

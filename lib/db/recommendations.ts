@@ -4,9 +4,12 @@ import { getPrimaryCategoryId } from '@/modules/shop/lib/db/products'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
 async function mapProductRows(rows: Record<string, unknown>[]): Promise<ShpProduct[]> {
-  const { getProductById } = await import('@/modules/shop/lib/db/products')
-  const products = await Promise.all(rows.map((r) => getProductById(r.id as string)))
-  return products.filter((p): p is ShpProduct => !!p)
+  // One batched fetch, re-emitted in row order (the recommendation queries own
+  // the ordering). A getProductById per row made a product's upsell strip cost
+  // a round-trip per recommendation.
+  const { getProductsByIds } = await import('@/modules/shop/lib/db/products')
+  const byId = await getProductsByIds(rows.map((r) => r.id as string))
+  return rows.map((r) => byId.get(r.id as string)).filter((p): p is ShpProduct => !!p)
 }
 
 export async function getManualRelatedProducts(productId: string): Promise<ShpProduct[]> {
@@ -63,6 +66,46 @@ export async function resolveUpsellProducts(product: ShpProduct): Promise<ShpPro
   const manual = await getManualUpsellProducts(product.id)
   if (manual.length > 0) return manual.slice(0, product.upsellLimit)
   return resolveAutomaticRecommendations(product.id, product.upsellLimit)
+}
+
+// Upsells for a whole cart in one batched pass, keyed by source product id.
+// Mirrors resolveUpsellProducts per product, but reads every manual link and
+// every linked product in one query each instead of a per-product fan-out (the
+// cart upsell strip used to fetch the entire catalogue and then walk each cart
+// product's upsells one endpoint call at a time). Only products needing the
+// automatic fallback still resolve individually, in parallel.
+export async function resolveUpsellsForProducts(products: ShpProduct[]): Promise<Map<string, ShpProduct[]>> {
+  const result = new Map<string, ShpProduct[]>()
+  if (products.length === 0) return result
+
+  const ids = products.map((p) => p.id)
+  const linkRows = await prisma.$queryRaw<{ product_id: string; upsell_id: string }[]>`
+    SELECT "product_id", "upsell_id" FROM "shp_upsell_products"
+    WHERE "product_id" IN (${Prisma.join(ids)}) ORDER BY "position" ASC
+  `
+  const { getProductsByIds } = await import('@/modules/shop/lib/db/products')
+  const upsellById = await getProductsByIds(linkRows.map((r) => r.upsell_id))
+
+  const manualByProduct = new Map<string, ShpProduct[]>()
+  for (const row of linkRows) {
+    const target = upsellById.get(row.upsell_id)
+    if (!target) continue
+    const list = manualByProduct.get(row.product_id) ?? []
+    list.push(target)
+    manualByProduct.set(row.product_id, list)
+  }
+
+  await Promise.all(products.map(async (product) => {
+    const manual = manualByProduct.get(product.id) ?? []
+    if (product.upsellMode === 'MANUAL') {
+      result.set(product.id, manual)
+    } else if (manual.length > 0) {
+      result.set(product.id, manual.slice(0, product.upsellLimit))
+    } else {
+      result.set(product.id, await resolveAutomaticRecommendations(product.id, product.upsellLimit))
+    }
+  }))
+  return result
 }
 
 export async function setRelatedProducts(productId: string, relatedIds: string[]): Promise<void> {

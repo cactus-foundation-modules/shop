@@ -1,0 +1,74 @@
+// Session-scoped cache of the last server-validated cart, so a shopper landing
+// back on the cart page sees their items INSTANTLY instead of a skeleton while
+// the validate round-trip (products, stock, delivery resolvers) completes. The
+// cached copy is display-only bootstrap data: the live validate always runs and
+// replaces it, so prices/stock can only be stale for the round-trip's duration.
+// sessionStorage, not localStorage: it dies with the tab, so a returning
+// visitor never sees week-old prices even for a beat.
+
+const KEY = 'cactus_shop_cart_validated'
+
+type CachedShape = {
+  productId: string
+  lineId?: string | null
+  quantity: number
+  unitPrice: number
+  lineSubtotal: number
+}
+
+type CartLineShape = { productId: string; lineId?: string; quantity: number }
+
+const keyOf = (l: { productId: string; lineId?: string | null }) => l.lineId ?? l.productId
+
+// Single-flight cart validation: several islands (full cart, mini-cart badge)
+// each re-validate on the same cart event, firing identical POSTs in the same
+// beat. Concurrent callers with an identical payload now share one request and
+// one parsed response. The slot clears as soon as the request settles, so this
+// never caches - it only de-duplicates the simultaneous burst.
+const inflightValidate = new Map<string, Promise<{ lines: unknown[] } | null>>()
+
+export function postCartValidate<T>(cart: CartLineShape[]): Promise<{ lines: T[] } | null> {
+  const body = JSON.stringify({ lines: cart })
+  const existing = inflightValidate.get(body)
+  if (existing) return existing as Promise<{ lines: T[] } | null>
+  const promise = fetch('/api/m/shop/public/cart/validate', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+  })
+    .then((res) => (res.ok ? res.json() : null))
+    .catch(() => null)
+    .finally(() => { inflightValidate.delete(body) }) as Promise<{ lines: unknown[] } | null>
+  inflightValidate.set(body, promise)
+  return promise as Promise<{ lines: T[] } | null>
+}
+
+export function writeValidatedCartCache(lines: unknown[]): void {
+  try {
+    sessionStorage.setItem(KEY, JSON.stringify(lines))
+  } catch {
+    // Storage full or unavailable - the cache is purely an accelerant.
+  }
+}
+
+// The cached validated lines, but only when they cover the CURRENT cart exactly
+// (every line present, matched by line key). A partial match returns null and
+// the caller falls back to the skeleton - rendering a cart with lines missing
+// reads as "my item vanished". Quantities are refreshed from the live cart and
+// the line total re-derived, so a qty tweaked on another page shows correctly.
+export function readValidatedCartCache<T extends CachedShape>(cart: CartLineShape[]): T[] | null {
+  try {
+    const raw = sessionStorage.getItem(KEY)
+    if (!raw) return null
+    const cached = JSON.parse(raw) as T[]
+    if (!Array.isArray(cached)) return null
+    const byKey = new Map(cached.map((l) => [keyOf(l), l]))
+    const matched: T[] = []
+    for (const line of cart) {
+      const hit = byKey.get(keyOf(line))
+      if (!hit) return null
+      matched.push({ ...hit, quantity: line.quantity, lineSubtotal: hit.unitPrice * line.quantity })
+    }
+    return matched
+  } catch {
+    return null
+  }
+}

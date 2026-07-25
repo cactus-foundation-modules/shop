@@ -17,9 +17,14 @@ export async function POST(request: NextRequest) {
   const parsed = Body.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: 'Invalid cart' }, { status: 400 })
 
-  const resolved = await resolveCartLines(parsed.data.lines)
-  // One media query for every line's product, not one per line.
-  const mediaByProduct = await getProductMediaForProducts(resolved.map((line) => line.product.id))
+  // The media query needs only the product ids the client sent, so it runs in
+  // parallel with the whole line resolution instead of after it (products that
+  // fail to resolve are simply never read out of the map). One query for every
+  // line's product, not one per line.
+  const [resolved, mediaByProduct] = await Promise.all([
+    resolveCartLines(parsed.data.lines),
+    getProductMediaForProducts(parsed.data.lines.map((line) => line.productId)),
+  ])
   const lines = resolved.map((line) => {
     const media = mediaByProduct.get(line.product.id) ?? []
     const primary = media.find((m) => m.isPrimary) ?? media[0]

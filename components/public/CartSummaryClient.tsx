@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getCart, subscribeCart } from '@/modules/shop/components/public/cart'
+import { postCartValidate } from '@/modules/shop/components/public/validated-cache'
 
 // Look/behaviour options for the header cart-summary widget. The block
 // (ShopCartSummary) wires these in as plain Puck props; every value has a sane
@@ -91,13 +92,15 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
       setHasLoaded(true)
       if (lines.length === 0) { setSubtotal(0); return }
 
-      const [validateRes, configRes] = await Promise.all([
-        fetch('/api/m/shop/public/cart/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines }) }),
+      // postCartValidate single-flights with any other cart island validating
+      // the same cart in the same beat (the full cart page, say), so this badge
+      // no longer doubles the server work on every cart event.
+      const [data, configRes] = await Promise.all([
+        postCartValidate<{ lineSubtotal: number }>(lines),
         fetch('/api/m/shop/public/config'),
       ])
       if (cancelled) return
-      if (validateRes.ok) {
-        const data = await validateRes.json()
+      if (data) {
         setSubtotal(data.lines.reduce((sum: number, l: { lineSubtotal: number }) => sum + l.lineSubtotal, 0))
       }
       if (configRes.ok) {

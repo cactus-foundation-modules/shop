@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getCart, setLineQuantity, removeFromCart, subscribeCart } from '@/modules/shop/components/public/cart'
+import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } from '@/modules/shop/components/public/validated-cache'
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import { formatMoney } from '@/modules/shop/lib/money'
 import type { LineMeta } from '@/modules/shop/lib/types'
@@ -39,17 +40,25 @@ export function CartPageClient() {
     let cancelled = false
     // Monotonic guard so a slow earlier re-validate can't overwrite a newer one.
     let seq = 0
+    // Instant first paint from the session's last validated copy (when it
+    // covers the current cart exactly); the live response then corrects
+    // anything stale in place. See validated-cache.ts.
+    let bootstrapped = false
     async function refresh() {
       const cart = getCart()
       if (cart.length === 0) { if (!cancelled) { setLines([]); setHasLoaded(true) } return }
+      if (!bootstrapped) {
+        bootstrapped = true
+        const cached = readValidatedCartCache<ValidatedLine>(cart)
+        if (cached && !cancelled) { setLines(cached); setHasLoaded(true) }
+      }
       const mySeq = ++seq
-      const res = await fetch('/api/m/shop/public/cart/validate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines: cart }),
-      })
+      const data = await postCartValidate<ValidatedLine>(cart)
       if (cancelled || mySeq !== seq) return
-      const data = res.ok ? await res.json() : null
-      if (cancelled || mySeq !== seq) return
-      if (data) setLines(data.lines)
+      if (data) {
+        setLines(data.lines)
+        writeValidatedCartCache(data.lines)
+      }
       setHasLoaded(true)
     }
     refresh()

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getCart, setLineQuantity, setLineMeta, removeFromCart, subscribeCart } from '@/modules/shop/components/public/cart'
+import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } from '@/modules/shop/components/public/validated-cache'
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import type { LineMeta } from '@/modules/shop/lib/types'
 import type { CartLineControl } from '@/modules/shop/lib/line-meta'
@@ -107,17 +108,26 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
     // quickly, each change re-validates; only the newest response is applied, so
     // an earlier slow one can't clobber a later choice.
     let seq = 0
+    // Instant first paint: the first refresh bootstraps from the session's last
+    // validated copy (when it covers the current cart exactly) instead of
+    // holding the skeleton through the validate round-trip; the live response
+    // then corrects anything stale in place.
+    let bootstrapped = false
     async function refresh() {
       const cart = getCart()
       if (cart.length === 0) { if (!cancelled) { setLines([]); setHasLoaded(true) } return }
+      if (!bootstrapped) {
+        bootstrapped = true
+        const cached = readValidatedCartCache<ValidatedLine>(cart)
+        if (cached && !cancelled) { setLines(cached); setHasLoaded(true) }
+      }
       const mySeq = ++seq
-      const res = await fetch('/api/m/shop/public/cart/validate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines: cart }),
-      })
+      const data = await postCartValidate<ValidatedLine>(cart)
       if (cancelled || mySeq !== seq) return
-      const data = res.ok ? await res.json() : null
-      if (cancelled || mySeq !== seq) return
-      if (data) setLines(data.lines)
+      if (data) {
+        setLines(data.lines)
+        writeValidatedCartCache(data.lines)
+      }
       setHasLoaded(true)
     }
     refresh()
@@ -144,12 +154,23 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   const onRemove = (id: string) => { if (!preview) removeFromCart(id) }
   // Writes a generic per-line control's choice into the line meta; the cart's
   // own subscribe/refresh then re-validates and re-prices with no extra wiring.
-  // The chosen value is also applied to local state at once, so the <select>
-  // reflects the pick instantly instead of snapping back until the re-validate
-  // round-trip returns (the line's price catches up a beat later when it does).
+  // The chosen value is applied to local state at once so the <select> never
+  // snaps back, and when the options carry their numeric priceAdjust the line
+  // price and subtotal move in the same instant - the server re-validate then
+  // merely confirms the figures rather than being what the shopper waits on.
   const onControl = (id: string, key: string, value: string) => {
     if (preview) return
-    setLines((prev) => prev.map((l) => (lineKey(l) === id && l.control ? { ...l, control: { ...l.control, value } } : l)))
+    setLines((prev) => prev.map((l) => {
+      if (lineKey(l) !== id || !l.control) return l
+      const next = { ...l, control: { ...l.control, value } }
+      const oldOpt = l.control.options.find((o) => o.value === l.control!.value)
+      const newOpt = l.control.options.find((o) => o.value === value)
+      if (typeof oldOpt?.priceAdjust === 'number' && typeof newOpt?.priceAdjust === 'number') {
+        next.unitPrice = l.unitPrice - oldOpt.priceAdjust + newOpt.priceAdjust
+        next.lineSubtotal = next.unitPrice * l.quantity
+      }
+      return next
+    }))
     setLineMeta(id, { [key]: value })
   }
 
