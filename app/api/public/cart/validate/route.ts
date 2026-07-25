@@ -38,6 +38,8 @@ export async function POST(request: NextRequest) {
       imageUrl: primary?.url ?? null,
       // Normalised personalisation for display (null for a plain line).
       lineMeta: line.lineMeta,
+      // Optional per-line picker a resolver offered (e.g. a delivery tier).
+      control: line.control ?? null,
     }
   }))
 

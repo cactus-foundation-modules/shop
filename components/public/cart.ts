@@ -81,6 +81,19 @@ export function setLineQuantity(key: string, quantity: number): void {
   persist(lines)
 }
 
+// Merges values into a line's meta bag - used by generic per-line cart controls
+// (a delivery-tier picker, say) that a cart-line resolver offered. A plain line
+// has no lineId, so it is given one on first write: its meta now distinguishes
+// it, and it must key and target independently, exactly like a personalised add.
+export function setLineMeta(key: string, meta: Record<string, unknown>): void {
+  const lines = getCart()
+  const existing = lines.find((l) => cartLineKey(l) === key)
+  if (!existing) return
+  existing.meta = { ...existing.meta, ...meta }
+  if (!existing.lineId) existing.lineId = newLineId()
+  persist(lines)
+}
+
 export function removeFromCart(key: string): void {
   persist(getCart().filter((l) => cartLineKey(l) !== key))
 }

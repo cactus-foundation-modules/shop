@@ -7,7 +7,7 @@ import { getCouponByCode, listAutomaticDiscounts } from '@/modules/shop/lib/db/d
 import { countPriorCouponOrdersByEmail } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { effectivePrice } from '@/modules/shop/lib/pricing'
-import { getCartLineResolvers, resolveLineMeta } from '@/modules/shop/lib/line-meta'
+import { getCartLineResolvers, resolveLineMeta, type CartLineControl } from '@/modules/shop/lib/line-meta'
 import type { CartLine } from '@/modules/shop/components/public/cart'
 import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 
@@ -31,6 +31,9 @@ export type ResolvedCartLine = {
   // includes any personalisation price adjustment.
   lineId?: string
   lineMeta: LineMeta | null
+  // Optional per-line picker a cart-line resolver offered (e.g. a delivery-tier
+  // select). Display-only - it never affects the order, only the live cart UI.
+  control?: CartLineControl | null
 }
 
 // Re-checks stock/price/status for every cart line - the only source of
@@ -92,6 +95,7 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       isPreOrder: product.isPreOrder,
       lineId: line.lineId,
       lineMeta: metaResolution.persistMeta,
+      control: metaResolution.control ?? null,
     })
   }
   return results

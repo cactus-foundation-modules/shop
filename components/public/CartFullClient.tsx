@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { getCart, setLineQuantity, removeFromCart, subscribeCart } from '@/modules/shop/components/public/cart'
+import { getCart, setLineQuantity, setLineMeta, removeFromCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import type { LineMeta } from '@/modules/shop/lib/types'
+import type { CartLineControl } from '@/modules/shop/lib/line-meta'
 
 // Full cart-display island. ONE render path, shared by the Puck editor preview
 // (seeded with SAMPLE_LINES, no fetch, controls inert) and the live frontend
@@ -16,6 +17,7 @@ type ValidatedLine = {
   lineSubtotal: number; available: boolean; availabilityReason: string | null
   isPreOrder: boolean; imageUrl: string | null
   lineId?: string | null; lineMeta?: LineMeta | null
+  control?: CartLineControl | null
 }
 
 // A personalised line is keyed by its lineId so two of the same product with
@@ -121,6 +123,9 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
 
   const onQty = (id: string, q: number) => { if (!preview) setLineQuantity(id, Math.max(0, q)) }
   const onRemove = (id: string) => { if (!preview) removeFromCart(id) }
+  // Writes a generic per-line control's choice into the line meta; the cart's
+  // own subscribe/refresh then re-validates and re-prices with no extra wiring.
+  const onControl = (id: string, key: string, value: string) => { if (!preview) setLineMeta(id, { [key]: value }) }
 
   // Resolved options
   const layoutStyle = props.layoutStyle ?? 'rows'
@@ -192,7 +197,32 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
           <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>{money(line.unitPrice)} each</p>
         )}
         {renderLineMeta(line)}
+        {renderControl(line)}
       </>
+    )
+  }
+
+  // Generic per-line picker offered by a cart-line resolver (e.g. a delivery
+  // tier). Shop renders it from plain data - it never imports the contributing
+  // module's component. Changing it writes the choice to the line meta and the
+  // cart re-validates, so the price and any resolver-supplied line meta update.
+  function renderControl(line: ValidatedLine) {
+    const control = line.control
+    if (!control || control.options.length === 0) return null
+    return (
+      <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', margin: '0.375rem 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+        <span style={{ fontWeight: 500 }}>{control.label}:</span>
+        <select
+          value={control.value}
+          disabled={preview}
+          onChange={(e) => onControl(lineKey(line), control.key, e.target.value)}
+          style={{ padding: '0.25rem 0.375rem', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.8125rem' }}
+        >
+          {control.options.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </label>
     )
   }
 

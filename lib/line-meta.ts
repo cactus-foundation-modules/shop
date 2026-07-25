@@ -12,14 +12,28 @@ import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 
+// A declarative per-line picker a resolver can offer for display in the cart.
+// Shop renders it generically as a labelled <select> and, on change, writes the
+// chosen value back into the line's meta under `key` and re-validates - so the
+// contributing module never ships a component into shop's cart, only data. The
+// options carry their own already-formatted labels (e.g. a price suffix).
+export type CartLineControl = {
+  key: string
+  label: string
+  value: string
+  options: { value: string; label: string }[]
+}
+
 // What a provider returns for one line. priceAdjust is added to the product's
 // own price (server-authoritative - the client never sends a price). An invalid
-// line fails exactly like an out-of-stock line, carrying a human reason.
+// line fails exactly like an out-of-stock line, carrying a human reason. An
+// optional `control` offers a per-line picker the cart renders generically.
 export type CartLineResolution = {
   valid: boolean
   priceAdjust: number
   persistMeta: LineMeta | null
   reason?: string
+  control?: CartLineControl | null
 }
 
 export type CartLineResolver = (
@@ -61,11 +75,12 @@ export async function resolveLineMeta(
   meta: Record<string, unknown> | undefined,
   resolvers: CartLineResolver[],
 ): Promise<CartLineResolution> {
-  if (resolvers.length === 0) return { valid: true, priceAdjust: 0, persistMeta: null }
+  if (resolvers.length === 0) return { valid: true, priceAdjust: 0, persistMeta: null, control: null }
 
   let priceAdjust = 0
   let valid = true
   let reason: string | undefined
+  let control: CartLineControl | null = null
   const fields = []
   for (const resolve of resolvers) {
     const res = await resolve(product, meta)
@@ -75,6 +90,9 @@ export async function resolveLineMeta(
     }
     priceAdjust += Number.isFinite(res.priceAdjust) ? res.priceAdjust : 0
     if (res.persistMeta?.fields?.length) fields.push(...res.persistMeta.fields)
+    // First provider to offer a control wins the slot (there is one picker row
+    // per line); further ones fold their price and fields but not a second box.
+    if (!control && res.control) control = res.control
   }
-  return { valid, priceAdjust, persistMeta: fields.length ? { fields } : null, reason }
+  return { valid, priceAdjust, persistMeta: fields.length ? { fields } : null, reason, control }
 }
