@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { TabStrip } from '@/components/admin/TabStrip'
 import type { ShpTaxClass, ShpShippingZone, ShpTaxZoneRate, ShpShippingRate, ShpShippingRateType } from '@/modules/shop/lib/types'
 import { useConfirm } from '@/modules/shop/components/admin/dialogs'
 
@@ -32,8 +33,20 @@ function zoneSummary(z: ShpShippingZone): string {
   return z.postcodes.length === 0 ? 'All postcodes (catch-all)' : `${z.postcodes.length} postcode prefix${z.postcodes.length === 1 ? '' : 'es'}`
 }
 
-export function TaxShippingScreen() {
+/** A whole-page tab another module hangs beside this screen through `shop.tax-shipping-tabs`. */
+export type TaxShippingTab = { id: string; label: string; order: number; node: ReactNode }
+
+export function TaxShippingScreen({ extraTabs = [], initialTab }: {
+  extraTabs?: TaxShippingTab[]
+  initialTab?: string
+} = {}) {
   const [confirm, confirmNode] = useConfirm()
+  // Which tab is showing. Tax & shipping itself is the default; `initialTab`
+  // (from `?tab=`) only wins when it names a tab a module actually contributed.
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const ids = new Set(extraTabs.map((t) => t.id))
+    return initialTab && ids.has(initialTab) ? initialTab : 'tax-shipping'
+  })
   const [taxClasses, setTaxClasses] = useState<ShpTaxClass[]>([])
   const [newClassName, setNewClassName] = useState('')
   const [classEdits, setClassEdits] = useState<Record<string, { name: string; code: string }>>({})
@@ -58,7 +71,10 @@ export function TaxShippingScreen() {
   const [weightShipping, setWeightShipping] = useState<boolean | null>(null)
   const [weightShippingSaved, setWeightShippingSaved] = useState(false)
 
+  // Guarded so landing straight on a contributed tab does not fire this screen's
+  // own three calls; they run the moment Tax & shipping is opened instead.
   useEffect(() => {
+    if (activeTab !== 'tax-shipping') return
     loadTaxClasses()
     loadZones()
     fetch('/api/m/shop/admin/settings').then(async (r) => {
@@ -66,7 +82,7 @@ export function TaxShippingScreen() {
       const { config } = await r.json()
       setWeightShipping(config?.weightBasedShippingEnabled !== false)
     })
-  }, [])
+  }, [activeTab])
 
   async function saveWeightShipping(enabled: boolean) {
     setWeightShipping(enabled)
@@ -264,12 +280,29 @@ export function TaxShippingScreen() {
 
   const newCodePreview = slugifyTaxClassCode(newClassName)
 
+  // Tax & shipping is always the first tab; contributed tabs follow in their
+  // declared order, and only the active one's panel is mounted.
+  const orderedTabs = [...extraTabs].sort((a, b) => a.order - b.order)
+  const onBase = activeTab === 'tax-shipping'
+  const activeNode = onBase ? null : orderedTabs.find((t) => t.id === activeTab)?.node ?? null
+
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">Tax &amp; shipping</h1>
       </div>
 
+      {orderedTabs.length > 0 && (
+        <TabStrip
+          items={[
+            { key: 'tax-shipping', label: 'Tax & shipping', active: onBase, onClick: () => setActiveTab('tax-shipping') },
+            ...orderedTabs.map((t) => ({ key: t.id, label: t.label, active: activeTab === t.id, onClick: () => setActiveTab(t.id) })),
+          ]}
+        />
+      )}
+
+      {!onBase ? activeNode : (
+      <>
       <div className="card">
         <h3 className="card-title" style={{ fontSize: '1rem' }}>Shipping options</h3>
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
@@ -503,6 +536,8 @@ export function TaxShippingScreen() {
         ))}
       </div>
       {confirmNode}
+      </>
+      )}
     </div>
   )
 }
