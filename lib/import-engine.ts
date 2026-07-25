@@ -204,9 +204,22 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       const type = cell(row, 'type').toUpperCase()
       if (!name) { errors.push({ row: rowNumber, reason: 'Missing name' }); skipped++; continue }
       if (!['PHYSICAL', 'DIGITAL', 'SERVICE'].includes(type)) { errors.push({ row: rowNumber, reason: `Invalid type "${type}"` }); skipped++; continue }
+      // Match the existing product up front (by SKU, else the name/slug identity)
+      // so the price rule can tell a create from an update.
+      const existingProduct = sku ? productsBySku.get(sku) : productsBySlug.get(rowSlug(row))
       const priceRaw = cell(row, 'price')
+      const priceProvided = priceRaw !== ''
       const price = Number(priceRaw)
-      if (!priceRaw || Number.isNaN(price) || price < 0) { errors.push({ row: rowNumber, reason: 'Missing or invalid price' }); skipped++; continue }
+      // A price is required to CREATE a product - the price column is NOT NULL. On
+      // an existing product a blank price cell means "leave the price alone", not
+      // an error: a variable product priced "from £x" off its cheapest variation
+      // carries no meaningful parent price, and the column cannot be nulled anyway.
+      // A present-but-nonsense price ("lots", -5) is still an error either way.
+      if (priceProvided) {
+        if (Number.isNaN(price) || price < 0) { errors.push({ row: rowNumber, reason: `Invalid price "${priceRaw}"` }); skipped++; continue }
+      } else if (!existingProduct) {
+        errors.push({ row: rowNumber, reason: 'Missing or invalid price' }); skipped++; continue
+      }
 
       // Resolve the tax class from its cell. A blank cell clears the class (the
       // sheet is the truth); a value matching a code or name sets it; a non-empty
@@ -234,10 +247,13 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       // carry; catalogue-hidden variant children are excluded so a name clash
       // with a variant can't hijack the row. The pre-loaded maps mean no per-row
       // query, and the matched row is itself the compare baseline below.
-      const existingProduct = sku ? productsBySku.get(sku) : productsBySlug.get(rowSlug(row))
       const productId = existingProduct?.id
 
-      const fields: ImportFields = { name, price }
+      // Carry price only when the row actually gave one; omitting it leaves the
+      // stored price untouched (productFieldsUnchanged and updateProduct both act
+      // on present keys only), which is how a blanked price on a variable product
+      // becomes a no-op rather than a write of 0.
+      const fields: ImportFields = priceProvided ? { name, price } : { name }
       // Set a field only when the CSV carries its column, so an import that
       // simply doesn't mention a field never blanks it.
       function put<K extends keyof ImportFields>(column: CsvColumn, key: K, value: ImportFields[K] | undefined): void {
