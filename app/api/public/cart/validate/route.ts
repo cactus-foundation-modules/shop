@@ -47,6 +47,8 @@ export async function POST(request: NextRequest) {
       lineMeta: line.lineMeta,
       // Optional per-line picker a resolver offered (e.g. a delivery tier).
       control: line.control ?? null,
+      // Optional cart-display retitle (e.g. a variant's base name + options).
+      displayTitle: line.displayTitle ?? null,
     }
   })
 

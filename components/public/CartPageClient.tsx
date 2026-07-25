@@ -7,6 +7,7 @@ import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } fro
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import { formatMoney } from '@/modules/shop/lib/money'
 import type { LineMeta } from '@/modules/shop/lib/types'
+import type { CartLineTitle } from '@/modules/shop/lib/line-meta'
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 
 type ValidatedLine = {
@@ -14,6 +15,7 @@ type ValidatedLine = {
   lineSubtotal: number; available: boolean; availabilityReason: string | null
   isPreOrder: boolean; imageUrl: string | null
   lineId?: string | null; lineMeta?: LineMeta | null
+  displayTitle?: CartLineTitle | null
 }
 
 const lineKey = (l: Pick<ValidatedLine, 'productId' | 'lineId'>) => l.lineId ?? l.productId
@@ -119,7 +121,8 @@ export function CartPageClient() {
               <img className="scl-thumb" src={line.imageUrl} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6 }} />
             )}
             <div className="scl-main" style={{ flex: 1, minWidth: 0 }}>
-              <a href={`/shop/products/${line.slug}`} style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>{line.name}</a>
+              <a href={`/shop/products/${line.slug}`} style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>{line.displayTitle?.name || line.name}</a>
+              {line.displayTitle?.secondary && <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>{line.displayTitle.secondary}</p>}
               {!line.available && <p style={{ color: 'var(--color-danger)', fontSize: '0.8125rem', margin: '0.25rem 0 0' }}>{line.availabilityReason}</p>}
               {line.isPreOrder && <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>Pre-order</p>}
               {line.lineMeta?.fields?.length ? (

@@ -32,6 +32,17 @@ export type CartLineControl = {
   renderAs?: 'select' | 'radios'
 }
 
+// How a line is titled in the cart. A resolver may hand back a base `name` (shown
+// as the linked product title, on its own line) and an optional `secondary` line
+// beneath it - a variant's chosen options, say, lifted out of the product's own
+// decorated name so the name and the choices no longer share one line. Shop
+// applies it generically: it knows only that some resolver retitled the line,
+// never which module or why. Absent -> the product's own name is shown unchanged.
+export type CartLineTitle = {
+  name: string
+  secondary?: string
+}
+
 // What a provider returns for one line. priceAdjust is added to the product's
 // own price (server-authoritative - the client never sends a price). An invalid
 // line fails exactly like an out-of-stock line, carrying a human reason. An
@@ -42,6 +53,8 @@ export type CartLineResolution = {
   persistMeta: LineMeta | null
   reason?: string
   control?: CartLineControl | null
+  // Optional cart-display retitle (e.g. split a variant name into base + options).
+  displayTitle?: CartLineTitle | null
 }
 
 export type CartLineResolver = (
@@ -125,12 +138,13 @@ export async function resolveLineMeta(
   meta: Record<string, unknown> | undefined,
   resolvers: CartLineResolver[],
 ): Promise<CartLineResolution> {
-  if (resolvers.length === 0) return { valid: true, priceAdjust: 0, persistMeta: null, control: null }
+  if (resolvers.length === 0) return { valid: true, priceAdjust: 0, persistMeta: null, control: null, displayTitle: null }
 
   let priceAdjust = 0
   let valid = true
   let reason: string | undefined
   let control: CartLineControl | null = null
+  let displayTitle: CartLineTitle | null = null
   const fields = []
   for (const resolve of resolvers) {
     const res = await resolve(product, meta)
@@ -143,6 +157,8 @@ export async function resolveLineMeta(
     // First provider to offer a control wins the slot (there is one picker row
     // per line); further ones fold their price and fields but not a second box.
     if (!control && res.control) control = res.control
+    // Likewise the first retitle wins - a line has one name.
+    if (!displayTitle && res.displayTitle) displayTitle = res.displayTitle
   }
-  return { valid, priceAdjust, persistMeta: fields.length ? { fields } : null, reason, control }
+  return { valid, priceAdjust, persistMeta: fields.length ? { fields } : null, reason, control, displayTitle }
 }

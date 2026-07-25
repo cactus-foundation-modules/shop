@@ -5,8 +5,8 @@ import Link from 'next/link'
 import { getCart, setLineQuantity, setLineMeta, removeFromCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } from '@/modules/shop/components/public/validated-cache'
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
-import type { LineMeta } from '@/modules/shop/lib/types'
-import type { CartLineControl } from '@/modules/shop/lib/line-meta'
+import type { LineMeta, LineMetaField } from '@/modules/shop/lib/types'
+import type { CartLineControl, CartLineTitle } from '@/modules/shop/lib/line-meta'
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 
 // Full cart-display island. ONE render path, shared by the Puck editor preview
@@ -20,6 +20,7 @@ type ValidatedLine = {
   isPreOrder: boolean; imageUrl: string | null
   lineId?: string | null; lineMeta?: LineMeta | null
   control?: CartLineControl | null
+  displayTitle?: CartLineTitle | null
 }
 
 // A personalised line is keyed by its lineId so two of the same product with
@@ -66,7 +67,15 @@ export type CartFullOptions = {
 }
 
 const SAMPLE_LINES: ValidatedLine[] = [
-  { productId: 'sample-1', name: 'Terracotta Plant Pot', slug: 'terracotta-plant-pot', quantity: 2, unitPrice: 18, lineSubtotal: 36, available: true, availabilityReason: null, isPreOrder: false, imageUrl: null },
+  // The first sample carries a split title and a delivery control so the editor
+  // preview shows the name/variation lines and the delivery column in place.
+  {
+    productId: 'sample-1', name: 'Terracotta Plant Pot - Large / Matte', slug: 'terracotta-plant-pot',
+    quantity: 2, unitPrice: 18, lineSubtotal: 36, available: true, availabilityReason: null, isPreOrder: false, imageUrl: null,
+    displayTitle: { name: 'Terracotta Plant Pot', secondary: 'Large / Matte' },
+    control: { key: 'shippingTier', label: 'Delivery', value: 'standard', options: [{ value: 'standard', label: 'Standard (included)' }, { value: 'express', label: 'Express (+£4.95)' }] },
+    lineMeta: { fields: [{ label: 'Delivery', value: 'Standard - by 12 Aug' }] },
+  },
   { productId: 'sample-2', name: 'Watering Can (Brass)', slug: 'watering-can-brass', quantity: 1, unitPrice: 42.5, lineSubtotal: 42.5, available: true, availabilityReason: null, isPreOrder: true, imageUrl: null },
 ]
 
@@ -245,11 +254,23 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
     return <div className="scl-thumb" aria-hidden style={{ width: imageSize, height: imageSize, borderRadius: imageRadius, background: 'var(--color-bg-subtle)', flexShrink: 0 }} />
   }
 
+  // Name line, plus - when a resolver split the line's title (a variant, say) -
+  // the chosen options on their own muted line beneath it, so the product name
+  // and the variation no longer share one line.
   function renderName(line: ValidatedLine) {
     const style = { color: 'inherit', textDecoration: 'none', fontWeight: 600 } as const
-    return preview
-      ? <span style={style}>{line.name}</span>
-      : <a href={`/shop/products/${line.slug}`} style={style}>{line.name}</a>
+    const title = line.displayTitle?.name || line.name
+    const secondary = line.displayTitle?.secondary
+    return (
+      <>
+        {preview
+          ? <span style={style}>{title}</span>
+          : <a href={`/shop/products/${line.slug}`} style={style}>{title}</a>}
+        {secondary && (
+          <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>{secondary}</p>
+        )}
+      </>
+    )
   }
 
   function renderMeta(line: ValidatedLine) {
@@ -264,10 +285,26 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
         {showUnitPrice && (
           <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>{money(line.unitPrice)} each</p>
         )}
-        {renderLineMeta(line)}
-        {renderControl(line)}
+        {renderLineMeta(productMetaFields(line))}
       </>
     )
+  }
+
+  // A line's meta comes from two kinds of source the layout treats differently:
+  // the product's own choices (a variation, engraving, an uploaded file - shown
+  // under the name) and a per-line control's confirmed value (a delivery tier's
+  // promised date - shown in the delivery column beside its picker). Shop names
+  // no module here: it only knows a control carries a label and a line carries
+  // fields, so it splits them generically - the one field that restates the
+  // control's own label is the control's, every other field is the product's.
+  function metaFields(line: ValidatedLine): LineMetaField[] {
+    return line.lineMeta?.fields ?? []
+  }
+  function productMetaFields(line: ValidatedLine): LineMetaField[] {
+    return line.control ? metaFields(line).filter((f) => f.label !== line.control!.label) : metaFields(line)
+  }
+  function deliveryMetaFields(line: ValidatedLine): LineMetaField[] {
+    return line.control ? metaFields(line).filter((f) => f.label === line.control!.label) : []
   }
 
   // Generic per-line picker offered by a cart-line resolver (e.g. a delivery
@@ -322,18 +359,34 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   }
 
   // Generic personalisation display: label/value pairs the resolver normalised.
-  // A field with an href renders as a link (e.g. an uploaded artwork file).
-  function renderLineMeta(line: ValidatedLine) {
-    if (!line.lineMeta?.fields?.length) return null
+  // A field with an href renders as a link (e.g. an uploaded artwork file). The
+  // caller decides which fields to pass (product choices under the name, the
+  // control's own confirmation beside its picker).
+  function renderLineMeta(fields: LineMetaField[]) {
+    if (!fields.length) return null
     return (
       <ul style={{ listStyle: 'none', margin: '0.25rem 0 0', padding: 0, display: 'grid', gap: '0.125rem' }}>
-        {line.lineMeta.fields.map((f, i) => (
+        {fields.map((f, i) => (
           <li key={i} style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
             <span style={{ fontWeight: 500 }}>{f.label}:</span>{' '}
             {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
           </li>
         ))}
       </ul>
+    )
+  }
+
+  // The delivery column: a per-line control's picker plus its confirmed value
+  // (the promised date), lifted out of the name column into a column of its own
+  // between the product and the price. Null for a line no resolver offered a
+  // control for, so a plain shop's cart keeps its original shape.
+  function renderDelivery(line: ValidatedLine) {
+    if (!line.control || line.control.options.length === 0) return null
+    return (
+      <div className="scl-deliv" style={{ display: 'grid', gap: '0.25rem', minWidth: 0, alignContent: 'center' }}>
+        {renderControl(line)}
+        {renderLineMeta(deliveryMetaFields(line))}
+      </div>
     )
   }
 
@@ -397,6 +450,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
               {renderName(line)}
               {renderMeta(line)}
             </div>
+            {renderDelivery(line)}
             {renderQty(line)}
             {renderLinePrice(line)}
             {renderRemove(line)}
@@ -410,12 +464,16 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   function renderItemsTable() {
     const th = { textAlign: 'left' as const, fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 600, padding: `0 0 ${density.padY}` }
     const td = { padding: `${density.padY} 0`, borderBottom: '1px solid var(--color-border)', verticalAlign: 'middle' as const }
+    // A Delivery column only earns its place when at least one line offers a
+    // delivery control; a plain shop's table keeps its original columns.
+    const anyDelivery = lines.some((line) => line.control && line.control.options.length > 0)
     return (
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: layoutStyle === 'table' ? panelBg : 'transparent', borderRadius: panelRadius }}>
           <thead>
             <tr>
               <th style={th}>Item</th>
+              {anyDelivery && <th style={th}>Delivery</th>}
               {showUnitPrice && <th style={{ ...th, textAlign: 'right' }}>Price</th>}
               <th style={{ ...th, textAlign: 'center' }}>Qty</th>
               {showLinePrice && <th style={{ ...th, textAlign: 'right' }}>Total</th>}
@@ -431,6 +489,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
                     <div style={{ minWidth: 0 }}>{renderName(line)}{renderMeta(line)}</div>
                   </div>
                 </td>
+                {anyDelivery && <td style={{ ...td, minWidth: 0 }}>{renderDelivery(line)}</td>}
                 {showUnitPrice && <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{money(line.unitPrice)}</td>}
                 <td style={{ ...td, textAlign: 'center' }}>{renderQty(line)}</td>
                 {showLinePrice && <td style={{ ...td, textAlign: 'right', color: accent, fontWeight: 600, whiteSpace: 'nowrap' }}>{money(line.lineSubtotal)}</td>}

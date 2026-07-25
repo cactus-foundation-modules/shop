@@ -7,7 +7,7 @@ import { getCouponByCode, listAutomaticDiscounts } from '@/modules/shop/lib/db/d
 import { countPriorCouponOrdersByEmail } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { effectivePrice } from '@/modules/shop/lib/pricing'
-import { getCartLineResolvers, getCartLineResolverPrefetchers, resolveLineMeta, type CartLineControl } from '@/modules/shop/lib/line-meta'
+import { getCartLineResolvers, getCartLineResolverPrefetchers, resolveLineMeta, type CartLineControl, type CartLineTitle } from '@/modules/shop/lib/line-meta'
 import type { CartLine } from '@/modules/shop/components/public/cart'
 import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 
@@ -34,6 +34,9 @@ export type ResolvedCartLine = {
   // Optional per-line picker a cart-line resolver offered (e.g. a delivery-tier
   // select). Display-only - it never affects the order, only the live cart UI.
   control?: CartLineControl | null
+  // Optional cart-display retitle a resolver offered (e.g. a variant's base name
+  // + chosen options). Display-only - the order still snapshots product.name.
+  displayTitle?: CartLineTitle | null
 }
 
 // Re-checks stock/price/status for every cart line - the only source of
@@ -118,6 +121,7 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       lineId: line.lineId,
       lineMeta: metaResolution.persistMeta,
       control: metaResolution.control ?? null,
+      displayTitle: metaResolution.displayTitle ?? null,
     }
   }))
   return resolved.filter((line): line is ResolvedCartLine => line !== null)
