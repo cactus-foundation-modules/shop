@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { resolveCartLines } from '@/modules/shop/lib/checkout'
-import { getProductMedia } from '@/modules/shop/lib/db'
+import { getProductMediaForProducts } from '@/modules/shop/lib/db'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
 
 const Body = z.object({
@@ -18,8 +18,10 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: 'Invalid cart' }, { status: 400 })
 
   const resolved = await resolveCartLines(parsed.data.lines)
-  const lines = await Promise.all(resolved.map(async (line) => {
-    const media = await getProductMedia(line.product.id)
+  // One media query for every line's product, not one per line.
+  const mediaByProduct = await getProductMediaForProducts(resolved.map((line) => line.product.id))
+  const lines = resolved.map((line) => {
+    const media = mediaByProduct.get(line.product.id) ?? []
     const primary = media.find((m) => m.isPrimary) ?? media[0]
     return {
       productId: line.product.id,
@@ -41,7 +43,7 @@ export async function POST(request: NextRequest) {
       // Optional per-line picker a resolver offered (e.g. a delivery tier).
       control: line.control ?? null,
     }
-  }))
+  })
 
   return NextResponse.json({ lines })
 }

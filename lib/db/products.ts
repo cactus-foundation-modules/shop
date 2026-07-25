@@ -71,6 +71,24 @@ export async function getProductById(id: string): Promise<ShpProduct | null> {
   return rows[0] ? mapProduct(rows[0]) : null
 }
 
+// Bulk match by id, keyed by id. One query for a whole cart instead of a
+// getProductById round-trip per line - the cart validate / checkout resolve path
+// walks every line and used to fetch each product on its own. Duplicate ids
+// (two personalised lines of the same product) collapse to one row.
+export async function getProductsByIds(ids: string[]): Promise<Map<string, ShpProduct>> {
+  const map = new Map<string, ShpProduct>()
+  const unique = [...new Set(ids)].filter(Boolean)
+  if (unique.length === 0) return map
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "shp_products" WHERE "id" IN (${Prisma.join(unique)})
+  `
+  for (const r of rows) {
+    const p = mapProduct(r)
+    map.set(p.id, p)
+  }
+  return map
+}
+
 export async function getProductBySlug(slug: string): Promise<ShpProduct | null> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_products" WHERE "slug" = ${slug} LIMIT 1`
   return rows[0] ? mapProduct(rows[0]) : null
@@ -114,6 +132,25 @@ export async function getProductMedia(productId: string): Promise<ShpProductMedi
     SELECT * FROM "shp_product_media" WHERE "product_id" = ${productId} ORDER BY "position" ASC
   `
   return rows.map(mapMedia)
+}
+
+// Every product's media in one query, grouped by product id and kept in position
+// order within each product (matching getProductMedia). Lets the cart pick each
+// line's primary image without a media round-trip per line.
+export async function getProductMediaForProducts(productIds: string[]): Promise<Map<string, ShpProductMedia[]>> {
+  const map = new Map<string, ShpProductMedia[]>()
+  const unique = [...new Set(productIds)].filter(Boolean)
+  if (unique.length === 0) return map
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "shp_product_media" WHERE "product_id" IN (${Prisma.join(unique)}) ORDER BY "position" ASC
+  `
+  for (const r of rows) {
+    const media = mapMedia(r)
+    const list = map.get(media.productId) ?? []
+    list.push(media)
+    map.set(media.productId, list)
+  }
+  return map
 }
 
 export async function getProductCategoryIds(productId: string): Promise<string[]> {

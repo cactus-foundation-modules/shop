@@ -1,13 +1,13 @@
 // PROTECTED - server-only money maths (spec 19). The client never calculates
 // tax or totals; every quantity here is recalculated from scratch on the
 // server on every checkout step, using live product/coupon/shipping data.
-import { getProductById } from '@/modules/shop/lib/db/products'
+import { getProductsByIds } from '@/modules/shop/lib/db/products'
 import { getTaxRateForZoneAndClass, listShippingRatesForZone, resolveWeightBasedRate, getShippingRateById } from '@/modules/shop/lib/db/tax-shipping'
 import { getCouponByCode, listAutomaticDiscounts } from '@/modules/shop/lib/db/discounts'
 import { countPriorCouponOrdersByEmail } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { effectivePrice } from '@/modules/shop/lib/pricing'
-import { getCartLineResolvers, resolveLineMeta, type CartLineControl } from '@/modules/shop/lib/line-meta'
+import { getCartLineResolvers, getCartLineResolverPrefetchers, resolveLineMeta, type CartLineControl } from '@/modules/shop/lib/line-meta'
 import type { CartLine } from '@/modules/shop/components/public/cart'
 import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 
@@ -39,16 +39,33 @@ export type ResolvedCartLine = {
 // Re-checks stock/price/status for every cart line - the only source of
 // truth the checkout flow trusts (spec 8.1 POST /cart/validate).
 export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLine[]> {
-  const resolvers = await getCartLineResolvers()
-  const { enabledPriceTypes } = await getShopConfigCached()
-  // Resolve every line concurrently. Each line is an independent read (product
-  // lookup + any cart-line resolvers), and a resolver like advanced-shipping
-  // fires a handful of DB round-trips of its own; walking the cart sequentially
-  // multiplied that by the line count and made a full cart take seconds. Order
-  // is preserved (Promise.all keeps input order); a skipped line returns null
-  // and is filtered out, exactly as the old `continue` dropped it.
+  // Everything the fold needs, gathered in one batched pass up front rather than
+  // per line: the resolvers and their optional batch prefetchers, the shop
+  // config, and every cart product in a single query (a getProductById per line
+  // was one of three N+1 fans that made a full cart take seconds).
+  const [resolvers, prefetchers, { enabledPriceTypes }, products] = await Promise.all([
+    getCartLineResolvers(),
+    getCartLineResolverPrefetchers(),
+    getShopConfigCached(),
+    getProductsByIds(cart.map((line) => line.productId)),
+  ])
+
+  // Warm every contributing module's request-scoped cache once for the whole
+  // cart (delivery estimates, add-on lookups). After this the per-line resolvers
+  // read from cache instead of each firing its own handful of queries.
+  const cartProducts = [...products.values()]
+  if (prefetchers.length > 0 && cartProducts.length > 0) {
+    await Promise.all(prefetchers.map((prefetch) => prefetch(cartProducts)))
+  }
+
+  // Resolve every line concurrently. Each line is now an independent set of cache
+  // reads (product from the batch map + any cart-line resolvers reading their
+  // warmed caches); walking the cart sequentially multiplied that by the line
+  // count and made a full cart take seconds. Order is preserved (Promise.all
+  // keeps input order); a skipped line returns null and is filtered out, exactly
+  // as the old `continue` dropped it.
   const resolved = await Promise.all(cart.map(async (line): Promise<ResolvedCartLine | null> => {
-    const product = await getProductById(line.productId)
+    const product = products.get(line.productId)
     if (!product || product.status !== 'ACTIVE') return null
 
     let available = true

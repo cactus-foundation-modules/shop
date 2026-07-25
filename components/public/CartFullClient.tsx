@@ -85,20 +85,38 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   const [couponMessage, setCouponMessage] = useState<string | null>(null)
   const [hasLoaded, setHasLoaded] = useState(preview ?? false)
 
+  // The currency symbol is fixed for the shop, so fetch it once rather than on
+  // every cart re-validate - changing the delivery picker used to re-fetch it
+  // alongside the validate, doubling the round-trips on every dropdown change.
+  useEffect(() => {
+    if (preview) return
+    let cancelled = false
+    fetch('/api/m/shop/public/config')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setCurrencySymbol(data.currencySymbol) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [preview])
+
   useEffect(() => {
     if (preview) return // editor: static sample, never fetch
 
     let cancelled = false
+    // Monotonic guard: when the shopper flicks a delivery picker several times
+    // quickly, each change re-validates; only the newest response is applied, so
+    // an earlier slow one can't clobber a later choice.
+    let seq = 0
     async function refresh() {
       const cart = getCart()
       if (cart.length === 0) { if (!cancelled) { setLines([]); setHasLoaded(true) } return }
-      const [validateRes, configRes] = await Promise.all([
-        fetch('/api/m/shop/public/cart/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines: cart }) }),
-        fetch('/api/m/shop/public/config'),
-      ])
-      if (cancelled) return
-      if (validateRes.ok) setLines((await validateRes.json()).lines)
-      if (configRes.ok) setCurrencySymbol((await configRes.json()).currencySymbol)
+      const mySeq = ++seq
+      const res = await fetch('/api/m/shop/public/cart/validate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines: cart }),
+      })
+      if (cancelled || mySeq !== seq) return
+      const data = res.ok ? await res.json() : null
+      if (cancelled || mySeq !== seq) return
+      if (data) setLines(data.lines)
       setHasLoaded(true)
     }
     refresh()
@@ -125,7 +143,14 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   const onRemove = (id: string) => { if (!preview) removeFromCart(id) }
   // Writes a generic per-line control's choice into the line meta; the cart's
   // own subscribe/refresh then re-validates and re-prices with no extra wiring.
-  const onControl = (id: string, key: string, value: string) => { if (!preview) setLineMeta(id, { [key]: value }) }
+  // The chosen value is also applied to local state at once, so the <select>
+  // reflects the pick instantly instead of snapping back until the re-validate
+  // round-trip returns (the line's price catches up a beat later when it does).
+  const onControl = (id: string, key: string, value: string) => {
+    if (preview) return
+    setLines((prev) => prev.map((l) => (lineKey(l) === id && l.control ? { ...l, control: { ...l.control, value } } : l)))
+    setLineMeta(id, { [key]: value })
+  }
 
   // Resolved options
   const layoutStyle = props.layoutStyle ?? 'rows'

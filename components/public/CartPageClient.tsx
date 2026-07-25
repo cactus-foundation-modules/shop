@@ -23,22 +23,37 @@ export function CartPageClient() {
   const [couponMessage, setCouponMessage] = useState<string | null>(null)
   const [hasLoaded, setHasLoaded] = useState(false)
 
-  async function refresh() {
-    const cart = getCart()
-    if (cart.length === 0) { setLines([]); setHasLoaded(true); return }
-    const [validateRes, configRes] = await Promise.all([
-      fetch('/api/m/shop/public/cart/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines: cart }) }),
-      fetch('/api/m/shop/public/config'),
-    ])
-    if (validateRes.ok) setLines((await validateRes.json()).lines)
-    if (configRes.ok) setCurrencySymbol((await configRes.json()).currencySymbol)
-    setHasLoaded(true)
-  }
+  // Currency symbol is fixed for the shop - fetch it once, not on every cart
+  // re-validate (it used to ride along with each validate round-trip).
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/m/shop/public/config')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled && data) setCurrencySymbol(data.currencySymbol) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- delegating to async helper; setState calls happen after awaits (or synchronously only to clear an already-empty cart)
+    let cancelled = false
+    // Monotonic guard so a slow earlier re-validate can't overwrite a newer one.
+    let seq = 0
+    async function refresh() {
+      const cart = getCart()
+      if (cart.length === 0) { if (!cancelled) { setLines([]); setHasLoaded(true) } return }
+      const mySeq = ++seq
+      const res = await fetch('/api/m/shop/public/cart/validate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines: cart }),
+      })
+      if (cancelled || mySeq !== seq) return
+      const data = res.ok ? await res.json() : null
+      if (cancelled || mySeq !== seq) return
+      if (data) setLines(data.lines)
+      setHasLoaded(true)
+    }
     refresh()
-    return subscribeCart(refresh)
+    const unsubscribe = subscribeCart(refresh)
+    return () => { cancelled = true; unsubscribe() }
   }, [])
 
   async function applyCoupon() {

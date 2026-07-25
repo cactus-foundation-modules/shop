@@ -41,9 +41,21 @@ export type CartLineResolver = (
   meta: Record<string, unknown> | undefined,
 ) => Promise<CartLineResolution> | CartLineResolution
 
+// Optional companion to a cart-line resolver: given every product in the cart at
+// once, a module can warm a request-scoped batch cache before shop folds the
+// lines. Each resolver otherwise resolves its line in isolation (a delivery
+// estimate, an add-on lookup), firing a handful of queries per line; a whole
+// cart then multiplies that by the line count. The prefetcher lets the module
+// turn that fan into one batched read. It returns nothing - it only primes the
+// cache the per-line resolver reads. A resolver that offers no prefetcher, or an
+// older shop that never calls one, still works (the resolver falls back to its
+// own per-line resolve).
+export type CartLineResolverPrefetch = (products: ShpProduct[]) => Promise<void> | void
+
 type ExtensionPointEntry = { point: string; id: string; permission?: string }
 
 const POINT = 'shop.cart-line-resolver'
+const PREFETCH_POINT = 'shop.cart-line-resolver-prefetch'
 
 // Collected once per checkout resolution rather than per line. Returns [] when
 // no module contributes (a shop-only site), so every code path below no-ops.
@@ -65,6 +77,29 @@ export async function getCartLineResolvers(): Promise<CartLineResolver[]> {
     }
   }
   return resolvers
+}
+
+// The batch prefetchers contributed by installed modules, gathered once per
+// resolution (mirrors getCartLineResolvers' installed-module gating). Returns []
+// when no module offers one, so the caller simply skips the prefetch phase.
+export async function getCartLineResolverPrefetchers(): Promise<CartLineResolverPrefetch[]> {
+  const fns = moduleExtensionPointComponents[PREFETCH_POINT] ?? {}
+  if (Object.keys(fns).length === 0) return []
+  const modules = await prisma.module.findMany({
+    where: { ...INSTALLED_MODULE_WHERE },
+    select: { manifest: true },
+  })
+  const prefetchers: CartLineResolverPrefetch[] = []
+  for (const mod of modules) {
+    const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null
+    if (!manifest?.extensionPoints) continue
+    for (const entry of manifest.extensionPoints) {
+      if (entry.point !== PREFETCH_POINT) continue
+      const fn = fns[entry.id] as CartLineResolverPrefetch | undefined
+      if (fn) prefetchers.push(fn)
+    }
+  }
+  return prefetchers
 }
 
 // Runs every provider for one line and folds the results: prices sum, fields
