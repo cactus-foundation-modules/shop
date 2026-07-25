@@ -253,9 +253,36 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   // tier). Shop renders it from plain data - it never imports the contributing
   // module's component. Changing it writes the choice to the line meta and the
   // cart re-validates, so the price and any resolver-supplied line meta update.
+  // The resolver picks the shape: a compact dropdown (default) or a radio group
+  // when every option should be visible at a glance.
   function renderControl(line: ValidatedLine) {
     const control = line.control
     if (!control || control.options.length === 0) return null
+    if (control.renderAs === 'radios') {
+      // One <fieldset> per line so the group is labelled for assistive tech; the
+      // radio name is scoped to the line + control key so two lines of the same
+      // product never share a group.
+      const groupName = `${lineKey(line)}:${control.key}`
+      return (
+        <fieldset style={{ border: 'none', margin: '0.375rem 0 0', padding: 0, display: 'grid', gap: '0.25rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+          <legend style={{ fontWeight: 500, padding: 0 }}>{control.label}:</legend>
+          {control.options.map((o) => (
+            <label key={o.value} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', cursor: preview ? 'default' : 'pointer' }}>
+              <input
+                type="radio"
+                name={groupName}
+                value={o.value}
+                checked={control.value === o.value}
+                disabled={preview}
+                onChange={() => onControl(lineKey(line), control.key, o.value)}
+                style={{ accentColor: 'var(--color-primary)', margin: 0 }}
+              />
+              <span>{o.label}</span>
+            </label>
+          ))}
+        </fieldset>
+      )
+    }
     return (
       <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', margin: '0.375rem 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
         <span style={{ fontWeight: 500 }}>{control.label}:</span>

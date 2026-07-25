@@ -13,15 +13,18 @@ import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 
 // A declarative per-line picker a resolver can offer for display in the cart.
-// Shop renders it generically as a labelled <select> and, on change, writes the
-// chosen value back into the line's meta under `key` and re-validates - so the
-// contributing module never ships a component into shop's cart, only data. The
-// options carry their own already-formatted labels (e.g. a price suffix).
+// Shop renders it generically - a labelled <select> by default, or a radio group
+// when `renderAs` is 'radios' - and, on change, writes the chosen value back into
+// the line's meta under `key` and re-validates, so the contributing module never
+// ships a component into shop's cart, only data. The options carry their own
+// already-formatted labels (e.g. a price suffix). `renderAs` is optional: an
+// older shop that does not read it simply renders the dropdown regardless.
 export type CartLineControl = {
   key: string
   label: string
   value: string
   options: { value: string; label: string }[]
+  renderAs?: 'select' | 'radios'
 }
 
 // What a provider returns for one line. priceAdjust is added to the product's
