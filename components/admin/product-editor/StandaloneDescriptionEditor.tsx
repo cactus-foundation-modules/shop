@@ -14,7 +14,7 @@ import type { PuckData } from '@/modules/shop/lib/types'
 
 // Hands the real sidebar field widgets (media picker, etc.) to the registry the
 // shared config renders through. Module scope so it runs before Puck's first
-// field render, matching the core layout editor and the inline builder.
+// field render, matching the core layout editor.
 registerEditorFields()
 
 // Puck's header carries a "Publish" button and viewport controls that make no
@@ -96,7 +96,7 @@ export function StandaloneDescriptionEditor({ productId, productName, backHref, 
 
   // The site's design tokens, injected as a <style> tag so the canvas renders
   // headings/text/colours the way the storefront will. Same appearance fetch the
-  // inline builder and the core layout editor use.
+  // core layout editor uses.
   useEffect(() => {
     let mounted = true
     let styleEl: HTMLStyleElement | null = null
@@ -131,7 +131,7 @@ export function StandaloneDescriptionEditor({ productId, productName, backHref, 
 
   // Puck measures this wrapper on mount to size its zoomed canvas; mounting while
   // it is still 0x0 produces a transient NaN height console error. Wait for a
-  // real measured size first, same as the inline builder and core layout editor.
+  // real measured size first, same as the core layout editor.
   const [ready, setReady] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   useEffect(() => {

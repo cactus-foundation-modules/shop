@@ -2,15 +2,12 @@ import { getModuleLayoutPuckConfig } from '@/lib/puck/config'
 import { withImagePickerFields } from '@/lib/puck/MediaPickerField'
 import type { PuckData } from '@/modules/shop/lib/types'
 
-// A per-product designed description, edited with an embedded Puck. The layout
-// type is deliberately one nothing registers blocks against, so the config is
-// core's shared content parts only (headings, text, images, columns, callouts)
-// with a bare root - no site header/footer/menu chrome. Same shared parts drive
-// the storefront render, so editor and frontend markup match automatically.
-//
-// Shared here so the inline builder (Details tab) and the full-screen pop-out
-// build from the exact same config: the two surfaces must never drift, or a
-// block that exists in one but not the other would corrupt a saved description.
+// A per-product designed description, edited with the full-screen pop-out Puck
+// builder. The layout type is deliberately one nothing registers blocks against,
+// so the config is core's shared content parts only (headings, text, images,
+// columns, callouts) with a bare root - no site header/footer/menu chrome. Same
+// shared parts drive the storefront render, so editor and frontend markup match
+// automatically.
 export const DESCRIPTION_LAYOUT_TYPE = 'shopProductDescription'
 
 // Puck's minimal empty document. Seeded when the admin first chooses to design.

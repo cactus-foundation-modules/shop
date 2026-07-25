@@ -75,9 +75,6 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
   const [showErrors, setShowErrors] = useState(false)
   const [registrations, setRegistrations] = useState<Record<string, ProductEditorRegistration>>({})
   const [badges, setBadges] = useState<Record<string, string | null>>({})
-  // Bumped when the full-screen pop-out saves a new description, to remount the
-  // inline builder so its Puck canvas reloads with the adopted document.
-  const [descriptionRev, setDescriptionRev] = useState(0)
 
   // --- Registry for contributed tabs ---------------------------------------
   const register = useCallback((key: string, registration: ProductEditorRegistration) => {
@@ -330,7 +327,6 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
       if (JSON.stringify(incoming) === JSON.stringify(current.descriptionPuck)) return
       setState((s) => (s ? { ...s, descriptionPuck: incoming } : s))
       setBaseline((b) => (b ? { ...b, descriptionPuck: incoming } : b))
-      setDescriptionRev((n) => n + 1)
     }
     return () => channel.close()
   }, [productId])
@@ -372,7 +368,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
     if (!state) return []
     const panelProps: PanelProps = { state, setField, patch, errors: visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier }
     const own: Tab[] = [
-      { id: 'details', label: 'Details', order: SHOP_TAB_ORDER.details, render: () => <DetailsPanel {...panelProps} productId={productId} onOpenDescriptionEditor={openDescriptionEditor} descriptionRev={descriptionRev} /> },
+      { id: 'details', label: 'Details', order: SHOP_TAB_ORDER.details, render: () => <DetailsPanel {...panelProps} productId={productId} onOpenDescriptionEditor={openDescriptionEditor} /> },
       { id: 'media', label: 'Images', order: SHOP_TAB_ORDER.media, render: () => <MediaPanel {...panelProps} productId={productId} /> },
       { id: 'pricing', label: 'Pricing', order: SHOP_TAB_ORDER.pricing, render: () => <PricingPanel {...panelProps} taxClasses={taxClasses} /> },
       { id: 'stock', label: 'Stock & delivery', order: SHOP_TAB_ORDER.stock, render: () => <StockPanel {...panelProps} /> },
@@ -390,7 +386,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
       render: () => t.node,
     }))
     return [...own, ...contributed].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
-  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier, taxClasses, categories, tags, collections, productId, siteUrl, extraTabs, openDescriptionEditor, descriptionRev])
+  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier, taxClasses, categories, tags, collections, productId, siteUrl, extraTabs, openDescriptionEditor])
 
   // Derived, not stored: a tab that vanishes (the product stopped being digital)
   // or a ?tab= naming a module that isn't installed falls back to the first tab
