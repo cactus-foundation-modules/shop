@@ -23,12 +23,15 @@ import type { CardPartContext } from '@/modules/shop/components/puck/parts/part-
 // below, so there is one source of truth. No `.shop-card` selectors here - only the
 // island's own classes - which is what makes it portable.
 export const shopCardMediaCss = `
+.shop-card-media{position:absolute;inset:0}
 .shop-card-media-img{width:100%;height:100%;object-fit:cover;display:block}
-.shop-card-nav-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:2;display:flex;align-items:center;justify-content:center;width:34px;height:34px;padding:0;border-radius:50%;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-fg);cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.18);opacity:.9;transition:opacity .2s ease,background .2s ease}
-.shop-card-nav-btn:hover,.shop-card-nav-btn:focus-visible{opacity:1;background:var(--color-bg-subtle)}
-.shop-card-nav-btn:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
+.shop-card-nav-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:2;display:flex;align-items:center;justify-content:center;width:34px;height:34px;padding:0;border-radius:50%;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-fg);cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.18);opacity:0;transition:opacity .2s ease,background .2s ease}
+.shop-card-nav-btn:hover,.shop-card-nav-btn:focus-visible{background:var(--color-bg-subtle)}
+.shop-card-nav-btn:focus-visible{opacity:1;outline:2px solid var(--color-primary);outline-offset:2px}
 .shop-card-nav-prev{left:8px}
 .shop-card-nav-next{right:8px}
+/* A touch device has no hover to reveal the arrows, so leave them showing there. */
+@media (hover:none){.shop-card-nav-btn{opacity:.9}}
 .shop-card-overlay{position:absolute;inset:0;z-index:4;pointer-events:none}
 .shop-card-overlay > *{pointer-events:auto}
 `
@@ -62,7 +65,8 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
 .shop-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s ease}
 .shop-card:hover .shop-card-img img{transform:scale(1.03)}
 /* Carousel arrows + overlay slot (the ShopCardMedia island). Shared rules live in
-   shopCardMediaCss; the card additionally brightens the arrows on card-hover. */
+   shopCardMediaCss; the arrows stay hidden until the card is hovered (the same hover
+   that swaps in the second photo), and are revealed here on card-hover. */
 ${shopCardMediaCss}
 .shop-card:hover .shop-card-nav-btn{opacity:1}
 /* !important: the editor sets position:relative inline on every part root (see

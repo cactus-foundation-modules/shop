@@ -6,6 +6,14 @@
 // overlay slot where those modules mount a control - today the product-3d-views
 // "view in 3D" icon.
 //
+// On a pointer device, hovering the card reveals the product's genuine SECOND OWN photo
+// (the classic storefront hover-swap), snapping back to the main on leave. Only an own
+// photo is ever the hover target: a product whose only extra pictures are variation
+// colours keeps its main shot on hover rather than flicking to a colour - the arrows
+// still reach those. The hover listener rides the `.shop-card` ancestor, not this
+// island, because the stretched link covers the picture (see below), so a mouseenter
+// bound here would never fire over the image the link sits on top of.
+//
 // Client, because the arrows and the overlay hold state and respond to taps. It
 // lives inside `.shop-card-img` (a positioned box) and the whole card is a stretched
 // link behind it (see card-template.tsx renderCards + shopCardCss): the arrows and
@@ -17,7 +25,7 @@
 // passed down across the RSC boundary from the card context - the same way
 // `shop.gallery-media` hands its Thumbs/Stage to the detail gallery.
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { PartImage } from '@/modules/shop/components/puck/parts/part-context'
 import type { CardOverlay } from '@/modules/shop/lib/card-media'
 
@@ -41,6 +49,7 @@ export function ShopCardMedia({
   productId: string
 }) {
   const [index, setIndex] = useState(0)
+  const rootRef = useRef<HTMLDivElement>(null)
   const count = images.length
   // Guard the index against an images list that changed length under us (defensive;
   // the list is fixed per render today).
@@ -50,14 +59,41 @@ export function ShopCardMedia({
   // photo), handed to the overlays so the 3D control follows the shopper's flicking.
   const activeSourceId = current?.sourceId
 
+  // Whether the product has a genuine second OWN photo to reveal on hover. Own photos
+  // (no sourceId) come first, then contributed variation photos, so images[1] is the
+  // second own photo exactly when it carries no sourceId; a variation there means the
+  // product has only the one own photo, and hover leaves the main in place.
+  const hasOwnSecond = count > 1 && !images[1]?.sourceId
+
   const step = (delta: number) => (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setIndex((i) => Math.min(Math.max(i + delta, 0), count - 1))
   }
 
+  // Hover-swap to the second own photo, back to the main on leave. Bound to the
+  // `.shop-card` ancestor rather than this island because the stretched navigation
+  // link covers the picture (it is a sibling ABOVE it in the stacking order, see
+  // card-template renderCards): a listener on the island would never hear a mouseenter
+  // over the image the link sits on, while `.shop-card` is an ancestor of that link and
+  // hears it. Touch devices never fire these, so a phone opens on the main photo and
+  // the arrows do the flicking. Leave always returns to the main, so a shopper who
+  // flicked into the colours with the arrows finds the hero back when they move off.
+  useEffect(() => {
+    const card = rootRef.current?.closest('.shop-card')
+    if (!card) return
+    const onEnter = () => { if (hasOwnSecond) setIndex(1) }
+    const onLeave = () => setIndex(0)
+    card.addEventListener('mouseenter', onEnter)
+    card.addEventListener('mouseleave', onLeave)
+    return () => {
+      card.removeEventListener('mouseenter', onEnter)
+      card.removeEventListener('mouseleave', onLeave)
+    }
+  }, [hasOwnSecond])
+
   return (
-    <>
+    <div className="shop-card-media" ref={rootRef}>
       {current && (
         // eslint-disable-next-line @next/next/no-img-element -- media library URLs are arbitrary remote hosts, not a configured next/image loader
         <img className="shop-card-media-img" src={current.url} alt={current.alt} />
@@ -87,6 +123,6 @@ export function ShopCardMedia({
           ))}
         </div>
       )}
-    </>
+    </div>
   )
 }
