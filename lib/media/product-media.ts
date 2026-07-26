@@ -7,30 +7,35 @@ import { getCategoryAncestorPath } from '@/modules/shop/lib/db/catalogue'
 // Product image filing.
 //
 // Every image attached to a product is filed in the core media library under
-//   shop / <master category trail> / <product> / <product-slug><n>
-// (n is the image's 1-based position; the folder names are lower-cased to match
-// the storage path, so images share a folder with the product's 3D models and
-// downloads rather than a parallel upper-case one). The master category's whole
-// ancestor trail names the folders - a product in a sub-category is filed inside
-// its parent category's folder (shop / office-tables / meeting-boardroom-tables /
-// <product>), not a flat folder named only for the leaf - and the product name
-// names the folder inside it; products with no master land under "Uncategorised".
-// Only images that resolve to a managed core
-// Media row are moved - externally-hosted urls and video embeds are left
-// untouched. Runs on every product save, after the media list has been written,
-// and is idempotent: an image already in the right place with the right name is
-// a no-op (no blob copy).
+//   shop / <master category trail> / <product>
+// (the folder names are lower-cased to match the storage path, so images share a
+// folder with the product's 3D models and downloads rather than a parallel
+// upper-case one). The master category's whole ancestor trail names the folders -
+// a product in a sub-category is filed inside its parent category's folder
+// (shop / office-tables / meeting-boardroom-tables / <product>), not a flat folder
+// named only for the leaf - and the product name names the folder inside it;
+// products with no master land under "Uncategorised". Only images that resolve to
+// a managed core Media row are moved - externally-hosted urls and video embeds are
+// left untouched. Runs on every product save, after the media list has been
+// written, and is idempotent: an image already in the right folder is a no-op (no
+// blob copy).
+//
+// The file KEEPS the name the person uploaded it under. This only organises
+// images into the product's folder; it never renames them. (Product images were
+// once renumbered to "<product-slug><n>" on every save, which is exactly the
+// renaming this deliberately no longer does.)
 //
 // The per-product folder is what lets a product's variation images sit beside
 // its own: a dependent module (shop-variations) files a variant's image by
-// passing the parent as `folderProductId`, so the image is named from the
-// variant's own slug but lands in the parent's folder.
+// passing the parent as `folderProductId`, so a variant's image lands in the
+// parent's folder under its own uploaded name.
 //
 // The exact-name flag on the core relocate keeps the stored key free of the
-// usual nanoid, so the url reads shop/<category>/<product>/<slug><n>.<ext>
-// exactly. Names are globally unique (slug is unique, n is the position), so the
-// caller safely owns collision within the folder - two products sharing a name
-// share a folder without either clobbering the other.
+// usual nanoid, so the url reads shop/<category>/<product>/<uploaded-name>.<ext>
+// - the same exact-name key a media-library upload into this folder already
+// gets, which is what makes an editor upload a no-op here (the key it is already
+// on is the key this would build). Two images that happen to share an uploaded
+// name in one folder are kept apart with a numeric suffix, never overwritten.
 //
 // The editor also resolves this folder up front (getProductMediaFolderId) and
 // uploads new images straight into it. Filing on save alone was not enough: an
@@ -121,51 +126,6 @@ export async function findProductMediaFolderId(
     parentId = existing.id
   }
   return parentId
-}
-
-/** One rename in a renumber, in the order it has to happen. */
-export type ImageRenameStep = {
-  mediaId: string
-  name: string
-  /** Set on a parking step: the name this rename releases for somebody else. */
-  frees?: string
-}
-
-/**
- * Order the renames a renumber needs so that no image is ever asked to take a
- * name one of its siblings is still using.
- *
- * Renumbering is a permutation, and renaming a permutation in place collides
- * with itself: reorder two pictures and the one now third asks for the name the
- * one now second still holds. The core relocate is told to 'replace' on a clash,
- * and replace supersedes and deletes what it finds - so an innocent reorder
- * would delete a picture that is still on the product, after overwriting its
- * blob. (An exact-name key is derived from the name, so taking the name takes
- * the storage key with it.)
- *
- * The fix is the one you'd use to renumber anything in place: park first. Any
- * image whose current name is on somebody else's wish list moves to a name no
- * image can ask for, and every target is free before a single one is claimed.
- * A parked image keeps serving - its references move with it - and gets its real
- * name in the second pass.
- *
- * Pure so the ordering can be tested without a database or a storage provider.
- */
-export function planImageRenames(
-  items: Array<{ mediaId: string; currentName: string | null; target: string }>,
-  parkingName: (mediaId: string) => string,
-): ImageRenameStep[] {
-  const wanted = new Set(items.map((i) => i.target))
-  const steps: ImageRenameStep[] = []
-
-  for (const item of items) {
-    if (!item.currentName || item.currentName === item.target) continue
-    if (!wanted.has(item.currentName)) continue
-    steps.push({ mediaId: item.mediaId, name: parkingName(item.mediaId), frees: item.currentName })
-  }
-  for (const item of items) steps.push({ mediaId: item.mediaId, name: item.target })
-
-  return steps
 }
 
 /**
@@ -265,64 +225,36 @@ export async function reorganiseProductMedia(
     ORDER BY "position" ASC
   `
 
-  // Resolve every managed image to its Media row and the name it should end up
-  // with. The index counts unmanaged entries too, so an externally-hosted url in
-  // the middle of the list doesn't shift the numbering of the images around it.
-  type Planned = { mediaId: string; url: string; currentName: string | null; target: string }
-  const planned: Planned[] = []
-  let index = 0
+  // File each managed image into the product folder under the name it already
+  // has - no rename, no renumber. An image the editor uploaded straight into the
+  // folder is already on its exact-name key here, so moveOrRenameMedia sees no
+  // change and does no blob work; only a straggler (picked from the library,
+  // imported by CSV) is actually moved. 'suffix' rather than 'replace' on a name
+  // clash: two images that happen to share an uploaded name in one folder are
+  // kept apart, never overwritten.
   for (const { url } of images) {
-    index += 1
-    const media = await prisma.media.findFirst({ where: { url }, select: { id: true, originalName: true } })
+    const media = await prisma.media.findFirst({ where: { url }, select: { id: true } })
     if (!media) continue // externally-hosted or otherwise unmanaged - leave as-is
-    planned.push({ mediaId: media.id, url, currentName: media.originalName, target: `${product.slug}${index}` })
-  }
-
-  const file = async (item: Planned, newName: string): Promise<boolean> => {
     try {
-      const updated = await moveOrRenameMedia(item.mediaId, {
+      const updated = await moveOrRenameMedia(media.id, {
         targetFolderId: folderId,
-        newName,
+        // No newName: the file keeps its uploaded name. This organises, never renames.
         exactName: true,
-        collision: 'replace',
+        collision: 'suffix',
       })
-      if (!updated) return false
-      if (updated.url !== item.url) {
+      if (updated && updated.url !== url) {
         await prisma.$executeRaw`
           UPDATE "shp_product_media" SET "url" = ${updated.url}
-          WHERE "product_id" = ${productId} AND "url" = ${item.url}
+          WHERE "product_id" = ${productId} AND "url" = ${url}
         `
-        item.url = updated.url
       }
-      item.currentName = updated.originalName
-      return true
     } catch (err) {
       // A single image failing to relocate (provider hiccup, missing blob) must
       // not fail the whole save - the row keeps its current url and can be
       // re-filed on the next save. Say so in the log though: swallowing this
       // silently is how every product image ended up sat in the library root
       // with nothing anywhere reporting a problem.
-      console.warn(`[shop] could not file image ${item.url} for product ${productId}:`, err)
-      return false
+      console.warn(`[shop] could not file image ${url} for product ${productId}:`, err)
     }
-  }
-
-  const byId = new Map(planned.map((p) => [p.mediaId, p]))
-  const unavailable = new Set<string>()
-
-  for (const step of planImageRenames(planned, (id) => `${product.slug}-parking-${id}`)) {
-    const item = byId.get(step.mediaId)
-    if (!item) continue
-
-    // The image sitting on this name could not be moved aside. Claiming it now
-    // would delete that image, so leave this one where it is: it keeps its
-    // current url, and the next save re-files it.
-    if (!step.frees && unavailable.has(step.name)) {
-      console.warn(`[shop] leaving image ${item.url} unfiled for product ${productId}: ${step.name} is still held`)
-      continue
-    }
-
-    const ok = await file(item, step.name)
-    if (!ok && step.frees) unavailable.add(step.frees)
   }
 }
