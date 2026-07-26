@@ -1,9 +1,10 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Render } from '@puckeditor/core/rsc'
-import { getCategoryBySlug, getCategoryAncestorPath, listCategories, resolveCategoryProductFilter } from '@/modules/shop/lib/db/catalogue'
-import { listProducts, getProductMediaForProducts } from '@/modules/shop/lib/db/products'
+import { getCategoryBySlug, getCategoryAncestorPath, listCategories, resolveCategoryProductFilter, listTags } from '@/modules/shop/lib/db/catalogue'
+import { listProducts, getProductMediaForProducts, getProductTagIds } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
@@ -11,12 +12,9 @@ import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { injectCategoryContext } from '@/modules/shop/lib/inject-category-context'
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
 import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
-import { buildCardContext } from '@/modules/shop/lib/card-template'
-import { ShopCardMedia } from '@/modules/shop/components/public/ShopCardMedia'
-import { shopCardMediaCss } from '@/modules/shop/components/puck/parts/card-parts'
+import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
+import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import type { PuckData } from '@/modules/shop/lib/types'
-import { formatMoney } from '@/modules/shop/lib/money'
-import { effectivePrice } from '@/modules/shop/lib/pricing'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
@@ -46,7 +44,7 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
   }
 
   const config = await getShopConfigCached()
-  const [{ products }, ancestors, allCategories] = await Promise.all([
+  const [{ products }, ancestors, allCategories, bp, tags, template] = await Promise.all([
     listProducts({
       status: 'ACTIVE',
       perPage: 60,
@@ -55,17 +53,32 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
     }),
     getCategoryAncestorPath(category.id),
     listCategories(),
+    getShopBreakpoints(),
+    listTags(),
+    resolveCardTemplate(),
   ])
   // Ancestors include the category itself; the trail before it is the crumbs.
   const crumbs = ancestors.filter((a) => a.id !== category.id)
   const children = allCategories.filter((c) => c.parentId === category.id)
+  const tagById = new Map(tags.map((t) => [t.id, t.slug]))
 
+  // Same card path as the Product Grid block, so this fallback page (shown when no
+  // custom category layout is published) stamps the one shared Product Card
+  // template - image carousel, 3D badge, hover and all - rather than a separate
+  // hand-rolled tile. Editing that single layout restyles every card surface.
   const productIds = products.map((p) => p.id)
   const [mediaByProduct, fromPrices, cardExtras] = await Promise.all([
     getProductMediaForProducts(productIds),
     resolveCardFromPrices(productIds),
     resolveShopCardExtras(productIds),
   ])
+  const items: CardItem[] = await Promise.all(
+    products.map(async (p) => {
+      const tagIds = await getProductTagIds(p.id)
+      return { product: p, ctx: buildCardContext(p, mediaByProduct.get(p.id) ?? [], tagById, tagIds, config.currencySymbol, config, fromPrices.get(p.id) ?? null, cardExtras.get(p.id)) }
+    }),
+  )
+  const cards = template ? await renderCards(template, items) : items.map((i) => <MinimalCard key={i.product.id} {...i} />)
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
@@ -99,41 +112,9 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
         </div>
       )}
 
-      <style dangerouslySetInnerHTML={{ __html: shopCardMediaCss }} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginTop: '1.5rem' }}>
-        {products.map((p) => {
-          const media = mediaByProduct.get(p.id) ?? []
-          const primary = media.find((m) => m.isPrimary) ?? media[0]
-          const image = primary && primary.type !== 'VIDEO_URL' ? primary : null
-          const fromPrice = fromPrices.get(p.id)
-          // The original tile, unchanged - only the picture gains the photo carousel
-          // and the 3D badge. It is a <div> with a stretched link (not an <a> around
-          // everything) so the arrows and 3D control can be real buttons above the
-          // link rather than interactive content nested in an anchor.
-          const ctx = buildCardContext(p, media, new Map(), [], config.currencySymbol, config, fromPrice ?? null, cardExtras.get(p.id))
-          const interactive = ctx.images.length > 1 || ctx.overlays.length > 0
-          return (
-            <div key={p.id} style={{ position: 'relative', color: 'inherit', border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden' }}>
-              <a href={`/shop/products/${p.slug}`} aria-label={p.name} style={{ position: 'absolute', inset: 0, zIndex: 1 }} />
-              <div style={{ position: 'relative', aspectRatio: '1/1', background: 'var(--color-surface-muted)', overflow: 'hidden' }}>
-                {interactive ? (
-                  <ShopCardMedia images={ctx.images} overlays={ctx.overlays} productId={p.id} />
-                ) : (
-                  image && (
-                    // eslint-disable-next-line @next/next/no-img-element -- media library URLs are arbitrary remote hosts, not a configured next/image loader
-                    <img src={image.url} alt={image.altText ?? p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  )
-                )}
-              </div>
-              <div style={{ padding: '0.75rem' }}>
-                <h3 style={{ margin: '0 0 0.25rem', fontSize: '0.9375rem' }}>{p.name}</h3>
-                <span style={{ fontWeight: 600 }}>
-                  {fromPrice != null ? `From ${formatMoney(fromPrice, config.currencySymbol)}` : formatMoney(effectivePrice(p, config.enabledPriceTypes), config.currencySymbol)}
-                </span>
-              </div>
-            </div>
-          )
-        })}
+      <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
+      <div className="shop-grid" style={{ ['--shop-cols' as string]: '3', marginTop: '1.5rem' } as React.CSSProperties}>
+        {cards}
       </div>
       {products.length === 0 && (
         <p style={{ color: 'var(--color-text-muted)', marginTop: '1.5rem' }}>
