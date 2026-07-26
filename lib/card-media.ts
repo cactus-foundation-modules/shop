@@ -26,8 +26,12 @@ import type { PartImage } from '@/modules/shop/components/puck/parts/part-contex
 // What a mounted overlay is handed. `payload` is whatever the provider's `load`
 // returned for this product, passed back untouched - shop treats it as opaque, so
 // it crosses the RSC boundary and must be JSON-serialisable. `productId` is the
-// product the card is for.
-export type CardOverlayProps = { payload: unknown; productId: string }
+// product the card is for. `activeSourceId` is the `sourceId` of the image the
+// carousel is currently showing (see PartImage) - null on the product's own photos,
+// the variation's child-product id on a contributed variation photo - so an overlay
+// can react to which picture the shopper is looking at (the 3D overlay uses it to
+// show that variation's model).
+export type CardOverlayProps = { payload: unknown; productId: string; activeSourceId?: string }
 
 // What a provider returns per product from `load`. Both fields are optional: a
 // provider that only adds images (variation photos) omits `overlay`, and one that

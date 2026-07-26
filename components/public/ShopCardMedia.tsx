@@ -46,6 +46,9 @@ export function ShopCardMedia({
   // the list is fixed per render today).
   const at = Math.min(Math.max(index, 0), Math.max(count - 1, 0))
   const current = images[at]
+  // Which entity the current picture belongs to (a variation, for a contributed
+  // photo), handed to the overlays so the 3D control follows the shopper's flicking.
+  const activeSourceId = current?.sourceId
 
   const step = (delta: number) => (e: React.MouseEvent) => {
     e.preventDefault()
@@ -80,7 +83,7 @@ export function ShopCardMedia({
       {overlays.length > 0 && (
         <div className="shop-card-overlay">
           {overlays.map((o) => (
-            <o.Overlay key={o.id} payload={o.payload} productId={productId} />
+            <o.Overlay key={o.id} payload={o.payload} productId={productId} activeSourceId={activeSourceId} />
           ))}
         </div>
       )}

@@ -17,7 +17,13 @@ import type { ShpProduct } from '@/modules/shop/lib/types'
 // clone of the saved template just before it renders, so nothing is re-fetched
 // per part.
 
-export type PartImage = { url: string; alt: string }
+// `sourceId` is an opaque tag a companion module may attach to an image it
+// contributes through `shop.card-media` - shop-variations sets it to the variation
+// (child product) the photo belongs to. Shop passes it through untouched; the card
+// island hands the current image's sourceId to the overlay controls, so the 3D
+// overlay can show the model for the variation currently on screen. Absent on the
+// product's own photos.
+export type PartImage = { url: string; alt: string; sourceId?: string }
 
 export type CardBadge = { label: string; variant: 'new' | 'low' | 'trade' | 'muted' }
 
