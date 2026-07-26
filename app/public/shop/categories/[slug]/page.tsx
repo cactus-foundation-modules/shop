@@ -10,6 +10,10 @@ import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { injectCategoryContext } from '@/modules/shop/lib/inject-category-context'
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
+import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
+import { buildCardContext } from '@/modules/shop/lib/card-template'
+import { ShopCardMedia } from '@/modules/shop/components/public/ShopCardMedia'
+import { shopCardMediaCss } from '@/modules/shop/components/puck/parts/card-parts'
 import type { PuckData } from '@/modules/shop/lib/types'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { effectivePrice } from '@/modules/shop/lib/pricing'
@@ -57,9 +61,10 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
   const children = allCategories.filter((c) => c.parentId === category.id)
 
   const productIds = products.map((p) => p.id)
-  const [mediaByProduct, fromPrices] = await Promise.all([
+  const [mediaByProduct, fromPrices, cardExtras] = await Promise.all([
     getProductMediaForProducts(productIds),
     resolveCardFromPrices(productIds),
+    resolveShopCardExtras(productIds),
   ])
 
   return (
@@ -94,18 +99,30 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
         </div>
       )}
 
+      <style dangerouslySetInnerHTML={{ __html: shopCardMediaCss }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginTop: '1.5rem' }}>
         {products.map((p) => {
           const media = mediaByProduct.get(p.id) ?? []
           const primary = media.find((m) => m.isPrimary) ?? media[0]
           const image = primary && primary.type !== 'VIDEO_URL' ? primary : null
           const fromPrice = fromPrices.get(p.id)
+          // The original tile, unchanged - only the picture gains the photo carousel
+          // and the 3D badge. It is a <div> with a stretched link (not an <a> around
+          // everything) so the arrows and 3D control can be real buttons above the
+          // link rather than interactive content nested in an anchor.
+          const ctx = buildCardContext(p, media, new Map(), [], config.currencySymbol, config, fromPrice ?? null, cardExtras.get(p.id))
+          const interactive = ctx.images.length > 1 || ctx.overlays.length > 0
           return (
-            <a key={p.id} href={`/shop/products/${p.slug}`} style={{ textDecoration: 'none', color: 'inherit', border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', display: 'block' }}>
-              <div style={{ aspectRatio: '1/1', background: 'var(--color-surface-muted)' }}>
-                {image && (
-                  // eslint-disable-next-line @next/next/no-img-element -- media library URLs are arbitrary remote hosts, not a configured next/image loader
-                  <img src={image.url} alt={image.altText ?? p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <div key={p.id} style={{ position: 'relative', color: 'inherit', border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden' }}>
+              <a href={`/shop/products/${p.slug}`} aria-label={p.name} style={{ position: 'absolute', inset: 0, zIndex: 1 }} />
+              <div style={{ position: 'relative', aspectRatio: '1/1', background: 'var(--color-surface-muted)', overflow: 'hidden' }}>
+                {interactive ? (
+                  <ShopCardMedia images={ctx.images} overlays={ctx.overlays} productId={p.id} />
+                ) : (
+                  image && (
+                    // eslint-disable-next-line @next/next/no-img-element -- media library URLs are arbitrary remote hosts, not a configured next/image loader
+                    <img src={image.url} alt={image.altText ?? p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  )
                 )}
               </div>
               <div style={{ padding: '0.75rem' }}>
@@ -114,7 +131,7 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
                   {fromPrice != null ? `From ${formatMoney(fromPrice, config.currencySymbol)}` : formatMoney(effectivePrice(p, config.enabledPriceTypes), config.currencySymbol)}
                 </span>
               </div>
-            </a>
+            </div>
           )
         })}
       </div>

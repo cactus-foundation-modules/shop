@@ -60,7 +60,7 @@ export function ShopCardMedia({
     <>
       {current && (
         // eslint-disable-next-line @next/next/no-img-element -- media library URLs are arbitrary remote hosts, not a configured next/image loader
-        <img src={current.url} alt={current.alt} />
+        <img className="shop-card-media-img" src={current.url} alt={current.alt} />
       )}
 
       {count > 1 && (

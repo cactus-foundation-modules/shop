@@ -16,6 +16,23 @@ import type { CardPartContext } from '@/modules/shop/components/puck/parts/part-
 // product and no anchor, so each part renders a labelled skeleton and emits the
 // CSS itself. Class prefix `shop-card-`. Colours are tokens only.
 
+// The carousel-arrow + overlay-slot styles for the ShopCardMedia island, pulled out
+// on their own so a surface that reuses the island OUTSIDE a `.shop-card` (the bare
+// category/collection tiles, whose own design is kept) can emit just these without
+// dragging in the whole card look. `.shop-card` pulls them in through shopCardCss
+// below, so there is one source of truth. No `.shop-card` selectors here - only the
+// island's own classes - which is what makes it portable.
+export const shopCardMediaCss = `
+.shop-card-media-img{width:100%;height:100%;object-fit:cover;display:block}
+.shop-card-nav-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:2;display:flex;align-items:center;justify-content:center;width:34px;height:34px;padding:0;border-radius:50%;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-fg);cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.18);opacity:.9;transition:opacity .2s ease,background .2s ease}
+.shop-card-nav-btn:hover,.shop-card-nav-btn:focus-visible{opacity:1;background:var(--color-bg-subtle)}
+.shop-card-nav-btn:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
+.shop-card-nav-prev{left:8px}
+.shop-card-nav-next{right:8px}
+.shop-card-overlay{position:absolute;inset:0;z-index:4;pointer-events:none}
+.shop-card-overlay > *{pointer-events:auto}
+`
+
 // Full card + grid stylesheet. The surface sets `--shop-cols` on `.shop-grid`;
 // the card look follows from the Image part's display mode, so all three share
 // one source of truth. `:has()` is used for the beside/overlay arrangements.
@@ -44,20 +61,10 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
 .shop-card-img{position:relative;aspect-ratio:1/1;background:var(--color-bg-subtle);overflow:hidden}
 .shop-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s ease}
 .shop-card:hover .shop-card-img img{transform:scale(1.03)}
-/* Carousel arrows (client island). Always shown so shoppers can see there is more
-   than one photo, a touch brighter on hover/focus. Above the stretched link so a tap
-   flicks the image instead of following the card. Tokens only. */
-.shop-card-nav-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:2;display:flex;align-items:center;justify-content:center;width:34px;height:34px;padding:0;border-radius:50%;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-fg);cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.18);opacity:.9;transition:opacity .2s ease,background .2s ease}
+/* Carousel arrows + overlay slot (the ShopCardMedia island). Shared rules live in
+   shopCardMediaCss; the card additionally brightens the arrows on card-hover. */
+${shopCardMediaCss}
 .shop-card:hover .shop-card-nav-btn{opacity:1}
-.shop-card-nav-btn:hover,.shop-card-nav-btn:focus-visible{opacity:1;background:var(--color-bg-subtle)}
-.shop-card-nav-btn:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
-.shop-card-nav-prev{left:8px}
-.shop-card-nav-next{right:8px}
-/* Overlay slot: companion-module controls (the 3D icon) pinned over the picture.
-   Transparent and click-through by default; the control inside re-enables its own
-   pointer events. Above the badge (z-index) so an opened 3D viewer covers it. */
-.shop-card-overlay{position:absolute;inset:0;z-index:4;pointer-events:none}
-.shop-card-overlay > *{pointer-events:auto}
 /* !important: the editor sets position:relative inline on every part root (see
    dragRefOf). The badge and the fill image are the two that must position
    against the card instead, so they have to outrank it. No-op on the live page,
