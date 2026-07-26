@@ -1,13 +1,22 @@
 // Server-side resolver for the `shop.card-media` extension point. A companion
-// module may add to a product CARD (the tile in a grid) two things:
+// module may add to a product CARD (the tile in a grid) three things:
 //   - extra images, folded into the card's own image carousel so the shopper can
 //     flick through them with the arrows (shop-variations contributes a product's
 //     variation photos this way);
 //   - an overlay, a small client control pinned over the image that does something
 //     when tapped (product-3d-views contributes the "view in 3D" icon that swaps
-//     the picture for a live model).
+//     the picture for a live model);
+//   - facts, an opaque per-product payload that the module's OWN card part-block
+//     renders wherever the owner drags it into the Product Card layout
+//     (shop-variations summarises a product's colours and sizes this way).
 //
-// Shop learns nothing about what either is. It supplies the carousel, the overlay
+// The point is named for the first two because they came first; it is really the
+// one seam for everything a module pins to a card, which is why the resolved shape
+// below is `ShopCardExtra` rather than anything media-shaped. Everything that
+// arrives here reaches every card surface at once, so a module contributing facts
+// needs no separate wiring per grid.
+//
+// Shop learns nothing about what any of it is. It supplies the carousel, the overlay
 // slot and the class names; the provider fills them. This is the card-grid twin of
 // `shop.gallery-media` (which does the same job on the product DETAIL page), and it
 // is resolved in one batched pass per grid exactly like `shop.product-card-prices`
@@ -40,6 +49,13 @@ export type CardOverlayProps = { payload: unknown; productId: string; activeSour
 export type ShopCardMediaPayload = {
   images?: PartImage[]
   overlay?: unknown
+  // An opaque blob for the provider's own card part-block to render. Unlike
+  // `overlay` it needs no component here: the block is registered against the
+  // `shopProductCard` layout type in the module's own manifest, finds its payload
+  // in the injected card context by this provider's extension-point id, and draws
+  // it. Shop never looks inside. Must be JSON-serialisable - it crosses the RSC
+  // boundary as a Puck block prop.
+  facts?: unknown
 }
 
 // The shape a module registers at this point.
@@ -57,10 +73,15 @@ export type ShopCardMediaProvider = {
 // One resolved overlay, ready for the card island to mount.
 export type CardOverlay = { id: string; Overlay: ComponentType<CardOverlayProps>; payload: unknown }
 
+// One provider's opaque payload, tagged with the extension-point id that produced
+// it so the matching card block can pick its own out of the list.
+export type CardFact = { id: string; payload: unknown }
+
 // Everything the providers contributed for one product, merged.
 export type ShopCardExtra = {
   images: PartImage[]
   overlays: CardOverlay[]
+  facts: CardFact[]
 }
 
 const POINT = 'shop.card-media'
@@ -96,8 +117,9 @@ export async function resolveShopCardExtras(productIds: string[]): Promise<Map<s
         const loaded = await provider.load(productIds)
         for (const [productId, payload] of loaded) {
           if (!payload) continue
-          const extra = out.get(productId) ?? { images: [], overlays: [] }
+          const extra = out.get(productId) ?? { images: [], overlays: [], facts: [] }
           if (payload.images?.length) extra.images.push(...payload.images)
+          if (payload.facts != null) extra.facts.push({ id: entry.id, payload: payload.facts })
           // An overlay needs both a payload to render and a client component to
           // render it in - a provider that returned an overlay payload but shipped
           // no Overlay component has nothing to mount, so it is skipped.

@@ -24,14 +24,20 @@ const DETAIL_PART_TYPES = new Set([
   'ShopDetailSectionNav',
 ])
 
-const CARD_PART_TYPES = new Set([
+// Shop's own card parts. A companion module may register card parts of its own
+// against the `shopProductCard` layout type (shop-variations puts a colour/size
+// summary there), and those need the same context or they render their editor
+// skeleton on the live storefront - so the caller passes their block types in and
+// they are added to this set. Kept as a floor rather than replaced by the caller's
+// list, so shop's own parts still work on a surface that has not been rebuilt.
+const CARD_PART_TYPES = [
   'ShopCardImage',
   'ShopCardBadge',
   'ShopCardName',
   'ShopCardPrice',
   'ShopCardBlurb',
   'ShopCardCta',
-])
+]
 
 function attach(blocks: unknown[], partTypes: Set<string>, ctx: unknown): void {
   for (const item of blocks) {
@@ -62,6 +68,11 @@ export function injectShopProductDetailEmbed(data: PuckData, ctx: DetailPartCont
   return inject(data, DETAIL_PART_TYPES, ctx)
 }
 
-export function injectShopProductCardEmbed(data: PuckData, ctx: CardPartContext): PuckData {
-  return inject(data, CARD_PART_TYPES, ctx)
+// `extraPartTypes` is every block type registered against the `shopProductCard`
+// layout type, which the caller already has to hand from the Puck config it
+// renders with. Passing it rather than reading the generated module registry here
+// keeps this file free of an import cycle (that registry pulls in the very
+// surfaces that call this).
+export function injectShopProductCardEmbed(data: PuckData, ctx: CardPartContext, extraPartTypes?: readonly string[]): PuckData {
+  return inject(data, new Set([...CARD_PART_TYPES, ...(extraPartTypes ?? [])]), ctx)
 }

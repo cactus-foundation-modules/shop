@@ -102,6 +102,7 @@ export function buildCardContext(
     image: images[0] ?? null,
     images,
     overlays: extra?.overlays ?? [],
+    facts: extra?.facts ?? [],
     currencySymbol,
     prices: priceView(product, pricing?.enabledPriceTypes),
     showRetailPrice: pricing?.showRetailPrice ?? false,
@@ -117,8 +118,12 @@ export type CardItem = { product: ShpProduct; ctx: CardPartContext }
 export async function renderCards(template: PuckData, items: CardItem[]): Promise<React.ReactNode> {
   const { getModuleLayoutPuckRscConfig } = await import('@/lib/puck/config.rsc')
   const config = getModuleLayoutPuckRscConfig('shopProductCard')
+  // Every block registered for this layout type, shop's own parts and any a
+  // companion module contributed. They all get the card context injected, so a
+  // module's card part renders real data rather than its editor skeleton.
+  const partTypes = config.categories.blocks.components
   return items.map(({ product, ctx }) => {
-    const data = injectShopProductCardEmbed(template, ctx)
+    const data = injectShopProductCardEmbed(template, ctx, partTypes)
     return (
       <div key={product.id} className="shop-card">
         {/* Stretched link: the whole card still navigates, but the anchor is a

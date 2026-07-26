@@ -4,7 +4,7 @@ import type { ShopDetailSlot } from '@/modules/shop/lib/detail-slot'
 import type { ShopDetailSpecExtra } from '@/modules/shop/lib/detail-spec'
 import type { ShopDetailTabExtra } from '@/modules/shop/lib/detail-tabs'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
-import type { CardOverlay } from '@/modules/shop/lib/card-media'
+import type { CardFact, CardOverlay } from '@/modules/shop/lib/card-media'
 import type { PriceView } from '@/modules/shop/lib/pricing'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
@@ -109,6 +109,13 @@ export type CardPartContext = {
   // its own client component and an opaque payload. Empty on a shop-only site and
   // for every product no module has an overlay for.
   overlays: CardOverlay[]
+  // Opaque payloads companion modules contributed through `shop.card-media`, each
+  // tagged with the extension-point id that produced it. Shop renders none of
+  // them: a module that contributes one also registers its own card part-block
+  // against the `shopProductCard` layout type, and that block finds its own entry
+  // here by id. Empty on a shop-only site and for any product no module had
+  // anything to say about.
+  facts: CardFact[]
   currencySymbol: string
   prices: PriceView
   showRetailPrice: boolean
