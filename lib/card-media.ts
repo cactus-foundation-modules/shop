@@ -1,0 +1,111 @@
+// Server-side resolver for the `shop.card-media` extension point. A companion
+// module may add to a product CARD (the tile in a grid) two things:
+//   - extra images, folded into the card's own image carousel so the shopper can
+//     flick through them with the arrows (shop-variations contributes a product's
+//     variation photos this way);
+//   - an overlay, a small client control pinned over the image that does something
+//     when tapped (product-3d-views contributes the "view in 3D" icon that swaps
+//     the picture for a live model).
+//
+// Shop learns nothing about what either is. It supplies the carousel, the overlay
+// slot and the class names; the provider fills them. This is the card-grid twin of
+// `shop.gallery-media` (which does the same job on the product DETAIL page), and it
+// is resolved in one batched pass per grid exactly like `shop.product-card-prices`
+// (lib/card-price.ts) - a grid renders many cards at once, so a per-product call
+// would be one query per card.
+//
+// Additive by construction: nothing here replaces a part of shop's card, so several
+// modules contributing at once simply means more images in the cycle and/or more
+// overlay icons. Every provider is asked and their answers merged.
+import type { ComponentType } from 'react'
+import { prisma } from '@/lib/db/prisma'
+import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
+import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import type { PartImage } from '@/modules/shop/components/puck/parts/part-context'
+
+// What a mounted overlay is handed. `payload` is whatever the provider's `load`
+// returned for this product, passed back untouched - shop treats it as opaque, so
+// it crosses the RSC boundary and must be JSON-serialisable. `productId` is the
+// product the card is for.
+export type CardOverlayProps = { payload: unknown; productId: string }
+
+// What a provider returns per product from `load`. Both fields are optional: a
+// provider that only adds images (variation photos) omits `overlay`, and one that
+// only adds an overlay (3D) omits `images`. A product the provider has nothing for
+// is simply absent from the map, which is the common case and costs no markup.
+export type ShopCardMediaPayload = {
+  images?: PartImage[]
+  overlay?: unknown
+}
+
+// The shape a module registers at this point.
+//
+// `load` runs server-side only (prisma etc.) and is never passed anywhere - a
+// function cannot cross the RSC boundary. `Overlay` MUST carry its own 'use client'
+// boundary: shop passes it down to the card's client island as a prop, and a server
+// component cannot travel that way - the same bargain `shop.gallery-media` strikes
+// with its Thumbs/Stage. A provider that only contributes images omits Overlay.
+export type ShopCardMediaProvider = {
+  load: (productIds: string[]) => Promise<Map<string, ShopCardMediaPayload>>
+  Overlay?: ComponentType<CardOverlayProps>
+}
+
+// One resolved overlay, ready for the card island to mount.
+export type CardOverlay = { id: string; Overlay: ComponentType<CardOverlayProps>; payload: unknown }
+
+// Everything the providers contributed for one product, merged.
+export type ShopCardExtra = {
+  images: PartImage[]
+  overlays: CardOverlay[]
+}
+
+const POINT = 'shop.card-media'
+
+type ExtensionPointEntry = { point: string; id: string }
+
+// Resolved once per grid, keyed by product id. Returns an empty map on a shop-only
+// site and never runs a query there: no provider, no work. Every provider is asked
+// and their contributions merged - a provider whose `load` throws is dropped and
+// logged rather than blanking a whole grid, exactly as the two precedents do: an
+// extra image or a 3D icon is a bonus, and a page that still sells the product
+// beats a 500.
+export async function resolveShopCardExtras(productIds: string[]): Promise<Map<string, ShopCardExtra>> {
+  const out = new Map<string, ShopCardExtra>()
+  if (productIds.length === 0) return out
+
+  const providers = moduleExtensionPointComponents[POINT] ?? {}
+  if (Object.keys(providers).length === 0) return out
+
+  const modules = await prisma.module.findMany({
+    where: { ...INSTALLED_MODULE_WHERE },
+    select: { manifest: true },
+  })
+
+  for (const mod of modules) {
+    const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null
+    if (!manifest?.extensionPoints) continue
+    for (const entry of manifest.extensionPoints) {
+      if (entry.point !== POINT) continue
+      const provider = providers[entry.id] as ShopCardMediaProvider | undefined
+      if (!provider) continue
+      try {
+        const loaded = await provider.load(productIds)
+        for (const [productId, payload] of loaded) {
+          if (!payload) continue
+          const extra = out.get(productId) ?? { images: [], overlays: [] }
+          if (payload.images?.length) extra.images.push(...payload.images)
+          // An overlay needs both a payload to render and a client component to
+          // render it in - a provider that returned an overlay payload but shipped
+          // no Overlay component has nothing to mount, so it is skipped.
+          if (payload.overlay != null && provider.Overlay) {
+            extra.overlays.push({ id: entry.id, Overlay: provider.Overlay, payload: payload.overlay })
+          }
+          out.set(productId, extra)
+        }
+      } catch (error) {
+        console.error(`[shop] card-media provider "${entry.id}" failed to load:`, error)
+      }
+    }
+  }
+  return out
+}

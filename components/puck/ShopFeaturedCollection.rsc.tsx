@@ -5,6 +5,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
+import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { shopFeaturedCollectionPuckComponent, type ShopFeaturedCollectionProps } from './ShopFeaturedCollection'
 
@@ -28,11 +29,15 @@ export async function ShopFeaturedCollectionRsc(props: ShopFeaturedCollectionPro
   if (products.length === 0) return null
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
 
-  const fromPrices = await resolveCardFromPrices(products.map((p) => p.id))
+  const productIds = products.map((p) => p.id)
+  const [fromPrices, cardExtras] = await Promise.all([
+    resolveCardFromPrices(productIds),
+    resolveShopCardExtras(productIds),
+  ])
   const items: CardItem[] = await Promise.all(
     products.map(async (p) => {
       const [media, tagIds] = await Promise.all([getProductMedia(p.id), getProductTagIds(p.id)])
-      return { product: p, ctx: buildCardContext(p, media, tagById, tagIds, config.currencySymbol, config, fromPrices.get(p.id) ?? null) }
+      return { product: p, ctx: buildCardContext(p, media, tagById, tagIds, config.currencySymbol, config, fromPrices.get(p.id) ?? null, cardExtras.get(p.id)) }
     }),
   )
 

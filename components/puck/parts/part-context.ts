@@ -4,6 +4,7 @@ import type { ShopDetailSlot } from '@/modules/shop/lib/detail-slot'
 import type { ShopDetailSpecExtra } from '@/modules/shop/lib/detail-spec'
 import type { ShopDetailTabExtra } from '@/modules/shop/lib/detail-tabs'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
+import type { CardOverlay } from '@/modules/shop/lib/card-media'
 import type { PriceView } from '@/modules/shop/lib/pricing'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
@@ -88,7 +89,20 @@ export type DetailPartContext = {
 // lets the card CSS be emitted a single time per grid rather than once per card.
 export type CardPartContext = {
   product: ShpProduct
+  // The card's first image (primary, or first non-video media). Kept for the
+  // simple single-image render path and so any not-yet-rebuilt surface still has
+  // something to show. `images[0]` and this are the same picture.
   image: PartImage | null
+  // Every picture the card can flick through, in order: the product's own media
+  // first, then any a companion module folded in through `shop.card-media`
+  // (shop-variations adds variation photos). One entry = the plain single image;
+  // more than one lights up the carousel arrows. Resolved once per card.
+  images: PartImage[]
+  // Overlay controls a companion module pinned over the card image through
+  // `shop.card-media` - today the product-3d-views "view in 3D" icon. Each carries
+  // its own client component and an opaque payload. Empty on a shop-only site and
+  // for every product no module has an overlay for.
+  overlays: CardOverlay[]
   currencySymbol: string
   prices: PriceView
   showRetailPrice: boolean

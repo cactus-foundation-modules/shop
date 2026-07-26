@@ -2,6 +2,7 @@
 // builder's client bundle, and ./breakpoints reaches prisma via lib/config/site.
 import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { ShopCardMedia } from '@/modules/shop/components/public/ShopCardMedia'
 import type { CardPartContext } from '@/modules/shop/components/puck/parts/part-context'
 
 // Product Card part-blocks. These make up a Product Card layout (admin >
@@ -28,6 +29,12 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
 .shop-sec-head span{font-size:13px;color:var(--color-text-muted)}
 .shop-card{position:relative;display:flex;flex-direction:column;background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;box-shadow:0 1px 3px rgba(0,0,0,.06);padding-bottom:16px;transition:box-shadow .25s ease,transform .25s ease}
 .shop-card:hover{transform:translateY(-4px);box-shadow:0 8px 30px rgba(0,0,0,.10)}
+/* Stretched navigation link. Covers the whole card (so tapping the picture or the
+   text follows the product) but sits UNDER the carousel arrows and the 3D overlay
+   (z-index), so those controls take their own taps. Rendered as a sibling of the
+   card parts, not an ancestor - see card-template.tsx renderCards. */
+.shop-card-link{position:absolute;inset:0;z-index:1;border-radius:inherit}
+.shop-card-link:focus-visible{outline:2px solid var(--color-primary);outline-offset:-2px}
 /* Square, always. This was a per-instance pick (square/portrait/landscape) whose
    only real effect was letting one shop's photos be three different shapes
    depending on which layout a page happened to use. The photo is object-fit:cover
@@ -37,11 +44,25 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
 .shop-card-img{position:relative;aspect-ratio:1/1;background:var(--color-bg-subtle);overflow:hidden}
 .shop-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s ease}
 .shop-card:hover .shop-card-img img{transform:scale(1.03)}
+/* Carousel arrows (client island). Always shown so shoppers can see there is more
+   than one photo, a touch brighter on hover/focus. Above the stretched link so a tap
+   flicks the image instead of following the card. Tokens only. */
+.shop-card-nav-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:2;display:flex;align-items:center;justify-content:center;width:34px;height:34px;padding:0;border-radius:50%;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-fg);cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.18);opacity:.9;transition:opacity .2s ease,background .2s ease}
+.shop-card:hover .shop-card-nav-btn{opacity:1}
+.shop-card-nav-btn:hover,.shop-card-nav-btn:focus-visible{opacity:1;background:var(--color-bg-subtle)}
+.shop-card-nav-btn:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
+.shop-card-nav-prev{left:8px}
+.shop-card-nav-next{right:8px}
+/* Overlay slot: companion-module controls (the 3D icon) pinned over the picture.
+   Transparent and click-through by default; the control inside re-enables its own
+   pointer events. Above the badge (z-index) so an opened 3D viewer covers it. */
+.shop-card-overlay{position:absolute;inset:0;z-index:4;pointer-events:none}
+.shop-card-overlay > *{pointer-events:auto}
 /* !important: the editor sets position:relative inline on every part root (see
    dragRefOf). The badge and the fill image are the two that must position
    against the card instead, so they have to outrank it. No-op on the live page,
    where nothing sets an inline position. */
-.shop-card-badge{position:absolute !important;top:10px;left:10px;z-index:3;font-size:12px;font-weight:600;line-height:1;padding:5px 9px;border-radius:6px}
+.shop-card-badge{position:absolute !important;top:10px;left:10px;z-index:3;font-size:12px;font-weight:600;line-height:1;padding:5px 9px;border-radius:6px;pointer-events:none}
 .shop-card-badge-new{background:var(--color-primary);color:var(--color-on-primary)}
 .shop-card-badge-low{background:var(--color-warning-subtle);color:var(--color-warning);border:1px solid var(--color-warning-border)}
 .shop-card-badge-trade{background:var(--color-fg);color:var(--color-bg)}
@@ -67,7 +88,11 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
 .shop-card:has(.shop-card-img.fill-mode){aspect-ratio:3/4;padding-bottom:16px}
 .shop-card-img.fill-mode{position:absolute !important;inset:0;aspect-ratio:auto;height:100%}
 .shop-card-img.fill-mode .shop-card-scrim{position:absolute;left:0;right:0;bottom:0;height:60%;background:linear-gradient(transparent,var(--color-surface) 72%)}
-.shop-card-img.fill-mode ~ *{position:relative;z-index:2}
+/* The floated text sits above the picture, but pointer-events:none lets a tap fall
+   through to the stretched link beneath it - otherwise, in this mode only, the text
+   (z-index 2, above the link) would swallow the click and the card would not
+   navigate. The text is labels, never interactive, so nothing is lost. */
+.shop-card-img.fill-mode ~ *{position:relative;z-index:2;pointer-events:none}
 .shop-card-img.fill-mode ~ .shop-card-name{margin-top:auto}
 
 @media (max-width:${tabletBp}){.shop-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -122,13 +147,22 @@ function imgClass({ display }: ImageProps): string {
 export function ShopCardImage(props: ImageProps) {
   const ctx = props._ctx
   const fill = props.display === 'fill'
+  // The interactive carousel earns its client bundle only when there is something
+  // to interact with: more than one picture, or an overlay to mount. A single
+  // still image (the common product, and every card in the editor canvas where
+  // there is no ctx at all) stays the plain <img> it always was.
+  const interactive = !!ctx && (ctx.images.length > 1 || ctx.overlays.length > 0)
   return (
     <>
       <EditorStyle ctx={ctx} />
       <div className={imgClass(props)} ref={dragRefOf(props)}>
-        {ctx?.image && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={ctx.image.url} alt={ctx.image.alt} />
+        {interactive ? (
+          <ShopCardMedia images={ctx.images} overlays={ctx.overlays} productId={ctx.product.id} />
+        ) : (
+          ctx?.image && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={ctx.image.url} alt={ctx.image.alt} />
+          )
         )}
         {fill && <div className="shop-card-scrim" />}
       </div>

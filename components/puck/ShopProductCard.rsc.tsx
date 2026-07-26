@@ -5,6 +5,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard } from '@/modules/shop/lib/card-template'
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
+import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { shopProductCardPuckComponent, type ShopProductCardProps } from './ShopProductCard'
 
@@ -26,8 +27,11 @@ export async function ShopProductCardRsc(props: ShopProductCardProps) {
     resolveCardTemplate(props.layoutRef),
   ])
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
-  const fromPrices = await resolveCardFromPrices([product.id])
-  const item = { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol, config, fromPrices.get(product.id) ?? null) }
+  const [fromPrices, cardExtras] = await Promise.all([
+    resolveCardFromPrices([product.id]),
+    resolveShopCardExtras([product.id]),
+  ])
+  const item = { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol, config, fromPrices.get(product.id) ?? null, cardExtras.get(product.id)) }
   const cards = template ? await renderCards(template, [item]) : [<MinimalCard key={product.id} {...item} />]
 
   return (

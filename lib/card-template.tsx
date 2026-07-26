@@ -7,7 +7,8 @@ import type { PuckData, ShpProduct, ShpProductMedia } from '@/modules/shop/lib/t
 import { injectShopProductCardEmbed } from '@/modules/shop/lib/inject-part-context'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { priceView } from '@/modules/shop/lib/pricing'
-import type { CardPartContext, CardBadge } from '@/modules/shop/components/puck/parts/part-context'
+import type { CardPartContext, CardBadge, PartImage } from '@/modules/shop/components/puck/parts/part-context'
+import type { ShopCardExtra } from '@/modules/shop/lib/card-media'
 
 // Server-only helper shared by every product-card surface (grid, related,
 // featured, single). It resolves the one Product Card template - a per-block
@@ -74,13 +75,33 @@ export function buildCardContext(
   // (shop-variations), resolved once for the whole grid via resolveCardFromPrices
   // and passed in per product. Null/absent leaves the card on shop's own price.
   fromPrice?: string | null,
+  // Images + overlays contributed by companion modules through `shop.card-media`,
+  // resolved once for the whole grid via resolveShopCardExtras and passed in per
+  // product. Absent on a shop-only site and for any product no module added to.
+  extra?: ShopCardExtra,
 ): CardPartContext {
-  const primary = media.find((m) => m.isPrimary) ?? media[0]
-  const image = primary && primary.type !== 'VIDEO_URL' ? { url: primary.url, alt: primary.altText ?? product.name } : null
+  // The product's own pictures, primary first then the rest in position order,
+  // videos-by-URL excluded (they cannot sit in an <img>) - the same filter the
+  // detail gallery uses. Variation photos, if any, follow after.
+  const usable = media.filter((m) => m.type !== 'VIDEO_URL')
+  const primary = usable.find((m) => m.isPrimary) ?? usable[0]
+  const ordered = primary ? [primary, ...usable.filter((m) => m !== primary)] : usable
+  const ownImages: PartImage[] = ordered.map((m) => ({ url: m.url, alt: m.altText ?? product.name }))
+  // Own images first, then any a companion module folded in, deduped by url so a
+  // variation whose photo is also the parent's primary does not appear twice.
+  const images: PartImage[] = []
+  const seenUrls = new Set<string>()
+  for (const im of [...ownImages, ...(extra?.images ?? [])]) {
+    if (seenUrls.has(im.url)) continue
+    seenUrls.add(im.url)
+    images.push(im)
+  }
   const tagSlugs = tagIds.map((id) => tagById.get(id)).filter((s): s is string => Boolean(s))
   return {
     product,
-    image,
+    image: images[0] ?? null,
+    images,
+    overlays: extra?.overlays ?? [],
     currencySymbol,
     prices: priceView(product, pricing?.enabledPriceTypes),
     showRetailPrice: pricing?.showRetailPrice ?? false,
@@ -99,9 +120,16 @@ export async function renderCards(template: PuckData, items: CardItem[]): Promis
   return items.map(({ product, ctx }) => {
     const data = injectShopProductCardEmbed(template, ctx)
     return (
-      <a key={product.id} href={`/shop/products/${product.slug}`} className="shop-card">
+      <div key={product.id} className="shop-card">
+        {/* Stretched link: the whole card still navigates, but the anchor is a
+            sibling under the parts rather than wrapping them. That is what lets the
+            image carousel's arrows and the 3D icon inside the card be real, focusable
+            buttons instead of interactive content illegally nested in an <a>. The
+            link sits above the picture and text (z-index) but below those controls -
+            see shopCardCss. */}
+        <a className="shop-card-link" href={`/shop/products/${product.slug}`} aria-label={product.name} />
         <Render config={config as any} data={data as Data} />
-      </a>
+      </div>
     )
   })
 }
