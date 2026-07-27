@@ -120,10 +120,14 @@ export type CardPartContext = {
   prices: PriceView
   showRetailPrice: boolean
   badge: CardBadge | null
-  // Set when a companion module prices this product as a range (shop-variations,
+  // Set when a companion module prices this product itself (shop-variations,
   // through `shop.product-card-prices`): the cheapest figure, as a decimal-pound
-  // string, which the price part shows as "From £…" in place of the single price.
-  // Null on a shop-only site and for every product with no such pricing, where
-  // the card shows `prices` unchanged. Resolved once per grid, not per card.
+  // string, shown in place of the product's own price. Null on a shop-only site
+  // and for every product with no such pricing, where the card shows `prices`
+  // unchanged. Resolved once per grid, not per card.
   fromPrice: string | null
+  // Whether that figure is the bottom of a real range. False when every choice
+  // costs the same, in which case the price part drops the "From £…" prefix:
+  // there is nothing to count up from.
+  fromPriceVaries: boolean
 }

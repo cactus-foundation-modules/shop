@@ -248,17 +248,19 @@ export function ShopCardPrice(props: CardPriceProps) {
   const now = ctx?.prices.now ?? '0.00'
   const was = ctx ? ctx.prices.was : '0.00'
   const rrp = ctx && ctx.showRetailPrice ? ctx.prices.rrp : null
-  // A product priced as a range (variations) shows its cheapest as "From £…".
-  // There is no single "was" to strike or RRP to sit against a range, so those
-  // stand down; the shopper sees the range and the exact figures on the product
-  // page once they choose.
+  // A product priced as a range (variations) shows its cheapest as "From £…" -
+  // but only where the choices actually differ in price. All the same money and
+  // it is a single price like any other, so the prefix goes. There is no single
+  // "was" to strike or RRP to sit against either way, so those stand down; the
+  // shopper sees the exact figures on the product page once they choose.
   const fromPrice = ctx?.fromPrice ?? null
+  const fromVaries = ctx?.fromPriceVaries ?? false
   return (
     <>
       <EditorStyle ctx={ctx} />
       <div className="shop-card-pricerow" ref={dragRefOf(props)}>
         {fromPrice != null ? (
-          <span className="shop-card-price">From {formatMoney(fromPrice, symbol)}</span>
+          <span className="shop-card-price">{fromVaries ? 'From ' : ''}{formatMoney(fromPrice, symbol)}</span>
         ) : (
           <>
             <span className="shop-card-price">{formatMoney(now, symbol)}</span>

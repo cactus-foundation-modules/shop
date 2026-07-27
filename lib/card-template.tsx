@@ -9,6 +9,7 @@ import { formatMoney } from '@/modules/shop/lib/money'
 import { priceView } from '@/modules/shop/lib/pricing'
 import type { CardPartContext, CardBadge, PartImage } from '@/modules/shop/components/puck/parts/part-context'
 import type { ShopCardExtra } from '@/modules/shop/lib/card-media'
+import type { ShopCardFromPrice } from '@/modules/shop/lib/card-price'
 
 // Server-only helper shared by every product-card surface (grid, related,
 // featured, single). It resolves the one Product Card template - a per-block
@@ -71,10 +72,10 @@ export function buildCardContext(
   // been rebuilt still compiles; without it a sale price set on a product shows
   // even if the shop has since switched sale prices off.
   pricing?: { enabledPriceTypes?: readonly string[]; showRetailPrice?: boolean },
-  // The cheapest figure when a companion module prices this product as a range
+  // The figure when a companion module prices this product itself
   // (shop-variations), resolved once for the whole grid via resolveCardFromPrices
   // and passed in per product. Null/absent leaves the card on shop's own price.
-  fromPrice?: string | null,
+  fromPrice?: ShopCardFromPrice | null,
   // Images + overlays contributed by companion modules through `shop.card-media`,
   // resolved once for the whole grid via resolveShopCardExtras and passed in per
   // product. Absent on a shop-only site and for any product no module added to.
@@ -107,7 +108,8 @@ export function buildCardContext(
     prices: priceView(product, pricing?.enabledPriceTypes),
     showRetailPrice: pricing?.showRetailPrice ?? false,
     badge: badgeFor(product, tagSlugs, isOutOfStock(product)),
-    fromPrice: fromPrice ?? null,
+    fromPrice: fromPrice?.price ?? null,
+    fromPriceVaries: fromPrice?.varies ?? false,
   }
 }
 
@@ -152,7 +154,7 @@ export function MinimalCard({ product, ctx }: CardItem) {
       <h3 className="shop-card-name">{product.name}</h3>
       <div className="shop-card-pricerow">
         {ctx.fromPrice != null ? (
-          <span className="shop-card-price">From {formatMoney(ctx.fromPrice, ctx.currencySymbol)}</span>
+          <span className="shop-card-price">{ctx.fromPriceVaries ? 'From ' : ''}{formatMoney(ctx.fromPrice, ctx.currencySymbol)}</span>
         ) : (
           <>
             <span className="shop-card-price">{formatMoney(ctx.prices.now, ctx.currencySymbol)}</span>

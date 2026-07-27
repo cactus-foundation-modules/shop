@@ -11,23 +11,35 @@ import { prisma } from '@/lib/db/prisma'
 import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 
+// What a companion module says a product costs when it, not shop, owns the
+// pricing. `varies` is the difference between a range and a set of equally
+// priced choices: only a genuine range earns the "From £…" prefix, because a
+// product whose every variation costs the same has exactly one price and saying
+// "From" about it just makes the shopper wonder what the catch is.
+export type ShopCardFromPrice = {
+  // The cheapest a shopper could pay, as a decimal-pound string.
+  price: string
+  // Whether anything dearer is on offer under the same product.
+  varies: boolean
+}
+
 export type ShopCardPriceProvider = {
-  // Cheapest price per product, as a decimal-pound string, for the products this
-  // provider prices as a range. A product it does not price is simply absent
-  // from the map, and the card shows shop's own price for it.
-  fromPrices: (productIds: string[]) => Promise<Record<string, string>>
+  // Cheapest price per product for the products this provider prices itself. A
+  // product it does not price is simply absent from the map, and the card shows
+  // shop's own price for it.
+  fromPrices: (productIds: string[]) => Promise<Record<string, ShopCardFromPrice>>
 }
 
 const POINT = 'shop.product-card-prices'
 
 type ExtensionPointEntry = { point: string; id: string }
 
-// The "From £…" figure for each of the given products that a companion module
-// prices as a range, keyed by product id. Empty on a shop-only site, and never
+// The figure to show for each of the given products that a companion module
+// prices itself, keyed by product id. Empty on a shop-only site, and never
 // runs a query there: no provider, no work. Every provider is asked and their
 // answers merged; the first to price a product wins, so two never fight over it.
-export async function resolveCardFromPrices(productIds: string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>()
+export async function resolveCardFromPrices(productIds: string[]): Promise<Map<string, ShopCardFromPrice>> {
+  const out = new Map<string, ShopCardFromPrice>()
   if (productIds.length === 0) return out
 
   const providers = moduleExtensionPointComponents[POINT] ?? {}
