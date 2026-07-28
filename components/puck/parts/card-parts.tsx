@@ -47,7 +47,11 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
 .shop-sec-head{display:flex;align-items:baseline;gap:16px;margin:8px 0 20px;flex-wrap:wrap}
 .shop-sec-head h2{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:26px;margin:0;color:var(--color-fg);line-height:1.2}
 .shop-sec-head span{font-size:13px;color:var(--color-text-muted)}
-.shop-card{position:relative;display:flex;flex-direction:column;background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;box-shadow:0 1px 3px rgba(0,0,0,.06);padding-bottom:16px;transition:box-shadow .25s ease,transform .25s ease}
+/* One knob for the whole text block. Every type size, gap and inset below is in
+   em off this base, so a surface can shrink the card's wording as a unit without
+   restating a dozen rules - that is what the two-up mobile grid does (scale .5).
+   The picture, the badge and the card's own chrome stay put; only the words move. */
+.shop-card{position:relative;display:flex;flex-direction:column;font-size:calc(16px * var(--shop-card-scale,1));background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;box-shadow:0 1px 3px rgba(0,0,0,.06);padding-bottom:1em;transition:box-shadow .25s ease,transform .25s ease}
 .shop-card:hover{transform:translateY(-4px);box-shadow:0 8px 30px rgba(0,0,0,.10)}
 /* Stretched navigation link. Covers the whole card (so tapping the picture or the
    text follows the product) but sits UNDER the carousel arrows and the 3D overlay
@@ -78,25 +82,28 @@ ${shopCardMediaCss}
 .shop-card-badge-low{background:var(--color-warning-subtle);color:var(--color-warning);border:1px solid var(--color-warning-border)}
 .shop-card-badge-trade{background:var(--color-fg);color:var(--color-bg)}
 .shop-card-badge-muted{background:var(--color-surface);color:var(--color-text-muted);border:1px solid var(--color-border)}
-.shop-card-name{margin:14px 0 0;padding:0 16px;font-size:16px;font-weight:600;color:var(--color-fg);line-height:1.3}
-.shop-card-pricerow{display:flex;gap:8px;align-items:baseline;margin-top:8px;padding:0 16px}
-.shop-card-price{font-size:16px;font-weight:600;color:var(--color-primary)}
-.shop-card-compare{font-size:13px;color:var(--color-text-muted);text-decoration:line-through}
-.shop-card-rrp{font-size:12px;color:var(--color-text-muted)}
-.shop-card-blurb{margin:8px 0 0;padding:0 16px;font-size:12px;color:var(--color-text-muted);line-height:1.4}
-.shop-card-cta{margin-top:auto;padding:12px 16px 0;display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;color:var(--color-primary)}
-.shop-card-cta svg{transition:transform .2s ease}
+.shop-card-name{margin:.875em 0 0;padding:0 1em;font-size:1em;font-weight:600;color:var(--color-fg);line-height:1.3}
+.shop-card-pricerow{display:flex;gap:.5em;align-items:baseline;margin-top:.5em;padding:0 1em}
+.shop-card-price{font-size:1em;font-weight:600;color:var(--color-primary)}
+.shop-card-compare{font-size:.8125em;color:var(--color-text-muted);text-decoration:line-through}
+.shop-card-rrp{font-size:.75em;color:var(--color-text-muted)}
+.shop-card-blurb{margin:.667em 0 0;padding:0 1.333em;font-size:.75em;color:var(--color-text-muted);line-height:1.4}
+.shop-card-cta{margin-top:auto;padding:.923em 1.231em 0;display:inline-flex;align-items:center;gap:.308em;font-size:.8125em;font-weight:600;color:var(--color-primary)}
+/* The arrow is an <svg> with px width/height attributes, which no stylesheet size
+   is inherited into - size it here so it shrinks with the label rather than
+   towering over it on the two-up mobile grid. */
+.shop-card-cta svg{width:.923em;height:.923em;transition:transform .2s ease}
 .shop-card:hover .shop-card-cta svg{transform:translateX(3px)}
 
 /* Image beside text: image spans the left column, text stacks in the right. */
 .shop-card:has(.shop-card-img.beside-mode){display:grid;grid-template-columns:40% 1fr;padding-bottom:0}
 .shop-card:has(.shop-card-img.beside-mode) .shop-card-img.beside-mode{grid-column:1;grid-row:1 / -1;aspect-ratio:1/1;height:100%}
 .shop-card:has(.shop-card-img.beside-mode) > :not(.shop-card-img){grid-column:2}
-.shop-card:has(.shop-card-img.beside-mode) .shop-card-name{margin-top:16px}
-.shop-card:has(.shop-card-img.beside-mode) .shop-card-cta{padding-bottom:16px}
+.shop-card:has(.shop-card-img.beside-mode) .shop-card-name{margin-top:1em}
+.shop-card:has(.shop-card-img.beside-mode) .shop-card-cta{padding-bottom:1.231em}
 
 /* Overlay: image fills the card, text floats over a surface-colour fade. */
-.shop-card:has(.shop-card-img.fill-mode){aspect-ratio:3/4;padding-bottom:16px}
+.shop-card:has(.shop-card-img.fill-mode){aspect-ratio:3/4;padding-bottom:1em}
 .shop-card-img.fill-mode{position:absolute !important;inset:0;aspect-ratio:auto;height:100%}
 .shop-card-img.fill-mode .shop-card-scrim{position:absolute;left:0;right:0;bottom:0;height:60%;background:linear-gradient(transparent,var(--color-surface) 72%)}
 /* The floated text sits above the picture, but pointer-events:none lets a tap fall
@@ -107,7 +114,14 @@ ${shopCardMediaCss}
 .shop-card-img.fill-mode ~ .shop-card-name{margin-top:auto}
 
 @media (max-width:${tabletBp}){.shop-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:${mobileBp}){.shop-grid{grid-template-columns:1fr}}
+/* Phones keep two products across rather than dropping to one - a single tile per
+   row turns a category into an endless scroll and hides everything below the
+   fold. The tiles are half the width, so the wording is set at half size to match
+   (--shop-card-scale), and the gutter closes up to buy the pictures the room. */
+@media (max-width:${mobileBp}){
+.shop-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.shop-grid .shop-card{--shop-card-scale:.5}
+}
 `
 }
 
