@@ -116,11 +116,13 @@ ${shopCardMediaCss}
 @media (max-width:${tabletBp}){.shop-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* Phones keep two products across rather than dropping to one - a single tile per
    row turns a category into an endless scroll and hides everything below the
-   fold. The tiles are half the width, so the wording is set at half size to match
-   (--shop-card-scale), and the gutter closes up to buy the pictures the room. */
+   fold. The tiles are narrower, so the wording steps down with them
+   (--shop-card-scale), and the gutter closes up to buy the pictures the room.
+   Three-quarters, not half: half the width does not mean half the type, and at
+   .5 the name came out at 8px - technically proportionate, practically a squint. */
 @media (max-width:${mobileBp}){
 .shop-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.shop-grid .shop-card{--shop-card-scale:.5}
+.shop-grid .shop-card{--shop-card-scale:.75}
 }
 `
 }
