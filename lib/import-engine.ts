@@ -14,6 +14,14 @@ import type { ShpProduct, ShpProductStatus, ShpRecommendationMode } from '@/modu
 
 type RowError = { row: number; reason: string }
 
+// Handed to `opts.onRow` as each row is picked up, so a caller running an import
+// on someone's behalf can say which product is being written right now rather
+// than only how many are done. Fired BEFORE the row's writes, since that is the
+// moment the name is true ("Updating X…"); a caller that wants completion can
+// treat the next callback - or the call returning - as the previous row's end.
+// `row` is the CSV row number the owner would count (header = 1).
+export type ImportRowProgress = { index: number; row: number; name: string }
+
 // Only the fields a row actually carries are present: a column the CSV omits is
 // left alone rather than blanked, which is what keeps a pre-slug export (or the
 // Google-Sheet mirror with cost_price hidden) from wiping the fields it cannot
@@ -129,7 +137,7 @@ async function resolveTagIds(names: string[]): Promise<string[]> {
 // stores image_urls as IMAGE-type media rows pointing at the external URL
 // (Q13 - not re-uploaded). Runs inside Next's after() (Q7), progress tracked
 // on the shp_import_jobs row so the admin can poll it.
-export async function processImportJob(jobId: string, csvText: string, adminEmail: string, columnMap: Record<string, string> | null, opts?: { notify?: boolean }): Promise<void> {
+export async function processImportJob(jobId: string, csvText: string, adminEmail: string, columnMap: Record<string, string> | null, opts?: { notify?: boolean; onRow?: (progress: ImportRowProgress) => void | Promise<void> }): Promise<void> {
   const rows = parseCsv(csvText)
   const header = rows[0] ?? []
   const dataRows = rows.slice(1)
@@ -198,6 +206,13 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i]!
     const rowNumber = i + 2 // 1-indexed + header row
+    // Announce the row before writing it, so a caller reporting progress names
+    // the product it is on rather than the one it has just left. Never let a
+    // reporter's own failure fail the import - it is commentary, not work, and
+    // it sits outside the try below so it cannot read as a row error either.
+    if (opts?.onRow) {
+      await Promise.resolve(opts.onRow({ index: i, row: rowNumber, name: cell(row, 'name') || `Row ${rowNumber}` })).catch(() => {})
+    }
     try {
       const sku = cell(row, 'sku') || null
       const name = cell(row, 'name')
