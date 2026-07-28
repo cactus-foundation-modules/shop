@@ -309,6 +309,13 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
     return line.control ? metaFields(line).filter((f) => f.label === line.control!.label) : []
   }
 
+  // Every distinct option label offered anywhere in the cart. Each delivery
+  // column renders the lot invisibly, which is what sizes the column to its
+  // longest tier without a hardcoded width (see cart-line-css.ts).
+  const deliveryOptionLabels = Array.from(
+    new Set(lines.flatMap((l) => (l.control?.options ?? []).map((o) => o.label))),
+  )
+
   // Generic per-line picker offered by a cart-line resolver (e.g. a delivery
   // tier). Shop renders it from plain data - it never imports the contributing
   // module's component. Changing it writes the choice to the line meta and the
@@ -395,6 +402,12 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
       <div className="scl-deliv" style={{ display: 'grid', gap: '0.25rem', minWidth: 0, alignContent: 'center' }}>
         {renderControl(line)}
         {!line.control.optionsSelfLabelled && renderLineMeta(deliveryMetaFields(line))}
+        {/* Invisible sizing probe - paints nothing, but makes this column wide
+            enough for the cart's longest option on one line, and the same width
+            on every line. See .scl-deliv-probe in cart-line-css.ts. */}
+        <div className="scl-deliv-probe" aria-hidden="true">
+          {deliveryOptionLabels.map((label) => <span key={label}>{label}</span>)}
+        </div>
       </div>
     )
   }
