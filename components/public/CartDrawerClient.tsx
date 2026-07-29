@@ -240,7 +240,29 @@ export function CartDrawerClient({
                 {line.isPreOrder && <p className="scd-note">Pre-order</p>}
                 <LineMetaList fields={productMetaFields(line.lineMeta?.fields ?? [], line.control)} />
               </div>
-              <span className="scd-price">{money(line.lineSubtotal)}</span>
+              {/* Price, quantity and Remove are one stacked column in the panel
+                  rather than three grid areas of their own: they then share a
+                  single track, so the stepper and the Remove link sit exactly as
+                  wide as the price above them whatever the figure reads. */}
+              <div className="scd-side">
+                <span className="scd-price">{money(line.lineSubtotal)}</span>
+                <div className="scd-qty">
+                  <QuantityStepper
+                    value={line.quantity}
+                    label={`Quantity for ${title}`}
+                    onChange={(next) => setLineQuantity(key, Math.max(0, next))}
+                  />
+                </div>
+                <button
+                  type="button" className="scd-removetxt" aria-label={`Remove ${title}`}
+                  onClick={() => removeLine(key, title)}
+                >
+                  Remove
+                </button>
+              </div>
+              {/* Full width beneath the thumbnail and the name, not beside them:
+                  a delivery tier's options are the widest thing on a line and a
+                  420px panel has no side column to spare for them. */}
               {showDelivery && line.control && line.control.options.length > 0 && (
                 <div className="scd-deliv">
                   <CartLineControlView
@@ -250,21 +272,6 @@ export function CartDrawerClient({
                   />
                 </div>
               )}
-              <div className="scd-qty">
-                <QuantityStepper
-                  value={line.quantity}
-                  label={`Quantity for ${title}`}
-                  onChange={(next) => setLineQuantity(key, Math.max(0, next))}
-                />
-              </div>
-              <div className="scd-remove">
-                <button
-                  type="button" className="scd-removetxt" aria-label={`Remove ${title}`}
-                  onClick={() => removeLine(key, title)}
-                >
-                  Remove
-                </button>
-              </div>
             </li>
           )
         })}

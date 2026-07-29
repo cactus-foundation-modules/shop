@@ -13,6 +13,11 @@ export type CartLine = { productId: string; quantity: number; lineId?: string; m
 
 const STORAGE_KEY = 'cactus_shop_cart'
 const CART_EVENT = 'cactus-shop-cart-changed'
+// Fired only by addToCart, on top of the change event every write fires. An add
+// is the one cart write that deserves a reaction of its own (the slide-out
+// basket opens itself on it); a quantity nudge or a removal inside the panel
+// must not, so those keep to CART_EVENT alone.
+const CART_ADD_EVENT = 'cactus-shop-cart-added'
 
 // Stable identity for a line: its lineId when personalised, else its productId.
 // Use this everywhere the cart UI keys/targets a line so plain and personalised
@@ -67,6 +72,7 @@ export function addToCart(
     else lines.push({ productId, quantity })
   }
   persist(lines)
+  window.dispatchEvent(new CustomEvent(CART_ADD_EVENT))
 }
 
 // `key` is a cartLineKey (productId for plain lines, lineId for personalised).
@@ -121,4 +127,12 @@ export function subscribeCart(callback: () => void): () => void {
     window.removeEventListener(CART_EVENT, callback)
     window.removeEventListener('storage', callback)
   }
+}
+
+// Adds only, in this tab only. Deliberately not wired to `storage`: a shopper
+// adding something in another tab should not have a panel fly open over the page
+// they are reading in this one.
+export function subscribeCartAdd(callback: () => void): () => void {
+  window.addEventListener(CART_ADD_EVENT, callback)
+  return () => window.removeEventListener(CART_ADD_EVENT, callback)
 }

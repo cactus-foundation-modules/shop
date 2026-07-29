@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
-import { getCart, subscribeCart } from '@/modules/shop/components/public/cart'
+import { usePathname } from 'next/navigation'
+import { getCart, subscribeCart, subscribeCartAdd } from '@/modules/shop/components/public/cart'
 import { postCartValidate } from '@/modules/shop/components/public/validated-cache'
 import { DRAWER_DEFAULTS, type CartDrawerOptions } from '@/modules/shop/components/public/cart-drawer-options'
 
@@ -107,6 +108,12 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerRequested, setDrawerRequested] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const pathname = usePathname()
+  // The cart page is the basket, in full, already on screen - a basket icon in
+  // the header above it is one basket too many. Hidden on the page itself only;
+  // checkout and everything else keep theirs. The editor always shows it, or the
+  // block would vanish out of the header while that page is being designed.
+  const onCartPage = !preview && (pathname === '/shop/cart' || pathname === '/shop/cart/')
 
   useEffect(() => {
     if (preview) return
@@ -140,6 +147,30 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
     return () => { cancelled = true; unsubscribe() }
   }, [preview])
 
+  // Adding something opens the panel on its own, so the shopper sees what they
+  // have just done and can go straight to checkout without hunting for the
+  // basket. Only in drawer mode (link mode has no panel to open), and only for
+  // the widget the visitor can actually see: a theme with a desktop header and a
+  // phone header renders this island twice, and the panel portals to
+  // document.body, so a hidden copy reacting too would put two panels on screen.
+  // The add is counted rather than acted on where it lands, because the same
+  // event has just changed the count and a widget hidden while the basket was
+  // empty is only in the DOM one render later. Deciding in an effect means the
+  // visibility test looks at the button as it now is, not as it was.
+  const [addSignal, setAddSignal] = useState(0)
+  useEffect(() => {
+    if (preview || o.clickAction !== 'drawer') return
+    return subscribeCartAdd(() => setAddSignal((n) => n + 1))
+  }, [preview, o.clickAction])
+  useEffect(() => {
+    if (addSignal === 0) return
+    const trigger = triggerRef.current
+    if (!trigger || trigger.offsetParent === null) return
+    setDrawerRequested(true)
+    setDrawerOpen(true)
+  }, [addSignal])
+
+  if (onCartPage) return null
   if (!preview && hasLoaded && o.hideWhenEmpty === 'yes' && count === 0) return null
 
   const showBadge = o.showCount === 'yes' && o.countStyle === 'badge' && o.icon !== 'none'
