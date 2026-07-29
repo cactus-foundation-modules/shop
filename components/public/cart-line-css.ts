@@ -29,7 +29,7 @@
 // is token-coloured, so it follows the site's light/dark theme with no hex.
 
 export const CART_LINE_CSS = `
-.scl{min-width:0}
+.scl{min-width:0;display:flex;gap:1rem;align-items:center}
 .scl-main{min-width:0;overflow-wrap:anywhere}
 .scl-main select{max-width:100%}
 .scl-main label{min-width:0;flex-wrap:wrap}
@@ -65,6 +65,27 @@ export const CART_LINE_CSS = `
      and its switch chips get the width, and every line's column still lines up
      because every other column is fixed. No probe needed - the chips wrap. */
   .scl > .scl-deliv-sum{flex:1 1 auto;width:auto;max-width:none;min-width:0}
+}
+
+/* ---- One set of column tracks for the WHOLE list (desktop) ----
+   The flex rules above size each line's columns from that line's own content,
+   so two lines only lined up by luck: a line with no delivery picker, a longer
+   price, or a shorter product name came out a different shape from the one
+   above it. Here the list owns the tracks and every line borrows them with
+   subgrid, so the product / delivery / quantity / price / remove columns are
+   the same width on every line no matter what is in the basket. The track list
+   itself is handed in as --scl-cols by the cart, which alone knows which
+   columns the shop owner has switched on (see CartFullClient). Wrapped in
+   @supports so a browser without subgrid keeps the flex layout above rather
+   than collapsing to one column. */
+@supports (grid-template-columns:subgrid){
+  @media (min-width:641px){
+    .scl-list{display:grid;grid-template-columns:var(--scl-cols);column-gap:1rem}
+    .scl{display:grid;grid-column:1/-1;grid-template-columns:subgrid;column-gap:1rem;align-items:center}
+    /* Both are flex sizing, meaningless here - and the 45% cap would otherwise
+       squeeze the column against its own track rather than against the row. */
+    .scl > .scl-deliv{width:auto;max-width:none}
+  }
 }
 
 /* ---- Chosen-service summary + switch chips (control renderAs 'summary') ----
@@ -170,6 +191,9 @@ export const CART_LINE_CSS = `
   .scl-thumb{grid-area:thumb;align-self:start}
   .scl-main{grid-area:main}
   .scl-deliv{grid-area:deliv;align-self:start}
+  /* A line with no delivery picker still emits an empty column so the desktop
+     tracks stay aligned; on the phone the areas do that job, so it goes. */
+  .scl-deliv:empty{display:none}
   .scl-qty{grid-area:qty;justify-self:start;align-self:end}
   .scl-price{grid-area:price;justify-self:end;align-self:start;text-align:right}
   .scl-remove{grid-area:remove;justify-self:end;align-self:end}
