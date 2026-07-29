@@ -1,9 +1,21 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { getCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import { postCartValidate } from '@/modules/shop/components/public/validated-cache'
+import { DRAWER_DEFAULTS, type CartDrawerOptions } from '@/modules/shop/components/public/cart-drawer-options'
+
+// The panel is a whole cart renderer - lines, delivery pickers, the undo toast
+// and the shared cart stylesheet - and most visitors never open it. Loading it
+// on first click keeps all of that out of the bundle every page pays for just to
+// show a cart icon in the header. `ssr: false` because it only ever exists in
+// response to a click, so there is nothing to render on the server.
+const CartDrawer = dynamic(
+  () => import('@/modules/shop/components/public/CartDrawerClient').then((m) => m.CartDrawerClient),
+  { ssr: false },
+)
 
 // Look/behaviour options for the header cart-summary widget. The block
 // (ShopCartSummary) wires these in as plain Puck props; every value has a sane
@@ -36,7 +48,12 @@ export type CartSummaryOptions = {
   // that exact name into every Puck block and strips it from render props, which
   // silently swallowed the gate. See ShopCartSummary.rsc.
   audience: 'everyone' | 'admin'
-}
+  // What clicking the widget does. 'link' goes to the cart page, exactly as this
+  // widget always has. 'drawer' keeps the shopper where they are and slides the
+  // basket in over the page instead - same lines, same delivery pickers, same
+  // whole-basket notes as the cart page, plus a way through to it.
+  clickAction: 'link' | 'drawer'
+} & CartDrawerOptions
 
 const DEFAULTS: CartSummaryOptions = {
   icon: 'cart', iconSize: 20, iconColour: '', label: '',
@@ -44,6 +61,7 @@ const DEFAULTS: CartSummaryOptions = {
   showCount: 'yes', countStyle: 'badge', itemWord: 'item', itemWordPlural: 'items',
   badgeBg: 'var(--color-primary)', badgeText: 'var(--color-on-primary)', hideBadgeWhenZero: 'yes',
   showSubtotal: 'no', hideWhenEmpty: 'no', audience: 'everyone',
+  clickAction: 'link', ...DRAWER_DEFAULTS,
 }
 
 // Stroked line icons (feather / lucide geometry), drawn in currentColor so they
@@ -81,6 +99,14 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
   const [subtotal, setSubtotal] = useState<number | null>(preview ? 42 : null)
   const [currencySymbol, setCurrencySymbol] = useState('£')
   const [hasLoaded, setHasLoaded] = useState(preview)
+  // Drawer mode only. `drawerOpen` is the panel's state; `drawerRequested` stays
+  // true once it has been opened at all, so the lazily-loaded panel is fetched on
+  // the first click and then kept around (a shopper who opens the basket once
+  // usually opens it again, and re-fetching the chunk each time would show a
+  // beat of nothing).
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerRequested, setDrawerRequested] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (preview) return
@@ -127,16 +153,14 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
     : (o.variant === 'bordered' ? (o.bgColour || 'transparent') : 'transparent')
   const border = o.variant === 'bordered' ? `1px solid ${o.borderColour || 'var(--color-border)'}` : 'none'
 
-  return (
-    <Link
-      href="/shop/cart"
-      aria-label="View cart"
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none',
-        color: o.textColour || 'var(--color-text)', background, border,
-        borderRadius: o.borderRadius, padding, lineHeight: 1,
-      }}
-    >
+  const boxStyle: CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none',
+    color: o.textColour || 'var(--color-text)', background, border,
+    borderRadius: o.borderRadius, padding, lineHeight: 1,
+  }
+
+  const inner = (
+    <>
       {o.icon !== 'none' && (
         <span style={{ position: 'relative', display: 'inline-flex' }}>
           <CartIcon name={o.icon} size={o.iconSize} colour={o.iconColour} />
@@ -159,6 +183,49 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
       {o.showSubtotal === 'yes' && subtotal != null && (
         <span style={{ fontWeight: 600 }}>{currencySymbol}{subtotal.toFixed(2)}</span>
       )}
+    </>
+  )
+
+  // Drawer mode: the same box, holding the same things, but it is now the control
+  // that opens the slide-out basket rather than a link to the cart page. Both the
+  // editor and the frontend render this button, so the two paths still emit the
+  // same markup; only the editor's is inert, because a panel portalled to
+  // document.body would cover the whole Puck canvas rather than the page it
+  // belongs to.
+  if (o.clickAction === 'drawer') {
+    return (
+      <>
+        <button
+          ref={triggerRef}
+          type="button"
+          aria-label="View basket"
+          aria-haspopup="dialog"
+          aria-expanded={drawerOpen}
+          onClick={() => {
+            if (preview) return
+            setDrawerRequested(true)
+            setDrawerOpen(true)
+          }}
+          style={{ ...boxStyle, font: 'inherit', cursor: preview ? 'default' : 'pointer', WebkitAppearance: 'none', appearance: 'none' }}
+        >
+          {inner}
+        </button>
+        {drawerRequested && (
+          <CartDrawer
+            open={drawerOpen}
+            // Focus goes back to the widget that opened the panel, so a keyboard
+            // shopper is put back where they were rather than at the top of the page.
+            onClose={() => { setDrawerOpen(false); triggerRef.current?.focus() }}
+            options={o}
+          />
+        )}
+      </>
+    )
+  }
+
+  return (
+    <Link href="/shop/cart" aria-label="View cart" style={boxStyle}>
+      {inner}
     </Link>
   )
 }

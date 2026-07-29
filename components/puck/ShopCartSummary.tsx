@@ -1,4 +1,5 @@
 import { CartSummaryClient, type CartSummaryOptions } from '@/modules/shop/components/public/CartSummaryClient'
+import { DRAWER_DEFAULTS } from '@/modules/shop/components/public/cart-drawer-options'
 import { SiteColourField } from '@/lib/puck/SiteColourField'
 
 export type ShopCartSummaryProps = CartSummaryOptions
@@ -53,6 +54,30 @@ export const shopCartSummaryPuckComponent = {
     // Total + behaviour
     showSubtotal: { type: 'select' as const, label: 'Show subtotal', options: yesNo },
     hideWhenEmpty: { type: 'select' as const, label: 'Hide widget when cart empty', options: yesNo },
+    // Click behaviour. The slide-out keeps the shopper on the page they were
+    // reading and shows the same basket the cart page would - lines, delivery
+    // services, whole-basket promises and all. It stays shut in this editor: it
+    // covers the page it belongs to, not the canvas you design it on.
+    clickAction: { type: 'select' as const, label: 'When clicked', options: [
+      { value: 'link', label: 'Go to the cart page' },
+      { value: 'drawer', label: 'Slide out a basket summary' },
+    ] },
+    drawerHeading: { type: 'text' as const, label: 'Slide-out: heading' },
+    drawerSide: { type: 'select' as const, label: 'Slide-out: opens from', options: [
+      { value: 'right', label: 'Right' },
+      { value: 'left', label: 'Left' },
+    ] },
+    drawerWidth: { type: 'number' as const, label: 'Slide-out: width (px)' },
+    drawerShowImage: { type: 'select' as const, label: 'Slide-out: show product images', options: yesNo },
+    drawerShowDelivery: { type: 'select' as const, label: 'Slide-out: show delivery options', options: yesNo },
+    drawerSubtotalLabel: { type: 'text' as const, label: 'Slide-out: subtotal label' },
+    drawerCheckoutLabel: { type: 'text' as const, label: 'Slide-out: checkout button' },
+    drawerViewCartLabel: { type: 'text' as const, label: 'Slide-out: cart page button (empty hides it)' },
+    drawerEmptyText: { type: 'text' as const, label: 'Slide-out: empty basket text' },
+    drawerContinueLabel: { type: 'text' as const, label: 'Slide-out: keep shopping link' },
+    drawerCheckoutBg: colourField('Slide-out: button colour'),
+    drawerCheckoutText: colourField('Slide-out: button text colour'),
+    drawerRadius: { type: 'number' as const, label: 'Slide-out: button corner radius (px)' },
     // Audience. NB: keep this key as `audience`, never `visibility` - core owns a
     // responsive-visibility field of that exact name on every block and strips it
     // from render props, which would silently disable this gate.
@@ -67,6 +92,7 @@ export const shopCartSummaryPuckComponent = {
     showCount: 'yes', countStyle: 'badge', itemWord: 'item', itemWordPlural: 'items',
     badgeBg: 'var(--color-primary)', badgeText: 'var(--color-on-primary)', hideBadgeWhenZero: 'yes',
     showSubtotal: 'no', hideWhenEmpty: 'no', audience: 'everyone',
+    clickAction: 'link', ...DRAWER_DEFAULTS,
   } as ShopCartSummaryProps,
   render: ShopCartSummary,
 }
