@@ -15,6 +15,13 @@ import { useCartUndo, useOutOfView } from '@/modules/shop/components/public/use-
 // (seeded with SAMPLE_LINES, no fetch, controls inert) and the live frontend
 // (real localStorage cart, wired controls). Editor and frontend therefore emit
 // identical markup - only the data source and handler wiring differ.
+//
+// The same render path also serves the two split blocks (Shop: Cart items and
+// Shop: Cart totals) through `section`, so a page can put something of its own
+// - a delivery arrivals panel, say - between the basket lines and the totals
+// without either half being a second implementation of the cart. Both halves
+// are independent islands reading the same localStorage cart, and
+// postCartValidate single-flights, so the split costs no extra server work.
 
 type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
@@ -118,8 +125,17 @@ const DENSITY = {
 } as const
 const HEADING_SIZE = { sm: '1.25rem', md: '1.75rem', lg: '2.25rem' } as const
 
-export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
+// Which half of the cart this island renders. 'all' is the whole thing (the
+// original Shop: Cart block); 'items' is the line list, its empty state and the
+// undo toast; 'totals' is the coupon, the item count, the totals table, the
+// checkout button and the sticky bar. Not a Puck field - the block chooses it.
+export type CartSection = 'all' | 'items' | 'totals'
+
+export function CartFullClient(props: CartFullOptions & { preview?: boolean; section?: CartSection }) {
   const { preview } = props
+  const section = props.section ?? 'all'
+  const withItems = section !== 'totals'
+  const withFooter = section !== 'items'
   const [lines, setLines] = useState<ValidatedLine[]>(preview ? SAMPLE_LINES : [])
   const [currencySymbol, setCurrencySymbol] = useState('£')
   // Whether the prices ON SCREEN already include tax. It decides whether the tax
@@ -195,8 +211,9 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   // button have scrolled away, and never in the editor preview (a fixed bar
   // would float over the canvas rather than the page it belongs to).
   const footerRef = useRef<HTMLDivElement>(null)
-  const stickyVisible = useOutOfView(footerRef, !preview && yes(props.stickyBar) && hasLoaded && lines.length > 0)
-  const { toast, removeLine, undo } = useCartUndo(!preview && yes(props.undoRemove))
+  const stickyVisible = useOutOfView(footerRef, !preview && withFooter && yes(props.stickyBar) && hasLoaded && lines.length > 0)
+  // Undo goes with the remove buttons, so the totals half never raises a toast.
+  const { toast, removeLine, undo } = useCartUndo(!preview && withItems && yes(props.undoRemove))
 
   async function applyCoupon() {
     if (preview || !couponCode) return
@@ -313,7 +330,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   if (!hasLoaded) {
     return (
       <div style={{ display: 'grid', gap: density.gap, maxWidth, width: '100%' }} aria-busy="true" aria-label="Loading your cart">
-        {[0, 1].map((i) => (
+        {withItems && [0, 1].map((i) => (
           <div key={i} style={{ display: 'flex', gap: '1rem', alignItems: 'center', paddingBottom: density.padY, borderBottom: '1px solid var(--color-border)' }}>
             {showImage && <div className="skeleton" style={{ width: imageSize, height: imageSize, borderRadius: imageRadius, flexShrink: 0 }} />}
             <div style={{ flex: 1, display: 'grid', gap: '0.4rem' }}>
@@ -323,7 +340,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
             <div className="skeleton" style={{ height: 14, width: 60 }} />
           </div>
         ))}
-        <div className="skeleton" style={{ height: 44, width: '100%', borderRadius: props.checkoutRadius ?? 8 }} />
+        {withFooter && <div className="skeleton" style={{ height: 44, width: '100%', borderRadius: props.checkoutRadius ?? 8 }} />}
       </div>
     )
   }
@@ -332,6 +349,11 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   // rendered here too: removing the last line empties the cart, and that is
   // precisely the moment a shopper is most likely to want it back.
   if (lines.length === 0) {
+    // The "empty basket" line belongs to the lines. On a split cart page the
+    // totals half simply steps aside, rather than repeating the message the
+    // items half already shows - or offering a checkout button with nothing
+    // behind it.
+    if (!withItems) return null
     return (
       <div style={{ maxWidth, color: 'var(--color-text-muted)' }}>
         <style dangerouslySetInnerHTML={{ __html: CART_LINE_CSS }} />
@@ -759,9 +781,9 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
       <style dangerouslySetInnerHTML={{ __html: CART_LINE_CSS }} />
       {props.heading && <h2 style={{ fontSize: headingSize, margin: 0 }}>{props.heading}</h2>}
 
-      {layoutStyle === 'table' ? renderItemsTable() : renderItemsFlow()}
+      {withItems && (layoutStyle === 'table' ? renderItemsTable() : renderItemsFlow())}
 
-      {showCoupon && (
+      {withFooter && showCoupon && (
         <div style={{ display: 'grid', gap: '0.375rem' }}>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <input
@@ -777,13 +799,14 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
         </div>
       )}
 
-      {showItemCount && (
+      {withFooter && showItemCount && (
         <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{itemCount} item{itemCount === 1 ? '' : 's'} in your cart</p>
       )}
 
       {/* The totals and the checkout button together: once this block leaves the
           viewport the sticky bar takes over, and it steps aside the moment the
           real one is back on screen. */}
+      {withFooter && (
       <div ref={footerRef} style={{ display: 'grid', gap: '1rem' }}>
         {showSubtotal && (
           <dl className="scl-tot">
@@ -816,11 +839,12 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
           ? <span role="button" style={checkoutStyle}>{props.checkoutLabel || 'Proceed to checkout'}</span>
           : <Link href="/shop/checkout" style={checkoutStyle}>{props.checkoutLabel || 'Proceed to checkout'}</Link>}
       </div>
+      )}
 
       {/* The bar stands in for the footer it replaced, so it carries the same
           bottom line that footer ends on - the Total, not the goods figure the
           totals block now opens with. */}
-      {!preview && yes(props.stickyBar) && (
+      {!preview && withFooter && yes(props.stickyBar) && (
         <CartStickyBar
           visible={stickyVisible}
           meta={[`${itemCount} item${itemCount === 1 ? '' : 's'}`, ...notes].join(' · ')}
