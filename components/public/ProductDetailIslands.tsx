@@ -378,6 +378,11 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
         </>
       )}
     <nav ref={navRef} className={navClass} style={navStyle} aria-label="Product information">
+      {/* One pill-shaped track holding every tab, so the strip reads as a segmented
+          control with a current position rather than a row of loose buttons. The
+          nav still owns the alignment and the sideways scroll (and is still what
+          the fades and arrows above measure), so this is purely the frame. */}
+      <div className="spd-tab-track">
       {action?.kind === 'configure' && (
         <a
           href={`#${action.anchor}`}
@@ -436,6 +441,7 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
           {t.label}
         </a>
       ))}
+      </div>
     </nav>
     </div>
   )

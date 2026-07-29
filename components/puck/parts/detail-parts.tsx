@@ -766,9 +766,19 @@ const tabsCss = ({ mobileBp }: Breakpoints) => `
 .spd-tab-arrow{position:absolute;top:0;bottom:0;width:1.5rem;display:flex;align-items:center;justify-content:center;border:none;padding:0;cursor:pointer;background:var(--spd-tabnav-fade,var(--color-page-bg,var(--color-bg)));color:var(--color-text-muted);font:inherit;font-size:1rem;z-index:2}
 .spd-tab-arrow.left{left:0}
 .spd-tab-arrow.right{right:0}
-.spd-tab-btn{border:1px solid var(--color-border);background:var(--color-surface);border-radius:9999px;padding:9px 18px;font:inherit;font-size:14px;font-weight:600;color:var(--color-text-muted);cursor:pointer;white-space:nowrap;transition:background .12s ease,color .12s ease,border-color .12s ease;text-decoration:none;display:inline-block}
+/* The tabs sit inside one pill-shaped track rather than each wearing its own
+   outline - a segmented control, so the strip reads as one thing with a current
+   position in it instead of a row of separate buttons. The track is the only child
+   of the nav, which keeps the nav free to do the alignment and the sideways scroll
+   exactly as before (the shell's fades and arrows measure the nav, not this).
+   flex:none so it hugs its tabs; the phone tier below hands it the full width when
+   the tabs have to share a row. */
+.spd-tab-track{display:inline-flex;gap:4px;padding:4px;flex:none;border:1px solid var(--color-border);border-radius:9999px;background:var(--color-surface)}
+/* Each tab is now bare text inside the track until it is the current one. The
+   transparent border stays so a tab does not change size when it lights up. */
+.spd-tab-btn{border:1px solid transparent;background:transparent;border-radius:9999px;padding:9px 18px;font:inherit;font-size:14px;font-weight:600;color:var(--color-text-muted);cursor:pointer;white-space:nowrap;transition:background .12s ease,color .12s ease,border-color .12s ease;text-decoration:none;display:inline-block}
 /* !important on hover/active so the site theme's !important button fill can't turn tabs mustard */
-.spd-tab-btn:hover{background:var(--color-surface) !important;border-color:var(--color-primary);color:var(--color-primary) !important}
+.spd-tab-btn:hover{background:var(--color-bg-subtle) !important;border-color:transparent;color:var(--color-primary) !important}
 .spd-tab-btn.on{background:var(--color-primary) !important;border-color:var(--color-primary);color:var(--color-on-primary) !important}
 /* Action tab: the CTA that leads the strip - "Add to cart" (no options) or
    "Configure" (options) - filled like the primary button so it reads as an
@@ -814,6 +824,8 @@ const tabsCss = ({ mobileBp }: Breakpoints) => `
    untouched - it has the room and keeps the natural, non-scrolling row. */
 @media (max-width:${mobileBp}){
 .spd-tab-nav{overflow-x:hidden;gap:4px}
+/* The track spans the row here so the tabs inside it have a width to share. */
+.spd-tab-track{width:100%;gap:2px}
 .spd-tab-btn{flex:1 1 0;min-width:0;padding:6px 10px;font-size:12px;line-height:1.2;text-align:center}
 .spd-tab-btn.spd-tab-action{flex:0 1 auto}
 }
@@ -828,6 +840,9 @@ const tabsCss = ({ mobileBp }: Breakpoints) => `
 @media (max-width:${SMALL_PHONE_BP}){
 .spd-tab-nav{overflow-x:auto;overflow-y:hidden;gap:8px;flex-wrap:nowrap;justify-content:flex-start}
 .spd-tab-nav.align-center,.spd-tab-nav.align-right{justify-content:flex-start}
+/* Back to hugging its tabs, so the track is wider than the nav and the nav is
+   what scrolls - which is what the shell's fades and arrows are measuring. */
+.spd-tab-track{width:auto;gap:4px}
 .spd-tab-btn{flex:0 0 auto;min-width:auto;padding:9px 16px;font-size:13px}
 .spd-tab-btn.spd-tab-action{flex:0 0 auto}
 }
@@ -1043,14 +1058,18 @@ export function ShopDetailTabs(props: TabsProps) {
       <Style css={tabsCss(DEFAULT_BREAKPOINTS)} />
       <div className={`spd-tab-shell${props.sticky === 'yes' ? ' sticky' : ''}`} style={navBgVars(props.bgColour, props.bgOpacity)}>
         <nav className={navClassFor(props.align, undefined, divider)} style={navPadStyle(props.padTop, props.padBottom)} aria-label="Product information">
-          {/* The CTA leads the strip on the storefront (Add to cart, or Configure
-              for a product with options); a static label here so the author sees
-              it in the layout. No jump tab is pre-highlighted - the storefront
-              opens on the action, not the first section. */}
-          <span className="spd-tab-btn spd-tab-action">Add to cart</span>
-          {labels.map((t) => (
-            <span key={t} className="spd-tab-btn">{t}</span>
-          ))}
+          {/* The segmented track the storefront island also renders, so the editor
+              canvas shows the same frame round the same tabs. */}
+          <div className="spd-tab-track">
+            {/* The CTA leads the strip on the storefront (Add to cart, or Configure
+                for a product with options); a static label here so the author sees
+                it in the layout. No jump tab is pre-highlighted - the storefront
+                opens on the action, not the first section. */}
+            <span className="spd-tab-btn spd-tab-action">Add to cart</span>
+            {labels.map((t) => (
+              <span key={t} className="spd-tab-btn">{t}</span>
+            ))}
+          </div>
         </nav>
       </div>
     </>
@@ -1221,9 +1240,11 @@ export function ShopDetailSectionNav(props: SectionNavProps) {
       <Style css={tabsCss(DEFAULT_BREAKPOINTS)} />
       <div className="spd-section-nav" style={{ opacity: 0.6 }}>
         <div className={navClassFor(props.align, props.sticky)}>
-          {labels.map((t) => (
-            <span key={t} className="spd-tab-btn">{t}</span>
-          ))}
+          <div className="spd-tab-track">
+            {labels.map((t) => (
+              <span key={t} className="spd-tab-btn">{t}</span>
+            ))}
+          </div>
         </div>
       </div>
     </>
@@ -1240,9 +1261,11 @@ export function ShopDetailSectionNavRsc(props: SectionNavProps) {
       <Style css={tabsCss(ctx.bp)} />
       <div className="spd-section-nav">
         <nav className={navClassFor(props.align, props.sticky)} aria-label="Product information">
-          {sections.map((s) => (
-            <a key={s.id} className="spd-tab-btn" href={`#${sectionAnchorId(s.id)}`}>{s.label}</a>
-          ))}
+          <div className="spd-tab-track">
+            {sections.map((s) => (
+              <a key={s.id} className="spd-tab-btn" href={`#${sectionAnchorId(s.id)}`}>{s.label}</a>
+            ))}
+          </div>
         </nav>
       </div>
     </>
