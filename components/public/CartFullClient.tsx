@@ -685,7 +685,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
     const summaryDelivery = lines.some((line) => line.control && isSummaryControl(line.control))
     const cols = [
       showImage ? `${imageSize}px` : null,
-      anyDelivery && summaryDelivery ? 'minmax(0,260px)' : 'minmax(0,1fr)',
+      anyDelivery && summaryDelivery ? 'minmax(0,247px)' : 'minmax(0,1fr)',
       anyDelivery ? (summaryDelivery ? 'minmax(0,1fr)' : 'fit-content(45%)') : null,
       'max-content',                                        // quantity
       showLinePrice ? 'minmax(70px,max-content)' : null,
@@ -713,7 +713,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
             {renderThumb(line)}
             {/* The flex basis is inert in the shared grid (a grid item ignores
                 it) and is what sizes this column in the no-subgrid fallback. */}
-            <div className="scl-main" style={anyDelivery ? { flex: '0 1 260px', minWidth: 0 } : { flex: 1, minWidth: 0 }}>
+            <div className="scl-main" style={anyDelivery ? { flex: '0 1 247px', minWidth: 0 } : { flex: 1, minWidth: 0 }}>
               {renderName(line)}
               {renderMeta(line)}
             </div>
