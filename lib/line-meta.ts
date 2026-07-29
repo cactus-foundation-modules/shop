@@ -28,7 +28,12 @@ export type CartLineControl = {
   key: string
   label: string
   value: string
-  options: { value: string; label: string; priceAdjust?: number }[]
+  // An option may carry a short `description` - supporting copy the resolver
+  // wants shown with the option (what a delivery service includes, say). The
+  // cart renders it as muted text under the option (radios) or under the picker
+  // for the chosen option (select). Optional: an older shop, or a resolver that
+  // omits it, renders exactly as before.
+  options: { value: string; label: string; priceAdjust?: number; description?: string }[]
   renderAs?: 'select' | 'radios'
   // Opt-in: the options' own labels already state their outcome in full (e.g. a
   // delivery tier whose label carries its promised date), so the cart renders

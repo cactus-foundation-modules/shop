@@ -336,7 +336,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
               its own outcome), but the group stays labelled for assistive tech. */}
           <legend style={control.optionsSelfLabelled ? SR_ONLY : { fontWeight: 500, padding: 0 }}>{control.label}{control.optionsSelfLabelled ? '' : ':'}</legend>
           {control.options.map((o) => (
-            <label key={o.value} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', cursor: preview ? 'default' : 'pointer' }}>
+            <label key={o.value} style={{ display: 'flex', alignItems: o.description ? 'flex-start' : 'center', gap: '0.375rem', cursor: preview ? 'default' : 'pointer' }}>
               <input
                 type="radio"
                 name={groupName}
@@ -344,31 +344,46 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
                 checked={control.value === o.value}
                 disabled={preview}
                 onChange={() => onControl(lineKey(line), control.key, o.value)}
-                style={{ accentColor: 'var(--color-primary)', margin: 0 }}
+                style={{ accentColor: 'var(--color-primary)', margin: 0, marginTop: o.description ? '0.2em' : 0 }}
               />
-              <span>{o.label}</span>
+              {o.description ? (
+                <span style={{ display: 'grid', gap: '0.125rem' }}>
+                  <span>{o.label}</span>
+                  <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>{o.description}</span>
+                </span>
+              ) : (
+                <span>{o.label}</span>
+              )}
             </label>
           ))}
         </fieldset>
       )
     }
+    // The chosen option's description (if it carries one) sits under the picker
+    // - a <select> has nowhere to show per-option copy of its own.
+    const chosenDescription = control.options.find((o) => o.value === control.value)?.description
     return (
-      <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', margin: '0.375rem 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-        {control.optionsSelfLabelled
-          ? null
-          : <span style={{ fontWeight: 500 }}>{control.label}:</span>}
-        <select
-          aria-label={control.optionsSelfLabelled ? control.label : undefined}
-          value={control.value}
-          disabled={preview}
-          onChange={(e) => onControl(lineKey(line), control.key, e.target.value)}
-          style={{ padding: '0.25rem 0.375rem', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.8125rem' }}
-        >
-          {control.options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-      </label>
+      <div style={{ display: 'grid', gap: '0.25rem', margin: '0.375rem 0 0' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+          {control.optionsSelfLabelled
+            ? null
+            : <span style={{ fontWeight: 500 }}>{control.label}:</span>}
+          <select
+            aria-label={control.optionsSelfLabelled ? control.label : undefined}
+            value={control.value}
+            disabled={preview}
+            onChange={(e) => onControl(lineKey(line), control.key, e.target.value)}
+            style={{ padding: '0.25rem 0.375rem', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.8125rem' }}
+          >
+            {control.options.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </label>
+        {chosenDescription && (
+          <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', opacity: 0.9 }}>{chosenDescription}</span>
+        )}
+      </div>
     )
   }
 
