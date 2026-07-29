@@ -98,6 +98,18 @@ export function removeFromCart(key: string): void {
   persist(getCart().filter((l) => cartLineKey(l) !== key))
 }
 
+// Puts a removed line back exactly as it was - same quantity, same meta, same
+// place in the cart - so the cart's undo really is an undo rather than a fresh
+// add. `index` is where the line sat before it went; a cart that has moved on
+// since (the line re-added by hand, say) is left alone.
+export function restoreCartLine(line: CartLine, index: number): void {
+  const lines = getCart()
+  if (lines.some((l) => cartLineKey(l) === cartLineKey(line))) return
+  const at = Math.max(0, Math.min(index, lines.length))
+  lines.splice(at, 0, line)
+  persist(lines)
+}
+
 export function clearCart(): void {
   persist([])
 }

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { resolveCartLines } from '@/modules/shop/lib/checkout'
 import { getProductMediaForProducts } from '@/modules/shop/lib/db'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
+import { getCartSummaryNotes } from '@/modules/shop/lib/cart-summary'
 
 const Body = z.object({
   lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1), lineId: z.string().optional(), meta: z.record(z.unknown()).optional() })),
@@ -52,5 +53,17 @@ export async function POST(request: NextRequest) {
     }
   })
 
-  return NextResponse.json({ lines })
+  // Whole-basket notes, after the lines: a provider reads the request-scoped
+  // caches the line resolution has just warmed, so this is arithmetic rather
+  // than another round of queries. The raw meta is matched back by line key -
+  // it carries the shopper's own per-line choices, which the resolved line
+  // (deliberately) normalises away.
+  const metaByKey = new Map(parsed.data.lines.map((line) => [line.lineId ?? line.productId, line.meta]))
+  const notes = await getCartSummaryNotes(resolved.map((line) => ({
+    product: line.product,
+    quantity: line.quantity,
+    meta: metaByKey.get(line.lineId ?? line.product.id),
+  })))
+
+  return NextResponse.json({ lines, notes })
 }

@@ -13,8 +13,9 @@ import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 
 // A declarative per-line picker a resolver can offer for display in the cart.
-// Shop renders it generically - a labelled <select> by default, or a radio group
-// when `renderAs` is 'radios' - and, on change, writes the chosen value back into
+// Shop renders it generically - a labelled <select> by default, a radio group
+// when `renderAs` is 'radios', or the chosen option as a confirmed bar with the
+// rest as switch chips when it is 'summary' - and, on change, writes the chosen value back into
 // the line's meta under `key` and re-validates, so the contributing module never
 // ships a component into shop's cart, only data. The options carry their own
 // already-formatted labels (e.g. a price suffix). `renderAs` is optional: an
@@ -24,6 +25,18 @@ import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 // the moment the shopper picks an option, then reconciles with the server's
 // re-validate. Optional: a resolver that omits it still works - the price just
 // waits for the round-trip as before.
+// One option's own wording, pre-split by the resolver for the cart's summary
+// presentation: the chosen option is shown as a confirmed bar (`headline`, with
+// `secondary` as a muted qualifier and `priceLabel` pushed to the right), and
+// every other option becomes a one-click chip reading `switchLabel` + its price.
+// Shop only ever displays these strings - it never parses or re-words them.
+export type CartLineControlSummary = {
+  headline: string
+  secondary?: string
+  switchLabel?: string
+  priceLabel?: string
+}
+
 export type CartLineControl = {
   key: string
   label: string
@@ -33,8 +46,19 @@ export type CartLineControl = {
   // cart renders it as muted text under the option (radios) or under the picker
   // for the chosen option (select). Optional: an older shop, or a resolver that
   // omits it, renders exactly as before.
-  options: { value: string; label: string; priceAdjust?: number; description?: string }[]
-  renderAs?: 'select' | 'radios'
+  // An option may also carry a `summary`: the same option broken into the parts
+  // the cart's summary presentation lays out (the outcome as a headline, a short
+  // qualifier, the price on its own, and a compact wording for the switch chip).
+  // Only a resolver that supplies it for EVERY option gets that presentation -
+  // shop never splits a label itself, so it can never guess wrong.
+  options: {
+    value: string
+    label: string
+    priceAdjust?: number
+    description?: string
+    summary?: CartLineControlSummary
+  }[]
+  renderAs?: 'select' | 'radios' | 'summary'
   // Opt-in: the options' own labels already state their outcome in full (e.g. a
   // delivery tier whose label carries its promised date), so the cart renders
   // the picker bare - it drops the group's "<label>:" heading and skips the one
@@ -113,7 +137,13 @@ function getInstalledManifests(): Promise<{ manifest: unknown }[]> {
 }
 
 // Extension-point functions declared by installed modules' manifests for one
-// point, in manifest order.
+// point, in manifest order. Exported as `gatherCartExtensionPoint` for the other
+// cart-fold seams (see lib/cart-summary.ts) so they share this file's memoised
+// installed-module read rather than each firing their own Module.findMany.
+export async function gatherCartExtensionPoint<T>(point: string): Promise<T[]> {
+  return gatherPoint<T>(point)
+}
+
 async function gatherPoint<T>(point: string): Promise<T[]> {
   const fns = moduleExtensionPointComponents[point] ?? {}
   if (Object.keys(fns).length === 0) return []

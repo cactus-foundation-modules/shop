@@ -22,6 +22,11 @@
 // offered for. The classes are inert wherever
 // there's no `.scl` grid parent (e.g. the table layout reuses the thumbnail
 // renderer), so they're safe to apply everywhere.
+//
+// The file also carries the cart's chrome: the summary presentation for a
+// self-labelled per-line picker (`scl-sum` / `scl-hint`), the quantity stepper
+// pill, the remove cross, the sticky checkout bar and the undo toast. All of it
+// is token-coloured, so it follows the site's light/dark theme with no hex.
 
 export const CART_LINE_CSS = `
 .scl{min-width:0}
@@ -55,6 +60,92 @@ export const CART_LINE_CSS = `
    delivery row spans full width (wrapping onto two lines there is fine). */
 @media (min-width:641px){
   .scl > .scl-deliv{flex:0 0 auto;width:max-content;max-width:45%}
+  /* The summary presentation sizes itself the other way round: it takes the
+     room the (deliberately narrow) product column leaves, so the chosen service
+     and its switch chips get the width, and every line's column still lines up
+     because every other column is fixed. No probe needed - the chips wrap. */
+  .scl > .scl-deliv-sum{flex:1 1 auto;width:auto;max-width:none;min-width:0}
+}
+
+/* ---- Chosen-service summary + switch chips (control renderAs 'summary') ----
+   One confirmed line per cart line, stating what the shopper has chosen and
+   when it lands, with every other option beside it as a one-click chip. */
+.scl-delgrp{border:0;margin:0;padding:0;min-width:0}
+.scl-sum{position:relative;display:flex;align-items:flex-start;gap:0.875rem;width:100%;text-align:left;
+  border:1.5px solid var(--color-primary);border-radius:10px;background:var(--color-primary-subtle);padding:0.75rem 1rem}
+.scl-sum input{position:absolute;opacity:0;pointer-events:none}
+.scl-sum:has(input:focus-visible){outline:2px solid var(--color-primary);outline-offset:2px}
+.scl-tick{flex:none;width:19px;height:19px;border-radius:50%;background:var(--color-primary);color:var(--color-on-primary);
+  display:flex;align-items:center;justify-content:center;margin-top:2px}
+.scl-sum-lines{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.scl-s-top{display:flex;align-items:baseline;gap:0.875rem;min-width:0}
+.scl-s-date{font-size:0.9375rem;font-weight:700;color:var(--color-primary);white-space:nowrap}
+.scl-s-desc{font-size:0.8438rem;color:var(--color-text-secondary);white-space:nowrap}
+.scl-s-fee{margin-left:auto;font-size:0.9063rem;font-weight:700;white-space:nowrap;color:var(--color-text)}
+.scl-s-only{font-size:0.8125rem;color:var(--color-text-muted);white-space:nowrap}
+.scl-s-below{font-size:0.8125rem;color:var(--color-text-secondary);line-height:1.45}
+.scl-free{color:var(--color-success)}
+.scl-hints{display:flex;flex-wrap:wrap;align-items:center;gap:0.375rem;margin-top:0.5rem}
+.scl-hints-t{font-size:0.8125rem;font-weight:600;color:var(--color-text-secondary)}
+.scl-hint{position:relative;display:inline-block;white-space:nowrap;border:1px solid var(--color-border);background:var(--color-surface);
+  border-radius:9999px;padding:0.25rem 0.625rem;font-size:0.8125rem;font-weight:600;color:var(--color-primary);cursor:pointer;
+  transition:border-color 120ms ease-out,background 120ms ease-out}
+.scl-hint:hover{border-color:var(--color-primary);background:var(--color-primary-subtle)}
+.scl-hint input{position:absolute;opacity:0;pointer-events:none}
+.scl-hint:has(input:focus-visible){outline:2px solid var(--color-primary);outline-offset:2px}
+.scl-hint-fee{margin-left:0.4375rem;color:var(--color-text)}
+
+/* ---- Quantity stepper pill ---- */
+.scl-qtybox{display:inline-flex;align-items:center;height:42px;overflow:hidden;
+  border:1px solid var(--color-border-strong);border-radius:9999px;background:var(--color-surface)}
+.scl-qtybox button{display:flex;align-items:center;justify-content:center;width:34px;height:100%;border:0;background:none;
+  color:var(--color-primary);font-size:1.125rem;font-weight:600;line-height:1;cursor:pointer}
+.scl-qtybox button:hover:not(:disabled){background:var(--color-bg-subtle)}
+.scl-qtybox button:disabled{color:var(--color-text-disabled);cursor:default}
+.scl-qtybox input{width:38px;border:0;padding:0;text-align:center;font-family:inherit;font-size:0.9375rem;font-weight:600;
+  color:var(--color-text);background:transparent}
+
+/* ---- Remove cross ---- */
+.scl-removebtn{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border:0;border-radius:9999px;
+  background:none;color:var(--color-danger);cursor:pointer;transition:background 120ms ease-out}
+.scl-removebtn:hover{background:var(--color-destructive-subtle)}
+.scl-removebtn[disabled]{cursor:default}
+
+/* ---- Sticky checkout bar: slides up once the real totals scroll away ---- */
+.scb{position:fixed;left:0;right:0;bottom:0;z-index:300;background:var(--color-surface);border-top:1px solid var(--color-border);
+  box-shadow:0 -6px 18px rgba(0,0,0,0.10);transform:translateY(102%);transition:transform 200ms ease-in-out}
+.scb-in{transform:none}
+.scb-inner{max-width:1560px;margin:0 auto;padding:0.75rem 1.5rem;display:flex;align-items:center;gap:1.5rem}
+.scb-meta{font-size:0.8438rem;color:var(--color-text-secondary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scb-right{margin-left:auto;display:flex;align-items:center;gap:1.125rem}
+.scb-total{display:flex;align-items:baseline;gap:0.5rem;font-size:0.9375rem;color:var(--color-text-secondary);white-space:nowrap}
+.scb-total b{font-size:1.125rem;font-weight:700;color:var(--color-text)}
+
+/* ---- Removed-item undo toast ---- */
+.sct{position:fixed;left:50%;transform:translateX(-50%);z-index:500;display:flex;align-items:center;gap:1.125rem;
+  border-radius:10px;padding:0.8125rem 1.25rem;font-size:0.9063rem;background:var(--color-text);color:var(--color-bg);
+  box-shadow:0 12px 32px rgba(0,0,0,0.28);opacity:1;transition:opacity 300ms ease-out}
+.sct-out{opacity:0}
+.sct button{border:0;padding:0;background:none;color:inherit;font-family:inherit;font-size:inherit;font-weight:700;
+  text-decoration:underline;cursor:pointer}
+
+@media (max-width:640px){
+  .scl-s-top{flex-wrap:wrap}
+  .scl-s-date,.scl-s-desc{white-space:normal}
+  .scb-meta{display:none}
+  .scb-inner{padding:0.625rem 1rem;gap:0.75rem}
+  .sct{left:1rem;right:1rem;transform:none;justify-content:space-between}
+}
+@media (pointer:coarse){
+  .scl-hint{padding:0.5rem 0.875rem}
+  .scl-qtybox button{width:44px}
+  .scl-removebtn{width:44px;height:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .scb,.sct,.scl-hint,.scl-removebtn{transition:none}
+}
+@media print{
+  .scb,.sct{display:none!important}
 }
 @media (max-width:640px){
   /* The probe's unwrappable lines would set a min-content width the narrow grid

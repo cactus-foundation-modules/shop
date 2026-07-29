@@ -25,20 +25,25 @@ const keyOf = (l: { productId: string; lineId?: string | null }) => l.lineId ?? 
 // beat. Concurrent callers with an identical payload now share one request and
 // one parsed response. The slot clears as soon as the request settles, so this
 // never caches - it only de-duplicates the simultaneous burst.
-const inflightValidate = new Map<string, Promise<{ lines: unknown[] } | null>>()
+const inflightValidate = new Map<string, Promise<ValidateResponse<unknown> | null>>()
 
-export function postCartValidate<T>(cart: CartLineShape[]): Promise<{ lines: T[] } | null> {
+// `notes` are whole-basket lines contributed by other modules (an "everything by
+// Fri 4 Sep" from a delivery module, say). Absent from an older shop's response,
+// hence optional.
+export type ValidateResponse<T> = { lines: T[]; notes?: { id: string; text: string }[] }
+
+export function postCartValidate<T>(cart: CartLineShape[]): Promise<ValidateResponse<T> | null> {
   const body = JSON.stringify({ lines: cart })
   const existing = inflightValidate.get(body)
-  if (existing) return existing as Promise<{ lines: T[] } | null>
+  if (existing) return existing as Promise<ValidateResponse<T> | null>
   const promise = fetch('/api/m/shop/public/cart/validate', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
   })
     .then((res) => (res.ok ? res.json() : null))
     .catch(() => null)
-    .finally(() => { inflightValidate.delete(body) }) as Promise<{ lines: unknown[] } | null>
+    .finally(() => { inflightValidate.delete(body) }) as Promise<ValidateResponse<unknown> | null>
   inflightValidate.set(body, promise)
-  return promise as Promise<{ lines: T[] } | null>
+  return promise as Promise<ValidateResponse<T> | null>
 }
 
 export function writeValidatedCartCache(lines: unknown[]): void {

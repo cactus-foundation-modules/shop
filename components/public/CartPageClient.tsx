@@ -1,14 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { getCart, setLineQuantity, removeFromCart, subscribeCart } from '@/modules/shop/components/public/cart'
+import { getCart, setLineQuantity, subscribeCart } from '@/modules/shop/components/public/cart'
 import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } from '@/modules/shop/components/public/validated-cache'
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import { formatMoney } from '@/modules/shop/lib/money'
 import type { LineMeta } from '@/modules/shop/lib/types'
 import type { CartLineTitle } from '@/modules/shop/lib/line-meta'
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
+import { CartStickyBar, CartUndoToast, QuantityStepper, RemoveCross } from '@/modules/shop/components/public/CartChrome'
+import { useCartUndo, useOutOfView } from '@/modules/shop/components/public/use-cart-undo'
 
 type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
@@ -20,12 +22,21 @@ type ValidatedLine = {
 
 const lineKey = (l: Pick<ValidatedLine, 'productId' | 'lineId'>) => l.lineId ?? l.productId
 
+// Shared by the page's own checkout button and the sticky bar's copy of it, so
+// the two can never drift.
+const CHECKOUT_STYLE = {
+  background: 'var(--color-primary)', color: 'var(--color-on-primary)', textAlign: 'center' as const,
+  borderRadius: 8, padding: '0.75rem', fontWeight: 600, textDecoration: 'none',
+}
+
 export function CartPageClient() {
   const [lines, setLines] = useState<ValidatedLine[]>([])
   const [currencySymbol, setCurrencySymbol] = useState('£')
   const [couponCode, setCouponCode] = useState('')
   const [couponMessage, setCouponMessage] = useState<string | null>(null)
   const [hasLoaded, setHasLoaded] = useState(false)
+  // Whole-basket notes contributed by other modules, shown in the sticky bar.
+  const [notes, setNotes] = useState<string[]>([])
 
   // Currency symbol is fixed for the shop - fetch it once, not on every cart
   // re-validate (it used to ride along with each validate round-trip).
@@ -48,7 +59,7 @@ export function CartPageClient() {
     let bootstrapped = false
     async function refresh() {
       const cart = getCart()
-      if (cart.length === 0) { if (!cancelled) { setLines([]); setHasLoaded(true) } return }
+      if (cart.length === 0) { if (!cancelled) { setLines([]); setNotes([]); setHasLoaded(true) } return }
       if (!bootstrapped) {
         bootstrapped = true
         const cached = readValidatedCartCache<ValidatedLine>(cart)
@@ -59,6 +70,7 @@ export function CartPageClient() {
       if (cancelled || mySeq !== seq) return
       if (data) {
         setLines(data.lines)
+        setNotes((data.notes ?? []).map((n) => n.text))
         writeValidatedCartCache(data.lines)
       }
       setHasLoaded(true)
@@ -67,6 +79,12 @@ export function CartPageClient() {
     const unsubscribe = subscribeCart(refresh)
     return () => { cancelled = true; unsubscribe() }
   }, [])
+
+  // Same chrome as the designable cart block: a sticky checkout bar once the
+  // totals scroll away, and an undo toast after a line is removed.
+  const footerRef = useRef<HTMLDivElement>(null)
+  const stickyVisible = useOutOfView(footerRef, hasLoaded && lines.length > 0)
+  const { toast, removeLine, undo } = useCartUndo(true)
 
   async function applyCoupon() {
     if (!couponCode) return
@@ -84,6 +102,7 @@ export function CartPageClient() {
   }
 
   const subtotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
+  const itemCount = lines.reduce((sum, l) => sum + l.quantity, 0)
 
   // Shimmer skeleton while the localStorage cart is validated, so the page
   // never flashes blank (the validate call folds delivery/personalisation
@@ -107,7 +126,13 @@ export function CartPageClient() {
   }
 
   if (lines.length === 0) {
-    return <p style={{ color: 'var(--color-text-muted)' }}>Your cart is empty. <Link href="/shop">Continue shopping</Link>.</p>
+    return (
+      <div style={{ color: 'var(--color-text-muted)' }}>
+        <style dangerouslySetInnerHTML={{ __html: CART_LINE_CSS }} />
+        <p style={{ margin: 0 }}>Your cart is empty. <Link href="/shop">Continue shopping</Link>.</p>
+        {toast && <CartUndoToast message={toast.message} leaving={toast.leaving} bottom={28} onUndo={undo} />}
+      </div>
+    )
   }
 
   return (
@@ -136,15 +161,16 @@ export function CartPageClient() {
                 </ul>
               ) : null}
             </div>
-            <input
-              className="scl-qty"
-              type="number" min={0} value={line.quantity}
-              aria-label={`Quantity for ${line.name}`}
-              onChange={(e) => setLineQuantity(lineKey(line), Math.max(0, Number(e.target.value)))}
-              style={{ width: 56, padding: '0.375rem', borderRadius: 6, border: '1px solid var(--color-border)' }}
+            <QuantityStepper
+              value={line.quantity}
+              label={`Quantity for ${line.displayTitle?.name || line.name}`}
+              onChange={(next) => setLineQuantity(lineKey(line), next)}
             />
             <span className="scl-price" style={{ minWidth: 70, textAlign: 'right' }}>{formatMoney(line.lineSubtotal, currencySymbol)}</span>
-            <button className="scl-remove" aria-label={`Remove ${line.name}`} onClick={() => removeFromCart(lineKey(line))} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer' }}>Remove</button>
+            <RemoveCross
+              label={`Remove ${line.displayTitle?.name || line.name}`}
+              onClick={() => removeLine(lineKey(line), line.displayTitle?.name || line.name)}
+            />
           </li>
         ))}
       </ul>
@@ -155,13 +181,24 @@ export function CartPageClient() {
       </div>
       {couponMessage && <p style={{ fontSize: '0.875rem' }}>{couponMessage}</p>}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '1.125rem' }}>
-        <span>Subtotal</span><span>{currencySymbol}{subtotal.toFixed(2)}</span>
+      <div ref={footerRef} style={{ display: 'grid', gap: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '1.125rem' }}>
+          <span>Subtotal</span><span>{currencySymbol}{subtotal.toFixed(2)}</span>
+        </div>
+
+        <Link href="/shop/checkout" style={CHECKOUT_STYLE}>Proceed to checkout</Link>
       </div>
 
-      <Link href="/shop/checkout" style={{ background: 'var(--color-primary)', color: 'var(--color-on-primary)', textAlign: 'center', borderRadius: 8, padding: '0.75rem', fontWeight: 600, textDecoration: 'none' }}>
-        Proceed to checkout
-      </Link>
+      <CartStickyBar
+        visible={stickyVisible}
+        meta={[`${itemCount} item${itemCount === 1 ? '' : 's'}`, ...notes].join(' · ')}
+        totalLabel="Subtotal"
+        total={formatMoney(subtotal, currencySymbol)}
+        checkoutLabel="Proceed to checkout"
+        checkoutStyle={{ ...CHECKOUT_STYLE, display: 'inline-flex', alignItems: 'center', width: 'auto', height: 46, padding: '0 1.625rem' }}
+      />
+
+      {toast && <CartUndoToast message={toast.message} leaving={toast.leaving} bottom={stickyVisible ? 88 : 28} onUndo={undo} />}
     </div>
   )
 }

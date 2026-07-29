@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
-import { getCart, setLineQuantity, setLineMeta, removeFromCart, subscribeCart } from '@/modules/shop/components/public/cart'
+import { getCart, setLineQuantity, setLineMeta, subscribeCart } from '@/modules/shop/components/public/cart'
 import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } from '@/modules/shop/components/public/validated-cache'
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import type { LineMeta, LineMetaField } from '@/modules/shop/lib/types'
 import type { CartLineControl, CartLineTitle } from '@/modules/shop/lib/line-meta'
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
+import { CartStickyBar, CartUndoToast, QuantityStepper, RemoveCross, TickIcon } from '@/modules/shop/components/public/CartChrome'
+import { useCartUndo, useOutOfView } from '@/modules/shop/components/public/use-cart-undo'
 
 // Full cart-display island. ONE render path, shared by the Puck editor preview
 // (seeded with SAMPLE_LINES, no fetch, controls inert) and the live frontend
@@ -53,6 +55,8 @@ export type CartFullOptions = {
   showItemCount?: string
   showSubtotal?: string
   subtotalLabel?: string
+  stickyBar?: string          // 'yes' | 'no' - bottom checkout bar once the totals scroll away
+  undoRemove?: string         // 'yes' | 'no' - undo toast after a line is removed
   checkoutLabel?: string
   checkoutBg?: string         // CSS colour value (var(--color-N)) from SiteColourField
   checkoutText?: string
@@ -76,7 +80,19 @@ const SAMPLE_LINES: ValidatedLine[] = [
     productId: 'sample-1', name: 'Terracotta Plant Pot - Large / Matte', slug: 'terracotta-plant-pot',
     quantity: 2, unitPrice: 18, lineSubtotal: 36, available: true, availabilityReason: null, isPreOrder: false, imageUrl: null,
     displayTitle: { name: 'Terracotta Plant Pot', secondary: 'Large / Matte' },
-    control: { key: 'shippingTier', label: 'Delivery', value: 'standard', optionsSelfLabelled: true, options: [{ value: 'standard', label: 'Standard by Tuesday (included)' }, { value: 'express', label: 'Express by Monday (+£4.95)' }] },
+    control: {
+      key: 'shippingTier', label: 'Delivery', value: 'standard', optionsSelfLabelled: true, renderAs: 'summary',
+      options: [
+        {
+          value: 'standard', label: 'Standard by Tuesday (included)', priceAdjust: 0, description: 'Left in your porch if you are out.',
+          summary: { headline: 'Arrives by Tue 12 Aug', secondary: 'Standard', switchLabel: 'Standard by Tuesday', priceLabel: 'Free' },
+        },
+        {
+          value: 'express', label: 'Express by Monday (+£4.95)', priceAdjust: 4.95,
+          summary: { headline: 'Arrives by Mon 11 Aug', secondary: 'Express', switchLabel: 'Express by Monday', priceLabel: '+£4.95' },
+        },
+      ],
+    },
   },
   { productId: 'sample-2', name: 'Watering Can (Brass)', slug: 'watering-can-brass', quantity: 1, unitPrice: 42.5, lineSubtotal: 42.5, available: true, availabilityReason: null, isPreOrder: true, imageUrl: null },
 ]
@@ -97,6 +113,9 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   const [couponCode, setCouponCode] = useState('')
   const [couponMessage, setCouponMessage] = useState<string | null>(null)
   const [hasLoaded, setHasLoaded] = useState(preview ?? false)
+  // Whole-basket notes other modules contributed to this validate (a delivery
+  // module's "everything by Fri 4 Sep"). Shop displays them, never composes them.
+  const [notes, setNotes] = useState<string[]>(preview ? ['everything by Tue 12 Aug'] : [])
 
   // The currency symbol is fixed for the shop, so fetch it once rather than on
   // every cart re-validate - changing the delivery picker used to re-fetch it
@@ -126,7 +145,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
     let bootstrapped = false
     async function refresh() {
       const cart = getCart()
-      if (cart.length === 0) { if (!cancelled) { setLines([]); setHasLoaded(true) } return }
+      if (cart.length === 0) { if (!cancelled) { setLines([]); setNotes([]); setHasLoaded(true) } return }
       if (!bootstrapped) {
         bootstrapped = true
         const cached = readValidatedCartCache<ValidatedLine>(cart)
@@ -137,6 +156,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
       if (cancelled || mySeq !== seq) return
       if (data) {
         setLines(data.lines)
+        setNotes((data.notes ?? []).map((n) => n.text))
         writeValidatedCartCache(data.lines)
       }
       setHasLoaded(true)
@@ -145,6 +165,13 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
     const unsubscribe = subscribeCart(refresh)
     return () => { cancelled = true; unsubscribe() }
   }, [preview])
+
+  // Sticky checkout bar: raised only once the cart's own totals and checkout
+  // button have scrolled away, and never in the editor preview (a fixed bar
+  // would float over the canvas rather than the page it belongs to).
+  const footerRef = useRef<HTMLDivElement>(null)
+  const stickyVisible = useOutOfView(footerRef, !preview && yes(props.stickyBar) && hasLoaded && lines.length > 0)
+  const { toast, removeLine, undo } = useCartUndo(!preview && yes(props.undoRemove))
 
   async function applyCoupon() {
     if (preview || !couponCode) return
@@ -162,7 +189,9 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   }
 
   const onQty = (id: string, q: number) => { if (!preview) setLineQuantity(id, Math.max(0, q)) }
-  const onRemove = (id: string) => { if (!preview) removeFromCart(id) }
+  // Removal goes through the undo hook, which snapshots the line first so the
+  // toast can put it back where it was.
+  const onRemove = (line: ValidatedLine) => { if (!preview) removeLine(lineKey(line), line.displayTitle?.name || line.name) }
   // Writes a generic per-line control's choice into the line meta; the cart's
   // own subscribe/refresh then re-validates and re-prices with no extra wiring.
   // The chosen value is applied to local state at once so the <select> never
@@ -195,9 +224,9 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   const imageRadius = props.imageRadius ?? 6
   const showUnitPrice = yes(props.showUnitPrice, false)
   const showLinePrice = yes(props.showLinePrice)
-  const quantityControl = props.quantityControl ?? 'input'
+  const quantityControl = props.quantityControl ?? 'stepper'
   const showRemove = yes(props.showRemove)
-  const removeIcon = (props.removeStyle ?? 'text') === 'icon'
+  const removeIcon = (props.removeStyle ?? 'icon') === 'icon'
   const showAvailability = yes(props.showAvailability)
   const showPreorder = yes(props.showPreorder)
   const showCoupon = yes(props.showCoupon)
@@ -211,6 +240,10 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   const subtotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
   const itemCount = lines.reduce((sum, l) => sum + l.quantity, 0)
   const money = (n: number) => `${currencySymbol}${n.toFixed(2)}`
+  // A cart with a delivery column has two things to show per line, so the
+  // product column is held narrow and the delivery column takes the rest. With
+  // no delivery column anywhere, the product column keeps the whole row as before.
+  const anyDelivery = lines.some((line) => line.control && line.control.options.length > 0)
 
   // While the client fetches the localStorage cart, show a shimmer skeleton
   // rather than a blank gap. The validate call folds every cart-line resolver
@@ -235,14 +268,18 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
     )
   }
 
-  // Empty cart (live only - preview always seeds samples)
+  // Empty cart (live only - preview always seeds samples). The undo toast is
+  // rendered here too: removing the last line empties the cart, and that is
+  // precisely the moment a shopper is most likely to want it back.
   if (lines.length === 0) {
     return (
       <div style={{ maxWidth, color: 'var(--color-text-muted)' }}>
+        <style dangerouslySetInnerHTML={{ __html: CART_LINE_CSS }} />
         <p style={{ margin: 0 }}>
           {props.emptyText || 'Your cart is empty.'}{' '}
           <Link href={props.continueHref || '/shop'}>{props.continueLabel || 'Continue shopping'}</Link>.
         </p>
+        {toast && <CartUndoToast message={toast.message} leaving={toast.leaving} bottom={28} onUndo={undo} />}
       </div>
     )
   }
@@ -322,9 +359,78 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   // cart re-validates, so the price and any resolver-supplied line meta update.
   // The resolver picks the shape: a compact dropdown (default) or a radio group
   // when every option should be visible at a glance.
+  // The summary presentation only applies when the resolver pre-split every
+  // option's wording for it. Shop never breaks a label apart itself, so a
+  // resolver that supplies only some of the parts falls back to the radio group
+  // rather than to a half-built card.
+  const isSummaryControl = (control: CartLineControl) =>
+    control.renderAs === 'summary' && control.options.length > 0 && control.options.every((o) => o.summary?.headline)
+
+  // An option is free when the resolver says it adds nothing to the line; the
+  // price then reads in the success colour rather than as another charge.
+  const isFreeOption = (o: CartLineControl['options'][number]) => typeof o.priceAdjust === 'number' && o.priceAdjust <= 0
+
+  // Chosen option confirmed in place, every other option a one-click chip
+  // beneath it. The whole group is still a radio group underneath, so keyboard
+  // and assistive tech treat it as the single choice it is.
+  function renderSummary(line: ValidatedLine, control: CartLineControl) {
+    const chosen = control.options.find((o) => o.value === control.value) ?? control.options[0]!
+    const alts = control.options.filter((o) => o.value !== chosen.value)
+    const groupName = `${lineKey(line)}:${control.key}`
+    const card = (
+      <>
+        <span className="scl-tick"><TickIcon /></span>
+        <span className="scl-sum-lines">
+          <span className="scl-s-top">
+            <span className="scl-s-date">{chosen.summary!.headline}</span>
+            {chosen.summary!.secondary && <span className="scl-s-desc">{chosen.summary!.secondary}</span>}
+            {chosen.summary!.priceLabel && (
+              <span className={`scl-s-fee${isFreeOption(chosen) ? ' scl-free' : ''}`}>{chosen.summary!.priceLabel}</span>
+            )}
+            {alts.length === 0 && <span className="scl-s-only">Only option</span>}
+          </span>
+          {chosen.description && <span className="scl-s-below">{chosen.description}</span>}
+        </span>
+      </>
+    )
+    return (
+      <fieldset className="scl-delgrp">
+        <legend style={SR_ONLY}>{control.label}</legend>
+        {/* A line with nothing to choose gets the same bar without a control in
+            it - it states what happens, it does not ask. */}
+        {alts.length === 0 ? (
+          <div className="scl-sum">{card}</div>
+        ) : (
+          <label className="scl-sum">
+            <input type="radio" name={groupName} value={chosen.value} checked disabled={preview} onChange={() => {}} />
+            {card}
+          </label>
+        )}
+        {alts.length > 0 && (
+          <div className="scl-hints">
+            <span className="scl-hints-t">Switch to:</span>
+            {alts.map((o) => (
+              <label key={o.value} className="scl-hint" title={o.label}>
+                <input
+                  type="radio" name={groupName} value={o.value} checked={false} disabled={preview}
+                  onChange={() => onControl(lineKey(line), control.key, o.value)}
+                />
+                {o.summary!.switchLabel ?? o.label}
+                {o.summary!.priceLabel && (
+                  <span className={`scl-hint-fee${isFreeOption(o) ? ' scl-free' : ''}`}>{o.summary!.priceLabel}</span>
+                )}
+              </label>
+            ))}
+          </div>
+        )}
+      </fieldset>
+    )
+  }
+
   function renderControl(line: ValidatedLine) {
     const control = line.control
     if (!control || control.options.length === 0) return null
+    if (isSummaryControl(control)) return renderSummary(line, control)
     if (control.renderAs === 'radios') {
       // One <fieldset> per line so the group is labelled for assistive tech; the
       // radio name is scoped to the line + control key so two lines of the same
@@ -413,16 +519,22 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   // original shape.
   function renderDelivery(line: ValidatedLine) {
     if (!line.control || line.control.options.length === 0) return null
+    // The summary presentation takes the width the product column leaves rather
+    // than being sized to its longest label, so it wants neither the probe nor
+    // the max-content rule the dropdown and radio group rely on.
+    const summary = isSummaryControl(line.control)
     return (
-      <div className="scl-deliv" style={{ display: 'grid', gap: '0.25rem', minWidth: 0, alignContent: 'center' }}>
+      <div className={`scl-deliv${summary ? ' scl-deliv-sum' : ''}`} style={{ display: 'grid', gap: '0.25rem', minWidth: 0, alignContent: 'center' }}>
         {renderControl(line)}
         {!line.control.optionsSelfLabelled && renderLineMeta(deliveryMetaFields(line))}
         {/* Invisible sizing probe - paints nothing, but makes this column wide
             enough for the cart's longest option on one line, and the same width
             on every line. See .scl-deliv-probe in cart-line-css.ts. */}
-        <div className="scl-deliv-probe" aria-hidden="true">
-          {deliveryOptionLabels.map((label) => <span key={label}>{label}</span>)}
-        </div>
+        {!summary && (
+          <div className="scl-deliv-probe" aria-hidden="true">
+            {deliveryOptionLabels.map((label) => <span key={label}>{label}</span>)}
+          </div>
+        )}
       </div>
     )
   }
@@ -432,13 +544,13 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
       return <span className="scl-qty" style={{ minWidth: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>× {line.quantity}</span>
     }
     if (quantityControl === 'stepper') {
-      const btn = { width: 28, height: 28, borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-bg-subtle)', cursor: preview ? 'default' : 'pointer', lineHeight: 1 } as const
       return (
-        <div className="scl-qty" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-          <button type="button" aria-label="Decrease quantity" onClick={() => onQty(lineKey(line), line.quantity - 1)} style={btn}>−</button>
-          <span style={{ minWidth: 24, textAlign: 'center' }}>{line.quantity}</span>
-          <button type="button" aria-label="Increase quantity" onClick={() => onQty(lineKey(line), line.quantity + 1)} style={btn}>＋</button>
-        </div>
+        <QuantityStepper
+          value={line.quantity}
+          label={`Quantity for ${line.displayTitle?.name || line.name}`}
+          disabled={preview}
+          onChange={(next) => onQty(lineKey(line), next)}
+        />
       )
     }
     return (
@@ -453,13 +565,15 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
 
   function renderRemove(line: ValidatedLine) {
     if (!showRemove) return null
+    const label = `Remove ${line.displayTitle?.name || line.name}`
+    if (removeIcon) return <RemoveCross label={label} onClick={() => onRemove(line)} disabled={preview} />
     return (
       <button
         className="scl-remove"
-        type="button" aria-label="Remove item" title="Remove" onClick={() => onRemove(lineKey(line))}
-        style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: preview ? 'default' : 'pointer', fontSize: removeIcon ? '1.1rem' : '0.9375rem' }}
+        type="button" aria-label={label} title="Remove" onClick={() => onRemove(line)}
+        style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: preview ? 'default' : 'pointer', fontSize: '0.9375rem' }}
       >
-        {removeIcon ? '🗑' : 'Remove'}
+        Remove
       </button>
     )
   }
@@ -483,7 +597,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
             }}
           >
             {renderThumb(line)}
-            <div className="scl-main" style={{ flex: 1, minWidth: 0 }}>
+            <div className="scl-main" style={anyDelivery ? { flex: '0 1 260px', minWidth: 0 } : { flex: 1, minWidth: 0 }}>
               {renderName(line)}
               {renderMeta(line)}
             </div>
@@ -503,7 +617,6 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
     const td = { padding: `${density.padY} 0`, borderBottom: '1px solid var(--color-border)', verticalAlign: 'middle' as const }
     // A Delivery column only earns its place when at least one line offers a
     // delivery control; a plain shop's table keeps its original columns.
-    const anyDelivery = lines.some((line) => line.control && line.control.options.length > 0)
     return (
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', background: layoutStyle === 'table' ? panelBg : 'transparent', borderRadius: panelRadius }}>
@@ -574,16 +687,35 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
         <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{itemCount} item{itemCount === 1 ? '' : 's'} in your cart</p>
       )}
 
-      {showSubtotal && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '1.125rem' }}>
-          <span>{props.subtotalLabel || 'Subtotal'}</span>
-          <span style={{ color: accent }}>{money(subtotal)}</span>
-        </div>
+      {/* The totals and the checkout button together: once this block leaves the
+          viewport the sticky bar takes over, and it steps aside the moment the
+          real one is back on screen. */}
+      <div ref={footerRef} style={{ display: 'grid', gap: '1rem' }}>
+        {showSubtotal && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '1.125rem' }}>
+            <span>{props.subtotalLabel || 'Subtotal'}</span>
+            <span style={{ color: accent }}>{money(subtotal)}</span>
+          </div>
+        )}
+
+        {preview
+          ? <span role="button" style={checkoutStyle}>{props.checkoutLabel || 'Proceed to checkout'}</span>
+          : <Link href="/shop/checkout" style={checkoutStyle}>{props.checkoutLabel || 'Proceed to checkout'}</Link>}
+      </div>
+
+      {!preview && yes(props.stickyBar) && (
+        <CartStickyBar
+          visible={stickyVisible}
+          meta={[`${itemCount} item${itemCount === 1 ? '' : 's'}`, ...notes].join(' · ')}
+          totalLabel={props.subtotalLabel || 'Subtotal'}
+          total={money(subtotal)}
+          checkoutLabel={props.checkoutLabel || 'Proceed to checkout'}
+          checkoutStyle={{ ...checkoutStyle, display: 'inline-flex', alignItems: 'center', width: 'auto', height: 46, padding: '0 1.625rem' }}
+        />
       )}
 
-      {preview
-        ? <span role="button" style={checkoutStyle}>{props.checkoutLabel || 'Proceed to checkout'}</span>
-        : <Link href="/shop/checkout" style={checkoutStyle}>{props.checkoutLabel || 'Proceed to checkout'}</Link>}
+      {/* Clear of the sticky bar when that is up, so the two never overlap. */}
+      {toast && <CartUndoToast message={toast.message} leaving={toast.leaving} bottom={stickyVisible ? 88 : 28} onUndo={undo} />}
     </div>
   )
 }
