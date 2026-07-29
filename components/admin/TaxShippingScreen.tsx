@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { TabStrip } from '@/components/admin/TabStrip'
 import type { ShpTaxClass, ShpShippingZone, ShpTaxZoneRate, ShpShippingRate, ShpShippingRateType } from '@/modules/shop/lib/types'
+import type { PriceDisplayTax } from '@/modules/shop/lib/tax-display-shared'
 import { useConfirm } from '@/modules/shop/components/admin/dialogs'
 
 const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.25rem 0' }
@@ -12,6 +13,17 @@ const summaryStyle: React.CSSProperties = { cursor: 'pointer', fontSize: '0.8125
 const panelStyle: React.CSSProperties = { border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.75rem', marginTop: '0.75rem' }
 
 const RATE_TYPE_LABELS: Record<ShpShippingRateType, string> = { FLAT: 'Flat rate', WEIGHT_BASED: 'Weight-based', FREE: 'Free shipping' }
+
+const PRICE_DISPLAY_OPTIONS: Array<{ value: PriceDisplayTax; label: string; blurb: string }> = [
+  { value: 'AS_ENTERED', label: 'Exactly as you type them', blurb: 'No conversion. Whatever is in the price box is what a shopper sees.' },
+  { value: 'INCLUSIVE', label: 'With tax included', blurb: 'Tax is added on before the price is shown. What most shops selling to the public want.' },
+  { value: 'EXCLUSIVE', label: 'With tax taken off', blurb: 'Tax is stripped out before the price is shown. Trade catalogues, mostly.' },
+]
+
+const SUGGESTED_PRICE_SUFFIX: Record<Exclude<PriceDisplayTax, 'AS_ENTERED'>, string> = {
+  INCLUSIVE: 'inc. VAT',
+  EXCLUSIVE: 'ex. VAT',
+}
 
 type RateForm = {
   name: string
@@ -71,6 +83,13 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
   const [weightShipping, setWeightShipping] = useState<boolean | null>(null)
   const [weightShippingSaved, setWeightShippingSaved] = useState(false)
 
+  // How the storefront prints prices, as against how they are stored. Same
+  // "null until we know" treatment as the switch above.
+  const [priceDisplay, setPriceDisplay] = useState<PriceDisplayTax | null>(null)
+  const [priceSuffix, setPriceSuffix] = useState('')
+  const [storedTaxMode, setStoredTaxMode] = useState<'INCLUSIVE' | 'EXCLUSIVE'>('INCLUSIVE')
+  const [priceDisplaySaved, setPriceDisplaySaved] = useState(false)
+
   // Guarded so landing straight on a contributed tab does not fire this screen's
   // own three calls; they run the moment Tax & shipping is opened instead.
   useEffect(() => {
@@ -81,6 +100,9 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
       if (!r.ok) return
       const { config } = await r.json()
       setWeightShipping(config?.weightBasedShippingEnabled !== false)
+      setPriceDisplay(config?.priceDisplayTax ?? 'AS_ENTERED')
+      setPriceSuffix(config?.priceDisplayTaxSuffix ?? '')
+      setStoredTaxMode(config?.taxMode === 'EXCLUSIVE' ? 'EXCLUSIVE' : 'INCLUSIVE')
     })
   }, [activeTab])
 
@@ -96,6 +118,26 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
     })
     setWeightShippingSaved(true)
     setTimeout(() => setWeightShippingSaved(false), 2000)
+  }
+
+  async function savePriceDisplay(patch: { priceDisplayTax?: PriceDisplayTax; priceDisplayTaxSuffix?: string }) {
+    await fetch('/api/m/shop/admin/settings', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+    setPriceDisplaySaved(true)
+    setTimeout(() => setPriceDisplaySaved(false), 2000)
+  }
+
+  // Switching to a converted view with no label leaves shoppers looking at a
+  // changed number and no explanation, so a suggested wording is filled in for
+  // them - only where they have not already written their own, which is never
+  // overwritten.
+  function choosePriceDisplay(mode: PriceDisplayTax) {
+    setPriceDisplay(mode)
+    const suffix = priceSuffix.trim() || (mode === 'AS_ENTERED' ? '' : SUGGESTED_PRICE_SUFFIX[mode])
+    setPriceSuffix(suffix)
+    savePriceDisplay({ priceDisplayTax: mode, priceDisplayTaxSuffix: suffix })
   }
 
   function loadTaxClasses() {
@@ -317,6 +359,48 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
         </label>
         <p className="field-hint" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
           Leave this off if postage costs the same whatever is in the box. It takes the weight-based option off the shipping rates below, and takes the weight field off your products and their variations. Nothing you have already typed in is thrown away.
+        </p>
+      </div>
+
+      <div className="card">
+        <h3 className="card-title" style={{ fontSize: '1rem' }}>Prices on your shop</h3>
+        <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
+          How prices are shown to shoppers. Separate from how you type them in, which is the &quot;Tax mode&quot; box over in Settings &gt; Shop &gt; Checkout - right now your prices are stored{' '}
+          <strong>{storedTaxMode === 'INCLUSIVE' ? 'with tax already in them' : 'without tax'}</strong>. Nothing here changes what anyone is charged: the till works off the stored figure either way.
+        </p>
+        <div style={{ display: 'grid', gap: '0.5rem', marginBottom: '0.75rem' }}>
+          {PRICE_DISPLAY_OPTIONS.map((opt) => (
+            <label key={opt.value} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', cursor: priceDisplay === null ? 'default' : 'pointer' }}>
+              <input
+                type="radio"
+                name="shp-price-display"
+                value={opt.value}
+                checked={priceDisplay === opt.value}
+                disabled={priceDisplay === null}
+                onChange={() => choosePriceDisplay(opt.value)}
+                style={{ marginTop: '0.2rem' }}
+              />
+              <span>
+                {opt.label}
+                <span className="field-hint" style={{ display: 'block', fontSize: '0.75rem' }}>{opt.blurb}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <div className="field" style={{ margin: 0, maxWidth: 260 }}>
+          <label htmlFor="shp-price-suffix">Wording after the price</label>
+          <input
+            id="shp-price-suffix"
+            value={priceSuffix}
+            disabled={priceDisplay === null}
+            onChange={(e) => setPriceSuffix(e.target.value)}
+            onBlur={(e) => savePriceDisplay({ priceDisplayTaxSuffix: e.target.value })}
+            placeholder="e.g. inc. VAT"
+          />
+        </div>
+        <p className="field-hint" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
+          Leave it blank for no wording at all. Whichever rate applies comes from the zone below that covers everyone - the checkout still works the real rate out from the delivery postcode.
+          {priceDisplaySaved && <span style={{ color: 'var(--color-success)', marginLeft: '0.5rem' }}>Saved</span>}
         </p>
       </div>
 

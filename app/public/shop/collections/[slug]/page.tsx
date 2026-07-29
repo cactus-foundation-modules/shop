@@ -10,6 +10,7 @@ import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { injectCollectionContext } from '@/modules/shop/lib/inject-collection-context'
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
+import { resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
@@ -56,15 +57,19 @@ export default async function ShopCollectionPage({ params }: { params: Promise<{
   // template - image carousel, 3D badge, hover and all - rather than a separate
   // hand-rolled tile. Editing that single layout restyles every card surface.
   const productIds = products.map((p) => p.id)
-  const [mediaByProduct, fromPrices, cardExtras] = await Promise.all([
+  const [mediaByProduct, fromPrices, cardExtras, taxDisplay] = await Promise.all([
     getProductMediaForProducts(productIds),
     resolveCardFromPrices(productIds),
     resolveShopCardExtras(productIds),
+    resolveTaxDisplay(),
   ])
+  // What the shop prints prices as (net or gross) is a per-shop answer, not a
+  // per-card one, so it is resolved once here and handed to every card.
+  const pricing = { ...config, taxDisplay }
   const items: CardItem[] = await Promise.all(
     products.map(async (p) => {
       const tagIds = await getProductTagIds(p.id)
-      return { product: p, ctx: buildCardContext(p, mediaByProduct.get(p.id) ?? [], tagById, tagIds, config.currencySymbol, config, fromPrices.get(p.id) ?? null, cardExtras.get(p.id)) }
+      return { product: p, ctx: buildCardContext(p, mediaByProduct.get(p.id) ?? [], tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id)) }
     }),
   )
   const cards = template ? await renderCards(template, items) : items.map((i) => <MinimalCard key={i.product.id} {...i} />)

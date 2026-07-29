@@ -7,6 +7,7 @@ import type { PuckData, ShpProduct, ShpProductMedia } from '@/modules/shop/lib/t
 import { injectShopProductCardEmbed } from '@/modules/shop/lib/inject-part-context'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { priceView } from '@/modules/shop/lib/pricing'
+import { makeDisplayAdjuster, NO_TAX_DISPLAY, type TaxDisplay } from '@/modules/shop/lib/tax-display'
 import type { CardPartContext, CardBadge, PartImage } from '@/modules/shop/components/puck/parts/part-context'
 import type { ShopCardExtra } from '@/modules/shop/lib/card-media'
 import type { ShopCardFromPrice } from '@/modules/shop/lib/card-price'
@@ -71,7 +72,11 @@ export function buildCardContext(
   // shown to shoppers. Optional so a card surface in another module that has not
   // been rebuilt still compiles; without it a sale price set on a product shows
   // even if the shop has since switched sale prices off.
-  pricing?: { enabledPriceTypes?: readonly string[]; showRetailPrice?: boolean },
+  // `taxDisplay` is how the shop prints prices as against how it stores them,
+  // resolved once for the whole grid (lib/tax-display.ts) and applied here to
+  // the product's own figures AND to a companion module's "from" price, so a
+  // card can never show one of them net beside the other gross.
+  pricing?: { enabledPriceTypes?: readonly string[]; showRetailPrice?: boolean; taxDisplay?: TaxDisplay },
   // The figure when a companion module prices this product itself
   // (shop-variations), resolved once for the whole grid via resolveCardFromPrices
   // and passed in per product. Null/absent leaves the card on shop's own price.
@@ -98,6 +103,8 @@ export function buildCardContext(
     images.push(im)
   }
   const tagSlugs = tagIds.map((id) => tagById.get(id)).filter((s): s is string => Boolean(s))
+  const taxDisplay = pricing?.taxDisplay ?? NO_TAX_DISPLAY
+  const adjust = makeDisplayAdjuster(taxDisplay, product.taxClassId)
   return {
     product,
     image: images[0] ?? null,
@@ -105,10 +112,11 @@ export function buildCardContext(
     overlays: extra?.overlays ?? [],
     facts: extra?.facts ?? [],
     currencySymbol,
-    prices: priceView(product, pricing?.enabledPriceTypes),
+    prices: priceView(product, pricing?.enabledPriceTypes, adjust),
+    priceSuffix: taxDisplay.display.suffix,
     showRetailPrice: pricing?.showRetailPrice ?? false,
     badge: badgeFor(product, tagSlugs, isOutOfStock(product)),
-    fromPrice: fromPrice?.price ?? null,
+    fromPrice: fromPrice ? (adjust ? adjust(Number(fromPrice.price)).toFixed(2) : fromPrice.price) : null,
     fromPriceVaries: fromPrice?.varies ?? false,
   }
 }
@@ -161,6 +169,7 @@ export function MinimalCard({ product, ctx }: CardItem) {
             {ctx.prices.was && <span className="shop-card-compare">{formatMoney(ctx.prices.was, ctx.currencySymbol)}</span>}
           </>
         )}
+        {ctx.priceSuffix && <span className="shop-card-taxnote">{ctx.priceSuffix}</span>}
       </div>
     </a>
   )

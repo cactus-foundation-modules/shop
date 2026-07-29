@@ -5,6 +5,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
+import { resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { shopProductGridPuckComponent, type ShopProductGridProps } from './ShopProductGrid'
@@ -47,14 +48,18 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
   // carries them into the card so no part re-queries. The "From £…" figure for
   // any variation-priced product is resolved for the whole grid in one go.
   const productIds = products.map((p) => p.id)
-  const [fromPrices, cardExtras] = await Promise.all([
+  const [fromPrices, cardExtras, taxDisplay] = await Promise.all([
     resolveCardFromPrices(productIds),
     resolveShopCardExtras(productIds),
+    resolveTaxDisplay(),
   ])
+  // What the shop prints prices as (net or gross) is a per-shop answer, not a
+  // per-card one, so it is resolved once here and handed to every card.
+  const pricing = { ...config, taxDisplay }
   const items: CardItem[] = await Promise.all(
     products.map(async (product) => {
       const [media, tagIds] = await Promise.all([getProductMedia(product.id), getProductTagIds(product.id)])
-      return { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol, config, fromPrices.get(product.id) ?? null, cardExtras.get(product.id)) }
+      return { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(product.id) ?? null, cardExtras.get(product.id)) }
     }),
   )
 

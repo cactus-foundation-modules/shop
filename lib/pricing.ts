@@ -85,13 +85,28 @@ export type PriceView = {
 }
 
 /** Everything a storefront price block needs, worked out once. Amounts come
- * back as strings so they stay in the same shape formatMoney already takes. */
-export function priceView(product: PricedProduct, enabled?: readonly string[]): PriceView {
+ * back as strings so they stay in the same shape formatMoney already takes.
+ *
+ * `adjust` converts a stored figure into the one the shop prints - adding or
+ * stripping tax per Shop settings > Tax & shipping (lib/tax-display.ts). It is
+ * applied to every figure in the view and to nothing else: effectivePrice above
+ * is the checkout's, and stays the stored number, so changing what shoppers are
+ * SHOWN can never change what they are CHARGED. Omitted means print as stored.
+ * The saving is worked out after conversion, but a flat multiplier cannot move
+ * a percentage, so it reads the same either way. */
+export function priceView(
+  product: PricedProduct,
+  enabled?: readonly string[],
+  adjust?: ((amount: number) => number) | null,
+): PriceView {
+  const convert = adjust ?? ((amount: number) => amount)
   const onSale = isOnSale(product, enabled)
-  const now = effectivePrice(product, enabled)
-  const was = onSale ? toNumber(product.price) : null
+  const now = convert(effectivePrice(product, enabled))
+  const wasStored = onSale ? toNumber(product.price) : null
+  const was = wasStored != null ? convert(wasStored) : null
   const savePct = was != null && was > 0 ? Math.round((1 - now / was) * 100) : null
-  const retail = !enabled || isPriceTypeEnabled(enabled, 'retail') ? toNumber(product.retailPrice) : null
+  const retailStored = !enabled || isPriceTypeEnabled(enabled, 'retail') ? toNumber(product.retailPrice) : null
+  const retail = retailStored != null ? convert(retailStored) : null
   return {
     now: now.toFixed(2),
     was: was != null ? was.toFixed(2) : null,

@@ -44,6 +44,10 @@ export type DetailPartContext = {
   // this rather than product.price, so a product on offer never shows one price
   // on the card and charges another at the till.
   prices: PriceView
+  // Text the shop appends to every price it prints ("inc. VAT"), or '' where it
+  // has set none. The figures in `prices` are already converted to match it -
+  // this is only the wording (Shop settings > Tax & shipping).
+  priceSuffix: string
   // Whether the shop puts its RRP in front of shoppers. The figure itself is on
   // `prices.rrp`, and is null unless it sits above what is being charged.
   showRetailPrice: boolean
@@ -118,6 +122,9 @@ export type CardPartContext = {
   facts: CardFact[]
   currencySymbol: string
   prices: PriceView
+  // As DetailPartContext.priceSuffix - the wording only; `prices` and
+  // `fromPrice` already carry the converted figures.
+  priceSuffix: string
   showRetailPrice: boolean
   badge: CardBadge | null
   // Set when a companion module prices this product itself (shop-variations,

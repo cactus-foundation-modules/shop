@@ -110,6 +110,13 @@ export type ShopDetailPriceSlotProps = SlotBase & {
   savePct: number | null
   showCompare: boolean
   showSave: boolean
+  // Wording the shop appends to every price it prints ("inc. VAT"), or '' where
+  // it has set none - Shop settings > Tax & shipping. `basePrice` and
+  // `compareAtPrice` above are already converted to match it. Optional so a
+  // provider built against the old contract still compiles; one that renders it
+  // keeps the note on screen while its own price resolves, instead of having it
+  // appear a beat later.
+  priceSuffix?: string
 }
 
 export type ShopDetailPurchaseSlotProps = SlotBase & {

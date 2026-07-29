@@ -402,6 +402,7 @@ const priceCss = `
 .spd-price-was{font-size:15px;color:var(--color-text-muted);text-decoration:line-through}
 .spd-save{background:var(--color-success-subtle);color:var(--color-success);font-size:12px;font-weight:600;border-radius:9999px;padding:4px 11px}
 .spd-price-rrp{font-size:13px;color:var(--color-text-muted)}
+.spd-price-taxnote{font-size:13px;color:var(--color-text-muted)}
 `
 
 type PriceProps = { _ctx?: DetailPartContext; showCompare?: string; showSave?: string; showRrp?: string }
@@ -446,6 +447,7 @@ export function ShopDetailPriceRsc(props: PriceProps) {
           savePct={showSave ? prices.savePct : null}
           showCompare={showCompare}
           showSave={showSave}
+          priceSuffix={ctx.priceSuffix}
           classNames={{ block: 'spd-price-block', now: 'spd-price-now', was: 'spd-price-was', save: 'spd-save' }}
         />
       </>
@@ -461,6 +463,7 @@ export function ShopDetailPriceRsc(props: PriceProps) {
         )}
         {showSave && prices.savePct != null && <span className="spd-save">Save {prices.savePct}%</span>}
         {rrp && <span className="spd-price-rrp">RRP {formatMoney(rrp, currencySymbol)}</span>}
+        {ctx.priceSuffix && <span className="spd-price-taxnote">{ctx.priceSuffix}</span>}
       </div>
     </>
   )

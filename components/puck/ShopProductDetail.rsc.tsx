@@ -9,6 +9,7 @@ import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached, resolveSupplierLabel } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { priceView } from '@/modules/shop/lib/pricing'
+import { makeDisplayAdjuster, resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { injectShopProductDetailEmbed } from '@/modules/shop/lib/inject-part-context'
 import { resolveShopDetailProvider, narrowShopDetailSlot, collectLayoutBlockTypes } from '@/modules/shop/lib/detail-slot'
 import { resolveShopDetailTabs } from '@/modules/shop/lib/detail-tabs'
@@ -49,9 +50,10 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   // Extra gallery media and contributed tabs are additive and need only the
   // product, so they resolve alongside everything else rather than behind the
   // template.
-  const [media, config, bp, tags, tagIds, template, provider, galleryExtras, detailTabs, specOverride] = await Promise.all([
+  const [media, config, taxDisplay, bp, tags, tagIds, template, provider, galleryExtras, detailTabs, specOverride] = await Promise.all([
     getProductMedia(product.id),
     getShopConfigCached(),
+    resolveTaxDisplay(),
     getShopBreakpoints(),
     listTags(),
     getProductTagIds(product.id),
@@ -82,8 +84,11 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
 
   // One resolution of the product's price types for the whole page: the parts
   // read it, and the structured data below quotes the same figure, so a search
-  // result can never advertise a price the page does not charge.
-  const prices = priceView(product, config.enabledPriceTypes)
+  // result can never advertise a price the page does not charge. Converted to
+  // whichever side of tax the shop prints on (lib/tax-display.ts) here rather
+  // than per part, so the JSON-LD below quotes the figure on screen - a search
+  // result showing the net price of a shop that quotes gross is a mis-price.
+  const prices = priceView(product, config.enabledPriceTypes, makeDisplayAdjuster(taxDisplay, product.taxClassId))
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -133,6 +138,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     outOfStock,
     lowStock,
     prices,
+    priceSuffix: taxDisplay.display.suffix,
     showRetailPrice: config.showRetailPrice,
     supplierLabel: config.supplierFieldEnabled && config.supplierShowOnFrontend ? resolveSupplierLabel(config) : null,
     slot,

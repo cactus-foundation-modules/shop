@@ -122,9 +122,13 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   const { preview } = props
   const [lines, setLines] = useState<ValidatedLine[]>(preview ? SAMPLE_LINES : [])
   const [currencySymbol, setCurrencySymbol] = useState('£')
-  // Whether the shop's prices already include tax. It decides whether the tax
+  // Whether the prices ON SCREEN already include tax. It decides whether the tax
   // row is a share of the total or an addition to it, so the cart must not guess
-  // at it - until the config lands the tax row simply isn't shown.
+  // at it - until the config lands the tax row simply isn't shown. This is the
+  // DISPLAY mode, not the storage one: the validate route hands back lines
+  // already converted to whichever side of tax the shop prints on, so a shop
+  // storing net prices and quoting gross adds up here exactly like an inclusive
+  // one. See lib/tax-display-shared.ts.
   const [taxMode, setTaxMode] = useState<'INCLUSIVE' | 'EXCLUSIVE'>('INCLUSIVE')
   const [couponCode, setCouponCode] = useState('')
   const [couponMessage, setCouponMessage] = useState<string | null>(null)
@@ -144,7 +148,8 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
       .then((data) => {
         if (cancelled || !data) return
         setCurrencySymbol(data.currencySymbol)
-        if (data.taxMode === 'INCLUSIVE' || data.taxMode === 'EXCLUSIVE') setTaxMode(data.taxMode)
+        const mode = data.priceDisplay?.displayTaxMode ?? data.taxMode
+        if (mode === 'INCLUSIVE' || mode === 'EXCLUSIVE') setTaxMode(mode)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -572,7 +577,13 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   // line no resolver offered a control for, so a plain shop's cart keeps its
   // original shape.
   function renderDelivery(line: ValidatedLine) {
-    if (!line.control || line.control.options.length === 0) return null
+    if (!line.control || line.control.options.length === 0) {
+      // A basket where only some lines are offered a picker still needs the
+      // column on every line, or the quantity/price/remove columns below it
+      // shunt left and the cart stops lining up. Empty, and out of the
+      // accessibility tree - it holds the track open, nothing more.
+      return anyDelivery ? <div className="scl-deliv" aria-hidden="true" /> : null
+    }
     // The summary presentation takes the width the product column leaves rather
     // than being sized to its longest label, so it wants neither the probe nor
     // the max-content rule the dropdown and radio group rely on.
@@ -637,20 +648,49 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
 
   // ---- Line list (rows / cards) ----
   function renderItemsFlow() {
+    // The list's column tracks, shared by every line through subgrid (see
+    // .scl-list in cart-line-css.ts). Only the cart knows which columns the shop
+    // owner has switched on, so it composes the track list and the stylesheet
+    // reads it back out of --scl-cols. A track per column that is actually
+    // rendered, in render order.
+    //
+    // The summary presentation wants the room the product column leaves, so
+    // there the product column is pinned narrow and delivery takes the rest;
+    // with the plainer pickers it is the other way round - delivery is sized to
+    // the longest service label in the basket (capped, so a very long one wraps
+    // rather than pushing the page sideways) and the product column takes the
+    // rest.
+    const summaryDelivery = lines.some((line) => line.control && isSummaryControl(line.control))
+    const cols = [
+      showImage ? `${imageSize}px` : null,
+      anyDelivery && summaryDelivery ? 'minmax(0,260px)' : 'minmax(0,1fr)',
+      anyDelivery ? (summaryDelivery ? 'minmax(0,1fr)' : 'fit-content(45%)') : null,
+      'max-content',                                        // quantity
+      showLinePrice ? 'minmax(70px,max-content)' : null,
+      showRemove ? 'max-content' : null,
+    ].filter(Boolean).join(' ')
+
     return (
-      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: density.gap }}>
+      <ul
+        className="scl-list"
+        // Row gap only: the column gap belongs to the shared grid, so it is set
+        // in the stylesheet where the mobile restack can leave it behind.
+        style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', rowGap: density.gap, ['--scl-cols' as string]: cols }}
+      >
         {lines.map((line) => (
           <li
             key={lineKey(line)}
             className="scl"
             style={{
-              display: 'flex', gap: '1rem', alignItems: 'center', paddingBottom: density.padY,
+              paddingBottom: density.padY,
               ...(layoutStyle === 'cards'
                 ? { background: panelBg, border: '1px solid var(--color-border)', borderRadius: panelRadius, padding: density.padY }
                 : showDivider ? { borderBottom: '1px solid var(--color-border)' } : {}),
             }}
           >
             {renderThumb(line)}
+            {/* The flex basis is inert in the shared grid (a grid item ignores
+                it) and is what sizes this column in the no-subgrid fallback. */}
             <div className="scl-main" style={anyDelivery ? { flex: '0 1 260px', minWidth: 0 } : { flex: 1, minWidth: 0 }}>
               {renderName(line)}
               {renderMeta(line)}

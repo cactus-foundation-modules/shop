@@ -4,6 +4,7 @@ import { resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkou
 import { findShippingZoneForPostcode, listShippingRatesForZone } from '@/modules/shop/lib/db/tax-shipping'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { displayOrderTotals, type PriceDisplay } from '@/modules/shop/lib/tax-display-shared'
 
 const Body = z.object({
   lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1), lineId: z.string().optional(), meta: z.record(z.unknown()).optional() })),
@@ -50,18 +51,31 @@ export async function POST(request: NextRequest) {
 
   const hasPreOrderItems = resolvedLines.some((l) => l.isPreOrder)
 
+  // The rows above the total, converted to whichever side of tax the shop prints
+  // on. The TOTAL is deliberately left alone - it is what the card is charged -
+  // and the conversion only moves money between the rows leading up to it, so
+  // the column still adds up to the penny. See displayOrderTotals.
+  const display: PriceDisplay = {
+    mode: config.priceDisplayTax,
+    storedIncludesTax: config.taxMode === 'INCLUSIVE',
+    suffix: config.priceDisplayTaxSuffix.trim(),
+  }
+  const shownTotals = displayOrderTotals(totals, display)
+
   return NextResponse.json({
-    subtotal: totals.subtotal,
+    subtotal: shownTotals.subtotal,
     // Display-only breakdown of that same subtotal (see OrderTotals) so the
     // review step reads like the basket did rather than folding a delivery
     // service into the goods figure.
-    goodsSubtotal: totals.goodsSubtotal,
-    charges: totals.charges,
+    goodsSubtotal: shownTotals.goodsSubtotal,
+    charges: shownTotals.charges,
     discountAmount: totals.discountAmount,
     shippingAmount: totals.shippingAmount,
     taxAmount: totals.taxAmount,
     total: totals.total,
-    taxMode: totals.taxMode,
+    // What the tax row on screen means, given the figures above it. Not the
+    // shop's storage mode - see lib/tax-display-shared.ts.
+    taxMode: shownTotals.taxIncluded ? 'INCLUSIVE' : 'EXCLUSIVE',
     currencySymbol: config.currencySymbol,
     shippingRates: shippingRates.map((r) => ({ id: r.id, name: r.name, estimatedDays: r.estimatedDays })),
     hasPreOrderItems,

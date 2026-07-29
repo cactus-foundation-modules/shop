@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { getProductsByIds } from '@/modules/shop/lib/db/products'
 import { resolveUpsellsForProducts } from '@/modules/shop/lib/db/recommendations'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
+import { makeDisplayAdjuster, resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 
 const Body = z.object({
   productIds: z.array(z.string().min(1)).min(1).max(50),
@@ -29,11 +30,17 @@ export async function POST(request: NextRequest) {
 
   const upsellsByProduct = await resolveUpsellsForProducts(active)
 
+  // Chips shown beside the basket, so their prices sit next to converted line
+  // prices and have to be on the same side of tax as those.
+  const taxDisplay = await resolveTaxDisplay()
+
   const seen = new Map<string, { id: string; slug: string; name: string; price: string }>()
   for (const product of active) {
     for (const upsell of upsellsByProduct.get(product.id) ?? []) {
       if (inCart.has(upsell.id) || seen.has(upsell.id) || upsell.status !== 'ACTIVE') continue
-      seen.set(upsell.id, { id: upsell.id, slug: upsell.slug, name: upsell.name, price: upsell.price })
+      const adjust = makeDisplayAdjuster(taxDisplay, upsell.taxClassId)
+      const price = adjust ? adjust(Number(upsell.price)).toFixed(2) : upsell.price
+      seen.set(upsell.id, { id: upsell.id, slug: upsell.slug, name: upsell.name, price })
     }
   }
   return NextResponse.json({ products: [...seen.values()] })

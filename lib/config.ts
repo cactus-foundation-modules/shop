@@ -43,6 +43,18 @@ export const ShpConfigSchema = z.object({
   // Tax
   taxMode: z.enum(['INCLUSIVE', 'EXCLUSIVE']).default('INCLUSIVE'),
 
+  // What the STOREFRONT prints, which is a separate decision from what the
+  // figures above mean. A shop keeping its prices net (taxMode EXCLUSIVE) still
+  // has to quote consumers gross, and one keeping them gross may want a trade
+  // catalogue read net. 'AS_ENTERED' prints them exactly as typed, which is what
+  // the shop did before this setting existed - so an upgrade moves no price.
+  // The arithmetic and the reasoning live in lib/tax-display-shared.ts.
+  priceDisplayTax: z.enum(['AS_ENTERED', 'INCLUSIVE', 'EXCLUSIVE']).default('AS_ENTERED'),
+  // Printed after every storefront price ("inc. VAT"). Blank shows nothing.
+  // Switching a whole catalogue to gross prices with no word of explanation
+  // reads to a returning shopper as a price rise, hence the label.
+  priceDisplayTaxSuffix: z.string().default(''),
+
   // Shipping. Plenty of shops post everything for the same money and never want
   // to see a weight box again. Switching this off drops the weight-based option
   // when adding a shipping rate and hides the weight field on products and

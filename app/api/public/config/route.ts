@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getShopConfigCached, getAvailablePaymentMethods, resolveSupplierLabel } from '@/modules/shop/lib/config'
 import { getPaymentMethodLabels } from '@/modules/shop/lib/payments/registry'
+import { displayTaxMode } from '@/modules/shop/lib/tax-display-shared'
 
 // Client-safe config slice the storefront needs (spec 8.1 GET /config).
 export async function GET() {
@@ -12,6 +13,21 @@ export async function GET() {
     currency: config.currency,
     currencySymbol: config.currencySymbol,
     taxMode: config.taxMode,
+    // How the storefront prints prices, as against how they are stored. The
+    // basket's own arithmetic follows `displayTaxMode`: once the lines it is
+    // handed have been converted, a shop printing gross prices adds up exactly
+    // like an INCLUSIVE one whatever `taxMode` says. `suffix` is the wording
+    // ("inc. VAT"). Left inert on a shop that has not switched this on.
+    priceDisplay: {
+      mode: config.priceDisplayTax,
+      storedIncludesTax: config.taxMode === 'INCLUSIVE',
+      suffix: config.priceDisplayTaxSuffix.trim(),
+      displayTaxMode: displayTaxMode({
+        mode: config.priceDisplayTax,
+        storedIncludesTax: config.taxMode === 'INCLUSIVE',
+        suffix: config.priceDisplayTaxSuffix,
+      }),
+    },
     // Which optional price types the owner has switched on. The storefront uses
     // it to know whether an RRP is worth rendering; the admin product editor
     // uses the same slice to decide which price boxes to offer, which is why it

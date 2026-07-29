@@ -87,6 +87,7 @@ ${shopCardMediaCss}
 .shop-card-price{font-size:1em;font-weight:600;color:var(--color-primary)}
 .shop-card-compare{font-size:.8125em;color:var(--color-text-muted);text-decoration:line-through}
 .shop-card-rrp{font-size:.75em;color:var(--color-text-muted)}
+.shop-card-taxnote{font-size:.6875em;color:var(--color-text-muted)}
 .shop-card-blurb{margin:.667em 0 0;padding:0 1.333em;font-size:.75em;color:var(--color-text-muted);line-height:1.4}
 .shop-card-cta{margin-top:auto;padding:.923em 1.231em 0;display:inline-flex;align-items:center;gap:.308em;font-size:.8125em;font-weight:600;color:var(--color-primary)}
 /* The arrow is an <svg> with px width/height attributes, which no stylesheet size
@@ -288,6 +289,10 @@ export function ShopCardPrice(props: CardPriceProps) {
             )}
           </>
         )}
+        {/* Says which side of tax the figure beside it sits on, where the shop
+            has set the wording. The editor canvas has no context and so no
+            note - there is no shop config to read there. */}
+        {ctx?.priceSuffix && <span className="shop-card-taxnote">{ctx.priceSuffix}</span>}
       </div>
     </>
   )
