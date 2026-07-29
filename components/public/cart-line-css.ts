@@ -82,7 +82,6 @@ export const CART_LINE_CSS = `
 .scl-s-date{font-size:0.9375rem;font-weight:700;color:var(--color-primary);white-space:nowrap}
 .scl-s-desc{font-size:0.8438rem;color:var(--color-text-secondary);white-space:nowrap}
 .scl-s-fee{margin-left:auto;font-size:0.9063rem;font-weight:700;white-space:nowrap;color:var(--color-text)}
-.scl-s-only{font-size:0.8125rem;color:var(--color-text-muted);white-space:nowrap}
 .scl-s-below{font-size:0.8125rem;color:var(--color-text-secondary);line-height:1.45}
 .scl-free{color:var(--color-success)}
 .scl-hints{display:flex;flex-wrap:wrap;align-items:center;gap:0.375rem;margin-top:0.5rem}
@@ -94,6 +93,16 @@ export const CART_LINE_CSS = `
 .scl-hint input{position:absolute;opacity:0;pointer-events:none}
 .scl-hint:has(input:focus-visible){outline:2px solid var(--color-primary);outline-offset:2px}
 .scl-hint-fee{margin-left:0.4375rem;color:var(--color-text)}
+
+/* ---- Basket totals: Subtotal / any broken-out charges / tax / Total ----
+   A two-column definition list, so a screen reader reads each label with its
+   own figure rather than a wall of numbers. The label column takes what it
+   needs and the figures line up hard right against each other. The Total is
+   ruled off above and set larger - it is the row a shopper actually reads. */
+.scl-tot{display:grid;grid-template-columns:1fr max-content;gap:0.4375rem 1.5rem;margin:0;font-size:0.9375rem}
+.scl-tot dt{color:var(--color-text-secondary)}
+.scl-tot dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;color:var(--color-text)}
+.scl-tot .scl-tot-t{padding-top:0.5625rem;border-top:1px solid var(--color-border);font-size:1.125rem;font-weight:700;color:var(--color-text)}
 
 /* ---- Quantity stepper pill ---- */
 .scl-qtybox{display:inline-flex;align-items:center;height:42px;overflow:hidden;

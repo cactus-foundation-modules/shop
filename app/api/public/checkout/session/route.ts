@@ -52,6 +52,11 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     subtotal: totals.subtotal,
+    // Display-only breakdown of that same subtotal (see OrderTotals) so the
+    // review step reads like the basket did rather than folding a delivery
+    // service into the goods figure.
+    goodsSubtotal: totals.goodsSubtotal,
+    charges: totals.charges,
     discountAmount: totals.discountAmount,
     shippingAmount: totals.shippingAmount,
     taxAmount: totals.taxAmount,

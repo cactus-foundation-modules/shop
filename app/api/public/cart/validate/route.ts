@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { resolveCartLines } from '@/modules/shop/lib/checkout'
 import { getProductMediaForProducts } from '@/modules/shop/lib/db'
+import { getDefaultTaxZoneId, getTaxRateForZoneAndClass } from '@/modules/shop/lib/db/tax-shipping'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { getCartSummaryNotes } from '@/modules/shop/lib/cart-summary'
 
@@ -22,10 +23,28 @@ export async function POST(request: NextRequest) {
   // parallel with the whole line resolution instead of after it (products that
   // fail to resolve are simply never read out of the map). One query for every
   // line's product, not one per line.
-  const [resolved, mediaByProduct] = await Promise.all([
+  const [resolved, mediaByProduct, defaultZoneId] = await Promise.all([
     resolveCartLines(parsed.data.lines),
     getProductMediaForProducts(parsed.data.lines.map((line) => line.productId)),
+    // The cart quotes tax before an address exists, so it prices against the
+    // shop's default zone (see getDefaultTaxZoneId). The checkout still resolves
+    // the real zone from the delivery postcode and recomputes every figure - the
+    // cart's tax line is a display estimate, never what is charged.
+    getDefaultTaxZoneId(),
   ])
+
+  // One rate lookup per distinct tax class in the cart, not per line: a cart of
+  // twelve chairs on the same class would otherwise fire twelve identical
+  // queries. Rates are keyed by class id ('' standing in for "no class", which
+  // is always zero-rated).
+  const taxRateByClass = new Map<string, number>()
+  if (defaultZoneId) {
+    const classIds = [...new Set(resolved.map((line) => line.product.taxClassId ?? ''))]
+    await Promise.all(classIds.map(async (classId) => {
+      taxRateByClass.set(classId, classId ? await getTaxRateForZoneAndClass(defaultZoneId, classId) : 0)
+    }))
+  }
+
   const lines = resolved.map((line) => {
     const media = mediaByProduct.get(line.product.id) ?? []
     const primary = media.find((m) => m.isPrimary) ?? media[0]
@@ -50,6 +69,15 @@ export async function POST(request: NextRequest) {
       control: line.control ?? null,
       // Optional cart-display retitle (e.g. a variant's base name + options).
       displayTitle: line.displayTitle ?? null,
+      // The slice of this line's money a resolver attributes to a named charge
+      // (a delivery service) rather than to the goods, so the cart can show it
+      // on a line of its own instead of burying it in the subtotal.
+      charges: line.charges ?? null,
+      // This line's tax rate in the shop's default zone, as a fraction. The cart
+      // does the arithmetic client-side so the figure moves the instant a
+      // shopper changes a quantity or a delivery service, rather than waiting on
+      // the next round-trip.
+      taxRate: taxRateByClass.get(line.product.taxClassId ?? '') ?? 0,
     }
   })
 

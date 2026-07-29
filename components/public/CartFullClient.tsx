@@ -23,6 +23,11 @@ type ValidatedLine = {
   lineId?: string | null; lineMeta?: LineMeta | null
   control?: CartLineControl | null
   displayTitle?: CartLineTitle | null
+  // Named slices of this line's money a resolver attributes elsewhere (e.g. a
+  // delivery service), already counted inside lineSubtotal - see CartLineCharge.
+  charges?: { label: string; amount: number }[] | null
+  // This line's tax rate as a fraction, quoted against the shop's default zone.
+  taxRate?: number
 }
 
 // A personalised line is keyed by its lineId so two of the same product with
@@ -55,6 +60,8 @@ export type CartFullOptions = {
   showItemCount?: string
   showSubtotal?: string
   subtotalLabel?: string
+  taxLabel?: string          // 'VAT' by default; the row only appears when there is tax to show
+  totalLabel?: string
   stickyBar?: string          // 'yes' | 'no' - bottom checkout bar once the totals scroll away
   undoRemove?: string         // 'yes' | 'no' - undo toast after a line is removed
   checkoutLabel?: string
@@ -80,6 +87,9 @@ const SAMPLE_LINES: ValidatedLine[] = [
     productId: 'sample-1', name: 'Terracotta Plant Pot - Large / Matte', slug: 'terracotta-plant-pot',
     quantity: 2, unitPrice: 18, lineSubtotal: 36, available: true, availabilityReason: null, isPreOrder: false, imageUrl: null,
     displayTitle: { name: 'Terracotta Plant Pot', secondary: 'Large / Matte' },
+    // A sample charge and tax rate so the editor preview shows the same
+    // Subtotal / Delivery / VAT / Total block the live cart renders.
+    charges: [{ label: 'Delivery', amount: 8 }], taxRate: 0.2,
     control: {
       key: 'shippingTier', label: 'Delivery', value: 'standard', optionsSelfLabelled: true, renderAs: 'summary',
       options: [
@@ -94,7 +104,9 @@ const SAMPLE_LINES: ValidatedLine[] = [
       ],
     },
   },
-  { productId: 'sample-2', name: 'Watering Can (Brass)', slug: 'watering-can-brass', quantity: 1, unitPrice: 42.5, lineSubtotal: 42.5, available: true, availabilityReason: null, isPreOrder: true, imageUrl: null },
+  // Deliberately offered no delivery control: it is the case that used to knock
+  // the columns out of line, so the editor preview shows it holding its place.
+  { productId: 'sample-2', name: 'Watering Can (Brass)', slug: 'watering-can-brass', quantity: 1, unitPrice: 42.5, lineSubtotal: 42.5, available: true, availabilityReason: null, isPreOrder: true, imageUrl: null, taxRate: 0.2 },
 ]
 
 const yes = (v: string | undefined, dflt = true) => (v == null ? dflt : v !== 'no')
@@ -110,6 +122,10 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   const { preview } = props
   const [lines, setLines] = useState<ValidatedLine[]>(preview ? SAMPLE_LINES : [])
   const [currencySymbol, setCurrencySymbol] = useState('£')
+  // Whether the shop's prices already include tax. It decides whether the tax
+  // row is a share of the total or an addition to it, so the cart must not guess
+  // at it - until the config lands the tax row simply isn't shown.
+  const [taxMode, setTaxMode] = useState<'INCLUSIVE' | 'EXCLUSIVE'>('INCLUSIVE')
   const [couponCode, setCouponCode] = useState('')
   const [couponMessage, setCouponMessage] = useState<string | null>(null)
   const [hasLoaded, setHasLoaded] = useState(preview ?? false)
@@ -125,7 +141,11 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
     let cancelled = false
     fetch('/api/m/shop/public/config')
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => { if (!cancelled && data) setCurrencySymbol(data.currencySymbol) })
+      .then((data) => {
+        if (cancelled || !data) return
+        setCurrencySymbol(data.currencySymbol)
+        if (data.taxMode === 'INCLUSIVE' || data.taxMode === 'EXCLUSIVE') setTaxMode(data.taxMode)
+      })
       .catch(() => {})
     return () => { cancelled = true }
   }, [preview])
@@ -206,8 +226,17 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
       const oldOpt = l.control.options.find((o) => o.value === l.control!.value)
       const newOpt = l.control.options.find((o) => o.value === value)
       if (typeof oldOpt?.priceAdjust === 'number' && typeof newOpt?.priceAdjust === 'number') {
-        next.unitPrice = l.unitPrice - oldOpt.priceAdjust + newOpt.priceAdjust
+        const delta = newOpt.priceAdjust - oldOpt.priceAdjust
+        next.unitPrice = l.unitPrice + delta
         next.lineSubtotal = next.unitPrice * l.quantity
+        // The charge this control feeds moves with the line price, or the
+        // Subtotal/Delivery split would disagree with the Total for the moment
+        // between the click and the server's confirmation. Only a single-charge
+        // line can be split optimistically - with two charges there is no way to
+        // know which one the control belongs to, so those wait for the validate.
+        if (l.charges?.length === 1) {
+          next.charges = [{ label: l.charges[0]!.label, amount: l.charges[0]!.amount + delta * l.quantity }]
+        }
       }
       return next
     }))
@@ -237,7 +266,33 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
   const panelRadius = props.borderRadius ?? 12
   const maxWidth = props.maxWidth && props.maxWidth > 0 ? props.maxWidth : undefined
 
-  const subtotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
+  // The basket's money, broken out. Every line's price already has its charges
+  // inside it (a delivery service is priced into the line so the checkout can
+  // never disagree with the cart), so the goods figure is the lot minus what the
+  // resolvers attributed away - never a second sum that could drift from it.
+  // Same-labelled charges from different lines merge into one row, in the order
+  // the basket first mentions them.
+  const lineTotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
+  const chargeRows: { label: string; amount: number }[] = []
+  for (const line of lines) {
+    for (const charge of line.charges ?? []) {
+      const row = chargeRows.find((r) => r.label === charge.label)
+      if (row) row.amount += charge.amount
+      else chargeRows.push({ label: charge.label, amount: charge.amount })
+    }
+  }
+  const chargeTotal = chargeRows.reduce((sum, r) => sum + r.amount, 0)
+  const subtotal = lineTotal - chargeTotal
+  // Tax, per line at that line's own rate, exactly as the checkout works it out
+  // - so the figure the shopper reads here is the one they meet at the end.
+  // Inclusive pricing means the tax is already inside the line price and is
+  // shown for information; exclusive means it is added on top.
+  const taxAmount = lines.reduce((sum, l) => {
+    const rate = l.taxRate ?? 0
+    if (rate <= 0) return sum
+    return sum + (taxMode === 'INCLUSIVE' ? l.lineSubtotal - l.lineSubtotal / (1 + rate) : l.lineSubtotal * rate)
+  }, 0)
+  const total = taxMode === 'INCLUSIVE' ? lineTotal : lineTotal + taxAmount
   const itemCount = lines.reduce((sum, l) => sum + l.quantity, 0)
   const money = (n: number) => `${currencySymbol}${n.toFixed(2)}`
   // A cart with a delivery column has two things to show per line, so the
@@ -387,7 +442,6 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
             {chosen.summary!.priceLabel && (
               <span className={`scl-s-fee${isFreeOption(chosen) ? ' scl-free' : ''}`}>{chosen.summary!.priceLabel}</span>
             )}
-            {alts.length === 0 && <span className="scl-s-only">Only option</span>}
           </span>
           {chosen.description && <span className="scl-s-below">{chosen.description}</span>}
         </span>
@@ -692,10 +746,30 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
           real one is back on screen. */}
       <div ref={footerRef} style={{ display: 'grid', gap: '1rem' }}>
         {showSubtotal && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '1.125rem' }}>
-            <span>{props.subtotalLabel || 'Subtotal'}</span>
-            <span style={{ color: accent }}>{money(subtotal)}</span>
-          </div>
+          <dl className="scl-tot">
+            <dt>{props.subtotalLabel || 'Subtotal'}</dt>
+            <dd>{money(subtotal)}</dd>
+            {/* One row per named charge a resolver broke out of the line prices
+                - a delivery service, say. Shop prints the label it was handed;
+                it never decides what the charge is called. */}
+            {chargeRows.map((row) => (
+              <div key={row.label} style={{ display: 'contents' }}>
+                <dt>{row.label}</dt>
+                <dd>{money(row.amount)}</dd>
+              </div>
+            ))}
+            {taxAmount > 0 && (
+              <>
+                {/* On inclusive pricing the tax is already inside the figures
+                    above, so the row says so rather than reading as another
+                    charge - the column of numbers would not otherwise add up. */}
+                <dt>{props.taxLabel || 'VAT'}{taxMode === 'INCLUSIVE' ? ' (included)' : ''}</dt>
+                <dd>{money(taxAmount)}</dd>
+              </>
+            )}
+            <dt className="scl-tot-t">{props.totalLabel || 'Total'}</dt>
+            <dd className="scl-tot-t" style={{ color: accent }}>{money(total)}</dd>
+          </dl>
         )}
 
         {preview
@@ -703,12 +777,15 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean }) {
           : <Link href="/shop/checkout" style={checkoutStyle}>{props.checkoutLabel || 'Proceed to checkout'}</Link>}
       </div>
 
+      {/* The bar stands in for the footer it replaced, so it carries the same
+          bottom line that footer ends on - the Total, not the goods figure the
+          totals block now opens with. */}
       {!preview && yes(props.stickyBar) && (
         <CartStickyBar
           visible={stickyVisible}
           meta={[`${itemCount} item${itemCount === 1 ? '' : 's'}`, ...notes].join(' · ')}
-          totalLabel={props.subtotalLabel || 'Subtotal'}
-          total={money(subtotal)}
+          totalLabel={props.totalLabel || 'Total'}
+          total={money(total)}
           checkoutLabel={props.checkoutLabel || 'Proceed to checkout'}
           checkoutStyle={{ ...checkoutStyle, display: 'inline-flex', alignItems: 'center', width: 'auto', height: 46, padding: '0 1.625rem' }}
         />

@@ -7,6 +7,15 @@ import { getCheckoutState, isContactAndShippingComplete, subscribeCheckoutState 
 type SessionSummary = {
   subtotal: number; discountAmount: number; shippingAmount: number; taxAmount: number; total: number
   currencySymbol: string; hasPreOrderItems: boolean
+  // The same display-only split the basket shows: the goods on their own, and a
+  // row per named charge a module priced into the lines (a delivery service).
+  // Both optional so a response from an older cached bundle still renders - the
+  // fallback is the old single Subtotal row.
+  goodsSubtotal?: number
+  charges?: { label: string; amount: number }[]
+  // Whether prices already include tax, so the tax row can say which it is
+  // rather than sitting in a column that does not add up.
+  taxMode?: 'INCLUSIVE' | 'EXCLUSIVE'
   // Mirrors the shop's preOrderMixedCartBehaviour setting, returned by the
   // checkout session route. Optional so a response from an older cached bundle
   // still renders; the fallback matches the setting's own default.
@@ -76,6 +85,8 @@ export function CheckoutReviewClient() {
   }
   if (!summary) return error ? <p style={{ color: 'var(--color-danger)' }}>{error}</p> : null
 
+  const money = (n: number) => `${summary.currencySymbol}${n.toFixed(2)}`
+
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Order review</h2>
@@ -85,11 +96,26 @@ export function CheckoutReviewClient() {
         </p>
       )}
       <dl style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.25rem 1rem', margin: 0 }}>
-        <dt>Subtotal</dt><dd style={{ margin: 0 }}>{summary.currencySymbol}{summary.subtotal.toFixed(2)}</dd>
-        {summary.discountAmount > 0 && <><dt>Discount</dt><dd style={{ margin: 0 }}>-{summary.currencySymbol}{summary.discountAmount.toFixed(2)}</dd></>}
-        <dt>Shipping</dt><dd style={{ margin: 0 }}>{summary.currencySymbol}{summary.shippingAmount.toFixed(2)}</dd>
-        <dt>Tax</dt><dd style={{ margin: 0 }}>{summary.currencySymbol}{summary.taxAmount.toFixed(2)}</dd>
-        <dt style={{ fontWeight: 600 }}>Total</dt><dd style={{ margin: 0, fontWeight: 600 }}>{summary.currencySymbol}{summary.total.toFixed(2)}</dd>
+        {/* Goods on their own where the server broke the charges out, else the
+            old single Subtotal - which is the same figure, just undivided. */}
+        <dt>Subtotal</dt>
+        <dd style={{ margin: 0 }}>{money(summary.goodsSubtotal ?? summary.subtotal)}</dd>
+        {(summary.charges ?? []).map((charge) => (
+          <div key={charge.label} style={{ display: 'contents' }}>
+            <dt>{charge.label}</dt><dd style={{ margin: 0 }}>{money(charge.amount)}</dd>
+          </div>
+        ))}
+        {summary.discountAmount > 0 && <><dt>Discount</dt><dd style={{ margin: 0 }}>-{money(summary.discountAmount)}</dd></>}
+        {/* Carriage priced from the delivery postcode - a different thing from a
+            per-item delivery service, and worth its own row only when charged. */}
+        {summary.shippingAmount > 0 && <><dt>Shipping</dt><dd style={{ margin: 0 }}>{money(summary.shippingAmount)}</dd></>}
+        {summary.taxAmount > 0 && (
+          <>
+            <dt>VAT{summary.taxMode === 'INCLUSIVE' ? ' (included)' : ''}</dt>
+            <dd style={{ margin: 0 }}>{money(summary.taxAmount)}</dd>
+          </>
+        )}
+        <dt style={{ fontWeight: 600 }}>Total</dt><dd style={{ margin: 0, fontWeight: 600 }}>{money(summary.total)}</dd>
       </dl>
       {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
       <button

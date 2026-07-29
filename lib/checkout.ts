@@ -7,7 +7,7 @@ import { getCouponByCode, listAutomaticDiscounts } from '@/modules/shop/lib/db/d
 import { countPriorCouponOrdersByEmail } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { effectivePrice } from '@/modules/shop/lib/pricing'
-import { getCartLineResolvers, getCartLineResolverPrefetchers, resolveLineMeta, type CartLineControl, type CartLineTitle } from '@/modules/shop/lib/line-meta'
+import { getCartLineResolvers, getCartLineResolverPrefetchers, resolveLineMeta, type CartLineCharge, type CartLineControl, type CartLineTitle } from '@/modules/shop/lib/line-meta'
 import type { CartLine } from '@/modules/shop/components/public/cart'
 import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 
@@ -37,6 +37,30 @@ export type ResolvedCartLine = {
   // Optional cart-display retitle a resolver offered (e.g. a variant's base name
   // + chosen options). Display-only - the order still snapshots product.name.
   displayTitle?: CartLineTitle | null
+  // How much of this LINE's price (already inside lineSubtotal) a resolver
+  // attributes to a named charge rather than to the goods - see CartLineCharge.
+  // Held here as line totals, not per unit, so every consumer sums the same way.
+  charges?: CartLineCharge[] | null
+}
+
+// Turns a resolver's per-unit charge attributions into this line's own totals,
+// capped so they can never claim more than the line is actually worth. Where the
+// cap bites, the charges are scaled down together rather than one being dropped:
+// every one of them is real money the shopper is paying, and silently losing a
+// whole "Delivery" row reads far worse than a rounded-down one.
+function attributeCharges(
+  charges: CartLineCharge[] | null | undefined,
+  unitPrice: number,
+  quantity: number,
+): CartLineCharge[] | null {
+  if (!charges?.length) return null
+  const lineTotal = Math.max(0, unitPrice * quantity)
+  const raw = charges.map((c) => ({ label: c.label, amount: c.amount * quantity }))
+  const attributed = raw.reduce((sum, c) => sum + c.amount, 0)
+  if (attributed <= 0) return null
+  const scale = attributed > lineTotal ? lineTotal / attributed : 1
+  const scaled = raw.map((c) => ({ label: c.label, amount: round2(c.amount * scale) })).filter((c) => c.amount > 0)
+  return scaled.length ? scaled : null
 }
 
 // Re-checks stock/price/status for every cart line - the only source of
@@ -122,6 +146,12 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       lineMeta: metaResolution.persistMeta,
       control: metaResolution.control ?? null,
       displayTitle: metaResolution.displayTitle ?? null,
+      // Per-unit from the resolver (it prices one unit), multiplied out here so
+      // the line's charge sits on the same footing as its subtotal. Attributing
+      // more than the line costs would make the cart's goods figure go negative,
+      // so the charges are never allowed to outrun the line price - a provider
+      // and a discounted product can otherwise disagree about what is left.
+      charges: attributeCharges(metaResolution.charges, unitPrice, line.quantity),
     }
   }))
   return resolved.filter((line): line is ResolvedCartLine => line !== null)
@@ -218,6 +248,15 @@ export type OrderTotals = {
   taxMode: 'INCLUSIVE' | 'EXCLUSIVE'
   couponId: string | null
   lineItems: Array<ResolvedCartLine & { taxRate: number; taxAmount: number; lineTotal: number }>
+  // Display-only breakdown of `subtotal`, so the checkout can show the same
+  // "Subtotal / Delivery / VAT / Total" the basket does. `charges` are the named
+  // slices resolvers attributed out of the line prices (a delivery service),
+  // summed by label across the order, and `goodsSubtotal` is what is left.
+  // `subtotal` and `total` are deliberately UNCHANGED by this - they are the
+  // figures the order is written and the card is charged with, and nothing here
+  // moves money, it only says what the money already there was for.
+  charges: CartLineCharge[]
+  goodsSubtotal: number
 }
 
 // The full server-side total calculation for a checkout session. Tax is
@@ -267,6 +306,18 @@ export async function resolveOrderTotals(params: {
     ? subtotal - discounts.discountAmount + shippingAmount
     : subtotal - discounts.discountAmount + shippingAmount + taxAmount
 
+  // Same fold the basket does, over the resolved lines: charges merge by label
+  // in the order the order first mentions them.
+  const charges: CartLineCharge[] = []
+  for (const line of params.lines) {
+    for (const charge of line.charges ?? []) {
+      const row = charges.find((c) => c.label === charge.label)
+      if (row) row.amount = round2(row.amount + charge.amount)
+      else charges.push({ label: charge.label, amount: round2(charge.amount) })
+    }
+  }
+  const chargeTotal = charges.reduce((sum, c) => sum + c.amount, 0)
+
   return {
     subtotal: round2(subtotal),
     discountAmount: round2(discounts.discountAmount),
@@ -276,5 +327,7 @@ export async function resolveOrderTotals(params: {
     taxMode: config.taxMode,
     couponId: discounts.couponId,
     lineItems,
+    charges,
+    goodsSubtotal: round2(subtotal - chargeTotal),
   }
 }

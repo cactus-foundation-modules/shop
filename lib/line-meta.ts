@@ -85,6 +85,15 @@ export type CartLineTitle = {
 // own price (server-authoritative - the client never sends a price). An invalid
 // line fails exactly like an out-of-stock line, carrying a human reason. An
 // optional `control` offers a per-line picker the cart renders generically.
+// A named slice of this line's `priceAdjust` that is a separate CHARGE rather
+// than part of what the product itself costs - a delivery service, say. The
+// amount is per unit, exactly like priceAdjust, and is already counted inside
+// it: this only says how much of the adjustment to attribute elsewhere, it
+// never adds money. The cart uses it to show "Subtotal / Delivery / Total"
+// instead of quietly folding a service fee into the goods figure. Shop only
+// ever sums by `label` and prints it - it never interprets what the charge is.
+export type CartLineCharge = { label: string; amount: number }
+
 export type CartLineResolution = {
   valid: boolean
   priceAdjust: number
@@ -93,6 +102,8 @@ export type CartLineResolution = {
   control?: CartLineControl | null
   // Optional cart-display retitle (e.g. split a variant name into base + options).
   displayTitle?: CartLineTitle | null
+  // Optional attribution of part of priceAdjust to a named charge (see above).
+  charges?: CartLineCharge[] | null
 }
 
 export type CartLineResolver = (
@@ -182,7 +193,7 @@ export async function resolveLineMeta(
   meta: Record<string, unknown> | undefined,
   resolvers: CartLineResolver[],
 ): Promise<CartLineResolution> {
-  if (resolvers.length === 0) return { valid: true, priceAdjust: 0, persistMeta: null, control: null, displayTitle: null }
+  if (resolvers.length === 0) return { valid: true, priceAdjust: 0, persistMeta: null, control: null, displayTitle: null, charges: null }
 
   let priceAdjust = 0
   let valid = true
@@ -190,6 +201,10 @@ export async function resolveLineMeta(
   let control: CartLineControl | null = null
   let displayTitle: CartLineTitle | null = null
   const fields = []
+  // Charges accumulate across providers exactly as prices do - two modules can
+  // each attribute a slice of their own adjustment without knowing about each
+  // other, and same-labelled slices simply sum in the cart.
+  const charges: CartLineCharge[] = []
   for (const resolve of resolvers) {
     const res = await resolve(product, meta)
     if (!res.valid) {
@@ -203,6 +218,21 @@ export async function resolveLineMeta(
     if (!control && res.control) control = res.control
     // Likewise the first retitle wins - a line has one name.
     if (!displayTitle && res.displayTitle) displayTitle = res.displayTitle
+    // A charge only ever names money already counted in priceAdjust, so a
+    // negative one would be money invented. Those are dropped rather than
+    // trusted; the caller clamps the total against the line price (see
+    // resolveCartLines), which is the figure that must not be overdrawn.
+    if (res.charges?.length) {
+      for (const c of res.charges) if (c.label && Number.isFinite(c.amount) && c.amount > 0) charges.push({ label: c.label, amount: c.amount })
+    }
   }
-  return { valid, priceAdjust, persistMeta: fields.length ? { fields } : null, reason, control, displayTitle }
+  return {
+    valid,
+    priceAdjust,
+    persistMeta: fields.length ? { fields } : null,
+    reason,
+    control,
+    displayTitle,
+    charges: charges.length ? charges : null,
+  }
 }

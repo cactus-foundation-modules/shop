@@ -49,8 +49,12 @@ export const shopCartFullPuckComponent = {
     couponButtonLabel: { type: 'text' as const, label: 'Coupon button label' },
     // Totals
     showItemCount: { type: 'select' as const, label: 'Show item count', options: yesNo },
-    showSubtotal: { type: 'select' as const, label: 'Show subtotal', options: yesNo },
+    showSubtotal: { type: 'select' as const, label: 'Show totals', options: yesNo },
     subtotalLabel: { type: 'text' as const, label: 'Subtotal label' },
+    // Any delivery or service charge broken out of the line prices gets its own
+    // row, labelled by whichever module priced it - there is nothing to set here.
+    taxLabel: { type: 'text' as const, label: 'Tax label' },
+    totalLabel: { type: 'text' as const, label: 'Total label' },
     stickyBar: { type: 'select' as const, label: 'Sticky checkout bar', options: yesNo },
     undoRemove: { type: 'select' as const, label: 'Undo after removing an item', options: yesNo },
     // Checkout button
@@ -75,7 +79,7 @@ export const shopCartFullPuckComponent = {
     showUnitPrice: 'no', showLinePrice: 'yes', quantityControl: 'stepper',
     showRemove: 'yes', removeStyle: 'icon', showAvailability: 'yes', showPreorder: 'yes',
     showCoupon: 'yes', couponPlaceholder: 'Coupon code', couponButtonLabel: 'Apply',
-    showItemCount: 'yes', showSubtotal: 'yes', subtotalLabel: 'Subtotal',
+    showItemCount: 'yes', showSubtotal: 'yes', subtotalLabel: 'Subtotal', taxLabel: 'VAT', totalLabel: 'Total',
     stickyBar: 'yes', undoRemove: 'yes',
     checkoutLabel: 'Proceed to checkout', checkoutBg: 'var(--color-primary)', checkoutText: 'var(--color-on-primary)',
     checkoutFullWidth: 'yes', checkoutRadius: 8,

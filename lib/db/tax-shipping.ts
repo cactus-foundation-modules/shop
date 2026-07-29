@@ -113,6 +113,19 @@ export async function deleteShippingZone(id: string): Promise<void> {
   await prisma.$executeRaw`DELETE FROM "shp_shipping_zones" WHERE "id" = ${id}`
 }
 
+// The zone to quote tax against before a shopper has given an address - the
+// cart shows a VAT figure long before the checkout knows where the order is
+// going. The catch-all zone (no postcode prefixes listed) is the honest answer
+// where one exists, since that is the zone most orders land in; failing that
+// the first zone alphabetically, which for the overwhelmingly common
+// single-zone shop is simply "the" zone. Null when no zone is set up at all, in
+// which case the cart shows no tax line rather than a made-up one.
+export async function getDefaultTaxZoneId(): Promise<string | null> {
+  const zones = await listShippingZones()
+  if (zones.length === 0) return null
+  return (zones.find((z) => z.postcodes.length === 0) ?? zones[0]!).id
+}
+
 // Longest matching postcode prefix (case-insensitive) wins - a shopper's full
 // postcode is checked against each zone's prefix list. A zone with no prefixes
 // listed is a catch-all, matched only when no other zone's prefix matches -
