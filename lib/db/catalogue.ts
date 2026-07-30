@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
-import type { ShpCategory, ShpTag, ShpCollection } from '@/modules/shop/lib/types'
+import type { PuckData, ShpCategory, ShpTag, ShpCollection } from '@/modules/shop/lib/types'
 
 // ---------------------------------------------------------------------------
 // Categories
@@ -12,6 +12,10 @@ function mapCategory(r: Record<string, unknown>): ShpCategory {
     name: r.name as string,
     slug: r.slug as string,
     description: (r.description as string | null) ?? null,
+    shortDescription: (r.short_description as string | null) ?? null,
+    // Absent from the listCategories projection on purpose - see below.
+    descriptionPuck: (r.description_puck as PuckData | null) ?? null,
+    imageUrl: (r.image_url as string | null) ?? null,
     parentId: (r.parent_id as string | null) ?? null,
     position: r.position as number,
     productDisplayMode: (r.product_display_mode as 'rollup' | 'exact' | null) ?? null,
@@ -23,9 +27,29 @@ function mapCategory(r: Record<string, unknown>): ShpCategory {
   }
 }
 
-export async function listCategories(): Promise<ShpCategory[]> {
-  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_categories" ORDER BY "position" ASC, "name" ASC`
-  return rows.map(mapCategory)
+// Every column except description_puck. A designed description is a whole
+// builder document, and the surfaces that list categories (the admin tree, the
+// category-card tiles, the public categories API) never render one - they link
+// to it or show the short blurb. Selecting it here would pull every category's
+// document on every listing. Rows therefore come back with descriptionPuck null;
+// fetch the single category by id/slug when the document itself is wanted.
+const CATEGORY_LIST_COLUMNS = Prisma.sql`
+  "id", "name", "slug", "description", "short_description", "image_url",
+  "parent_id", "position", "product_display_mode",
+  "meta_title", "meta_description", "og_image_id", "created_at", "updated_at"
+`
+
+// True when this category has a designed description saved, so the admin can
+// show which categories have one without fetching any of the documents.
+export type ShpCategoryListRow = ShpCategory & { hasDesignedDescription: boolean }
+
+export async function listCategories(): Promise<ShpCategoryListRow[]> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT ${CATEGORY_LIST_COLUMNS}, ("description_puck" IS NOT NULL) AS has_designed_description
+    FROM "shp_categories"
+    ORDER BY "position" ASC, "name" ASC
+  `
+  return rows.map((r) => ({ ...mapCategory(r), hasDesignedDescription: r.has_designed_description === true }))
 }
 
 export async function getCategoryById(id: string): Promise<ShpCategory | null> {
@@ -39,12 +63,16 @@ export async function getCategoryBySlug(slug: string): Promise<ShpCategory | nul
 }
 
 export async function createCategory(data: {
-  name: string; slug: string; description?: string | null; parentId?: string | null
+  name: string; slug: string; description?: string | null; shortDescription?: string | null
+  imageUrl?: string | null; parentId?: string | null
   productDisplayMode?: 'rollup' | 'exact' | null
 }): Promise<{ id: string }> {
   const rows = await prisma.$queryRaw<[{ id: string }]>`
-    INSERT INTO "shp_categories" ("name", "slug", "description", "parent_id", "product_display_mode")
-    VALUES (${data.name}, ${data.slug}, ${data.description ?? null}, ${data.parentId ?? null}, ${data.productDisplayMode ?? null})
+    INSERT INTO "shp_categories" ("name", "slug", "description", "short_description", "image_url", "parent_id", "product_display_mode")
+    VALUES (
+      ${data.name}, ${data.slug}, ${data.description ?? null}, ${data.shortDescription ?? null},
+      ${data.imageUrl ?? null}, ${data.parentId ?? null}, ${data.productDisplayMode ?? null}
+    )
     RETURNING "id"
   `
   return rows[0]
@@ -52,6 +80,7 @@ export async function createCategory(data: {
 
 export async function updateCategory(id: string, fields: Partial<{
   name: string; slug: string; description: string | null; parentId: string | null; position: number
+  shortDescription: string | null; descriptionPuck: PuckData | null; imageUrl: string | null
   productDisplayMode: 'rollup' | 'exact' | null
   metaTitle: string | null; metaDescription: string | null; ogImageId: string | null
 }>): Promise<void> {
@@ -59,6 +88,14 @@ export async function updateCategory(id: string, fields: Partial<{
   if (fields.name !== undefined) sets.push(Prisma.sql`"name" = ${fields.name}`)
   if (fields.slug !== undefined) sets.push(Prisma.sql`"slug" = ${fields.slug}`)
   if (fields.description !== undefined) sets.push(Prisma.sql`"description" = ${fields.description}`)
+  if (fields.shortDescription !== undefined) sets.push(Prisma.sql`"short_description" = ${fields.shortDescription}`)
+  if (fields.imageUrl !== undefined) sets.push(Prisma.sql`"image_url" = ${fields.imageUrl}`)
+  // jsonb, so the parameter needs an explicit cast - a bare string parameter
+  // lands as text and Postgres refuses the assignment. Same shape as
+  // updateProduct's descriptionPuck branch.
+  if (fields.descriptionPuck !== undefined) {
+    sets.push(Prisma.sql`"description_puck" = ${fields.descriptionPuck ? JSON.stringify(fields.descriptionPuck) : null}::jsonb`)
+  }
   if (fields.parentId !== undefined) sets.push(Prisma.sql`"parent_id" = ${fields.parentId}`)
   if (fields.position !== undefined) sets.push(Prisma.sql`"position" = ${fields.position}`)
   if (fields.productDisplayMode !== undefined) sets.push(Prisma.sql`"product_display_mode" = ${fields.productDisplayMode}`)

@@ -47,9 +47,13 @@ export async function ShopCategoryHeaderRsc(props: ShopCategoryHeaderProps) {
       )}
       <span style={EYEBROW}>The range</span>
       <h1 style={HEADING}>{category.name}</h1>
-      {category.description && (
+      {/* The header takes the short blurb, leaving the long description to the
+          Category Description block (or the fallback page's own render of it).
+          Falling back to `description` keeps every category that was written up
+          before short descriptions existed looking exactly as it did. */}
+      {(category.shortDescription || category.description) && (
         <p style={{ margin: '0.75rem 0 0', fontSize: '1.0625rem', maxWidth: '60ch', color: 'var(--color-text-muted)' }}>
-          {category.description}
+          {category.shortDescription || category.description}
         </p>
       )}
     </div>

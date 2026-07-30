@@ -105,6 +105,18 @@ export type ShpCategory = {
   name: string
   slug: string
   description: string | null
+  // The one-liner printed on this category's card. Falls back to `description`
+  // wherever a card has nothing shorter to show.
+  shortDescription: string | null
+  // Opt-in designed description, the category twin of ShpProduct.descriptionPuck
+  // (shp_categories.description_puck). NULL means the plain-text box wins.
+  // Only ever populated by the single-category fetches - listCategories leaves
+  // it null on purpose so a page listing sub-categories does not drag every
+  // sibling's whole builder document across the wire.
+  descriptionPuck: PuckData | null
+  // The category's picture, held as the media item's url verbatim (see
+  // shp_categories.image_url).
+  imageUrl: string | null
   parentId: string | null
   position: number
   // NULL = inherit the shop-wide default; 'rollup' = list descendant products

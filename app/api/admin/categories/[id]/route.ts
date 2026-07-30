@@ -7,6 +7,11 @@ import { slugify, ensureUniqueCategorySlug } from '@/modules/shop/lib/slug'
 const Body = z.object({
   name: z.string().min(1).optional(),
   description: z.string().nullable().optional(),
+  shortDescription: z.string().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
+  // The designed description's whole builder document, saved on its own by the
+  // full-screen category description builder. Shape-checked by Puck, not here.
+  descriptionPuck: z.any().nullable().optional(),
   parentId: z.string().nullable().optional(),
   productDisplayMode: z.enum(['rollup', 'exact']).nullable().optional(),
   position: z.number().int().optional(),

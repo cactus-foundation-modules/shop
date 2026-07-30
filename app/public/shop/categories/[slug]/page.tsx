@@ -15,6 +15,8 @@ import { resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
+import { ShopCategoryCards } from '@/modules/shop/components/public/ShopCategoryCards'
+import { ShopCategoryDescriptionBody } from '@/modules/shop/components/public/ShopCategoryDescriptionBody'
 import type { PuckData } from '@/modules/shop/lib/types'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 
@@ -23,7 +25,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if ((await getShopGate()).blocked) return {}
   const category = await getCategoryBySlug(slug)
   if (!category) return {}
-  return { title: category.metaTitle || category.name, description: category.metaDescription || category.description || undefined }
+  // The short blurb before the long one: a meta description is a one-liner, and
+  // the long description may now be a builder document with no plain text at all.
+  return {
+    title: category.metaTitle || category.name,
+    description: category.metaDescription || category.shortDescription || category.description || undefined,
+  }
 }
 
 export default async function ShopCategoryPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -105,21 +112,26 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
       </nav>
 
       <h1 style={{ fontSize: '1.75rem' }}>{category.name}</h1>
-      {category.description && <p style={{ color: 'var(--color-text-muted)' }}>{category.description}</p>}
+      {/* Only the short blurb sits with the heading. The long description -
+          designed or plain - gets its own block below the sub-categories, so
+          whichever form it takes it never gets printed twice. */}
+      {category.shortDescription && (
+        <p style={{ color: 'var(--color-text-muted)' }}>{category.shortDescription}</p>
+      )}
 
+      {/* Sub-categories first, as cards. A parent category rolling every
+          descendant's products up into one list buries the structure the shop
+          owner built; leading with the sub-categories puts it back. */}
       {children.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '1rem' }}>
-          {children.map((c) => (
-            <a
-              key={c.id}
-              href={`/shop/categories/${c.slug}`}
-              style={{ textDecoration: 'none', color: 'inherit', border: '1px solid var(--color-border)', borderRadius: 999, padding: '0.375rem 0.875rem', fontSize: '0.875rem' }}
-            >
-              {c.name}
-            </a>
-          ))}
+        <div style={{ marginTop: '1.5rem' }}>
+          <ShopCategoryCards categories={children} columns={3} breakpoints={bp} />
         </div>
       )}
+
+      <ShopCategoryDescriptionBody
+        category={category}
+        style={{ marginTop: '1.5rem' }}
+      />
 
       <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
       <div className="shop-grid" style={{ ['--shop-cols' as string]: '3', marginTop: '1.5rem' } as React.CSSProperties}>

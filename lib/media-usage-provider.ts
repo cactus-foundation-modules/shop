@@ -24,6 +24,8 @@ export async function shopMediaUsageProvider(): Promise<string[]> {
     SELECT "og_image_id" AS ref FROM "shp_collections" WHERE "og_image_id" IS NOT NULL
     UNION ALL
     SELECT "og_image_id" AS ref FROM "shp_categories" WHERE "og_image_id" IS NOT NULL
+    UNION ALL
+    SELECT "image_url" AS ref FROM "shp_categories" WHERE "image_url" IS NOT NULL
   `
   return rows.map((r) => r.ref).filter((r): r is string => !!r)
 }

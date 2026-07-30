@@ -113,6 +113,21 @@ export function shopCategoryStarters() {
       },
     },
     {
+      id: 'starter-shop-category-subcategories',
+      name: 'Sub-categories First',
+      description: 'Header, then this category\'s sub-categories as cards, its description, and finally the products - built for a category that is really a set of smaller ones.',
+      data: {
+        content: [
+          block('ShopCategoryHeader', 'header-1'),
+          block('ShopCategoryBrowser', 'subcategories-1', { parentCategorySlug: '', columns: 3, ctaLabel: 'Browse' }),
+          block('ShopCategoryDescription', 'description-1'),
+          block('ShopProductGrid', 'grid-1', { columns: 3, limit: 12, showFilters: 'yes' }),
+        ],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+    {
       id: 'starter-shop-category-compact',
       name: 'Compact List',
       description: 'Narrow boxed header, dense product grid, no distractions.',

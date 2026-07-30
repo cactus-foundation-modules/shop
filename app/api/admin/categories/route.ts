@@ -14,6 +14,8 @@ export async function GET() {
 const Body = z.object({
   name: z.string().min(1),
   description: z.string().nullable().optional(),
+  shortDescription: z.string().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
   parentId: z.string().nullable().optional(),
   productDisplayMode: z.enum(['rollup', 'exact']).nullable().optional(),
 })

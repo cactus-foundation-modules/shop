@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState, type CSSProperties, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
+import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { useConfirm, usePrompt, useAlert } from '@/modules/shop/components/admin/dialogs'
+import { MediaPickerModal } from '@/modules/shop/components/admin/MediaPickerModal'
 
 type Category = {
   id: string
@@ -10,6 +12,13 @@ type Category = {
   parentId: string | null
   productDisplayMode: 'rollup' | 'exact' | null
   position: number
+  // The card content a category carries: the blurb printed on its tile, the long
+  // plain-text description on its own page, and its picture. `description_puck`
+  // itself is never listed (whole builder documents), only whether one exists.
+  shortDescription: string | null
+  description: string | null
+  imageUrl: string | null
+  hasDesignedDescription: boolean
 }
 
 type DisplayModeChoice = '' | 'rollup' | 'exact'
@@ -42,6 +51,7 @@ function highlight(text: string, query: string): ReactNode {
 }
 
 export function CategoriesScreen() {
+  const adminPath = useAdminPath()
   const [categories, setCategories] = useState<Category[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [search, setSearch] = useState('')
@@ -56,6 +66,10 @@ export function CategoriesScreen() {
   const [editName, setEditName] = useState('')
   const [editParentId, setEditParentId] = useState<string>('')
   const [editMode, setEditMode] = useState<DisplayModeChoice>('')
+  const [editShortDescription, setEditShortDescription] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editImageUrl, setEditImageUrl] = useState<string | null>(null)
+  const [pickingImage, setPickingImage] = useState(false)
   const [confirm, confirmNode] = useConfirm()
   const [promptText, promptNode] = usePrompt()
   const [showAlert, alertNode] = useAlert()
@@ -154,10 +168,15 @@ export function CategoriesScreen() {
     setEditName(cat.name)
     setEditParentId(cat.parentId ?? '')
     setEditMode(cat.productDisplayMode ?? '')
+    setEditShortDescription(cat.shortDescription ?? '')
+    setEditDescription(cat.description ?? '')
+    setEditImageUrl(cat.imageUrl)
   }
 
-  // One save covers rename, re-parent and display mode - the row's whole edit
-  // panel. The slug is only regenerated when the name actually changed.
+  // One save covers rename, re-parent, display mode and the card content - the
+  // row's whole edit panel. The designed description is deliberately NOT in here:
+  // it is edited in its own full-screen builder, which saves itself.
+  // The slug is only regenerated when the name actually changed.
   async function saveEditor(cat: Category) {
     const name = editName.trim()
     if (!name) { await showAlert('A category needs a name.', 'Name required'); return }
@@ -168,6 +187,9 @@ export function CategoriesScreen() {
         regenerateSlug: name !== cat.name,
         parentId: editParentId || null,
         productDisplayMode: editMode || null,
+        shortDescription: editShortDescription.trim() || null,
+        description: editDescription.trim() || null,
+        imageUrl: editImageUrl,
       }),
     })
     if (!res.ok) { await showAlert((await res.json()).error ?? 'Could not save this category.', 'Save failed'); return }
@@ -414,6 +436,19 @@ export function CategoriesScreen() {
                       {depth > 0 ? '·' : ''}
                     </span>
                   )}
+                  {/* The category's own picture, at row scale - the same one its
+                      card shows on the storefront, so a category with no image
+                      is obvious at a glance. */}
+                  {cat.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={cat.imageUrl}
+                      alt=""
+                      style={{ width: 24, height: 24, borderRadius: 4, objectFit: 'cover', flexShrink: 0, border: '1px solid var(--color-border)' }}
+                    />
+                  ) : (
+                    <span aria-hidden style={{ width: 24, height: 24, borderRadius: 4, flexShrink: 0, background: 'var(--color-bg-subtle)', border: '1px dashed var(--color-border)' }} />
+                  )}
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: depth === 0 ? 600 : 400 }}>
                     {highlight(cat.name, search.trim())}
                   </span>
@@ -431,6 +466,11 @@ export function CategoriesScreen() {
                   )}
                   {cat.productDisplayMode && (
                     <span className="badge badge-primary" style={{ fontSize: '0.6875rem' }}>{MODE_LABEL[cat.productDisplayMode]}</span>
+                  )}
+                  {cat.hasDesignedDescription && (
+                    <span className="badge badge-default" style={{ fontSize: '0.6875rem' }} title="This category has a laid-out description built in the page builder">
+                      Designed
+                    </span>
                   )}
                 </span>
                 <span style={{ display: 'flex', gap: '0.125rem', alignItems: 'center', flexShrink: 0 }}>
@@ -472,6 +512,77 @@ export function CategoriesScreen() {
                       <option value="exact">Only products filed directly here</option>
                     </select>
                   </label>
+
+                  {/* The card content. A category card is the tile shoppers see
+                      listed on the parent category's page, so it wants a picture
+                      and a line of copy - the same two things a product card has. */}
+                  <label style={{ display: 'grid', gap: '0.25rem' }}>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Short description (shown on this category&apos;s card)</span>
+                    <input
+                      value={editShortDescription}
+                      onChange={(e) => setEditShortDescription(e.target.value)}
+                      placeholder="One line, e.g. Height-adjustable desks for every office"
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <div style={{ display: 'grid', gap: '0.25rem' }}>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Picture (shown on this category&apos;s card)</span>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                      {editImageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={editImageUrl}
+                          alt=""
+                          style={{ width: 64, height: 64, borderRadius: 6, objectFit: 'cover', border: '1px solid var(--color-border)' }}
+                        />
+                      ) : (
+                        <span aria-hidden style={{ width: 64, height: 64, borderRadius: 6, background: 'var(--color-bg-subtle)', border: '1px dashed var(--color-border)' }} />
+                      )}
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPickingImage(true)}>
+                        {editImageUrl ? 'Change picture' : 'Choose picture'}
+                      </button>
+                      {editImageUrl && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditImageUrl(null)}>Remove</button>
+                      )}
+                    </div>
+                  </div>
+
+                  <label style={{ display: 'grid', gap: '0.25rem' }}>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Full description (shown on this category&apos;s own page)</span>
+                    <textarea
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                      rows={4}
+                      placeholder="A paragraph or two about this part of the range."
+                      style={{ ...inputStyle, resize: 'vertical' }}
+                    />
+                  </label>
+
+                  {/* The laid-out version, built in its own full-screen page
+                      builder. It wins over the plain box above whenever it has
+                      anything in it, exactly as a product's designed description
+                      does - so the plain text stays the easy option and this is
+                      the opt-in. */}
+                  <div style={{ display: 'grid', gap: '0.25rem' }}>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Designed description</span>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <a
+                        href={`/${adminPath}/m/shop/categories/${cat.id}/description`}
+                        target="_blank"
+                        rel="noopener"
+                        className="btn btn-secondary btn-sm"
+                      >
+                        {cat.hasDesignedDescription ? 'Edit the design' : 'Design this description'}
+                      </a>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                        {cat.hasDesignedDescription
+                          ? 'Opens in a new tab. The designed version is what shoppers see.'
+                          : 'Opens the page builder in a new tab. Anything you build there replaces the plain text above.'}
+                      </span>
+                    </div>
+                  </div>
+
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button onClick={() => saveEditor(cat)} className="btn btn-primary btn-sm">Save</button>
                     <button onClick={() => setEditingId(null)} className="btn btn-secondary btn-sm">Cancel</button>
@@ -482,6 +593,18 @@ export function CategoriesScreen() {
           )
         })}
       </ul>
+      {pickingImage && (
+        <MediaPickerModal
+          onClose={() => setPickingImage(false)}
+          onAdd={(items) => {
+            // A category has one picture, so only the first pick counts even if
+            // the library let several be ticked.
+            const first = items[0]
+            if (first) setEditImageUrl(first.url)
+            setPickingImage(false)
+          }}
+        />
+      )}
       {confirmNode}
       {promptNode}
       {alertNode}

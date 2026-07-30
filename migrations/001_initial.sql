@@ -212,7 +212,19 @@ CREATE TABLE IF NOT EXISTS "shp_categories" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     "name" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
+    -- The long plain-text description, shown on the category's own page.
     "description" TEXT,
+    -- The one-liner shown on a category card (the tiles a parent category lists
+    -- its sub-categories with), mirroring shp_products.short_description.
+    "short_description" TEXT,
+    -- Opt-in designed description: a Puck content-block document that renders in
+    -- place of the plain-text "description" on the category page when present.
+    -- Mirrors shp_products.description_puck. See 012_category_content.sql.
+    "description_puck" JSONB,
+    -- The category's own picture, used on its card. Holds the media item's url
+    -- verbatim (like shp_product_media.url), so a server render needs no lookup
+    -- and lib/media-reference-rewriter.ts repoints it when a blob moves.
+    "image_url" TEXT,
     "parent_id" TEXT,
     "position" INTEGER NOT NULL DEFAULT 0,
     -- Per-category product listing mode for nested categories. NULL = inherit

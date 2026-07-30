@@ -1,6 +1,6 @@
 import type { PuckData } from '@/modules/shop/lib/types'
 
-const CATEGORY_CONTEXT_BLOCKS = new Set(['ShopCategoryHeader', 'ShopProductGrid'])
+const CATEGORY_CONTEXT_BLOCKS = new Set(['ShopCategoryHeader', 'ShopCategoryDescription', 'ShopProductGrid'])
 
 type CategoryContext = { categorySlug: string }
 
