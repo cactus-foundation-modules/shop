@@ -22,6 +22,9 @@ export const productEditorCss = `
 .spe-save{display:flex;flex-direction:column;gap:0.5rem}
 .spe-save-btn{width:100%;justify-content:center}
 .spe-save-note{margin:0;font-size:0.75rem;color:var(--color-text-muted);text-align:center}
+/* A draft or archived product has no shop page yet, so its Preview reads as
+   unavailable rather than sending anyone to a 404. */
+.spe-preview-off{opacity:0.5;cursor:default}
 .spe-dirty-list{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:0.25rem;justify-content:center}
 .spe-dirty-chip{font-size:0.6875rem;padding:0.0625rem 0.375rem;border-radius:var(--radius-full);background:var(--color-warning-subtle);color:var(--color-warning);border:1px solid var(--color-warning-border)}
 

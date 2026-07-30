@@ -478,17 +478,6 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
                 <option value="ACTIVE">Active, on sale</option>
                 <option value="ARCHIVED">Archived, hidden and unbuyable</option>
               </select>
-              {f.status === 'ACTIVE' && f.slug && (
-                <a
-                  className="btn btn-secondary btn-sm"
-                  style={{ width: '100%', justifyContent: 'center', marginTop: '0.5rem' }}
-                  href={`/shop/products/${f.slug}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  View on the shop ↗
-                </a>
-              )}
             </div>
 
             <div className="spe-card">
@@ -514,6 +503,32 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
               <button className="btn btn-primary spe-save-btn" onClick={() => void save()} disabled={saving || !dirty}>
                 {saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
               </button>
+
+              {/* Preview sits under Save because that is the order you use them in:
+                  save, then look. Only an active product has a shop page, so a
+                  draft gets the button greyed rather than a link to a 404. */}
+              {f.status === 'ACTIVE' && f.slug ? (
+                <a
+                  className="btn btn-secondary spe-save-btn"
+                  href={`/shop/products/${f.slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Open this product on the shop in a new tab"
+                >
+                  Preview ↗
+                </a>
+              ) : (
+                <span
+                  className="btn btn-secondary spe-save-btn spe-preview-off"
+                  aria-disabled="true"
+                  title="Only active products have a shop page to preview."
+                >
+                  Preview ↗
+                </span>
+              )}
+              {dirty && f.status === 'ACTIVE' && f.slug && (
+                <p className="spe-save-note">Preview shows the last saved version.</p>
+              )}
 
               {saveError && <p className="spe-error" role="alert"><span aria-hidden>⚠</span>{saveError}</p>}
 

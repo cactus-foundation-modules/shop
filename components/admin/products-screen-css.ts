@@ -47,7 +47,11 @@ export const productsScreenCss = `
 .sps-muted{color:var(--color-text-muted)}
 
 /* --- Row actions kebab -------------------------------------------------- */
-.sps-actions{width:44px;text-align:right}
+.sps-actions{width:1%;text-align:right;white-space:nowrap}
+.sps-actions-row{display:inline-flex;align-items:center;gap:0.375rem;justify-content:flex-end}
+/* A draft or archived product has no shop page yet, so its Preview reads as
+   unavailable rather than sending anyone to a 404. */
+.sps-preview-off{opacity:0.5;cursor:default}
 .sps-kebab{appearance:none;border:1px solid transparent;background:transparent;color:var(--color-text-secondary);width:30px;height:30px;border-radius:var(--radius-md);cursor:pointer;font-size:1.1rem;line-height:1;display:inline-flex;align-items:center;justify-content:center}
 .sps-kebab:hover{background:var(--color-bg-subtle);border-color:var(--color-border)}
 .sps-kebab:focus-visible{outline:2px solid var(--color-border-focus);outline-offset:1px}

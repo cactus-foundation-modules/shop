@@ -392,7 +392,28 @@ export function ProductsScreen({ toolbarExtras, productsTabs = [], initialTab }:
                         : <span className="sps-muted">—</span>}
                     </td>
                     <td className="sps-actions">
-                      <button className="sps-kebab" aria-label={`Actions for ${p.name}`} aria-haspopup="menu" onClick={(e) => openMenu(e, p.id)}>⋯</button>
+                      <div className="sps-actions-row">
+                        {p.status === 'ACTIVE' ? (
+                          <a
+                            className="btn btn-secondary btn-sm"
+                            href={`/shop/products/${p.slug}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={`Open ${p.name} on the shop in a new tab`}
+                          >
+                            Preview ↗
+                          </a>
+                        ) : (
+                          <span
+                            className="btn btn-secondary btn-sm sps-preview-off"
+                            aria-disabled="true"
+                            title="Only active products have a shop page to preview."
+                          >
+                            Preview ↗
+                          </span>
+                        )}
+                        <button className="sps-kebab" aria-label={`Actions for ${p.name}`} aria-haspopup="menu" onClick={(e) => openMenu(e, p.id)}>⋯</button>
+                      </div>
                     </td>
                   </tr>
                 )
