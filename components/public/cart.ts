@@ -55,21 +55,32 @@ function persist(lines: CartLine[]): void {
 // Plain add: addToCart(id, qty). Personalised add: pass { meta } (and optionally
 // a caller-computed stable lineId so re-adding an identical selection merges
 // rather than stacking). Personalised lines never merge into plain ones.
+//
+// The line just added always ends up first in the cart, whether it was new or an
+// existing line taking on more quantity - a shopper who adds something wants to
+// see it, not scroll a long basket hunting for what changed.
 export function addToCart(
   productId: string,
   quantity: number,
   opts?: { lineId?: string; meta?: Record<string, unknown> },
 ): void {
   const lines = getCart()
-  if (opts?.meta || opts?.lineId) {
-    const lineId = opts.lineId
-    const existing = lineId ? lines.find((l) => l.lineId === lineId) : undefined
-    if (existing) existing.quantity += quantity
-    else lines.push({ productId, quantity, lineId: lineId ?? newLineId(), meta: opts.meta })
+  const personalised = Boolean(opts?.meta || opts?.lineId)
+  const lineId = opts?.lineId
+  const existingIndex = personalised
+    ? lineId
+      ? lines.findIndex((l) => l.lineId === lineId)
+      : -1
+    : lines.findIndex((l) => l.productId === productId && !l.lineId)
+  const existing = existingIndex >= 0 ? lines[existingIndex] : undefined
+  if (existing) {
+    lines.splice(existingIndex, 1)
+    existing.quantity += quantity
+    lines.unshift(existing)
+  } else if (personalised) {
+    lines.unshift({ productId, quantity, lineId: lineId ?? newLineId(), meta: opts?.meta })
   } else {
-    const existing = lines.find((l) => l.productId === productId && !l.lineId)
-    if (existing) existing.quantity += quantity
-    else lines.push({ productId, quantity })
+    lines.unshift({ productId, quantity })
   }
   persist(lines)
   window.dispatchEvent(new CustomEvent(CART_ADD_EVENT))
