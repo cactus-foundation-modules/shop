@@ -85,6 +85,46 @@ export const CART_DRAWER_CSS = `
 .scd-deliv select{max-width:100%}
 .scd-deliv label,.scd-deliv legend{min-width:0}
 .scd-deliv label input{flex:0 0 auto}
+
+/* ---- The delivery picker, panel-sized ----
+   Same card as the cart page (cart-line-css.ts), its content set 10% smaller
+   here: it has ~420px of panel to say what it says in a full cart row's worth of
+   words. Written out rather than scaled with a single em because the shared
+   card sizes every part of itself in rem, which would ignore a parent font size.
+   Each figure below is exactly 0.9 x its cart-page value. */
+.scd-deliv .scl-sum{gap:0.7875rem;padding:0.675rem 0.9rem}
+.scd-deliv .scl-tick{width:17px;height:17px}
+.scd-deliv .scl-s-below{font-size:0.7313rem}
+.scd-deliv .scl-hints{gap:0.3375rem;margin-top:0.45rem}
+.scd-deliv .scl-hints-t{font-size:0.7313rem}
+.scd-deliv .scl-hint{font-size:0.7313rem;padding:0.225rem 0.5625rem}
+.scd-deliv .scl-hint-fee{margin-left:0.3938rem}
+
+/* Two lines, not one. The promised date owns the top line; the service and its
+   price sit together at the foot of the card, the price beside the service
+   rather than across the card from it (see summaryLayout='stacked' in
+   CartLineControlView). Both rows are one unwrappable line inside a clipped box,
+   which is what makes scrollWidth past clientWidth mean "wider than the card" -
+   the measurement the fitter in fit-line.ts scales the row down by. The rows
+   carry the font size and their parts are sized in em, so scaling a row scales
+   everything on it. Nothing may shrink either: a flex child that gives way
+   would keep the row's own scrollWidth inside its box and the row would measure
+   as fitting while its text was quietly cut off. */
+.scd-deliv .scl-s-top,.scd-deliv .scl-s-foot{display:flex;align-items:baseline;gap:0.5rem;min-width:0;
+  overflow:hidden;white-space:nowrap;font-size:0.8438rem}
+.scd-deliv .scl-s-top > *,.scd-deliv .scl-s-foot > *{flex:0 0 auto;min-width:0}
+/* The mobile rules on the shared card let these wrap; a panel is phone-narrow at
+   every width, and wrapping is what the fitter exists to avoid. */
+.scd-deliv .scl-s-date,.scd-deliv .scl-s-desc{white-space:nowrap}
+.scd-deliv .scl-s-date{font-size:1em}
+.scd-deliv .scl-s-desc{font-size:0.9em}
+.scd-deliv .scl-s-foot .scl-s-fee{margin-left:0;font-size:0.9667em}
+/* Floor reached and the line is still too long for the card (a very wordy
+   service name, a very long date). The price is the part that must survive
+   whole, so the words are what gives - trailing off rather than being chopped
+   mid-letter at the card's edge. */
+.scd-deliv .scl-s-foot.sfit-clip .scl-s-desc,
+.scd-deliv .scl-s-top.sfit-clip .scl-s-date{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
 .scd-removetxt{border:0;padding:0;background:none;color:var(--color-text-muted);font-family:inherit;
   font-size:0.75rem;text-align:right;text-decoration:underline;cursor:pointer}
 .scd-removetxt:hover{color:var(--color-danger)}
@@ -113,6 +153,10 @@ export const CART_DRAWER_CSS = `
   .scd-side{min-width:6.25rem}
   .scd-side .scl-qtybox{height:38px}
   .scd-side .scl-qtybox button{width:32px}
+  /* The shared card's own touch padding is a class less specific than the
+     panel-sized rules above, so it would be overruled; here it is, 10% down
+     like everything else in the panel's card. */
+  .scd-deliv .scl-hint{padding:0.45rem 0.7875rem}
 }
 @media (prefers-reduced-motion:reduce){
   .scd-overlay,.scd-panel{transition:none}

@@ -42,6 +42,13 @@ type ValidatedLine = {
 // to productId exactly as before.
 const lineKey = (l: Pick<ValidatedLine, 'productId' | 'lineId'>) => l.lineId ?? l.productId
 
+// Width of the product column when the delivery picker is showing its summary
+// card, in px. There the product column is the pinned one and the delivery
+// column is the `1fr` that takes whatever is left - which is what makes the
+// 16px the quantity stepper gave up when it was trimmed 15% (see .scl-qtybox in
+// cart-line-css.ts) land on the delivery card rather than on the product name.
+const SUMMARY_NAME_COL = 247
+
 // All look/behaviour knobs. Every value is plain and serialisable, so this whole
 // object crosses the RSC boundary from the server wrapper into the client island.
 export type CartFullOptions = {
@@ -685,7 +692,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
     const summaryDelivery = lines.some((line) => line.control && isSummaryControl(line.control))
     const cols = [
       showImage ? `${imageSize}px` : null,
-      anyDelivery && summaryDelivery ? 'minmax(0,247px)' : 'minmax(0,1fr)',
+      anyDelivery && summaryDelivery ? `minmax(0,${SUMMARY_NAME_COL}px)` : 'minmax(0,1fr)',
       anyDelivery ? (summaryDelivery ? 'minmax(0,1fr)' : 'fit-content(45%)') : null,
       'max-content',                                        // quantity
       showLinePrice ? 'minmax(70px,max-content)' : null,
@@ -713,7 +720,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
             {renderThumb(line)}
             {/* The flex basis is inert in the shared grid (a grid item ignores
                 it) and is what sizes this column in the no-subgrid fallback. */}
-            <div className="scl-main" style={anyDelivery ? { flex: '0 1 247px', minWidth: 0 } : { flex: 1, minWidth: 0 }}>
+            <div className="scl-main" style={anyDelivery ? { flex: `0 1 ${SUMMARY_NAME_COL}px`, minWidth: 0 } : { flex: 1, minWidth: 0 }}>
               {renderName(line)}
               {renderMeta(line)}
             </div>

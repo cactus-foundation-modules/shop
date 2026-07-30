@@ -79,27 +79,42 @@ type ControlProps = {
   groupName: string
   // Editor preview: the control is shown exactly as it will look, but inert.
   preview?: boolean
+  // How the summary card lays its own wording out. 'inline' is the cart page's
+  // shape: promised date, service and price all across one line with the price
+  // pushed to the far edge. 'stacked' is for a narrow surface (the slide-out
+  // basket): the date owns the top line and the service and its price sit
+  // together at the foot of the card, price beside the service rather than
+  // across the card from it. Same parts, same class names, two row groupings -
+  // so the panel needs no markup of its own and cannot drift from the page.
+  summaryLayout?: 'inline' | 'stacked'
   onChange: (value: string) => void
 }
 
 // Chosen option confirmed in place, every other option a one-click chip beneath
 // it. The whole group is still a radio group underneath, so keyboard and
 // assistive tech treat it as the single choice it is.
-function SummaryControl({ control, groupName, preview, onChange }: ControlProps) {
+function SummaryControl({ control, groupName, preview, summaryLayout, onChange }: ControlProps) {
   const chosen = control.options.find((o) => o.value === control.value) ?? control.options[0]!
   const alts = control.options.filter((o) => o.value !== chosen.value)
+  const stacked = summaryLayout === 'stacked'
+  const desc = chosen.summary!.secondary && <span className="scl-s-desc">{chosen.summary!.secondary}</span>
+  const fee = chosen.summary!.priceLabel && (
+    <span className={`scl-s-fee${isFreeOption(chosen) ? ' scl-free' : ''}`}>{chosen.summary!.priceLabel}</span>
+  )
   const card = (
     <>
       <span className="scl-tick"><TickIcon /></span>
       <span className="scl-sum-lines">
         <span className="scl-s-top">
           <span className="scl-s-date">{chosen.summary!.headline}</span>
-          {chosen.summary!.secondary && <span className="scl-s-desc">{chosen.summary!.secondary}</span>}
-          {chosen.summary!.priceLabel && (
-            <span className={`scl-s-fee${isFreeOption(chosen) ? ' scl-free' : ''}`}>{chosen.summary!.priceLabel}</span>
-          )}
+          {!stacked && desc}
+          {!stacked && fee}
           {alts.length === 0 && <span className="scl-s-only">Only option</span>}
         </span>
+        {/* Stacked: the service and its price as one line at the foot of the
+            card. Emitted even when only one of the two has anything in it, so
+            the row the panel measures for shrink-to-fit is always there. */}
+        {stacked && (desc || fee) && <span className="scl-s-foot">{desc}{fee}</span>}
         {chosen.description && <span className="scl-s-below">{chosen.description}</span>}
       </span>
     </>

@@ -25,6 +25,7 @@ import { CART_DRAWER_CSS } from '@/modules/shop/components/public/cart-drawer-cs
 import { CartUndoToast, QuantityStepper, TickIcon } from '@/modules/shop/components/public/CartChrome'
 import { useCartUndo } from '@/modules/shop/components/public/use-cart-undo'
 import { CartLineControlView, LineMetaList, productMetaFields } from '@/modules/shop/components/public/CartLineControlView'
+import { useFitLines } from '@/modules/shop/components/public/fit-line'
 import { DRAWER_DEFAULTS, type CartDrawerOptions } from '@/modules/shop/components/public/cart-drawer-options'
 import type { LineMeta } from '@/modules/shop/lib/types'
 import type { CartLineControl, CartLineTitle } from '@/modules/shop/lib/line-meta'
@@ -161,6 +162,17 @@ export function CartDrawerClient({
     return () => { cancelled = true; unsubscribe() }
   }, [])
 
+  // The delivery card's two unwrappable lines - the promised date, and the
+  // service with its price - shrunk to fit the panel whenever they would
+  // otherwise run past the edge of the card. The wording is the shop owner's and
+  // the courier's, so no fixed size is safe for every basket: see fit-line.ts.
+  // Re-measured whenever the cards' own content could have changed (a line in or
+  // out, a service switched); the hook watches the panel's width itself.
+  const deliveryRevision = `${open ? 'open' : 'shut'}:${lines
+    .map((l) => `${lineKey(l)}|${l.control?.value ?? ''}`)
+    .join(',')}`
+  useFitLines(panelRef, '.scd-deliv .scl-s-top, .scd-deliv .scl-s-foot', deliveryRevision)
+
   // Picking a delivery option is applied to local state at once so the control
   // never snaps back, and when the options carry their numeric priceAdjust the
   // line price moves in the same instant; the re-validate then merely confirms
@@ -268,6 +280,7 @@ export function CartDrawerClient({
                   <CartLineControlView
                     control={line.control}
                     groupName={`drawer:${key}:${line.control.key}`}
+                    summaryLayout="stacked"
                     onChange={(value) => onControl(key, line.control!.key, value)}
                   />
                 </div>

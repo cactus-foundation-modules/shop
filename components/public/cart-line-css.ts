@@ -125,14 +125,19 @@ export const CART_LINE_CSS = `
 .scl-tot dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;color:var(--color-text)}
 .scl-tot .scl-tot-t{padding-top:0.5625rem;border-top:1px solid var(--color-border);font-size:1.125rem;font-weight:700;color:var(--color-text)}
 
-/* ---- Quantity stepper pill ---- */
-.scl-qtybox{display:inline-flex;align-items:center;height:42px;overflow:hidden;
+/* ---- Quantity stepper pill ----
+   Set 15% smaller than it started (42px tall, 34/38/34 wide). The cart's track
+   list sizes the quantity column to its content, so every pixel the pill gives
+   up is a pixel the delivery column gains - the point of shrinking it. The
+   touch rule further down keeps a fingertip-sized target on a coarse pointer,
+   where there is no cart-width argument for a smaller control. */
+.scl-qtybox{display:inline-flex;align-items:center;height:36px;overflow:hidden;
   border:1px solid var(--color-border-strong);border-radius:9999px;background:var(--color-surface)}
-.scl-qtybox button{display:flex;align-items:center;justify-content:center;width:34px;height:100%;border:0;background:none;
-  color:var(--color-primary);font-size:1.125rem;font-weight:600;line-height:1;cursor:pointer}
+.scl-qtybox button{display:flex;align-items:center;justify-content:center;width:29px;height:100%;border:0;background:none;
+  color:var(--color-primary);font-size:0.9563rem;font-weight:600;line-height:1;cursor:pointer}
 .scl-qtybox button:hover:not(:disabled){background:var(--color-bg-subtle)}
 .scl-qtybox button:disabled{color:var(--color-text-disabled);cursor:default}
-.scl-qtybox input{width:38px;border:0;padding:0;text-align:center;font-family:inherit;font-size:0.9375rem;font-weight:600;
+.scl-qtybox input{width:32px;border:0;padding:0;text-align:center;font-family:inherit;font-size:0.7969rem;font-weight:600;
   color:var(--color-text);background:transparent}
 
 /* ---- Remove cross ---- */
@@ -168,6 +173,9 @@ export const CART_LINE_CSS = `
 }
 @media (pointer:coarse){
   .scl-hint{padding:0.5rem 0.875rem}
+  /* A finger needs the target the desktop pill just gave up, so the height it
+     had before the 15% trim stays here. */
+  .scl-qtybox{height:42px}
   .scl-qtybox button{width:44px}
   .scl-removebtn{width:44px;height:44px}
 }
