@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { updateCategory, deleteCategory, categoryReparentWouldCycle } from '@/modules/shop/lib/db'
+import { fileCategoryImage } from '@/modules/shop/lib/media/category-media'
 import { slugify, ensureUniqueCategorySlug } from '@/modules/shop/lib/slug'
 
 const Body = z.object({
@@ -35,6 +36,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
   const slug = regenerateSlug && fields.name ? await ensureUniqueCategorySlug(slugify(fields.name), id) : undefined
   await updateCategory(id, { ...fields, ...(slug ? { slug } : {}) })
+  // File the picture in the category's own library folder, after the write so it
+  // follows a rename or a move rather than the path the category had a moment
+  // ago. A no-op when there is no picture, or when it is hosted elsewhere.
+  await fileCategoryImage(id)
   return NextResponse.json({ success: true })
 }
 

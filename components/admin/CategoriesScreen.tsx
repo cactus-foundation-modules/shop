@@ -197,6 +197,30 @@ export function CategoriesScreen() {
     refresh()
   }
 
+  // Where a category's picture is filed: its own Shop / <category trail> folder.
+  // Resolved against the name and parent currently in the edit panel rather than
+  // the saved ones, so a picture picked after a rename or a move lands where the
+  // save is about to put the category. `create` picks the verb: POST at the
+  // moment of upload (it creates the folder), GET to decide where the picker
+  // merely opens (creates nothing, so browsing leaves no empty folder behind).
+  // Null on failure - the upload still works, it just lands in the library root
+  // as it always used to.
+  async function resolveCategoryFolderId(create: boolean): Promise<string | null> {
+    if (!editingId) return null
+    const params = new URLSearchParams({ parentId: editParentId })
+    if (editName.trim()) params.set('name', editName.trim())
+    try {
+      const res = await fetch(
+        `/api/m/shop/admin/categories/${editingId}/media-folder?${params.toString()}`,
+        create ? { method: 'POST' } : undefined,
+      )
+      if (!res.ok) return null
+      return (await res.json()).folderId ?? null
+    } catch {
+      return null
+    }
+  }
+
   // Swap a category with the sibling above/below it and persist the new order.
   async function move(cat: Category, direction: -1 | 1) {
     const siblings = childrenOf(cat.parentId)
@@ -595,6 +619,8 @@ export function CategoriesScreen() {
       </ul>
       {pickingImage && (
         <MediaPickerModal
+          resolveFolderId={() => resolveCategoryFolderId(true)}
+          resolveInitialFolderId={() => resolveCategoryFolderId(false)}
           onClose={() => setPickingImage(false)}
           onAdd={(items) => {
             // A category has one picture, so only the first pick counts even if
