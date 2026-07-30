@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { addToCart } from '@/modules/shop/components/public/cart'
 import { GalleryThumbStrip } from '@/modules/shop/components/public/GalleryThumbStrip'
+import { StickyStripHeight } from '@/modules/shop/components/public/StickyStripHeight'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 
 export type GalleryImage = { url: string; alt: string }
@@ -236,28 +237,6 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
   const [canLeft, setCanLeft] = useState(false)
   const [canRight, setCanRight] = useState(false)
 
-  // When the strip is pinned it sits below the header, so a jump-link landing
-  // must clear the header AND the strip's own height or the section title lands
-  // behind it. The sections' scroll-margin-top reads --spd-tabnav-h; publish the
-  // measured strip height there (0 when not sticky, so non-sticky pages are
-  // unaffected). Re-measure on resize since the strip wraps taller when narrow.
-  useEffect(() => {
-    const root = document.documentElement
-    if (!sticky || !navRef.current) {
-      root.style.removeProperty('--spd-tabnav-h')
-      return
-    }
-    const nav = navRef.current
-    const publish = () => root.style.setProperty('--spd-tabnav-h', `${nav.offsetHeight}px`)
-    publish()
-    const ro = new ResizeObserver(publish)
-    ro.observe(nav)
-    return () => {
-      ro.disconnect()
-      root.style.removeProperty('--spd-tabnav-h')
-    }
-  }, [sticky, tabs])
-
   useEffect(() => {
     const anchors = leadAnchor ? [leadAnchor, ...tabs.map((t) => t.anchor)] : tabs.map((t) => t.anchor)
     const els = anchors
@@ -365,6 +344,10 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
 
   return (
     <div className={shellClass} style={shellStyle}>
+      {/* Pinned, this strip is in the sticky gallery's way and in every jump
+          link's way; its measured height is what they read to clear it. The
+          signal covers the editor swapping `sticky` or the tab count under it. */}
+      <StickyStripHeight signal={`${sticky ? 'on' : 'off'}:${tabs.length}`} />
       {canLeft && (
         <>
           <div aria-hidden className="spd-tab-fade left" />

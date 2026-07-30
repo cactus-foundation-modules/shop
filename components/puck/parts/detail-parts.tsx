@@ -1,6 +1,7 @@
 import { AddToCartButton } from '@/modules/shop/components/public/AddToCartButton'
 import { GalleryViewportFit } from '@/modules/shop/components/public/GalleryViewportFit'
 import { ProductGallery, ProductSectionTabs, type ProductTab, type TabAction } from '@/modules/shop/components/public/ProductDetailIslands'
+import { StickyStripHeight } from '@/modules/shop/components/public/StickyStripHeight'
 // breakpoints-shared, not breakpoints: these preview components land in the page
 // builder's client bundle, and ./breakpoints reaches prisma via lib/config/site.
 import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
@@ -108,7 +109,7 @@ const galleryCss = ({ tabletBp, mobileBp }: Breakpoints, maxPct: number) => `
    since the strip is spending some of that width too. The column keeps its auto
    width for the same reason: --spd-fit is the stage's budget here, not the whole
    row's, so handing it to the column would short the stage by the strip. */
-.spd-stage-col.beside{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - 32px);width:auto;flex-direction:row-reverse;align-items:flex-start}
+.spd-stage-col.beside{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - var(--spd-tabnav-h,0px) - 32px);width:auto;flex-direction:row-reverse;align-items:flex-start}
 .spd-stage-col.beside .spd-stage{flex:1 1 auto;align-self:flex-start;width:auto;max-width:var(--spd-fit);min-width:0}
 .spd-stage-col.beside .spd-thumbs{flex-direction:column;margin-top:0;flex:none}
 .spd-stage-img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .18s ease}
@@ -1263,6 +1264,9 @@ export function ShopDetailSectionNav(props: SectionNavProps) {
     <>
       <Style css={tabsCss(DEFAULT_BREAKPOINTS)} />
       <div className="spd-section-nav" style={{ opacity: 0.6 }}>
+        {/* Same publisher as the frontend below, so the editor canvas sizes its
+            sticky gallery against this strip exactly as the page does. */}
+        <StickyStripHeight signal={`${props.sticky ?? 'no'}:${labels.length}`} />
         <div className={navClassFor(props.align, props.sticky)}>
           <div className="spd-tab-track">
             {labels.map((t) => (
@@ -1284,6 +1288,11 @@ export function ShopDetailSectionNavRsc(props: SectionNavProps) {
     <>
       <Style css={tabsCss(ctx.bp)} />
       <div className="spd-section-nav">
+        {/* This block is server-only, so the one thing on the page that has to
+            measure it - a strip pinned below the header is in the sticky
+            gallery's way, and in every jump link's - needs a client island of
+            its own here. The Tabs block mounts the same one. */}
+        <StickyStripHeight signal={`${props.sticky ?? 'no'}:${sections.length}`} />
         <nav className={navClassFor(props.align, props.sticky)} aria-label="Product information">
           <div className="spd-tab-track">
             {sections.map((s) => (
