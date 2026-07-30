@@ -100,16 +100,17 @@ export const CART_DRAWER_CSS = `
 .scd-deliv .scl-hint{font-size:0.7313rem;padding:0.225rem 0.5625rem}
 .scd-deliv .scl-hint-fee{margin-left:0.3938rem}
 
-/* Two lines, not one. The promised date owns the top line; the service and its
-   price sit together at the foot of the card, the price beside the service
-   rather than across the card from it (see summaryLayout='stacked' in
-   CartLineControlView). Both rows are one unwrappable line inside a clipped box,
-   which is what makes scrollWidth past clientWidth mean "wider than the card" -
-   the measurement the fitter in fit-line.ts scales the row down by. The rows
-   carry the font size and their parts are sized in em, so scaling a row scales
-   everything on it. Nothing may shrink either: a flex child that gives way
-   would keep the row's own scrollWidth inside its box and the row would measure
-   as fitting while its text was quietly cut off. */
+/* Two lines, not one. The promised date and the service name stay together on
+   the top line, exactly as they read inline; the service's own free-text
+   description and the price share the foot line, the price pushed hard right
+   against it (see summaryLayout='stacked' in CartLineControlView). Both rows
+   are one unwrappable line inside a clipped box, which is what makes
+   scrollWidth past clientWidth mean "wider than the card" - the measurement the
+   fitter in fit-line.ts scales the row down by. The rows carry the font size
+   and their parts are sized in em, so scaling a row scales everything on it.
+   Nothing may shrink either: a flex child that gives way would keep the row's
+   own scrollWidth inside its box and the row would measure as fitting while its
+   text was quietly cut off. */
 .scd-deliv .scl-s-top,.scd-deliv .scl-s-foot{display:flex;align-items:baseline;gap:0.5rem;min-width:0;
   overflow:hidden;white-space:nowrap;font-size:0.8438rem}
 .scd-deliv .scl-s-top > *,.scd-deliv .scl-s-foot > *{flex:0 0 auto;min-width:0}
@@ -118,13 +119,17 @@ export const CART_DRAWER_CSS = `
 .scd-deliv .scl-s-date,.scd-deliv .scl-s-desc{white-space:nowrap}
 .scd-deliv .scl-s-date{font-size:1em}
 .scd-deliv .scl-s-desc{font-size:0.9em}
-.scd-deliv .scl-s-foot .scl-s-fee{margin-left:0;font-size:0.9667em}
+.scd-deliv .scl-s-fdesc{font-size:0.9em}
+/* All the way to the right of the free-text description, not merely trailing
+   it - the shared card's own auto margin already does that in a flex row. */
+.scd-deliv .scl-s-foot .scl-s-fee{font-size:0.9667em}
 /* Floor reached and the line is still too long for the card (a very wordy
-   service name, a very long date). The price is the part that must survive
-   whole, so the words are what gives - trailing off rather than being chopped
-   mid-letter at the card's edge. */
-.scd-deliv .scl-s-foot.sfit-clip .scl-s-desc,
-.scd-deliv .scl-s-top.sfit-clip .scl-s-date{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
+   service name, a very long description). The date and the price are each the
+   part of their own line that must survive whole, so the words beside them are
+   what gives - trailing off rather than being chopped mid-letter at the card's
+   edge. */
+.scd-deliv .scl-s-top.sfit-clip .scl-s-desc,
+.scd-deliv .scl-s-foot.sfit-clip .scl-s-fdesc{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
 .scd-removetxt{border:0;padding:0;background:none;color:var(--color-text-muted);font-family:inherit;
   font-size:0.75rem;text-align:right;text-decoration:underline;cursor:pointer}
 .scd-removetxt:hover{color:var(--color-danger)}

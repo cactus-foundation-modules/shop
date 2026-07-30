@@ -82,10 +82,11 @@ type ControlProps = {
   // How the summary card lays its own wording out. 'inline' is the cart page's
   // shape: promised date, service and price all across one line with the price
   // pushed to the far edge. 'stacked' is for a narrow surface (the slide-out
-  // basket): the date owns the top line and the service and its price sit
-  // together at the foot of the card, price beside the service rather than
-  // across the card from it. Same parts, same class names, two row groupings -
-  // so the panel needs no markup of its own and cannot drift from the page.
+  // basket): the date and the service name stay together on the top line,
+  // exactly as they read inline, and the second line pairs the service's own
+  // free-text description with the price pushed hard right against it. Same
+  // parts, same class names, two row groupings - so the panel needs no markup
+  // of its own and cannot drift from the page.
   summaryLayout?: 'inline' | 'stacked'
   onChange: (value: string) => void
 }
@@ -97,25 +98,33 @@ function SummaryControl({ control, groupName, preview, summaryLayout, onChange }
   const chosen = control.options.find((o) => o.value === control.value) ?? control.options[0]!
   const alts = control.options.filter((o) => o.value !== chosen.value)
   const stacked = summaryLayout === 'stacked'
-  const desc = chosen.summary!.secondary && <span className="scl-s-desc">{chosen.summary!.secondary}</span>
+  const secondary = chosen.summary!.secondary && <span className="scl-s-desc">{chosen.summary!.secondary}</span>
   const fee = chosen.summary!.priceLabel && (
     <span className={`scl-s-fee${isFreeOption(chosen) ? ' scl-free' : ''}`}>{chosen.summary!.priceLabel}</span>
   )
+  // The service's own free-text description (e.g. "Left in your porch if you
+  // are out"), as distinct from `secondary` (the service's name) - the two read
+  // as one thing inline, but stacked pairs this with the price instead.
+  const freeText = chosen.description && <span className="scl-s-fdesc">{chosen.description}</span>
   const card = (
     <>
       <span className="scl-tick"><TickIcon /></span>
       <span className="scl-sum-lines">
         <span className="scl-s-top">
           <span className="scl-s-date">{chosen.summary!.headline}</span>
-          {!stacked && desc}
+          {secondary}
           {!stacked && fee}
           {alts.length === 0 && <span className="scl-s-only">Only option</span>}
         </span>
-        {/* Stacked: the service and its price as one line at the foot of the
-            card. Emitted even when only one of the two has anything in it, so
-            the row the panel measures for shrink-to-fit is always there. */}
-        {stacked && (desc || fee) && <span className="scl-s-foot">{desc}{fee}</span>}
-        {chosen.description && <span className="scl-s-below">{chosen.description}</span>}
+        {stacked ? (
+          // Stacked: the free-text description and the price share the foot
+          // line, price pushed hard right against it. Emitted even when only
+          // one of the two has anything in it, so the row the panel measures
+          // for shrink-to-fit is always there.
+          (freeText || fee) && <span className="scl-s-foot">{freeText}{fee}</span>
+        ) : (
+          chosen.description && <span className="scl-s-below">{chosen.description}</span>
+        )}
       </span>
     </>
   )
