@@ -16,6 +16,7 @@ import { resolveShopDetailTabs } from '@/modules/shop/lib/detail-tabs'
 import { resolveShopDetailSpec } from '@/modules/shop/lib/detail-spec'
 import { resolveShopGalleryExtras } from '@/modules/shop/lib/gallery-media'
 import { stripHtmlToPlainText } from '@/modules/shop/lib/strip-html'
+import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import type { PuckData } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { shopProductDetailPuckComponent, type ShopProductDetailProps } from './ShopProductDetail'
@@ -111,6 +112,15 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
 
   if (!template) return null
 
+  // A shop withholding its prices must withhold them here too: structured data
+  // is read by shopping tabs and rich results, so leaving the figure in would
+  // publish the very number the shop has decided not to quote.
+  const commerce = await resolveShopCommerceMode()
+  if (commerce.hidePrices) {
+    delete (jsonLd.offers as Record<string, unknown>).price
+    delete (jsonLd.offers as Record<string, unknown>).priceCurrency
+  }
+
   const blockTypes = collectLayoutBlockTypes(template)
   const slot = narrowShopDetailSlot(provider, blockTypes)
 
@@ -132,6 +142,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     product,
     images,
     currencySymbol: config.currencySymbol,
+    commerce,
     tagSlugs,
     digitalFile: digitalFile ? { filename: digitalFile.filename, size: digitalFile.size } : null,
     bp,

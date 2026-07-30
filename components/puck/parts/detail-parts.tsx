@@ -5,6 +5,9 @@ import { ProductGallery, ProductSectionTabs, type ProductTab, type TabAction } f
 // builder's client bundle, and ./breakpoints reaches prisma via lib/config/site.
 import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
 import { formatMoney } from '@/modules/shop/lib/money'
+// commerce-mode-shared, not commerce-mode: these parts land in the page
+// builder's client bundle, and the resolver reaches prisma.
+import { commerceModeButtonLabel } from '@/modules/shop/lib/commerce-mode-shared'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { SiteColourField } from '@/lib/puck/SiteColourField'
@@ -39,7 +42,13 @@ function Style({ css }: { css: string }) {
 // and the editor canvas, and was the old hardcoded guess for every site);
 // `--spd-thumbs-h` is the strip's measured height, published the same way.
 //
-// The column sticks clear of the header, and the stage fits the leftover
+// `--spd-tabnav-h` joins them because the section tab strip (SectionTabs, set
+// sticky) pins BELOW the header and is therefore in the column's way too: a
+// gallery that only clears the header parks its own top - and the "Your choice"
+// pill sitting in it - behind that strip. It is 0px whenever the strip isn't
+// pinned, so a page without one is unaffected.
+//
+// The column sticks clear of both, and the stage fits the leftover
 // viewport by giving up WIDTH - `aspect-ratio` then takes the height with it, so
 // it stays square and merely gets smaller. Capping its height instead (the
 // obvious move, and what this did briefly) squashes a square stage into a
@@ -73,7 +82,7 @@ const galleryCss = ({ tabletBp, mobileBp }: Breakpoints, maxPct: number) => `
 /* Stacked, there is no row to take a share of, and core's own collapse rule is
    !important too - this selector outranks it, so it has to re-state it. */
 @media (max-width:${mobileBp}){.puck-split:has(.spd-stage-col){grid-template-columns:1fr !important}}
-.spd-stage-col{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - 32px - var(--spd-thumbs-h,76px));width:var(--spd-fit);max-width:100%;position:sticky;top:calc(var(--spd-header-h,96px) + 16px);display:flex;flex-direction:column;gap:12px}
+.spd-stage-col{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - var(--spd-tabnav-h,0px) - 32px - var(--spd-thumbs-h,76px));width:var(--spd-fit);max-width:100%;position:sticky;top:calc(var(--spd-header-h,96px) + var(--spd-tabnav-h,0px) + 16px);display:flex;flex-direction:column;gap:12px}
 /* Sticking needs somewhere to stick: a sticky box can only travel inside its own
    parent, so the parent has to outlive it. The gallery's parent is the Split's
    left cell, and a Split set to align "start" (which the Default template is, so
@@ -457,13 +466,22 @@ export function ShopDetailPriceRsc(props: PriceProps) {
     <>
       <Style css={priceCss} />
       <div className="spd-price-block">
-        <span className="spd-price-now">{formatMoney(prices.now, currencySymbol)}</span>
-        {showCompare && prices.was && (
-          <span className="spd-price-was">{formatMoney(prices.was, currencySymbol)}</span>
+        {/* A shop quoting by hand withholds the figures: its stand-in wording
+            goes in place of the price, and the was/save/RRP/tax-note trimmings
+            all stand down with it - there is nothing left for them to describe. */}
+        {ctx.commerce.hidePrices ? (
+          <span className="spd-price-now">{ctx.commerce.hiddenPriceLabel}</span>
+        ) : (
+          <>
+            <span className="spd-price-now">{formatMoney(prices.now, currencySymbol)}</span>
+            {showCompare && prices.was && (
+              <span className="spd-price-was">{formatMoney(prices.was, currencySymbol)}</span>
+            )}
+            {showSave && prices.savePct != null && <span className="spd-save">Save {prices.savePct}%</span>}
+            {rrp && <span className="spd-price-rrp">RRP {formatMoney(rrp, currencySymbol)}</span>}
+            {ctx.priceSuffix && <span className="spd-price-taxnote">{ctx.priceSuffix}</span>}
+          </>
         )}
-        {showSave && prices.savePct != null && <span className="spd-save">Save {prices.savePct}%</span>}
-        {rrp && <span className="spd-price-rrp">RRP {formatMoney(rrp, currencySymbol)}</span>}
-        {ctx.priceSuffix && <span className="spd-price-taxnote">{ctx.priceSuffix}</span>}
       </div>
     </>
   )
@@ -592,7 +610,13 @@ export function ShopDetailAddToCartRsc(props: AddProps) {
   if (!ctx) return null
   const { product, outOfStock } = ctx
   const showStepper = props.showStepper !== 'no'
-  const label = product.isPreOrder ? 'Pre-order now' : 'Add to basket'
+  // What the button says: shop's own wording, or the mode's ("Add to quote") on
+  // a shop an add-on has switched over. Pre-order wins either way - "reserve one
+  // of these" is a different promise from "buy one", and a quote-only shop makes
+  // no promise about stock at all.
+  const label = product.isPreOrder
+    ? 'Pre-order now'
+    : commerceModeButtonLabel(ctx.commerce.addLabel, null, 'Add to basket')
   // The layout already carries the provider's own buy block, so that one owns
   // the purchase and this part steps aside - see `covered`.
   if (ctx.slot?.covered.includes('PurchaseArea')) return null

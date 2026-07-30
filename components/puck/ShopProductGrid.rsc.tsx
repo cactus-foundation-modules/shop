@@ -9,6 +9,7 @@ import { resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { shopProductGridPuckComponent, type ShopProductGridProps } from './ShopProductGrid'
+import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 
 // Server (RSC) half of Shop: Product Grid. Kept out of the client editor bundle
 // - lib/card-template dynamically imports lib/puck/config.rsc, which depends on
@@ -55,7 +56,10 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
   ])
   // What the shop prints prices as (net or gross) is a per-shop answer, not a
   // per-card one, so it is resolved once here and handed to every card.
-  const pricing = { ...config, taxDisplay }
+  // Whether prices may be shown at all is a per-shop answer too - a quote-only
+  // shop withholds every figure on every card, not some of them. Cached, so this
+  // costs nothing per surface. See lib/commerce-mode.ts.
+  const pricing = { ...config, taxDisplay, commerce: await resolveShopCommerceMode() }
   const items: CardItem[] = await Promise.all(
     products.map(async (product) => {
       const [media, tagIds] = await Promise.all([getProductMedia(product.id), getProductTagIds(product.id)])

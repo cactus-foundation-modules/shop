@@ -7,6 +7,11 @@ import { usePathname } from 'next/navigation'
 import { getCart, subscribeCart, subscribeCartAdd } from '@/modules/shop/components/public/cart'
 import { postCartValidate } from '@/modules/shop/components/public/validated-cache'
 import { DRAWER_DEFAULTS, type CartDrawerOptions } from '@/modules/shop/components/public/cart-drawer-options'
+import {
+  commerceModeMoney,
+  normaliseShopCommerceMode,
+  SHOP_DEFAULT_COMMERCE_MODE,
+} from '@/modules/shop/lib/commerce-mode-shared'
 
 // The panel is a whole cart renderer - lines, delivery pickers, the undo toast
 // and the shared cart stylesheet - and most visitors never open it. Loading it
@@ -99,6 +104,10 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
   const [count, setCount] = useState(preview ? 3 : 0)
   const [subtotal, setSubtotal] = useState<number | null>(preview ? 42 : null)
   const [currencySymbol, setCurrencySymbol] = useState('£')
+  // How this shop is transacted with (see lib/commerce-mode-shared.ts). The
+  // header badge shows money too, so it honours a quote-only shop's withheld
+  // prices exactly as the cart does.
+  const [commerce, setCommerce] = useState(SHOP_DEFAULT_COMMERCE_MODE)
   const [hasLoaded, setHasLoaded] = useState(preview)
   // Drawer mode only. `drawerOpen` is the panel's state; `drawerRequested` stays
   // true once it has been opened at all, so the lazily-loaded panel is fetched on
@@ -139,6 +148,7 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
       if (configRes.ok) {
         const config = await configRes.json()
         setCurrencySymbol(config.currencySymbol)
+        setCommerce(normaliseShopCommerceMode(config.commerce))
       }
     }
 
@@ -212,7 +222,7 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
       {o.label && <span>{o.label}</span>}
       {showInlineCount && <span>{count} {count === 1 ? o.itemWord : o.itemWordPlural}</span>}
       {o.showSubtotal === 'yes' && subtotal != null && (
-        <span style={{ fontWeight: 600 }}>{currencySymbol}{subtotal.toFixed(2)}</span>
+        <span style={{ fontWeight: 600 }}>{commerceModeMoney(commerce, `${currencySymbol}${subtotal.toFixed(2)}`)}</span>
       )}
     </>
   )

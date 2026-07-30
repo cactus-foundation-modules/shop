@@ -276,7 +276,13 @@ export function ShopCardPrice(props: CardPriceProps) {
     <>
       <EditorStyle ctx={ctx} />
       <div className="shop-card-pricerow" ref={dragRefOf(props)}>
-        {fromPrice != null ? (
+        {/* A shop quoting by hand withholds every figure. Its stand-in wording
+            goes in once, in place of the whole row of them - three "POA"s where
+            a price, a struck-through was and an RRP would have been reads as a
+            fault rather than a policy. */}
+        {ctx?.commerce.hidePrices ? (
+          <span className="shop-card-price">{ctx.commerce.hiddenPriceLabel}</span>
+        ) : fromPrice != null ? (
           <span className="shop-card-price">{fromVaries ? 'From ' : ''}{formatMoney(fromPrice, symbol)}</span>
         ) : (
           <>
@@ -292,7 +298,7 @@ export function ShopCardPrice(props: CardPriceProps) {
         {/* Says which side of tax the figure beside it sits on, where the shop
             has set the wording. The editor canvas has no context and so no
             note - there is no shop config to read there. */}
-        {ctx?.priceSuffix && <span className="shop-card-taxnote">{ctx.priceSuffix}</span>}
+        {!ctx?.commerce.hidePrices && ctx?.priceSuffix && <span className="shop-card-taxnote">{ctx.priceSuffix}</span>}
       </div>
     </>
   )

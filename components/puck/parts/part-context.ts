@@ -6,6 +6,7 @@ import type { ShopDetailTabExtra } from '@/modules/shop/lib/detail-tabs'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 import type { CardFact, CardOverlay } from '@/modules/shop/lib/card-media'
 import type { PriceView } from '@/modules/shop/lib/pricing'
+import type { ResolvedShopCommerceMode } from '@/modules/shop/lib/commerce-mode-shared'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
 // Shared context passed to the shop's part-blocks (the small draggable pieces
@@ -44,6 +45,10 @@ export type DetailPartContext = {
   // this rather than product.price, so a product on offer never shows one price
   // on the card and charges another at the till.
   prices: PriceView
+  // How this shop is transacted with (see lib/commerce-mode.ts): what the buy
+  // button says, and whether a price may be printed at all. Resolved once per
+  // page with the rest of the context, because a part's render is synchronous.
+  commerce: ResolvedShopCommerceMode
   // Text the shop appends to every price it prints ("inc. VAT"), or '' where it
   // has set none. The figures in `prices` are already converted to match it -
   // this is only the wording (Shop settings > Tax & shipping).
@@ -121,6 +126,8 @@ export type CardPartContext = {
   // anything to say about.
   facts: CardFact[]
   currencySymbol: string
+  // As DetailPartContext.commerce, resolved once per grid rather than per card.
+  commerce: ResolvedShopCommerceMode
   prices: PriceView
   // As DetailPartContext.priceSuffix - the wording only; `prices` and
   // `fromPrice` already carry the converted figures.

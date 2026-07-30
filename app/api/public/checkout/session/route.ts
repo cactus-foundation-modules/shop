@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkout'
 import { findShippingZoneForPostcode, listShippingRatesForZone } from '@/modules/shop/lib/db/tax-shipping'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { displayOrderTotals, type PriceDisplay } from '@/modules/shop/lib/tax-display-shared'
 
@@ -23,6 +24,9 @@ export async function POST(request: NextRequest) {
 
   const config = await getShopConfigCached()
   if (config.shopStatus !== 'OPEN') return NextResponse.json({ error: 'The shop is not currently accepting orders.' }, { status: 503 })
+  // Quote-only shops price nothing at checkout - see lib/commerce-mode.ts.
+  const commerce = await resolveShopCommerceMode()
+  if (commerce.mode === 'quote') return NextResponse.json({ error: commerce.blockedMessage }, { status: 503 })
 
   const resolvedLines = await resolveCartLines(rawLines)
   const unavailable = resolvedLines.filter((l) => !l.available)

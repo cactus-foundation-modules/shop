@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server'
 import { getShopConfigCached, getAvailablePaymentMethods, resolveSupplierLabel } from '@/modules/shop/lib/config'
 import { getPaymentMethodLabels } from '@/modules/shop/lib/payments/registry'
 import { displayTaxMode } from '@/modules/shop/lib/tax-display-shared'
+import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 
 // Client-safe config slice the storefront needs (spec 8.1 GET /config).
 export async function GET() {
   const config = await getShopConfigCached()
   const enabledPaymentMethods = await getAvailablePaymentMethods()
+  const commerce = await resolveShopCommerceMode()
   const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY ?? null
 
   return NextResponse.json({
@@ -56,6 +58,12 @@ export async function GET() {
     enabledPaymentMethods,
     paymentMethodLabels: getPaymentMethodLabels(),
     stripePublishableKey: publishableKey,
+    // How this shop is transacted with at all: shop's own basket-and-checkout,
+    // or an add-on's quote flow, in which case the buttons say something else,
+    // the cart leads somewhere other than checkout, and prices may be withheld.
+    // Every client cart surface reads this from here rather than deciding for
+    // itself - see lib/commerce-mode.ts.
+    commerce,
     shopStatus: config.shopStatus,
     shopClosedMessage: config.shopClosedMessage,
     preOrderMixedCartBehaviour: config.preOrderMixedCartBehaviour,

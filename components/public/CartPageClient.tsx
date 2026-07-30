@@ -6,6 +6,12 @@ import { getCart, setLineQuantity, subscribeCart } from '@/modules/shop/componen
 import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } from '@/modules/shop/components/public/validated-cache'
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import { formatMoney } from '@/modules/shop/lib/money'
+import {
+  commerceModeButtonLabel,
+  commerceModeMoney,
+  normaliseShopCommerceMode,
+  SHOP_DEFAULT_COMMERCE_MODE,
+} from '@/modules/shop/lib/commerce-mode-shared'
 import type { LineMeta } from '@/modules/shop/lib/types'
 import type { CartLineTitle } from '@/modules/shop/lib/line-meta'
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
@@ -32,6 +38,8 @@ const CHECKOUT_STYLE = {
 export function CartPageClient() {
   const [lines, setLines] = useState<ValidatedLine[]>([])
   const [currencySymbol, setCurrencySymbol] = useState('£')
+  // How this shop is transacted with (see lib/commerce-mode-shared.ts).
+  const [commerce, setCommerce] = useState(SHOP_DEFAULT_COMMERCE_MODE)
   const [couponCode, setCouponCode] = useState('')
   const [couponMessage, setCouponMessage] = useState<string | null>(null)
   const [hasLoaded, setHasLoaded] = useState(false)
@@ -44,7 +52,11 @@ export function CartPageClient() {
     let cancelled = false
     fetch('/api/m/shop/public/config')
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => { if (!cancelled && data) setCurrencySymbol(data.currencySymbol) })
+      .then((data) => {
+        if (cancelled || !data) return
+        setCurrencySymbol(data.currencySymbol)
+        setCommerce(normaliseShopCommerceMode(data.commerce))
+      })
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
@@ -103,6 +115,10 @@ export function CartPageClient() {
 
   const subtotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
   const itemCount = lines.reduce((sum, l) => sum + l.quantity, 0)
+  // Every figure on this fallback cart goes through here, so a shop quoting by
+  // hand shows its "POA" in the lines, the subtotal and the sticky bar alike.
+  const money = (n: number) => commerceModeMoney(commerce, formatMoney(n, currencySymbol))
+  const checkoutLabel = commerceModeButtonLabel(commerce.cartCtaLabel, null, 'Proceed to checkout')
 
   // Shimmer skeleton while the localStorage cart is validated, so the page
   // never flashes blank (the validate call folds delivery/personalisation
@@ -166,7 +182,7 @@ export function CartPageClient() {
               label={`Quantity for ${line.displayTitle?.name || line.name}`}
               onChange={(next) => setLineQuantity(lineKey(line), next)}
             />
-            <span className="scl-price" style={{ minWidth: 70, textAlign: 'right' }}>{formatMoney(line.lineSubtotal, currencySymbol)}</span>
+            <span className="scl-price" style={{ minWidth: 70, textAlign: 'right' }}>{money(line.lineSubtotal)}</span>
             <RemoveCross
               label={`Remove ${line.displayTitle?.name || line.name}`}
               onClick={() => removeLine(lineKey(line), line.displayTitle?.name || line.name)}
@@ -183,18 +199,19 @@ export function CartPageClient() {
 
       <div ref={footerRef} style={{ display: 'grid', gap: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '1.125rem' }}>
-          <span>Subtotal</span><span>{currencySymbol}{subtotal.toFixed(2)}</span>
+          <span>Subtotal</span><span>{money(subtotal)}</span>
         </div>
 
-        <Link href="/shop/checkout" style={CHECKOUT_STYLE}>Proceed to checkout</Link>
+        <Link href={commerce.cartCtaHref} style={CHECKOUT_STYLE}>{checkoutLabel}</Link>
       </div>
 
       <CartStickyBar
         visible={stickyVisible}
         meta={[`${itemCount} item${itemCount === 1 ? '' : 's'}`, ...notes].join(' · ')}
         totalLabel="Subtotal"
-        total={formatMoney(subtotal, currencySymbol)}
-        checkoutLabel="Proceed to checkout"
+        total={money(subtotal)}
+        checkoutLabel={checkoutLabel}
+        checkoutHref={commerce.cartCtaHref}
         checkoutStyle={{ ...CHECKOUT_STYLE, display: 'inline-flex', alignItems: 'center', width: 'auto', height: 46, padding: '0 1.625rem' }}
       />
 

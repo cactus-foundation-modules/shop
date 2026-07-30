@@ -5,6 +5,7 @@ import { findShippingZoneForPostcode, getShippingRateById } from '@/modules/shop
 import { createPendingOrder } from '@/modules/shop/lib/db/orders'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
 import { getShopConfigCached, getAvailablePaymentMethods } from '@/modules/shop/lib/config'
+import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { getMemberFromCookie } from '@/lib/members/session'
@@ -51,6 +52,13 @@ export async function POST(request: NextRequest) {
 
   const config = await getShopConfigCached()
   if (config.shopStatus !== 'OPEN') return NextResponse.json({ error: 'The shop is not currently accepting orders.' }, { status: 503 })
+  // This is where an order first exists, so this is the gate that matters on a
+  // quote-only shop: refuse here and no order, and no payment, can be started.
+  // /checkout/confirm is deliberately left alone - it only finishes an order that
+  // already exists, and blocking it would strand anything paid for a moment
+  // before the owner threw the switch.
+  const commerce = await resolveShopCommerceMode()
+  if (commerce.mode === 'quote') return NextResponse.json({ error: commerce.blockedMessage }, { status: 503 })
 
   const available = await getAvailablePaymentMethods()
   if (!available.includes(data.paymentMethod)) return NextResponse.json({ error: 'Selected payment method is not available.' }, { status: 400 })

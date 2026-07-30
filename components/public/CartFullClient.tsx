@@ -7,6 +7,12 @@ import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } fro
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import type { LineMeta, LineMetaField } from '@/modules/shop/lib/types'
 import type { CartLineControl, CartLineTitle } from '@/modules/shop/lib/line-meta'
+import {
+  commerceModeButtonLabel,
+  commerceModeMoney,
+  normaliseShopCommerceMode,
+  SHOP_DEFAULT_COMMERCE_MODE,
+} from '@/modules/shop/lib/commerce-mode-shared'
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 import { CartStickyBar, CartUndoToast, QuantityStepper, RemoveCross, TickIcon } from '@/modules/shop/components/public/CartChrome'
 import { useCartUndo, useOutOfView } from '@/modules/shop/components/public/use-cart-undo'
@@ -153,6 +159,10 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   // storing net prices and quoting gross adds up here exactly like an inclusive
   // one. See lib/tax-display-shared.ts.
   const [taxMode, setTaxMode] = useState<'INCLUSIVE' | 'EXCLUSIVE'>('INCLUSIVE')
+  // How this shop is transacted with (see lib/commerce-mode-shared.ts). Shop's
+  // own basket-and-checkout until the config lands, so a slow config read never
+  // flashes a quote-only shop's wording onto an ordinary cart or the reverse.
+  const [commerce, setCommerce] = useState(SHOP_DEFAULT_COMMERCE_MODE)
   const [couponCode, setCouponCode] = useState('')
   const [couponMessage, setCouponMessage] = useState<string | null>(null)
   const [hasLoaded, setHasLoaded] = useState(preview ?? false)
@@ -171,6 +181,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
       .then((data) => {
         if (cancelled || !data) return
         setCurrencySymbol(data.currencySymbol)
+        setCommerce(normaliseShopCommerceMode(data.commerce))
         const mode = data.priceDisplay?.displayTaxMode ?? data.taxMode
         if (mode === 'INCLUSIVE' || mode === 'EXCLUSIVE') setTaxMode(mode)
       })
@@ -323,7 +334,13 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   }, 0)
   const total = taxMode === 'INCLUSIVE' ? lineTotal : lineTotal + taxAmount
   const itemCount = lines.reduce((sum, l) => sum + l.quantity, 0)
-  const money = (n: number) => `${currencySymbol}${n.toFixed(2)}`
+  // Every figure on the cart goes through here, so a shop quoting by hand shows
+  // its "POA" everywhere at once rather than in some rows and not others.
+  const money = (n: number) => commerceModeMoney(commerce, `${currencySymbol}${n.toFixed(2)}`)
+  // Where the cart leads and what the button says: shop's own checkout, or the
+  // quote flow an add-on has put in its place.
+  const checkoutLabel = commerceModeButtonLabel(commerce.cartCtaLabel, props.checkoutLabel, 'Proceed to checkout')
+  const checkoutHref = commerce.cartCtaHref
   // A cart with a delivery column has two things to show per line, so the
   // product column is held narrow and the delivery column takes the rest. With
   // no delivery column anywhere, the product column keeps the whole row as before.
@@ -843,8 +860,8 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
         )}
 
         {preview
-          ? <span role="button" style={checkoutStyle}>{props.checkoutLabel || 'Proceed to checkout'}</span>
-          : <Link href="/shop/checkout" style={checkoutStyle}>{props.checkoutLabel || 'Proceed to checkout'}</Link>}
+          ? <span role="button" style={checkoutStyle}>{checkoutLabel}</span>
+          : <Link href={checkoutHref} style={checkoutStyle}>{checkoutLabel}</Link>}
       </div>
       )}
 
@@ -857,7 +874,8 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
           meta={[`${itemCount} item${itemCount === 1 ? '' : 's'}`, ...notes].join(' · ')}
           totalLabel={props.totalLabel || 'Total'}
           total={money(total)}
-          checkoutLabel={props.checkoutLabel || 'Proceed to checkout'}
+          checkoutLabel={checkoutLabel}
+          checkoutHref={checkoutHref}
           checkoutStyle={{ ...checkoutStyle, display: 'inline-flex', alignItems: 'center', width: 'auto', height: 46, padding: '0 1.625rem' }}
         />
       )}

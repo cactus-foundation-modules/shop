@@ -27,6 +27,12 @@ import { useCartUndo } from '@/modules/shop/components/public/use-cart-undo'
 import { CartLineControlView, LineMetaList, productMetaFields } from '@/modules/shop/components/public/CartLineControlView'
 import { useFitLines } from '@/modules/shop/components/public/fit-line'
 import { DRAWER_DEFAULTS, type CartDrawerOptions } from '@/modules/shop/components/public/cart-drawer-options'
+import {
+  commerceModeButtonLabel,
+  commerceModeMoney,
+  normaliseShopCommerceMode,
+  SHOP_DEFAULT_COMMERCE_MODE,
+} from '@/modules/shop/lib/commerce-mode-shared'
 import type { LineMeta } from '@/modules/shop/lib/types'
 import type { CartLineControl, CartLineTitle } from '@/modules/shop/lib/line-meta'
 
@@ -89,6 +95,9 @@ export function CartDrawerClient({
   const [lines, setLines] = useState<ValidatedLine[]>([])
   const [notes, setNotes] = useState<string[]>([])
   const [currencySymbol, setCurrencySymbol] = useState('£')
+  // How this shop is transacted with (see lib/commerce-mode-shared.ts). Shop's
+  // own basket-and-checkout until the config lands.
+  const [commerce, setCommerce] = useState(SHOP_DEFAULT_COMMERCE_MODE)
   const [hasLoaded, setHasLoaded] = useState(false)
   const { toast, removeLine, undo } = useCartUndo(true)
 
@@ -126,7 +135,11 @@ export function CartDrawerClient({
     let cancelled = false
     fetch('/api/m/shop/public/config')
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => { if (!cancelled && data) setCurrencySymbol(data.currencySymbol) })
+      .then((data) => {
+        if (cancelled || !data) return
+        setCurrencySymbol(data.currencySymbol)
+        setCommerce(normaliseShopCommerceMode(data.commerce))
+      })
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
@@ -194,7 +207,7 @@ export function CartDrawerClient({
 
   if (!host) return null
 
-  const money = (n: number) => `${currencySymbol}${n.toFixed(2)}`
+  const money = (n: number) => commerceModeMoney(commerce, `${currencySymbol}${n.toFixed(2)}`)
   const subtotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
   const showImage = o.drawerShowImage !== 'no'
   const showDelivery = o.drawerShowDelivery !== 'no'
@@ -331,8 +344,8 @@ export function CartDrawerClient({
                 ))}
               </ul>
             )}
-            <Link href="/shop/checkout" className="scd-btn" style={checkoutStyle} onClick={onClose}>
-              {o.drawerCheckoutLabel}
+            <Link href={commerce.cartCtaHref} className="scd-btn" style={checkoutStyle} onClick={onClose}>
+              {commerceModeButtonLabel(commerce.cartCtaLabel, o.drawerCheckoutLabel, DRAWER_DEFAULTS.drawerCheckoutLabel)}
             </Link>
             {o.drawerViewCartLabel && (
               <Link href="/shop/cart" className="scd-ghost" style={ghostStyle} onClick={onClose}>

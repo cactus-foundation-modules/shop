@@ -9,6 +9,7 @@ import { resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { shopProductCardPuckComponent, type ShopProductCardProps } from './ShopProductCard'
+import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 
 // Server (RSC) half of Shop: Single Product. Kept out of the client editor
 // bundle - see ShopProductCard.tsx.
@@ -35,7 +36,10 @@ export async function ShopProductCardRsc(props: ShopProductCardProps) {
   ])
   // What the shop prints prices as (net or gross) is a per-shop answer, not a
   // per-card one, so it is resolved once here and handed to every card.
-  const pricing = { ...config, taxDisplay }
+  // Whether prices may be shown at all is a per-shop answer too - a quote-only
+  // shop withholds every figure on every card, not some of them. Cached, so this
+  // costs nothing per surface. See lib/commerce-mode.ts.
+  const pricing = { ...config, taxDisplay, commerce: await resolveShopCommerceMode() }
   const item = { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(product.id) ?? null, cardExtras.get(product.id)) }
   const cards = template ? await renderCards(template, [item]) : [<MinimalCard key={product.id} {...item} />]
 

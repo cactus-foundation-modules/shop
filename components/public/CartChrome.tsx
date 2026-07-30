@@ -61,13 +61,17 @@ export function QuantityStepper({
 // slides up only once the real ones have scrolled out of view - so it is never
 // a second button sitting beside the first.
 export function CartStickyBar({
-  visible, meta, totalLabel, total, checkoutLabel, checkoutStyle, preview,
+  visible, meta, totalLabel, total, checkoutLabel, checkoutHref = '/shop/checkout', checkoutStyle, preview,
 }: {
   visible: boolean
   meta: string
   totalLabel: string
   total: string
   checkoutLabel: string
+  // Where the bar's button leads. Defaults to shop's own checkout; a quote-only
+  // shop passes its own destination so the sticky bar and the real button in the
+  // totals block can never point at two different places.
+  checkoutHref?: string
   checkoutStyle: CSSProperties
   preview?: boolean
 }) {
@@ -79,7 +83,7 @@ export function CartStickyBar({
           <span className="scb-total"><span>{totalLabel}</span><b>{total}</b></span>
           {preview
             ? <span role="button" style={checkoutStyle}>{checkoutLabel}</span>
-            : <Link href="/shop/checkout" style={checkoutStyle} tabIndex={visible ? undefined : -1}>{checkoutLabel}</Link>}
+            : <Link href={checkoutHref} style={checkoutStyle} tabIndex={visible ? undefined : -1}>{checkoutLabel}</Link>}
         </div>
       </div>
     </div>

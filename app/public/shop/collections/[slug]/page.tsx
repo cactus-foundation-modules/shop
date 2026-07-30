@@ -15,6 +15,7 @@ import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import type { PuckData } from '@/modules/shop/lib/types'
+import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
@@ -65,7 +66,10 @@ export default async function ShopCollectionPage({ params }: { params: Promise<{
   ])
   // What the shop prints prices as (net or gross) is a per-shop answer, not a
   // per-card one, so it is resolved once here and handed to every card.
-  const pricing = { ...config, taxDisplay }
+  // Whether prices may be shown at all is a per-shop answer too - a quote-only
+  // shop withholds every figure on every card, not some of them. Cached, so this
+  // costs nothing per surface. See lib/commerce-mode.ts.
+  const pricing = { ...config, taxDisplay, commerce: await resolveShopCommerceMode() }
   const items: CardItem[] = await Promise.all(
     products.map(async (p) => {
       const tagIds = await getProductTagIds(p.id)

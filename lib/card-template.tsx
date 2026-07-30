@@ -8,6 +8,7 @@ import { injectShopProductCardEmbed } from '@/modules/shop/lib/inject-part-conte
 import { formatMoney } from '@/modules/shop/lib/money'
 import { priceView } from '@/modules/shop/lib/pricing'
 import { makeDisplayAdjuster, NO_TAX_DISPLAY, type TaxDisplay } from '@/modules/shop/lib/tax-display'
+import { SHOP_DEFAULT_COMMERCE_MODE, type ResolvedShopCommerceMode } from '@/modules/shop/lib/commerce-mode-shared'
 import type { CardPartContext, CardBadge, PartImage } from '@/modules/shop/components/puck/parts/part-context'
 import type { ShopCardExtra } from '@/modules/shop/lib/card-media'
 import type { ShopCardFromPrice } from '@/modules/shop/lib/card-price'
@@ -76,7 +77,11 @@ export function buildCardContext(
   // resolved once for the whole grid (lib/tax-display.ts) and applied here to
   // the product's own figures AND to a companion module's "from" price, so a
   // card can never show one of them net beside the other gross.
-  pricing?: { enabledPriceTypes?: readonly string[]; showRetailPrice?: boolean; taxDisplay?: TaxDisplay },
+  // `commerce` is how the shop is transacted with (lib/commerce-mode.ts),
+  // resolved once for the whole grid like taxDisplay. Optional for the same
+  // reason: a card surface in another module that has not been rebuilt still
+  // compiles, and falls back to shop's own basket behaviour.
+  pricing?: { enabledPriceTypes?: readonly string[]; showRetailPrice?: boolean; taxDisplay?: TaxDisplay; commerce?: ResolvedShopCommerceMode },
   // The figure when a companion module prices this product itself
   // (shop-variations), resolved once for the whole grid via resolveCardFromPrices
   // and passed in per product. Null/absent leaves the card on shop's own price.
@@ -112,6 +117,7 @@ export function buildCardContext(
     overlays: extra?.overlays ?? [],
     facts: extra?.facts ?? [],
     currencySymbol,
+    commerce: pricing?.commerce ?? SHOP_DEFAULT_COMMERCE_MODE,
     prices: priceView(product, pricing?.enabledPriceTypes, adjust),
     priceSuffix: taxDisplay.display.suffix,
     showRetailPrice: pricing?.showRetailPrice ?? false,
@@ -161,7 +167,11 @@ export function MinimalCard({ product, ctx }: CardItem) {
       </div>
       <h3 className="shop-card-name">{product.name}</h3>
       <div className="shop-card-pricerow">
-        {ctx.fromPrice != null ? (
+        {/* A shop quoting by hand shows its stand-in wording once, not a "POA"
+            in place of each of the three figures a priced card would carry. */}
+        {ctx.commerce.hidePrices ? (
+          <span className="shop-card-price">{ctx.commerce.hiddenPriceLabel}</span>
+        ) : ctx.fromPrice != null ? (
           <span className="shop-card-price">{ctx.fromPriceVaries ? 'From ' : ''}{formatMoney(ctx.fromPrice, ctx.currencySymbol)}</span>
         ) : (
           <>
@@ -169,7 +179,7 @@ export function MinimalCard({ product, ctx }: CardItem) {
             {ctx.prices.was && <span className="shop-card-compare">{formatMoney(ctx.prices.was, ctx.currencySymbol)}</span>}
           </>
         )}
-        {ctx.priceSuffix && <span className="shop-card-taxnote">{ctx.priceSuffix}</span>}
+        {!ctx.commerce.hidePrices && ctx.priceSuffix && <span className="shop-card-taxnote">{ctx.priceSuffix}</span>}
       </div>
     </a>
   )
