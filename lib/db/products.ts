@@ -213,6 +213,14 @@ const SORT_SQL: Record<ProductSort, Prisma.Sql> = {
   'stock-desc': Prisma.sql`p."stock_count" DESC NULLS LAST`,
 }
 
+// Split a search box entry into words so "evolve screen" finds
+// "Evolve / Impulse Plus Bench Screen". Every word must appear (in name or
+// SKU) but order and what sits between them does not matter. Capped so a
+// pasted paragraph cannot build an unbounded query.
+export function searchTerms(raw: string): string[] {
+  return raw.trim().split(/\s+/).filter(Boolean).slice(0, 8)
+}
+
 export type ListProductsFilter = {
   page?: number
   perPage?: number
@@ -249,7 +257,17 @@ export async function listProducts(filter: ListProductsFilter): Promise<{ produc
   if (filter.stock === 'low') conditions.push(Prisma.sql`(p."track_inventory" = true AND p."low_stock_threshold" IS NOT NULL AND p."stock_count" IS NOT NULL AND p."stock_count" > 0 AND p."stock_count" <= p."low_stock_threshold")`)
   if (filter.stock === 'in') conditions.push(Prisma.sql`(p."track_inventory" = true AND p."stock_count" IS NOT NULL AND p."stock_count" > 0 AND (p."low_stock_threshold" IS NULL OR p."stock_count" > p."low_stock_threshold"))`)
   if (filter.excludeHidden) conditions.push(Prisma.sql`p."catalogue_hidden" = false`)
-  if (filter.search) conditions.push(Prisma.sql`(p."name" ILIKE ${`%${filter.search}%`} OR p."sku" ILIKE ${`%${filter.search}%`})`)
+  if (filter.search) {
+    const terms = searchTerms(filter.search)
+    if (terms.length) {
+      conditions.push(Prisma.join(
+        terms.map((t) => Prisma.sql`(p."name" ILIKE ${`%${t}%`} OR p."sku" ILIKE ${`%${t}%`})`),
+        ' AND ',
+        '(',
+        ')',
+      ))
+    }
+  }
   if (filter.categorySlug) {
     conditions.push(Prisma.sql`p."id" IN (
       SELECT "product_id" FROM "shp_product_categories" pc
