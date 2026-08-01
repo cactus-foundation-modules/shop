@@ -123,8 +123,13 @@ export function CheckoutReviewClient() {
         disabled={placing}
         style={{ background: 'var(--color-primary)', color: 'var(--color-on-primary)', border: 'none', borderRadius: 8, padding: '0.75rem 1.25rem', fontWeight: 600, cursor: 'pointer' }}
       >
-        {placing ? 'Placing order…' : 'Place order'}
+        {/* The button states exactly what happens, amount included - no
+            surprises on the far side of a click. */}
+        {placing ? 'Placing order…' : `Place order - ${money(summary.total)}`}
       </button>
+      <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', margin: 0, textAlign: 'center' }}>
+        🔒 Payment details are encrypted and never stored by this site.
+      </p>
     </section>
   )
 }

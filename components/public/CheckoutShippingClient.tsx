@@ -9,16 +9,34 @@ type ShippingRateOption = { id: string; name: string; estimatedDays: string | nu
 // Client island for the checkout shipping step. Registered Puck block wrapper
 // (ShopCheckoutShipping) is a server component that renders this, so Puck's RSC
 // <Render> never serialises its renderDropZone function bag into the client.
+// Blur-time messages for the required fields: specific and fix-stating, never a
+// bare "required". Validation runs per field once the shopper leaves it - not
+// per keystroke, and never for a field they have not reached yet.
+const REQUIRED_MESSAGES: Partial<Record<keyof ShpAddressForm, string>> = {
+  firstName: 'Enter your first name.',
+  lastName: 'Enter your last name.',
+  line1: 'Enter the first line of your address.',
+  city: 'Enter your town or city.',
+  postcode: 'Enter your postcode.',
+}
+
 export function CheckoutShippingClient() {
   const initial = getCheckoutState()
   const [address, setAddress] = useState<ShpAddressForm>(initial.shippingAddress)
   const [rates, setRates] = useState<ShippingRateOption[]>([])
   const [selectedRateId, setSelectedRateId] = useState<string | null>(initial.shippingRateId)
+  const [touched, setTouched] = useState<Partial<Record<keyof ShpAddressForm, boolean>>>({})
 
   function set<K extends keyof ShpAddressForm>(key: K, value: ShpAddressForm[K]) {
     const next = { ...address, [key]: value }
     setAddress(next)
     updateCheckoutState({ shippingAddress: next })
+  }
+
+  function fieldError(key: keyof ShpAddressForm): string | null {
+    const message = REQUIRED_MESSAGES[key]
+    if (!message || !touched[key]) return null
+    return address[key].trim().length === 0 ? message : null
   }
 
   useEffect(() => {
@@ -52,23 +70,45 @@ export function CheckoutShippingClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address.postcode])
 
+  // Real <label>s, not placeholder-as-label: a placeholder vanishes the moment
+  // typing starts and never reaches a screen reader as the field's name.
+  function field(key: keyof ShpAddressForm, label: string, autoComplete: string, required: boolean) {
+    const error = fieldError(key)
+    return (
+      <label style={{ display: 'grid', gap: '0.25rem' }}>
+        <span>{label}</span>
+        <input
+          type="text"
+          required={required}
+          autoComplete={autoComplete}
+          value={address[key]}
+          onChange={(e) => set(key, e.target.value)}
+          onBlur={() => setTouched((t) => ({ ...t, [key]: true }))}
+          aria-invalid={error ? true : undefined}
+          style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}` }}
+        />
+        {error && <span role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{error}</span>}
+      </label>
+    )
+  }
+
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
-      <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Shipping address</h2>
+      <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Delivery address</h2>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-        <input placeholder="First name" required value={address.firstName} onChange={(e) => set('firstName', e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
-        <input placeholder="Last name" required value={address.lastName} onChange={(e) => set('lastName', e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
+        {field('firstName', 'First name', 'given-name', true)}
+        {field('lastName', 'Last name', 'family-name', true)}
       </div>
-      <input placeholder="Address line 1" required value={address.line1} onChange={(e) => set('line1', e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
-      <input placeholder="Address line 2 (optional)" value={address.line2} onChange={(e) => set('line2', e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
+      {field('line1', 'Address line 1', 'address-line1', true)}
+      {field('line2', 'Address line 2 (optional)', 'address-line2', false)}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-        <input placeholder="City" required value={address.city} onChange={(e) => set('city', e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
-        <input placeholder="Postcode" required value={address.postcode} onChange={(e) => set('postcode', e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
+        {field('city', 'Town or city', 'address-level2', true)}
+        {field('postcode', 'Postcode', 'postal-code', true)}
       </div>
 
       {rates.length > 0 && (
         <div style={{ display: 'grid', gap: '0.5rem' }}>
-          <h3 style={{ fontSize: '0.9375rem', margin: 0 }}>Shipping method</h3>
+          <h3 style={{ fontSize: '0.9375rem', margin: 0 }}>Delivery method</h3>
           {rates.map((rate) => (
             <label key={rate.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
               <input type="radio" name="shippingRate" checked={selectedRateId === rate.id} onChange={() => { setSelectedRateId(rate.id); updateCheckoutState({ shippingRateId: rate.id }) }} />

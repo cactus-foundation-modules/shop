@@ -17,18 +17,20 @@ export function CheckoutContactClient() {
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Contact details</h2>
       <label style={{ display: 'grid', gap: '0.25rem' }}>
         <span>Email</span>
-        <input type="email" required value={email} onChange={(e) => { setEmail(e.target.value); updateCheckoutState({ customerEmail: e.target.value }) }}
+        <input type="email" required autoComplete="email" inputMode="email" value={email} onChange={(e) => { setEmail(e.target.value); updateCheckoutState({ customerEmail: e.target.value }) }}
           style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
+        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>Your order confirmation goes here.</span>
       </label>
       <label style={{ display: 'grid', gap: '0.25rem' }}>
         <span>Full name</span>
-        <input type="text" required value={name} onChange={(e) => { setName(e.target.value); updateCheckoutState({ customerName: e.target.value }) }}
+        <input type="text" required autoComplete="name" value={name} onChange={(e) => { setName(e.target.value); updateCheckoutState({ customerName: e.target.value }) }}
           style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
       </label>
       <label style={{ display: 'grid', gap: '0.25rem' }}>
         <span>Phone (optional)</span>
-        <input type="tel" value={phone} onChange={(e) => { setPhone(e.target.value); updateCheckoutState({ customerPhone: e.target.value }) }}
+        <input type="tel" autoComplete="tel" inputMode="tel" value={phone} onChange={(e) => { setPhone(e.target.value); updateCheckoutState({ customerPhone: e.target.value }) }}
           style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
+        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>Only used if there is a problem with your delivery.</span>
       </label>
     </section>
   )

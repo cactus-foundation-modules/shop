@@ -152,7 +152,16 @@ export function CheckoutPaymentClient() {
           </label>
         ))}
       </div>
-      {method === 'STRIPE' && <div ref={elementsRef} />}
+      {method === 'STRIPE' && (
+        <div style={{ display: 'grid', gap: '0.5rem' }}>
+          <div ref={elementsRef} />
+          {/* Reassurance sits with the card fields - the point of anxiety - not
+              in a footer nobody reads. */}
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', margin: 0 }}>
+            🔒 Card details go straight to the payment provider, encrypted - they never touch this site.
+          </p>
+        </div>
+      )}
       {instructions && <p style={{ whiteSpace: 'pre-wrap', color: 'var(--color-text-muted)' }}>{instructions}</p>}
     </section>
   )

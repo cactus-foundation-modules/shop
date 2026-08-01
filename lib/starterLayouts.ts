@@ -259,10 +259,11 @@ export function shopCheckoutStarters() {
     {
       id: 'starter-shop-checkout-classic',
       name: 'Classic Steps',
-      description: 'Contact, shipping, payment, review, and a final upsell - one column, top to bottom.',
+      description: 'Order summary up top, then contact, shipping, payment, review, and a final upsell - one column.',
       publishByDefault: true,
       data: {
         content: [
+          block('ShopCheckoutItems', 'shop-checkout-items'),
           block('ShopCheckoutContact', 'shop-checkout-contact'),
           block('ShopCheckoutShipping', 'shop-checkout-shipping'),
           block('ShopCheckoutPayment', 'shop-checkout-payment'),
@@ -276,7 +277,7 @@ export function shopCheckoutStarters() {
     {
       id: 'starter-shop-checkout-sidebar',
       name: 'Two Column',
-      description: 'Steps on the left (70%), upsell suggestions in a sidebar on the right (30%).',
+      description: 'Steps on the left (70%), order summary and upsell suggestions in a sidebar on the right (30%).',
       data: {
         content: [split('columns-1', '70/30')],
         root: { props: {} },
@@ -287,7 +288,10 @@ export function shopCheckoutStarters() {
             block('ShopCheckoutPayment', 'payment-1'),
             block('ShopCheckoutReview', 'review-1'),
           ],
-          'columns-1:right': [block('ShopUpsellProducts', 'upsells-1', { heading: 'Add to your order', layout: 'Grid' })],
+          'columns-1:right': [
+            block('ShopCheckoutItems', 'items-1'),
+            block('ShopUpsellProducts', 'upsells-1', { heading: 'Add to your order', layout: 'Grid' }),
+          ],
         },
       },
     },
@@ -299,6 +303,7 @@ export function shopCheckoutStarters() {
         content: [section('section-1', {
           maxWidth: 'narrow',
           content: [
+            block('ShopCheckoutItems', 'items-1'),
             block('ShopCheckoutContact', 'contact-1'),
             block('ShopCheckoutShipping', 'shipping-1'),
             block('ShopCheckoutPayment', 'payment-1'),

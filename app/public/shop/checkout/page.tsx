@@ -6,6 +6,11 @@ import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
+import { CheckoutItemsClient } from '@/modules/shop/components/public/CheckoutItemsClient'
+import { CheckoutContactClient } from '@/modules/shop/components/public/CheckoutContactClient'
+import { CheckoutShippingClient } from '@/modules/shop/components/public/CheckoutShippingClient'
+import { CheckoutPaymentClient } from '@/modules/shop/components/public/CheckoutPaymentClient'
+import { CheckoutReviewClient } from '@/modules/shop/components/public/CheckoutReviewClient'
 
 export const metadata = { title: 'Checkout' }
 
@@ -22,13 +27,25 @@ export default async function ShopCheckoutPage() {
   if (commerce.mode === 'quote') redirect(commerce.cartCtaHref)
 
   const layout = await resolveThemeLayout('shopCheckout', { moduleName: 'shop' })
-  if (!layout?.builderData) return null
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '2rem 1.5rem', display: 'grid', gap: '2rem' }}>
       {gate.staffPreview && <ShopStaffPreviewBanner />}
       <h1 style={{ fontSize: '1.75rem', margin: 0 }}>Checkout</h1>
-      <Render config={getModuleLayoutPuckRscConfig('shopCheckout') as any} data={layout.builderData as Data} />
+      {layout?.builderData ? (
+        <Render config={getModuleLayoutPuckRscConfig('shopCheckout') as any} data={layout.builderData as Data} />
+      ) : (
+        // No published shopCheckout layout: render the full default flow rather
+        // than a bare heading over nothing. Same shape as the classic starter,
+        // matching the cart page's own hardcoded fallback.
+        <>
+          <CheckoutItemsClient />
+          <CheckoutContactClient />
+          <CheckoutShippingClient />
+          <CheckoutPaymentClient />
+          <CheckoutReviewClient />
+        </>
+      )}
     </div>
   )
 }
