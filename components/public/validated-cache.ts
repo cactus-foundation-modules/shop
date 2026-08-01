@@ -6,6 +6,8 @@
 // sessionStorage, not localStorage: it dies with the tab, so a returning
 // visitor never sees week-old prices even for a beat.
 
+import { removeFromCart } from '@/modules/shop/components/public/cart'
+
 const KEY = 'cactus_shop_cart_validated'
 
 type CachedShape = {
@@ -40,10 +42,32 @@ export function postCartValidate<T>(cart: CartLineShape[]): Promise<ValidateResp
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
   })
     .then((res) => (res.ok ? res.json() : null))
+    .then((data: ValidateResponse<unknown> | null) => {
+      if (data && Array.isArray(data.lines)) pruneDeadLines(cart, data.lines)
+      return data
+    })
     .catch(() => null)
     .finally(() => { inflightValidate.delete(body) }) as Promise<ValidateResponse<unknown> | null>
   inflightValidate.set(body, promise)
   return promise as Promise<ValidateResponse<T> | null>
+}
+
+// The validate route drops any line whose product no longer resolves (deleted,
+// archived, back to draft) - everything else comes back, if only as
+// available:false. Nothing used to remove those dead lines from localStorage,
+// so the header badge (which counts raw storage, the only figure it can show
+// before the round-trip lands) sat one high forever while the cart page,
+// rendering only validated lines, looked empty. Pruning here, in the one
+// validate path every cart island shares, heals the storage itself: the write
+// fires the cart-changed event, every island refreshes, and the re-validate of
+// the now-clean cart finds nothing more to prune.
+function pruneDeadLines(sent: CartLineShape[], returned: unknown[]): void {
+  const live = new Set(
+    returned.map((l) => keyOf(l as { productId: string; lineId?: string | null })),
+  )
+  for (const line of sent) {
+    if (!live.has(keyOf(line))) removeFromCart(keyOf(line))
+  }
 }
 
 export function writeValidatedCartCache(lines: unknown[]): void {
