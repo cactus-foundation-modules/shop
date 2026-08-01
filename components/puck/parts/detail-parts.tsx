@@ -321,42 +321,59 @@ const badgesCss = `
 
 type PartProps = { _ctx?: DetailPartContext }
 
-export function ShopDetailBadges(_props: PartProps) {
+type BadgesProps = { _ctx?: DetailPartContext; showNew?: string; showTrade?: string; showStock?: string }
+
+export function ShopDetailBadges(props: BadgesProps) {
   return (
     <>
       <Style css={badgesCss} />
       <div className="spd-badges" style={{ opacity: 0.6 }}>
-        <span className="spd-badge spd-badge-new">New</span>
-        <span className="spd-badge spd-badge-stock">In stock</span>
+        {props.showNew !== 'no' && <span className="spd-badge spd-badge-new">New</span>}
+        {props.showStock !== 'no' && <span className="spd-badge spd-badge-stock">In stock</span>}
       </div>
     </>
   )
 }
 
-export function ShopDetailBadgesRsc({ _ctx }: PartProps) {
+export function ShopDetailBadgesRsc(props: BadgesProps) {
+  const _ctx = props._ctx
   if (!_ctx) return null
   const { tagSlugs, outOfStock, lowStock, product } = _ctx
+  const showNew = props.showNew !== 'no'
+  const showTrade = props.showTrade !== 'no'
+  const showStock = props.showStock !== 'no'
   return (
     <>
       <Style css={badgesCss} />
       <div className="spd-badges">
-        {tagSlugs.includes('new') && <span className="spd-badge spd-badge-new">New</span>}
-        {tagSlugs.includes('trade') && <span className="spd-badge spd-badge-trade">Trade price</span>}
-        {outOfStock ? (
-          <span className="spd-badge spd-badge-out">Out of stock</span>
-        ) : product.isPreOrder ? (
-          <span className="spd-badge spd-badge-new">Pre-order</span>
-        ) : lowStock ? (
-          <span className="spd-badge spd-badge-low">Low stock</span>
-        ) : (
-          <span className="spd-badge spd-badge-stock">In stock</span>
+        {showNew && tagSlugs.includes('new') && <span className="spd-badge spd-badge-new">New</span>}
+        {showTrade && tagSlugs.includes('trade') && <span className="spd-badge spd-badge-trade">Trade price</span>}
+        {showStock && (
+          outOfStock ? (
+            <span className="spd-badge spd-badge-out">Out of stock</span>
+          ) : product.isPreOrder ? (
+            <span className="spd-badge spd-badge-new">Pre-order</span>
+          ) : lowStock ? (
+            <span className="spd-badge spd-badge-low">Low stock</span>
+          ) : (
+            <span className="spd-badge spd-badge-stock">In stock</span>
+          )
         )}
       </div>
     </>
   )
 }
 
-export const shopDetailBadgesPuckComponent = { label: 'Product: Badges', fields: {}, defaultProps: {}, render: ShopDetailBadges }
+export const shopDetailBadgesPuckComponent = {
+  label: 'Product: Badges',
+  fields: {
+    showNew: { type: 'select' as const, label: 'Show "New" badge', options: yesNo },
+    showTrade: { type: 'select' as const, label: 'Show "Trade price" badge', options: yesNo },
+    showStock: { type: 'select' as const, label: 'Show stock status badge', options: yesNo },
+  },
+  defaultProps: { showNew: 'yes', showTrade: 'yes', showStock: 'yes' },
+  render: ShopDetailBadges,
+}
 export const shopDetailBadgesPuckRscComponent = { ...shopDetailBadgesPuckComponent, render: ShopDetailBadgesRsc }
 
 // ---------------------------------------------------------------------------
@@ -368,29 +385,70 @@ export const shopDetailBadgesPuckRscComponent = { ...shopDetailBadgesPuckCompone
 // or a pinned tab bar covering it - same resting line the sections use.
 const titleCss = `.spd-title{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:34px;line-height:1.2;margin:6px 0;color:var(--color-fg);scroll-margin-top:calc(var(--spd-header-h,72px) + var(--spd-tabnav-h,0px) + 16px)}`
 
-export function ShopDetailTitle(_props: PartProps) {
+type TitleProps = { _ctx?: DetailPartContext; size?: number; align?: string }
+
+// Blank or non-numeric (the clearable field stores undefined for an emptied
+// box) falls back to the long-standing 34px, clamped to a sane heading range.
+const TITLE_SIZE_DEFAULT = 34
+function titleSizePx(value: unknown): number | undefined {
+  if (value === '' || value == null) return undefined
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return undefined
+  return Math.min(72, Math.max(14, Math.round(n)))
+}
+const alignOptions = [
+  { value: 'left', label: 'Left' },
+  { value: 'center', label: 'Centre' },
+  { value: 'right', label: 'Right' },
+]
+const textAlignStyle = (align?: string): CSSProperties | undefined =>
+  align === 'center' || align === 'right' ? { textAlign: align } : undefined
+
+export function ShopDetailTitle(props: TitleProps) {
+  const align = props.align
   return (
     <>
       <Style css={titleCss} />
-      <div style={{ height: 30, width: '70%', background: 'var(--color-border)', borderRadius: 6, margin: '8px 0', opacity: 0.6 }} />
+      <div
+        style={{
+          height: titleSizePx(props.size) ?? 30,
+          width: '70%',
+          background: 'var(--color-border)',
+          borderRadius: 6,
+          margin: align === 'center' ? '8px auto' : align === 'right' ? '8px 0 8px auto' : '8px 0',
+          opacity: 0.6,
+        }}
+      />
     </>
   )
 }
 
-export function ShopDetailTitleRsc({ _ctx }: PartProps) {
+export function ShopDetailTitleRsc(props: TitleProps) {
+  const _ctx = props._ctx
   if (!_ctx) return null
+  const size = titleSizePx(props.size)
+  const style: CSSProperties | undefined =
+    size || textAlignStyle(props.align) ? { ...(size ? { fontSize: size } : null), ...textAlignStyle(props.align) } : undefined
   return (
     <>
       <Style css={titleCss} />
       {/* id="spd-top" is the Configure action's landing target - the top of the
           configure area, so the shopper sees the name and the option pickers
           together. */}
-      <h1 id="spd-top" className="spd-title">{_ctx.product.name}</h1>
+      <h1 id="spd-top" className="spd-title" style={style}>{_ctx.product.name}</h1>
     </>
   )
 }
 
-export const shopDetailTitlePuckComponent = { label: 'Product: Title', fields: {}, defaultProps: {}, render: ShopDetailTitle }
+export const shopDetailTitlePuckComponent = {
+  label: 'Product: Title',
+  fields: {
+    size: { type: 'custom' as const, label: 'Text size (px)', render: ClearableNumberField },
+    align: { type: 'select' as const, label: 'Alignment', options: alignOptions },
+  },
+  defaultProps: { size: TITLE_SIZE_DEFAULT, align: 'left' },
+  render: ShopDetailTitle,
+}
 export const shopDetailTitlePuckRscComponent = { ...shopDetailTitlePuckComponent, render: ShopDetailTitleRsc }
 
 // ---------------------------------------------------------------------------
@@ -399,26 +457,51 @@ export const shopDetailTitlePuckRscComponent = { ...shopDetailTitlePuckComponent
 
 const skuCss = `.spd-sku{font-size:13px;color:var(--color-text-muted)}`
 
-export function ShopDetailSku(_props: PartProps) {
+type SkuProps = { _ctx?: DetailPartContext; prefix?: string; align?: string }
+
+// undefined (an old block saved before the field existed) keeps the
+// long-standing "SKU"; an explicitly emptied box means "just the code".
+const skuPrefix = (value: unknown): string => (typeof value === 'string' ? value.trim() : 'SKU')
+
+export function ShopDetailSku(props: SkuProps) {
   return (
     <>
       <Style css={skuCss} />
-      <div style={{ height: 13, width: '35%', background: 'var(--color-border)', borderRadius: 4, opacity: 0.6 }} />
+      <div
+        style={{
+          height: 13,
+          width: '35%',
+          background: 'var(--color-border)',
+          borderRadius: 4,
+          opacity: 0.6,
+          margin: props.align === 'center' ? '0 auto' : props.align === 'right' ? '0 0 0 auto' : undefined,
+        }}
+      />
     </>
   )
 }
 
-export function ShopDetailSkuRsc({ _ctx }: PartProps) {
+export function ShopDetailSkuRsc(props: SkuProps) {
+  const _ctx = props._ctx
   if (!_ctx || !_ctx.product.sku) return null
+  const prefix = skuPrefix(props.prefix)
   return (
     <>
       <Style css={skuCss} />
-      <div className="spd-sku">SKU {_ctx.product.sku}</div>
+      <div className="spd-sku" style={textAlignStyle(props.align)}>{prefix ? `${prefix} ${_ctx.product.sku}` : _ctx.product.sku}</div>
     </>
   )
 }
 
-export const shopDetailSkuPuckComponent = { label: 'Product: SKU', fields: {}, defaultProps: {}, render: ShopDetailSku }
+export const shopDetailSkuPuckComponent = {
+  label: 'Product: SKU',
+  fields: {
+    prefix: { type: 'text' as const, label: 'Label before the code' },
+    align: { type: 'select' as const, label: 'Alignment', options: alignOptions },
+  },
+  defaultProps: { prefix: 'SKU', align: 'left' },
+  render: ShopDetailSku,
+}
 export const shopDetailSkuPuckRscComponent = { ...shopDetailSkuPuckComponent, render: ShopDetailSkuRsc }
 
 // ---------------------------------------------------------------------------
@@ -427,21 +510,30 @@ export const shopDetailSkuPuckRscComponent = { ...shopDetailSkuPuckComponent, re
 
 const priceCss = `
 .spd-price-block{margin:18px 0 4px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
-.spd-price-now{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:34px;color:var(--color-primary)}
+.spd-price-now{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:var(--spd-price-size,34px);color:var(--color-primary)}
 .spd-price-was{font-size:15px;color:var(--color-text-muted);text-decoration:line-through}
 .spd-save{background:var(--color-success-subtle);color:var(--color-success);font-size:12px;font-weight:600;border-radius:9999px;padding:4px 11px}
 .spd-price-rrp{font-size:13px;color:var(--color-text-muted)}
 .spd-price-taxnote{font-size:13px;color:var(--color-text-muted)}
 `
 
-type PriceProps = { _ctx?: DetailPartContext; showCompare?: string; showSave?: string; showRrp?: string }
+type PriceProps = { _ctx?: DetailPartContext; showCompare?: string; showSave?: string; showRrp?: string; size?: number }
 
-export function ShopDetailPrice(_props: PriceProps) {
+// Same clearable-field contract as the title: blank falls back to the
+// long-standing 34px, and the var is set on a wrapper so a slot provider's own
+// .spd-price-now (which we can't reach inline) inherits it too.
+const PRICE_SIZE_DEFAULT = 34
+const priceSizeVars = (value: unknown): CSSProperties | undefined => {
+  const size = titleSizePx(value)
+  return size && size !== PRICE_SIZE_DEFAULT ? ({ '--spd-price-size': `${size}px` } as CSSProperties) : undefined
+}
+
+export function ShopDetailPrice(props: PriceProps) {
   return (
     <>
       <Style css={priceCss} />
-      <div className="spd-price-block" style={{ opacity: 0.6 }}>
-        <div style={{ height: 30, width: 110, background: 'var(--color-border)', borderRadius: 6 }} />
+      <div className="spd-price-block" style={{ opacity: 0.6, ...priceSizeVars(props.size) }}>
+        <div style={{ height: titleSizePx(props.size) ?? 30, width: 110, background: 'var(--color-border)', borderRadius: 6 }} />
       </div>
     </>
   )
@@ -466,6 +558,7 @@ export function ShopDetailPriceRsc(props: PriceProps) {
     return (
       <>
         <Style css={priceCss} />
+        <div style={priceSizeVars(props.size)}>
         <SlotPrice
           slug={product.slug}
           productId={product.id}
@@ -479,13 +572,14 @@ export function ShopDetailPriceRsc(props: PriceProps) {
           priceSuffix={ctx.priceSuffix}
           classNames={{ block: 'spd-price-block', now: 'spd-price-now', was: 'spd-price-was', save: 'spd-save' }}
         />
+        </div>
       </>
     )
   }
   return (
     <>
       <Style css={priceCss} />
-      <div className="spd-price-block">
+      <div className="spd-price-block" style={priceSizeVars(props.size)}>
         {/* A shop quoting by hand withholds the figures: its stand-in wording
             goes in place of the price, and the was/save/RRP/tax-note trimmings
             all stand down with it - there is nothing left for them to describe. */}
@@ -513,8 +607,9 @@ export const shopDetailPricePuckComponent = {
     showCompare: { type: 'select' as const, label: 'Show "was" price', options: yesNo },
     showSave: { type: 'select' as const, label: 'Show "Save X%" badge', options: yesNo },
     showRrp: { type: 'select' as const, label: 'Show RRP', options: yesNo },
+    size: { type: 'custom' as const, label: 'Price size (px)', render: ClearableNumberField },
   },
-  defaultProps: { showCompare: 'yes', showSave: 'yes', showRrp: 'yes' },
+  defaultProps: { showCompare: 'yes', showSave: 'yes', showRrp: 'yes', size: PRICE_SIZE_DEFAULT },
   render: ShopDetailPrice,
 }
 export const shopDetailPricePuckRscComponent = { ...shopDetailPricePuckComponent, render: ShopDetailPriceRsc }
@@ -523,31 +618,64 @@ export const shopDetailPricePuckRscComponent = { ...shopDetailPricePuckComponent
 // Blurb (short description)
 // ---------------------------------------------------------------------------
 
-const blurbCss = `.spd-blurb{margin-top:14px;color:var(--color-text-muted);max-width:52ch}`
+// Full column width by default: the old hardcoded 52ch reading cap left a
+// stripe of dead space beside the text in any buy column wider than it, with
+// no way to turn it off. Reading width is now the opt-in.
+const blurbCss = `.spd-blurb{margin-top:14px;color:var(--color-text-muted)}
+.spd-blurb.narrow{max-width:52ch}`
 
-export function ShopDetailBlurb(_props: PartProps) {
+type BlurbProps = { _ctx?: DetailPartContext; width?: string; size?: number }
+
+// Blank falls back to inheriting the site's body size, as it always has.
+function blurbSizePx(value: unknown): number | undefined {
+  if (value === '' || value == null) return undefined
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return undefined
+  return Math.min(28, Math.max(11, Math.round(n)))
+}
+
+export function ShopDetailBlurb(props: BlurbProps) {
   return (
     <>
       <Style css={blurbCss} />
-      <div className="spd-blurb" style={{ opacity: 0.6 }}>
-        <div style={{ height: 12, width: '90%', background: 'var(--color-border)', borderRadius: 4, marginBottom: 6 }} />
-        <div style={{ height: 12, width: '75%', background: 'var(--color-border)', borderRadius: 4 }} />
+      <div className={`spd-blurb${props.width === 'reading' ? ' narrow' : ''}`} style={{ opacity: 0.6 }}>
+        <div style={{ height: blurbSizePx(props.size) ?? 12, width: '90%', background: 'var(--color-border)', borderRadius: 4, marginBottom: 6 }} />
+        <div style={{ height: blurbSizePx(props.size) ?? 12, width: '75%', background: 'var(--color-border)', borderRadius: 4 }} />
       </div>
     </>
   )
 }
 
-export function ShopDetailBlurbRsc({ _ctx }: PartProps) {
+export function ShopDetailBlurbRsc(props: BlurbProps) {
+  const _ctx = props._ctx
   if (!_ctx || !_ctx.product.shortDescription) return null
+  const size = blurbSizePx(props.size)
   return (
     <>
       <Style css={blurbCss} />
-      <p className="spd-blurb">{_ctx.product.shortDescription}</p>
+      <p className={`spd-blurb${props.width === 'reading' ? ' narrow' : ''}`} style={size ? { fontSize: size } : undefined}>
+        {_ctx.product.shortDescription}
+      </p>
     </>
   )
 }
 
-export const shopDetailBlurbPuckComponent = { label: 'Product: Short description', fields: {}, defaultProps: {}, render: ShopDetailBlurb }
+export const shopDetailBlurbPuckComponent = {
+  label: 'Product: Short description',
+  fields: {
+    width: {
+      type: 'select' as const,
+      label: 'Text width',
+      options: [
+        { value: 'full', label: 'Fill the column' },
+        { value: 'reading', label: 'Reading width (about 52 characters)' },
+      ],
+    },
+    size: { type: 'custom' as const, label: 'Text size (px)', render: ClearableNumberField },
+  },
+  defaultProps: { width: 'full' },
+  render: ShopDetailBlurb,
+}
 export const shopDetailBlurbPuckRscComponent = { ...shopDetailBlurbPuckComponent, render: ShopDetailBlurbRsc }
 
 // ---------------------------------------------------------------------------
@@ -608,7 +736,7 @@ const buyCss = `
 .spd-buy-anchor{scroll-margin-top:calc(var(--spd-header-h,72px) + 16px)}
 `
 
-type AddProps = { _ctx?: DetailPartContext; showStepper?: string }
+type AddProps = { _ctx?: DetailPartContext; showStepper?: string; buttonLabel?: string }
 
 export function ShopDetailAddToCart(props: AddProps) {
   const showStepper = props.showStepper !== 'no'
@@ -634,9 +762,13 @@ export function ShopDetailAddToCartRsc(props: AddProps) {
   // a shop an add-on has switched over. Pre-order wins either way - "reserve one
   // of these" is a different promise from "buy one", and a quote-only shop makes
   // no promise about stock at all.
+  // A block-level wording override sits between the two, but pre-order still
+  // wins: "reserve one of these" is a different promise from whatever the
+  // author wrote for the buy case.
+  const override = typeof props.buttonLabel === 'string' ? props.buttonLabel.trim() : ''
   const label = product.isPreOrder
     ? 'Pre-order now'
-    : commerceModeButtonLabel(ctx.commerce.addLabel, null, 'Add to basket')
+    : override || commerceModeButtonLabel(ctx.commerce.addLabel, null, 'Add to basket')
   // The layout already carries the provider's own buy block, so that one owns
   // the purchase and this part steps aside - see `covered`.
   if (ctx.slot?.covered.includes('PurchaseArea')) return null
@@ -681,8 +813,9 @@ export const shopDetailAddToCartPuckComponent = {
   label: 'Product: Add to Cart [Anchor]',
   fields: {
     showStepper: { type: 'select' as const, label: 'Quantity stepper', options: [{ value: 'yes', label: 'Show stepper' }, { value: 'no', label: 'Button only' }] },
+    buttonLabel: { type: 'text' as const, label: 'Button label (blank = automatic)' },
   },
-  defaultProps: { showStepper: 'yes' },
+  defaultProps: { showStepper: 'yes', buttonLabel: '' },
   permissions: { delete: false },
   render: ShopDetailAddToCart,
 }
