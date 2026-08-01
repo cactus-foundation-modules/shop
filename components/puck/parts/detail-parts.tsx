@@ -71,19 +71,38 @@ const galleryCss = ({ tabletBp, mobileBp }: Breakpoints, maxPct: number) => `
    The Split writes grid-template-columns inline, so this needs
    !important to land, and :has() keeps it to the one cell that actually holds
    the gallery.
-   minmax(0,N%), not fit-content(N%): the auto ratio's fit-content(60%) was
-   already meant to be a ceiling and wasn't one, because the column below
-   declares a definite width. A definite width is also the item's min-content
-   contribution, and fit-content floors the track at that - so the track grew to
-   whatever --spd-fit asked for and sailed past 60%. minmax's max sizing
-   function has no such floor, and the column's own max-width:100% then clamps
-   --spd-fit to the capped track. */
-.puck-split:has(.spd-stage-col){grid-template-columns:minmax(0,${maxPct}%) 1fr !important}
-.puck-split:has(> :last-child .spd-stage-col){grid-template-columns:1fr minmax(0,${maxPct}%) !important}
+   min(N%,fit), not minmax(0,N%): a track is a ceiling AND a floor, and
+   minmax(0,N%) grew to the full N% whatever the column inside it did with the
+   room. Once the column started hugging the photo properly the two stopped
+   agreeing, and the difference showed up as dead white space between the photo
+   and the buy column - the whole 76px the thumbnail strip had just stopped
+   wasting. min() makes the track the same number the column is about to be, so
+   the cell ends where the photo ends and the 1fr beside it collects the rest,
+   which is what "the buy column keeps the rest" was always meant to mean.
+   Not fit-content(N%) either: the auto ratio's fit-content(60%) was already
+   meant to be a ceiling and wasn't one, because the column below declares a
+   definite width. A definite width is also the item's min-content contribution,
+   and fit-content floors the track at that - so the track grew to whatever
+   --spd-fit asked for and sailed past 60%. min() takes no contribution from its
+   contents at all, and the column's own max-width:100% still clamps --spd-fit to
+   the capped track on the N% side of the min. */
+:root{--spd-gallery-fit:calc(100dvh - var(--spd-header-h,96px) - var(--spd-tabnav-h,0px) - 32px - var(--spd-thumbs-h,76px));--spd-gallery-fit-beside:calc(100dvh - var(--spd-header-h,96px) - var(--spd-tabnav-h,0px) - 32px)}
+.puck-split:has(.spd-stage-col){grid-template-columns:min(${maxPct}%,var(--spd-gallery-fit)) 1fr !important}
+.puck-split:has(> :last-child .spd-stage-col){grid-template-columns:1fr min(${maxPct}%,var(--spd-gallery-fit)) !important}
+/* Beside keeps the old ceiling: its column is width:auto and stretches to fill
+   the track, so the track was never leaving a gap to close, and its budget is
+   the stage's rather than the column's - handing it a track sized by the
+   stacked sum would short the photo by a strip it isn't stacking. */
+.puck-split:has(.spd-stage-col.beside){grid-template-columns:minmax(0,${maxPct}%) 1fr !important}
+.puck-split:has(> :last-child .spd-stage-col.beside){grid-template-columns:1fr minmax(0,${maxPct}%) !important}
 /* Stacked, there is no row to take a share of, and core's own collapse rule is
-   !important too - this selector outranks it, so it has to re-state it. */
-@media (max-width:${mobileBp}){.puck-split:has(.spd-stage-col){grid-template-columns:1fr !important}}
-.spd-stage-col{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - var(--spd-tabnav-h,0px) - 32px - var(--spd-thumbs-h,76px));width:var(--spd-fit);max-width:100%;position:sticky;top:calc(var(--spd-header-h,96px) + var(--spd-tabnav-h,0px) + 16px);display:flex;flex-direction:column;gap:12px}
+   !important too - this selector outranks it, so it has to re-state it. All
+   three beside/side variants are spelled out because :has() counts what's inside
+   it: the .beside rules above outrank a bare :has(.spd-stage-col), so the
+   collapse has to match them selector for selector or a phone keeps two
+   columns. */
+@media (max-width:${mobileBp}){.puck-split:has(.spd-stage-col),.puck-split:has(.spd-stage-col.beside),.puck-split:has(> :last-child .spd-stage-col.beside){grid-template-columns:1fr !important}}
+.spd-stage-col{--spd-fit:var(--spd-gallery-fit);width:var(--spd-fit);max-width:100%;position:sticky;top:calc(var(--spd-header-h,96px) + var(--spd-tabnav-h,0px) + 16px);display:flex;flex-direction:column;gap:12px}
 /* Sticking needs somewhere to stick: a sticky box can only travel inside its own
    parent, so the parent has to outlive it. The gallery's parent is the Split's
    left cell, and a Split set to align "start" (which the Default template is, so
@@ -109,7 +128,7 @@ const galleryCss = ({ tabletBp, mobileBp }: Breakpoints, maxPct: number) => `
    since the strip is spending some of that width too. The column keeps its auto
    width for the same reason: --spd-fit is the stage's budget here, not the whole
    row's, so handing it to the column would short the stage by the strip. */
-.spd-stage-col.beside{--spd-fit:calc(100dvh - var(--spd-header-h,96px) - var(--spd-tabnav-h,0px) - 32px);width:auto;flex-direction:row-reverse;align-items:flex-start}
+.spd-stage-col.beside{--spd-fit:var(--spd-gallery-fit-beside);width:auto;flex-direction:row-reverse;align-items:flex-start}
 .spd-stage-col.beside .spd-stage{flex:1 1 auto;align-self:flex-start;width:auto;max-width:var(--spd-fit);min-width:0}
 .spd-stage-col.beside .spd-thumbs{flex-direction:column;margin-top:0;flex:none}
 .spd-stage-img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .18s ease}
