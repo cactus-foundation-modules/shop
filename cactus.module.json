@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.155",
+  "version": "0.1.156",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.571",
@@ -577,6 +577,12 @@
       "permission": "shop.access",
       "import": "./components/admin/ShopDashboardWidget",
       "component": "shopDashboardWidget"
+    },
+    {
+      "point": "search.shop-cards",
+      "id": "shop",
+      "import": "./lib/search-cards",
+      "component": "shopSearchCardProvider"
     },
     {
       "point": "core.menu-entity-provider",
