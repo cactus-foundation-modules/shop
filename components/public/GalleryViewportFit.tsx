@@ -41,8 +41,10 @@ function stickyHeaderHeight(): number {
 // height at all, which is why that column overrides the sum in CSS instead.
 const COLUMN_GAP = 12
 
+const STRIP_SELECTOR = '.spd-stage-col:not(.beside) .spd-thumbs'
+
 function thumbsHeight(): number {
-  const strip = document.querySelector('.spd-stage-col:not(.beside) .spd-thumbs')
+  const strip = document.querySelector(STRIP_SELECTOR)
   if (!strip) return 0
   return Math.round(strip.getBoundingClientRect().height) + COLUMN_GAP
 }
@@ -50,21 +52,52 @@ function thumbsHeight(): number {
 export function GalleryViewportFit() {
   useEffect(() => {
     const root = document.documentElement
+    // The strip we are currently watching, so the observer can follow it when it
+    // arrives, is replaced, or goes away again.
+    let strip: Element | null = null
+
+    // Measures, then re-points the observer at whichever strip is on the page
+    // now. Deliberately not deferred to a frame: a background tab pauses
+    // requestAnimationFrame, and a shopper who configures a product in one tab
+    // and comes back to another would find the measurement still pending.
     const apply = () => {
       root.style.setProperty('--spd-header-h', `${stickyHeaderHeight()}px`)
       root.style.setProperty('--spd-thumbs-h', `${thumbsHeight()}px`)
+      const current = document.querySelector(STRIP_SELECTOR)
+      if (current === strip) return
+      if (strip) ro.unobserve(strip)
+      strip = current
+      if (strip) ro.observe(strip)
     }
-    apply()
 
     // Both move after first paint more often than it looks: a logo image decodes,
     // a nav wraps to two lines, the window resizes, a condensed-on-scroll header
     // shrinks, or the strip rewraps to a different number of rows.
     const ro = new ResizeObserver(apply)
+    apply()
     for (const el of Array.from(document.querySelectorAll('header'))) ro.observe(el)
-    const strip = document.querySelector('.spd-stage-col:not(.beside) .spd-thumbs')
-    if (strip) ro.observe(strip)
+
+    // The strip is not necessarily on the page when this mounts, and observing
+    // "whatever exists right now" quietly assumed it was. On a product with
+    // options (shop-variations' gallery) there is nothing to pick between until
+    // the shopper has chosen a combination, so the strip is rendered later - the
+    // one measurement taken at mount said 0px, no observer was watching anything,
+    // and nothing ever measured again. The photo then kept the strip's share of
+    // the viewport as well as its own, and the column ran 76px past the bottom of
+    // the screen with the thumbnails hanging off the end of it. A window resize
+    // was the only thing that put it right, which is why it looked intermittent.
+    //
+    // Cheap on purpose: the callback only re-measures when the strip element
+    // itself has appeared, changed or gone, so an unrelated re-render elsewhere
+    // on the page costs one querySelector. Height changes are the
+    // ResizeObserver's job, not this one's.
+    const mo = new MutationObserver(() => {
+      if (document.querySelector(STRIP_SELECTOR) !== strip) apply()
+    })
+    mo.observe(document.body, { childList: true, subtree: true })
     window.addEventListener('resize', apply)
     return () => {
+      mo.disconnect()
       ro.disconnect()
       window.removeEventListener('resize', apply)
       root.style.removeProperty('--spd-header-h')
