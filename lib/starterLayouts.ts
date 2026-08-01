@@ -282,14 +282,19 @@ export function shopCheckoutStarters() {
     {
       id: 'starter-shop-checkout-sidebar',
       name: 'Two Column',
-      description: 'Order summary on the left (40%), the checkout steps on the right (60%).',
+      description: 'Order summary on the left (40%) staying in view as the page scrolls, the checkout steps on the right (60%), suggestions underneath.',
       data: {
-        content: [split('columns-1', '40/60')],
+        // The summary has its column to itself so `sticky` can hold it in view
+        // beside the scrolling steps - a sibling below it in the same zone
+        // would be ridden over. Upsells go full-width under the split instead.
+        content: [
+          split('columns-1', '40/60'),
+          block('ShopUpsellProducts', 'upsells-1', { heading: 'Add to your order', layout: 'Grid' }),
+        ],
         root: { props: {} },
         zones: {
           'columns-1:left': [
-            block('ShopCheckoutItems', 'items-1'),
-            block('ShopUpsellProducts', 'upsells-1', { heading: 'Add to your order', layout: 'Grid' }),
+            block('ShopCheckoutItems', 'items-1', { sticky: 'on', stickyOffset: '1rem' }),
           ],
           'columns-1:right': [
             block('ShopCheckoutContact', 'contact-1'),
