@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ComponentType, type InputHTMLAttributes } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
 import { getCheckoutState, updateCheckoutState, type ShpAddressForm } from '@/modules/shop/components/public/checkout-state'
+import type { ShopCheckoutAddressLookupProps, ShpLookupAddress } from '@/modules/shop/components/public/checkout-address-lookup'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
 type ShippingRateOption = { id: string; name: string; estimatedDays: string | null }
@@ -21,7 +22,16 @@ const REQUIRED_MESSAGES: Partial<Record<keyof ShpAddressForm, string>> = {
   postcode: 'Enter your postcode.',
 }
 
-export function CheckoutShippingClient({ preview = false }: { preview?: boolean }) {
+export function CheckoutShippingClient({
+  preview = false,
+  addressLookup = null,
+}: {
+  preview?: boolean
+  // Resolved server-side from the 'shop.checkout-address-lookup' extension
+  // point (see lib/checkout-address-lookup.ts) - null when no provider module
+  // is installed, and always null in the editor preview.
+  addressLookup?: ComponentType<ShopCheckoutAddressLookupProps> | null
+}) {
   const populated = useCartPopulated(preview)
   const initial = getCheckoutState()
   const [address, setAddress] = useState<ShpAddressForm>(initial.shippingAddress)
@@ -72,27 +82,41 @@ export function CheckoutShippingClient({ preview = false }: { preview?: boolean 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address.postcode])
 
+  // A picked suggestion lands as one state update, not four set() calls that
+  // would each clobber the previous one's spread of a stale `address`.
+  function applyLookup(picked: ShpLookupAddress) {
+    const next = { ...address, line1: picked.line1, line2: picked.line2, city: picked.city, county: picked.county, postcode: picked.postcode }
+    setAddress(next)
+    updateCheckoutState({ shippingAddress: next })
+  }
+
   // Real <label>s, not placeholder-as-label: a placeholder vanishes the moment
   // typing starts and never reaches a screen reader as the field's name.
-  function field(key: keyof ShpAddressForm, label: string, autoComplete: string, required: boolean) {
+  // `extra` lets an address-lookup provider layer combobox behaviour onto the
+  // input while this component keeps sole ownership of the markup; shop's own
+  // handlers run first, then the provider's.
+  function field(key: keyof ShpAddressForm, label: string, autoComplete: string, required: boolean, extra?: InputHTMLAttributes<HTMLInputElement>) {
     const error = fieldError(key)
     return (
       <label style={{ display: 'grid', gap: '0.25rem' }}>
         <span>{label}</span>
         <input
+          {...extra}
           type="text"
           required={required}
-          autoComplete={autoComplete}
+          autoComplete={extra?.autoComplete ?? autoComplete}
           value={address[key]}
-          onChange={(e) => set(key, e.target.value)}
-          onBlur={() => setTouched((t) => ({ ...t, [key]: true }))}
+          onChange={(e) => { set(key, e.target.value); extra?.onChange?.(e) }}
+          onBlur={(e) => { setTouched((t) => ({ ...t, [key]: true })); extra?.onBlur?.(e) }}
           aria-invalid={error ? true : undefined}
-          style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}` }}
+          style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`, ...extra?.style }}
         />
         {error && <span role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{error}</span>}
       </label>
     )
   }
+
+  const AddressLookup = addressLookup
 
   // Empty basket: no order to deliver, so no address to ask for - the
   // order-summary block carries the empty message.
@@ -105,7 +129,15 @@ export function CheckoutShippingClient({ preview = false }: { preview?: boolean 
         {field('firstName', 'First name', 'given-name', true)}
         {field('lastName', 'Last name', 'family-name', true)}
       </div>
-      {field('line1', 'Address line 1', 'address-line1', true)}
+      {AddressLookup ? (
+        <AddressLookup
+          value={address.line1}
+          onSelect={applyLookup}
+          renderInput={(inputProps) => field('line1', 'Address line 1', 'address-line1', true, inputProps)}
+        />
+      ) : (
+        field('line1', 'Address line 1', 'address-line1', true)
+      )}
       {field('line2', 'Address line 2 (optional)', 'address-line2', false)}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
         {field('city', 'Town or city', 'address-level2', true)}

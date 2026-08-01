@@ -22,13 +22,7 @@ export const shopCheckoutShippingPuckComponent = {
   render: ShopCheckoutShipping,
 }
 
-// RSC half renders live: on the storefront the island stands down when the
-// basket is empty, leaving the order-summary block's empty message on its own.
-export function ShopCheckoutShippingRsc() {
-  return <CheckoutShippingClient />
-}
-
-export const shopCheckoutShippingPuckRscComponent = {
-  ...shopCheckoutShippingPuckComponent,
-  render: ShopCheckoutShippingRsc,
-}
+// RSC half lives in ShopCheckoutShipping.rsc.tsx (manifest `rscImport`): it
+// resolves the 'shop.checkout-address-lookup' extension point, and the
+// generated registry behind that statically imports server-only module code -
+// nothing this editor-bundled file may touch.

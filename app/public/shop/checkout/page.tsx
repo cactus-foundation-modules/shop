@@ -9,6 +9,7 @@ import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/compone
 import { CheckoutItemsClient } from '@/modules/shop/components/public/CheckoutItemsClient'
 import { CheckoutContactClient } from '@/modules/shop/components/public/CheckoutContactClient'
 import { CheckoutShippingClient } from '@/modules/shop/components/public/CheckoutShippingClient'
+import { resolveCheckoutAddressLookup } from '@/modules/shop/lib/checkout-address-lookup'
 import { CheckoutPaymentClient } from '@/modules/shop/components/public/CheckoutPaymentClient'
 import { CheckoutReviewClient } from '@/modules/shop/components/public/CheckoutReviewClient'
 
@@ -45,7 +46,7 @@ export default async function ShopCheckoutPage() {
         <>
           <CheckoutItemsClient />
           <CheckoutContactClient />
-          <CheckoutShippingClient />
+          <CheckoutShippingClient addressLookup={resolveCheckoutAddressLookup()} />
           <CheckoutPaymentClient />
           <CheckoutReviewClient />
         </>
