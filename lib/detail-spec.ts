@@ -27,6 +27,11 @@ export type ShopDetailSpecPanelProps = {
   // it as opaque: it crosses the RSC boundary, so it must be JSON-serialisable,
   // and that is the only thing shop asks of it.
   payload: unknown
+  // Layout hint from the block the panel renders inside (the Sections block's
+  // "Auto-sort specification groups" field): true asks the provider to order
+  // its groups for the tightest column fill rather than the author's order.
+  // A hint, not a contract - a provider with no notion of groups ignores it.
+  autoSort?: boolean
 }
 
 // The shape a module registers at this point.

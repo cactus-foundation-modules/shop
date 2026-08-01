@@ -1064,7 +1064,7 @@ const sectionAnchorId = (id: string) => `${SECTION_ID_PREFIX}${id}`
 // what labels. The Tabs block, the Sections block, and the standalone Section
 // links block all build from this, so a link can never point at a section that
 // isn't there. Carved out of the old ShopDetailTabsRsc body unchanged.
-function buildDetailSections(ctx: DetailPartContext): OrderedTab[] {
+function buildDetailSections(ctx: DetailPartContext, opts?: { specAutoSort?: boolean }): OrderedTab[] {
   const { product, digitalFile, detailTabs, supplierLabel, slot, currencySymbol, layoutBlockTypes, descriptionBody, specOverride } = ctx
 
   const weightStr = product.weight ? `${product.weight}${product.weightUnit ? ` ${product.weightUnit}` : ''}` : null
@@ -1115,7 +1115,7 @@ function buildDetailSections(ctx: DetailPartContext): OrderedTab[] {
   // where shop's own facts table renders unchanged. The tab, its name and its
   // place in the strip stay shop's either way.
   const specContent = specOverride
-    ? <specOverride.Panel payload={specOverride.payload} />
+    ? <specOverride.Panel payload={specOverride.payload} autoSort={opts?.specAutoSort} />
     : <FactsTable rows={specRows} />
   own.push({ id: 'spec', order: TAB_ORDER.spec, label: 'Specification', content: specContent })
   if (dimRows.length > 0) {
@@ -1327,7 +1327,7 @@ export const shopDetailTabsPuckRscComponent = { ...shopDetailTabsPuckComponent, 
 // Sections (stacked / accordion - no tab bar, own "Section display" setting)
 // ---------------------------------------------------------------------------
 
-type SectionsProps = { _ctx?: DetailPartContext; display?: string; divider?: string }
+type SectionsProps = { _ctx?: DetailPartContext; display?: string; divider?: string; specSort?: string }
 
 export function ShopDetailSections(props: SectionsProps) {
   const divider = props.divider !== 'no'
@@ -1351,7 +1351,7 @@ export function ShopDetailSectionsRsc(props: SectionsProps) {
   if (!ctx) return null
   const display = props.display === 'accordion' ? 'accordion' : 'stacked'
   const divider = props.divider !== 'no'
-  const sections = buildDetailSections(ctx)
+  const sections = buildDetailSections(ctx, { specAutoSort: props.specSort === 'yes' })
   if (sections.length === 0) return null
 
   // Stacked and accordion are pure server markup - no tab state to hold, so no
@@ -1395,8 +1395,17 @@ export const shopDetailSectionsPuckComponent = {
       label: 'Divider above',
       options: yesNo,
     },
+    // A hint carried through the product-detail-spec seam (lib/detail-spec.ts):
+    // a module that fills the Specification body with headed groups may re-order
+    // them for the tightest column fill instead of the author's order. Does
+    // nothing on shop's own facts table, which has no groups to sort.
+    specSort: {
+      type: 'select' as const,
+      label: 'Auto-sort specification groups',
+      options: yesNo,
+    },
   },
-  defaultProps: { display: 'stacked', divider: 'yes' },
+  defaultProps: { display: 'stacked', divider: 'yes', specSort: 'no' },
   render: ShopDetailSections,
 }
 export const shopDetailSectionsPuckRscComponent = { ...shopDetailSectionsPuckComponent, render: ShopDetailSectionsRsc }
