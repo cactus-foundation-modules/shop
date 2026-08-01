@@ -16,7 +16,11 @@ import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 // by construction to the shop grids. Server-side only (the registry that
 // carries this is only importable from RSC/route code).
 export const shopSearchCardProvider = {
-  async renderProductCards(productIds: string[], opts?: { columns?: number }): Promise<ReactNode | null> {
+  // `media: 'still'` renders each card with its primary image only and no
+  // overlay controls. The search dropdown injects this markup as fetched HTML
+  // that never hydrates, so the carousel arrows and 3D button would render as
+  // dead controls there - a single still image is honest about what works.
+  async renderProductCards(productIds: string[], opts?: { columns?: number; media?: 'interactive' | 'still' }): Promise<ReactNode | null> {
     if (productIds.length === 0) return null
     const config = await getShopConfigCached()
     if (config.shopStatus === 'CLOSED') return null
@@ -41,10 +45,14 @@ export const shopSearchCardProvider = {
       resolveTaxDisplay(),
     ])
     const pricing = { ...config, taxDisplay, commerce: await resolveShopCommerceMode() }
+    const still = opts?.media === 'still'
     const items: CardItem[] = await Promise.all(
       products.map(async (product) => {
         const [media, tagIds] = await Promise.all([getProductMedia(product.id), getProductTagIds(product.id)])
-        return { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(product.id) ?? null, cardExtras.get(product.id)) }
+        const ctx = buildCardContext(product, media, tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(product.id) ?? null, cardExtras.get(product.id))
+        // Facts (e.g. the variation swatch row) survive a still card - they are
+        // plain server-rendered markup, unlike the carousel and its overlays.
+        return { product, ctx: still ? { ...ctx, images: ctx.images.slice(0, 1), overlays: [] } : ctx }
       }),
     )
 
