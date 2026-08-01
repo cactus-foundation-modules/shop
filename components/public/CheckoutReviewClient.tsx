@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
 import { getCheckoutState, isContactAndShippingComplete, subscribeCheckoutState } from '@/modules/shop/components/public/checkout-state'
+import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
 type SessionSummary = {
   subtotal: number; discountAmount: number; shippingAmount: number; taxAmount: number; total: number
@@ -35,7 +36,8 @@ const PRE_ORDER_NOTICE: Record<'HOLD_ALL' | 'PROMPT_SPLIT', string> = {
 // Registered Puck block wrapper (ShopCheckoutReview) is a server component that
 // renders this, so Puck's RSC <Render> never serialises its renderDropZone
 // function bag into the client.
-export function CheckoutReviewClient() {
+export function CheckoutReviewClient({ preview = false }: { preview?: boolean }) {
+  const populated = useCartPopulated(preview)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [incomplete, setIncomplete] = useState(true)
@@ -74,6 +76,10 @@ export function CheckoutReviewClient() {
     setError(null)
     window.dispatchEvent(new CustomEvent('cactus-shop-place-order'))
   }
+
+  // Empty basket: no order to review, no total to show, nothing to place - the
+  // order-summary block carries the empty message.
+  if (!populated) return null
 
   if (incomplete) {
     return (

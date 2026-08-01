@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
 import { getCheckoutState, updateCheckoutState, type ShpAddressForm } from '@/modules/shop/components/public/checkout-state'
+import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
 type ShippingRateOption = { id: string; name: string; estimatedDays: string | null }
 
@@ -20,7 +21,8 @@ const REQUIRED_MESSAGES: Partial<Record<keyof ShpAddressForm, string>> = {
   postcode: 'Enter your postcode.',
 }
 
-export function CheckoutShippingClient() {
+export function CheckoutShippingClient({ preview = false }: { preview?: boolean }) {
+  const populated = useCartPopulated(preview)
   const initial = getCheckoutState()
   const [address, setAddress] = useState<ShpAddressForm>(initial.shippingAddress)
   const [rates, setRates] = useState<ShippingRateOption[]>([])
@@ -91,6 +93,10 @@ export function CheckoutShippingClient() {
       </label>
     )
   }
+
+  // Empty basket: no order to deliver, so no address to ask for - the
+  // order-summary block carries the empty message.
+  if (!populated) return null
 
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
 import { getCheckoutState, updateCheckoutState, isContactAndShippingComplete } from '@/modules/shop/components/public/checkout-state'
+import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
 type ShopClientConfig = { enabledPaymentMethods: string[]; paymentMethodLabels?: Record<string, string>; stripePublishableKey: string | null; currencySymbol: string }
 
@@ -35,7 +36,8 @@ function loadStripeJs(): Promise<void> {
 // instance). Registered Puck block wrapper (ShopCheckoutPayment) is a server
 // component that renders this, so Puck's RSC <Render> never serialises its
 // renderDropZone function bag into the client.
-export function CheckoutPaymentClient() {
+export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }) {
+  const populated = useCartPopulated(preview)
   const [config, setConfig] = useState<ShopClientConfig | null>(null)
   const [method, setMethod] = useState<string | null>(getCheckoutState().paymentMethod)
   const [instructions, setInstructions] = useState<string | null>(null)
@@ -139,6 +141,10 @@ export function CheckoutPaymentClient() {
     window.addEventListener('cactus-shop-place-order', placeOrder)
     return () => window.removeEventListener('cactus-shop-place-order', placeOrder)
   }, [method])
+
+  // Empty basket: nothing to pay for. Rendering payment methods here invites a
+  // click that can only end in an error from the payment-intent route.
+  if (!populated) return null
 
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>

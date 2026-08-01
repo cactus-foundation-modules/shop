@@ -2,15 +2,22 @@
 
 import { useState } from 'react'
 import { getCheckoutState, updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
+import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
 // Client island for the checkout contact step. Registered Puck block wrapper
 // (ShopCheckoutContact) is a server component that renders this, so Puck's RSC
 // <Render> never serialises its renderDropZone function bag into the client.
-export function CheckoutContactClient() {
+export function CheckoutContactClient({ preview = false }: { preview?: boolean }) {
+  const populated = useCartPopulated(preview)
   const initial = getCheckoutState()
   const [email, setEmail] = useState(initial.customerEmail)
   const [name, setName] = useState(initial.customerName)
   const [phone, setPhone] = useState(initial.customerPhone)
+
+  // Empty basket: the order-summary block owns the "your basket is empty"
+  // message; a contact form under it would suggest there is still an order to
+  // place.
+  if (!populated) return null
 
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
