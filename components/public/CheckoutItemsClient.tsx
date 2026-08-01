@@ -90,7 +90,7 @@ export function CheckoutItemsClient({ preview = false }: { preview?: boolean }) 
 
   if (empty) {
     return (
-      <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
+      <section style={{ display: 'grid', gap: '0.75rem' }}>
         <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Your order</h2>
         <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>
           Your basket is empty. <Link href="/shop" style={{ color: 'var(--color-primary)' }}>Continue shopping</Link>
@@ -101,7 +101,9 @@ export function CheckoutItemsClient({ preview = false }: { preview?: boolean }) 
   if (!lines) return null
 
   return (
-    <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
+    // No max-width of its own: the block fills whatever column its layout gives
+    // it - a sidebar, a split's left half, or a narrow section.
+    <section style={{ display: 'grid', gap: '0.75rem' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '1rem' }}>
         <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Your order</h2>
         {/* Changes happen in the basket, not here - checkout stays a straight

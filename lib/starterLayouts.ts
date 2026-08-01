@@ -259,17 +259,22 @@ export function shopCheckoutStarters() {
     {
       id: 'starter-shop-checkout-classic',
       name: 'Classic Steps',
-      description: 'Order summary up top, then contact, shipping, payment, review, and a final upsell - one column.',
+      description: 'Order summary up top, then contact, shipping, payment, review, and a final upsell - one centred column.',
       publishByDefault: true,
       data: {
-        content: [
-          block('ShopCheckoutItems', 'shop-checkout-items'),
-          block('ShopCheckoutContact', 'shop-checkout-contact'),
-          block('ShopCheckoutShipping', 'shop-checkout-shipping'),
-          block('ShopCheckoutPayment', 'shop-checkout-payment'),
-          block('ShopCheckoutReview', 'shop-checkout-review'),
-          block('ShopUpsellProducts', 'shop-checkout-upsells', { heading: 'You might also like', layout: 'Grid' }),
-        ],
+        // Inside a narrow Section so the single column stays centred and tidy
+        // now the page wrapper is wide enough for two-column designs.
+        content: [section('shop-checkout-section', {
+          maxWidth: 'narrow',
+          content: [
+            block('ShopCheckoutItems', 'shop-checkout-items'),
+            block('ShopCheckoutContact', 'shop-checkout-contact'),
+            block('ShopCheckoutShipping', 'shop-checkout-shipping'),
+            block('ShopCheckoutPayment', 'shop-checkout-payment'),
+            block('ShopCheckoutReview', 'shop-checkout-review'),
+            block('ShopUpsellProducts', 'shop-checkout-upsells', { heading: 'You might also like', layout: 'Grid' }),
+          ],
+        })],
         root: { props: {} },
         zones: {},
       },
@@ -277,20 +282,20 @@ export function shopCheckoutStarters() {
     {
       id: 'starter-shop-checkout-sidebar',
       name: 'Two Column',
-      description: 'Steps on the left (70%), order summary and upsell suggestions in a sidebar on the right (30%).',
+      description: 'Order summary on the left (40%), the checkout steps on the right (60%).',
       data: {
-        content: [split('columns-1', '70/30')],
+        content: [split('columns-1', '40/60')],
         root: { props: {} },
         zones: {
           'columns-1:left': [
+            block('ShopCheckoutItems', 'items-1'),
+            block('ShopUpsellProducts', 'upsells-1', { heading: 'Add to your order', layout: 'Grid' }),
+          ],
+          'columns-1:right': [
             block('ShopCheckoutContact', 'contact-1'),
             block('ShopCheckoutShipping', 'shipping-1'),
             block('ShopCheckoutPayment', 'payment-1'),
             block('ShopCheckoutReview', 'review-1'),
-          ],
-          'columns-1:right': [
-            block('ShopCheckoutItems', 'items-1'),
-            block('ShopUpsellProducts', 'upsells-1', { heading: 'Add to your order', layout: 'Grid' }),
           ],
         },
       },

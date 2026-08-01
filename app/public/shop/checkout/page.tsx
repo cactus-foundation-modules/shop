@@ -28,8 +28,12 @@ export default async function ShopCheckoutPage() {
 
   const layout = await resolveThemeLayout('shopCheckout', { moduleName: 'shop' })
 
+  // A published layout gets room to breathe - a two-column design (order
+  // summary beside the steps) is unusable inside the old 640px straitjacket.
+  // The hardcoded fallback flow is single-column by nature, so it keeps the
+  // narrow centred wrapper it was designed around.
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: '2rem 1.5rem', display: 'grid', gap: '2rem' }}>
+    <div style={{ maxWidth: layout?.builderData ? 1100 : 640, margin: '0 auto', padding: '2rem 1.5rem', display: 'grid', gap: '2rem' }}>
       {gate.staffPreview && <ShopStaffPreviewBanner />}
       <h1 style={{ fontSize: '1.75rem', margin: 0 }}>Checkout</h1>
       {layout?.builderData ? (
