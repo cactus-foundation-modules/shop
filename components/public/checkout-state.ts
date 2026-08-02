@@ -25,7 +25,10 @@ export type CheckoutState = {
   shippingAddress: ShpAddressForm
   shippingRateId: string | null
   couponCode: string | null
-  paymentMethod: 'STRIPE' | 'PAYPAL' | 'BANK_TRANSFER' | 'CASH' | null
+  // Any registered provider id, not just the four built in - a module can
+  // contribute its own method (open banking, say) through the shop's payment
+  // provider extension point, and it has to survive a round trip through here.
+  paymentMethod: string | null
 }
 
 const STORAGE_KEY = 'cactus_shop_checkout'

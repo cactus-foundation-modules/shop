@@ -261,9 +261,14 @@ export async function markOrderPaid(id: string, paymentReference: string): Promi
 
 // Two distinct events land here:
 //  - reason 'FAILED' (the default, and what the Stripe/PayPal failure webhooks
-//    and the confirm route pass): a payment attempt that never cleared. Only a
-//    still-PENDING order is touched, so a stray late failure can never quietly
-//    undo an order that has already been paid.
+//    and the confirm route pass): a payment attempt that never cleared. PAID is
+//    excluded, so a stray late failure can never quietly undo an order that has
+//    already been paid. AWAITING_CONFIRMATION has to be included alongside
+//    PENDING, and used not to be: an authorised-but-unsettled payment (open
+//    banking) is parked there by the return route, so guarding on PENDING alone
+//    meant the failure webhook that followed matched no rows at all and the
+//    order sat in the owner's awaiting-confirmation queue for good, reading as
+//    money still on its way.
 //  - reason 'CHARGEBACK' (the GoCardless settle handler passes this when a
 //    settled payment is later charged back or fails at the bank): the money has
 //    been clawed back AFTER the order was marked PAID, and the goods may already
@@ -293,7 +298,7 @@ export async function markOrderPaymentFailed(id: string, reason: 'FAILED' | 'CHA
 
   await prisma.$executeRaw`
     UPDATE "shp_orders" SET "payment_status" = 'FAILED', "updated_at" = CURRENT_TIMESTAMP
-    WHERE "id" = ${id} AND "payment_status" = 'PENDING'
+    WHERE "id" = ${id} AND "payment_status" IN ('PENDING', 'AWAITING_CONFIRMATION')
   `
 }
 

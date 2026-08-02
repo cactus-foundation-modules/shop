@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getOrderByNumberAndEmail, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
 
 // Guest order lookup: order number + email must both match - no enumeration (spec 8.1).
@@ -26,5 +27,14 @@ export async function GET(request: NextRequest) {
     instructions = order.paymentMethod === 'BANK_TRANSFER' ? config.bankTransferInstructions : config.cashInstructions
   }
 
-  return NextResponse.json({ order, items, instructions, currencySymbol: config.currencySymbol })
+  // Whether this method has no automated confirmation at all. It decides what
+  // "awaiting confirmation" is telling the shopper, and the two readings are
+  // opposites: on a manual method nothing has been paid yet and the ball is in
+  // their court, whereas on an automated one the money is authorised and simply
+  // settling. Taken from the provider's own confirmMode rather than a list of
+  // method codes here, so a module that contributes a manual method is read
+  // correctly and shop never has to name anyone else's.
+  const manualPayment = getPaymentProvider(order.paymentMethod)?.confirmMode === 'manual'
+
+  return NextResponse.json({ order, items, instructions, manualPayment, currencySymbol: config.currencySymbol })
 }
