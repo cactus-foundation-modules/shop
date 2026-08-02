@@ -9,7 +9,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (gate.error) return gate.error
 
   const { id } = await params
-  const email = decodeURIComponent(id)
+  // Left as-is on a malformed escape rather than throwing: decodeURIComponent
+  // raises URIError on a stray "%", which turned a mistyped customer URL into an
+  // unhandled 500. An address that does not decode simply matches no orders.
+  let email = id
+  try { email = decodeURIComponent(id) } catch { /* use the raw segment */ }
   const orders = await listOrdersByEmail(email)
   if (orders.length === 0) return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
 

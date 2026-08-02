@@ -61,6 +61,11 @@ export function MediaPickerModal({ onAdd, onClose, resolveFolderId, resolveIniti
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const pageRef = useRef(1)
+  // Which listing the rows on screen belong to. Bumped every time the listing
+  // effect starts a fresh one, so a "load more" still in flight from the
+  // PREVIOUS folder/search/sort can tell that it has been overtaken and drop its
+  // page rather than appending another folder's photos to the one on screen.
+  const listingRef = useRef(0)
   // Bumped to force the listing effect to re-run for the same folder/sort, which
   // is what an upload into the folder already on screen needs.
   const [reloadKey, setReloadKey] = useState(0)
@@ -110,6 +115,7 @@ export function MediaPickerModal({ onAdd, onClose, resolveFolderId, resolveIniti
     if (folderId === undefined) return
     let cancelled = false
     pageRef.current = 1
+    listingRef.current += 1
     const timer = setTimeout(() => {
       if (!cancelled) setLoading(true)
       fetch(`/api/admin/media?${buildParams(1).toString()}`)
@@ -133,16 +139,22 @@ export function MediaPickerModal({ onAdd, onClose, resolveFolderId, resolveIniti
     if (loadingMore || !hasMore) return
     setLoadingMore(true)
     const next = pageRef.current + 1
+    const listing = listingRef.current
     fetch(`/api/admin/media?${buildParams(next).toString()}`)
       .then((r) => r.json())
       .then((d) => {
+        // Overtaken by a folder change, search or re-sort while this page was in
+        // flight: these rows belong to a listing nobody is looking at any more.
+        // The flag still has to come down, or "Load more" stays disabled for the
+        // listing that replaced it.
+        setLoadingMore(false)
+        if (listing !== listingRef.current) return
         pageRef.current = next
         setItems((prev) => {
           const seen = new Set(prev.map((i) => i.id))
           return [...prev, ...((d.items ?? []) as MediaItem[]).filter((i) => !seen.has(i.id))]
         })
         setHasMore(Boolean(d.hasMore))
-        setLoadingMore(false)
       })
       .catch(() => setLoadingMore(false))
   }

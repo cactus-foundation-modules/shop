@@ -11,5 +11,9 @@ export default async function ShopCustomerDetailPage({ params }: { params: Promi
   if (!canAccess) return <div className="alert alert-danger">You do not have permission to view this customer.</div>
 
   const { id } = await params
-  return <CustomerDetailScreen email={decodeURIComponent(id)} />
+  // Left as-is on a malformed escape rather than throwing - see the matching
+  // API route. A stray "%" otherwise rendered an error page.
+  let email = id
+  try { email = decodeURIComponent(id) } catch { /* use the raw segment */ }
+  return <CustomerDetailScreen email={email} />
 }
