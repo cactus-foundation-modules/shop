@@ -353,6 +353,21 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
           </label>
 
           <hr style={hr} />
+          <h3 style={sectionHeading}>Order history</h3>
+          <p className="field-hint" style={{ marginTop: '-0.5rem' }}>
+            What a signed-in customer can do on their own copy of an order they have already placed.
+          </p>
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.buyAgainEnabled} onChange={(e) => set('buyAgainEnabled', e.target.checked)} />
+            Let customers order the same thing again
+          </label>
+          <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
+            Puts a &ldquo;Buy again&rdquo; button on every line, which drops it straight back in the basket. A line with
+            options picked on it offers &ldquo;Choose options again&rdquo; instead and sends them to the product page,
+            because guessing at last year&rsquo;s choices is how somebody ends up with the wrong colour.
+          </p>
+
+          <hr style={hr} />
           <h3 style={sectionHeading}>Cancellations and returns</h3>
           <p className="field-hint" style={{ marginTop: '-0.5rem' }}>
             Requests arrive under Shop → Cancellations &amp; returns for you to approve or decline. Nothing is ever

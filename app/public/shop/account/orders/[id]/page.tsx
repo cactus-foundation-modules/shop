@@ -168,12 +168,14 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
                         Pre-order{line.item.preOrderDispatchDate ? ` · expected ${formatOrderDate(line.item.preOrderDispatchDate)}` : ''}
                       </span>
                     )}
-                    <BuyAgainButton
-                      productId={line.item.productId}
-                      productSlug={line.productSlug}
-                      quantity={line.item.quantity}
-                      personalised={!!line.item.lineMeta?.fields?.length}
-                    />
+                    {config.buyAgainEnabled && (
+                      <BuyAgainButton
+                        productId={line.item.productId}
+                        productSlug={line.productSlug}
+                        quantity={line.item.quantity}
+                        personalised={!!line.item.lineMeta?.fields?.length}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
