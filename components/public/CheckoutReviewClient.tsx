@@ -67,6 +67,7 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
   const [placing, setPlacing] = useState(false)
   const [agreements, setAgreements] = useState<Agreement[]>([])
   const [businessNameRequired, setBusinessNameRequired] = useState(false)
+  const [phoneRequired, setPhoneRequired] = useState(false)
   // Which boxes are ticked, mirrored out of checkout state so this block
   // re-renders on a tick. checkout-state stays the source of truth, because the
   // payment block reads it from there when it posts the order.
@@ -80,10 +81,11 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
     let cancelled = false
     fetch('/api/m/shop/public/config')
       .then((r) => r.json())
-      .then((d: { checkoutAgreements?: Agreement[]; businessName?: { required?: boolean } }) => {
+      .then((d: { checkoutAgreements?: Agreement[]; businessName?: { required?: boolean }; requirePhone?: boolean }) => {
         if (cancelled) return
         setAgreements(d.checkoutAgreements ?? [])
         setBusinessNameRequired(d.businessName?.required === true)
+        setPhoneRequired(d.requirePhone === true)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -95,7 +97,7 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
       const lines = getCart()
       setTicked(state.agreements ?? {})
       setPaymentMethod(state.paymentMethod)
-      if (lines.length === 0 || !isContactAndShippingComplete(state, { businessNameRequired })) {
+      if (lines.length === 0 || !isContactAndShippingComplete(state, { businessNameRequired, phoneRequired })) {
         setIncomplete(true)
         setSummary(null)
         return
@@ -117,10 +119,10 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
     function onError(e: Event) { setPlacing(false); setError((e as CustomEvent).detail) }
     window.addEventListener('cactus-shop-order-error', onError)
     return () => { unsubscribe(); window.removeEventListener('cactus-shop-order-error', onError) }
-    // Re-runs when the business-name rule arrives from config: the completeness
-    // test above closes over it, so a stale `false` would wave through a
-    // checkout the order route is about to refuse.
-  }, [businessNameRequired])
+    // Re-runs when the business-name and phone rules arrive from config: the
+    // completeness test above closes over them, so a stale `false` would wave
+    // through a checkout the order route is about to refuse.
+  }, [businessNameRequired, phoneRequired])
 
   function setAgreement(id: string, accepted: boolean) {
     const next = { ...getCheckoutState().agreements, [id]: accepted }

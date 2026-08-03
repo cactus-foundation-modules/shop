@@ -160,14 +160,15 @@ export function forgetPlacedOrder(): void {
 // so Payment/Review can mount (and fire their network calls) before those fields
 // are filled in. Both check this before hitting an endpoint that requires them.
 //
-// `businessNameRequired` comes from shop settings and has to be passed in: this
-// file is shared by blocks that each fetch config at their own pace, and a
-// caller that has not got it yet is better off omitting it than guessing. The
-// order-creating route enforces the same rule server-side regardless, so the
-// worst an un-passed flag costs is a late error instead of an early one.
+// `businessNameRequired` and `phoneRequired` come from shop settings and have to
+// be passed in: this file is shared by blocks that each fetch config at their own
+// pace, and a caller that has not got it yet is better off omitting it than
+// guessing. The order-creating route enforces the same rules server-side
+// regardless, so the worst an un-passed flag costs is a late error instead of an
+// early one.
 export function isContactAndShippingComplete(
   state: CheckoutState,
-  opts?: { businessNameRequired?: boolean },
+  opts?: { businessNameRequired?: boolean; phoneRequired?: boolean },
 ): boolean {
   const a = state.shippingAddress
   return (
@@ -178,7 +179,10 @@ export function isContactAndShippingComplete(
     a.line1.trim().length > 0 &&
     a.city.trim().length > 0 &&
     a.postcode.trim().length > 0 &&
-    (!opts?.businessNameRequired || a.company.trim().length > 0)
+    (!opts?.businessNameRequired || a.company.trim().length > 0) &&
+    // The contact step's number, not the address's: that is the one the contact
+    // block writes and the one the order carries as customerPhone.
+    (!opts?.phoneRequired || state.customerPhone.trim().length > 0)
   )
 }
 

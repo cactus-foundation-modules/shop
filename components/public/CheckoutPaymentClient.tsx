@@ -17,6 +17,10 @@ type ShopClientConfig = {
   // Optional so a response from an older cached bundle still works - the
   // fallback is the rule as it was before the business-name box existed.
   businessName?: { required?: boolean }
+  // Whether the contact step's phone number is compulsory. Same reason as
+  // above: the order-creating route refuses without one, so this block has to
+  // know before it is worth calling.
+  requirePhone?: boolean
   // The review step's tickboxes. Needed here because the route that creates the
   // order refuses one with a compulsory box unticked, so this block has to know
   // when it is worth calling at all.
@@ -166,7 +170,10 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
   // ticked. Choosing a method is never gated on any of it - only the network
   // call behind the choice is, and only until the shopper has finished.
   const outstandingRequirement = useCallback((state: CheckoutState): 'details' | 'agreements' | null => {
-    if (!isContactAndShippingComplete(state, { businessNameRequired: config?.businessName?.required === true })) return 'details'
+    if (!isContactAndShippingComplete(state, {
+      businessNameRequired: config?.businessName?.required === true,
+      phoneRequired: config?.requirePhone === true,
+    })) return 'details'
     if (!areAgreementsAccepted(state.agreements, config?.checkoutAgreements ?? [])) return 'agreements'
     return null
   }, [config])

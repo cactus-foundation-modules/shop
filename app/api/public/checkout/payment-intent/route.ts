@@ -77,6 +77,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `${label} is required.` }, { status: 400 })
   }
 
+  // And the phone number, for the same reason: the contact step marks the box
+  // compulsory when the owner has asked for one, but the rule only actually
+  // holds where the order is made. Trimmed, so a space is not a phone number.
+  if (config.requirePhone && !data.customerPhone?.trim()) {
+    return NextResponse.json({ error: 'A phone number is required.' }, { status: 400 })
+  }
+
   // Same reasoning for the tickboxes, and rather more at stake: an order placed
   // without the terms box ticked is an order with no record that they were ever
   // agreed to, which is the entire point of asking. The statements are read
