@@ -27,7 +27,7 @@ export default async function ShopAccountAddressesPage() {
         Saved addresses
       </h1>
       <p style={{ color: 'var(--color-text-muted)', margin: '0 0 var(--space-4)' }}>
-        Addresses saved here are offered at checkout, so you only type them once.
+        Every address you order to is kept here, and offered back at checkout, so you only type one once.
       </p>
       <AddressesClient />
     </MemberAccountShell>

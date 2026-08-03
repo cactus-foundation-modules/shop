@@ -5,6 +5,14 @@ import { EMPTY_ADDRESS, type ShpAddressForm } from '@/modules/shop/components/pu
 
 type SavedAddress = { id: string; label: string | null; isDefault: boolean; address: ShpAddressForm }
 
+// An address kept from an order has no label - nobody was asked for one - so it
+// falls back to whoever it goes to. "Address, Address, Address" down a list of
+// three is no help to anyone deciding which to delete.
+function addressTitle(a: SavedAddress): string {
+  const name = [a.address.firstName, a.address.lastName].filter(Boolean).join(' ').trim()
+  return a.label?.trim() || name || 'Address'
+}
+
 export function AddressesClient() {
   const [addresses, setAddresses] = useState<SavedAddress[]>([])
   const [form, setForm] = useState<ShpAddressForm>(EMPTY_ADDRESS)
@@ -33,7 +41,7 @@ export function AddressesClient() {
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.75rem' }}>
         {addresses.map((a) => (
           <li key={a.id} style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.75rem 1rem' }}>
-            <div style={{ fontWeight: 600 }}>{a.label || 'Address'}{a.isDefault && ' (default)'}</div>
+            <div style={{ fontWeight: 600 }}>{addressTitle(a)}{a.isDefault && ' (default)'}</div>
             <div>{a.address.line1}, {a.address.city}, {a.address.postcode}</div>
             <button onClick={() => deleteAddress(a.id)} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', padding: 0, marginTop: '0.5rem' }}>Delete</button>
           </li>

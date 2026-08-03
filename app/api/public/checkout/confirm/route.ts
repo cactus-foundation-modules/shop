@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { getOrderById, markOrderPaid, markOrderPaymentFailed, markOrderAwaitingConfirmation, setOrderPaymentReference } from '@/modules/shop/lib/db/orders'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { fulfillPaidOrder } from '@/modules/shop/lib/order-fulfillment'
+import { rememberOrderAddress } from '@/modules/shop/lib/order-address-book'
 
 const Body = z.object({ orderId: z.string(), payload: z.unknown() })
 
@@ -23,6 +24,12 @@ export async function POST(request: NextRequest) {
   // the order for an admin to clear once the money actually arrives.
   if (provider.confirmMode === 'manual') {
     await markOrderAwaitingConfirmation(order.id)
+    // The shopper has finished checking out even though the money has not
+    // landed yet, so their address is saved now rather than whenever the shop
+    // gets round to confirming the transfer. fulfillPaidOrder saves it too when
+    // that confirmation eventually comes; rememberOrderAddress dedupes, so the
+    // second attempt is a no-op rather than a duplicate.
+    await rememberOrderAddress(order)
     return NextResponse.json({ orderNumber: order.orderNumber, status: 'AWAITING_CONFIRMATION' })
   }
 
@@ -48,6 +55,7 @@ export async function POST(request: NextRequest) {
   // AWAITING_CONFIRMATION and let the provider's webhook flip it to PAID.
   if (result.pending) {
     await markOrderAwaitingConfirmation(order.id)
+    await rememberOrderAddress(order)
     return NextResponse.json({ orderNumber: order.orderNumber, status: 'AWAITING_CONFIRMATION' })
   }
 

@@ -59,3 +59,51 @@ export async function updateSavedAddress(
 export async function deleteSavedAddress(id: string, memberId: string): Promise<void> {
   await prisma.$executeRaw`DELETE FROM "shp_saved_addresses" WHERE "id" = ${id} AND "member_id" = ${memberId}`
 }
+
+// Two addresses are the same address if a parcel for either would arrive at the
+// same door. Case and spacing are noise for that question, so the key drops
+// them: a shopper who types "SW1A 1AA" on one order and "sw1a1aa" on the next
+// should end up with one entry in their address book, not two. Only the three
+// fields that pick out a door are compared - a name change or a new phone
+// number is the same address with a different recipient, not a second one.
+//
+// The SQL in rememberAddressForMember below rebuilds this exact key in
+// Postgres. Change one and you must change the other or the dedupe stops
+// matching and every order files a fresh copy. Exported for the test that
+// pins the normalisation, which is the half of that pair a machine can check.
+export function addressDoorKey(a: { line1?: string; line2?: string; postcode?: string }): string {
+  return `${a.line1 ?? ''}|${a.line2 ?? ''}|${a.postcode ?? ''}`.replace(/\s+/g, '').toLowerCase()
+}
+
+// Files an address the member has actually ordered to into their address book,
+// unless that door is already in there.
+//
+// Deliberately one statement rather than read-then-write: the callers are the
+// order lifecycle, where the same order can be confirmed by the browser and by
+// a provider webhook at nearly the same moment, and a duplicate address is a
+// nuisance a shopper then has to tidy up by hand.
+//
+// The member's first ever address becomes their default, since a book with one
+// address and no default in it would offer nothing at checkout.
+export async function rememberAddressForMember(memberId: string, address: ShpAddress): Promise<void> {
+  await prisma.$executeRaw`
+    INSERT INTO "shp_saved_addresses" ("member_id", "label", "is_default", "address")
+    SELECT
+      ${memberId},
+      NULL,
+      NOT EXISTS (SELECT 1 FROM "shp_saved_addresses" WHERE "member_id" = ${memberId}),
+      ${JSON.stringify(address)}::jsonb
+    WHERE NOT EXISTS (
+      SELECT 1 FROM "shp_saved_addresses"
+      WHERE "member_id" = ${memberId}
+        AND lower(regexp_replace(
+          coalesce("address"->>'line1', '') || '|' ||
+          coalesce("address"->>'line2', '') || '|' ||
+          coalesce("address"->>'postcode', ''),
+          -- POSIX class, not \s: a backslash in a tagged template is a trap
+          -- nobody needs when there is an escape-free way to say the same thing.
+          '[[:space:]]', '', 'g'
+        )) = ${addressDoorKey(address)}
+    )
+  `
+}

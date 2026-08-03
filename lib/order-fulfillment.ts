@@ -5,6 +5,7 @@ import { incrementCouponUsage } from '@/modules/shop/lib/db/discounts'
 import { createDigitalDownload } from '@/modules/shop/lib/db/digital'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
+import { rememberOrderAddress } from '@/modules/shop/lib/order-address-book'
 import { sendShopEmail } from '@/modules/shop/lib/email'
 import { formatMoney } from '@/modules/shop/lib/money'
 
@@ -27,6 +28,10 @@ export async function fulfillPaidOrder(orderId: string): Promise<void> {
   const items = await getOrderItems(orderId)
   const config = await getShopConfigCached()
   const siteUrl = getSiteUrl()
+
+  // A signed-in shopper's delivery address goes into their address book, ready
+  // to be offered back at the next checkout.
+  await rememberOrderAddress(order)
 
   const nonPreOrderItemIds = items.filter((i) => !i.isPreOrder).map((i) => i.id)
   await decrementStockOnShip(nonPreOrderItemIds)

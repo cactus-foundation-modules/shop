@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, type ComponentType, type InputHTMLAttributes } from 'react'
+import { useEffect, useState, type ComponentType, type CSSProperties, type InputHTMLAttributes } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
-import { getCheckoutState, updateCheckoutState, type ShpAddressForm } from '@/modules/shop/components/public/checkout-state'
+import { EMPTY_ADDRESS, getCheckoutState, updateCheckoutState, type ShpAddressForm } from '@/modules/shop/components/public/checkout-state'
 import type { ShopCheckoutAddressLookupProps, ShpLookupAddress } from '@/modules/shop/components/public/checkout-address-lookup'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
@@ -27,6 +27,36 @@ const REQUIRED_MESSAGES: Partial<Record<keyof ShpAddressForm, string>> = {
 // preview draws the same form the storefront does.
 type BusinessNameConfig = { enabled: boolean; required: boolean; label: string }
 
+// An address the shopper has ordered to before. Stored fields are all optional
+// (the account page's own form asks for fewer than checkout does), so nothing
+// here may assume a field is present.
+type SavedAddress = { id: string; label: string | null; isDefault: boolean; address: Partial<ShpAddressForm> }
+
+function toAddressForm(a: Partial<ShpAddressForm>): ShpAddressForm {
+  return {
+    firstName: a.firstName ?? '', lastName: a.lastName ?? '', company: a.company ?? '',
+    line1: a.line1 ?? '', line2: a.line2 ?? '', city: a.city ?? '', county: a.county ?? '',
+    postcode: a.postcode ?? '', country: a.country || 'GB', phone: a.phone ?? '',
+  }
+}
+
+// What the shopper reads on the radio. The label they gave it if they gave it
+// one - an address saved automatically from an order has none - then whoever it
+// goes to, so two addresses in the same house are still tellable apart.
+function savedTitle(a: SavedAddress): string {
+  const name = [a.address.firstName, a.address.lastName].filter(Boolean).join(' ').trim()
+  return a.label?.trim() || name || 'Saved address'
+}
+
+function savedSummary(a: SavedAddress): string {
+  return [a.address.line1, a.address.city, a.address.postcode].filter(Boolean).join(', ')
+}
+
+const OPTION_STYLE: CSSProperties = {
+  display: 'flex', gap: '0.5rem', alignItems: 'flex-start',
+  border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 0.75rem',
+}
+
 export function CheckoutShippingClient({
   preview = false,
   addressLookup = null,
@@ -44,6 +74,37 @@ export function CheckoutShippingClient({
   const [selectedRateId, setSelectedRateId] = useState<string | null>(initial.shippingRateId)
   const [touched, setTouched] = useState<Partial<Record<keyof ShpAddressForm, boolean>>>({})
   const [businessName, setBusinessName] = useState<BusinessNameConfig | null>(null)
+  // Addresses this shopper has ordered to before. A signed-out shopper gets a
+  // 401 and an empty list, which draws nothing - the form below is unchanged
+  // for them.
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
+  const [selectedSavedId, setSelectedSavedId] = useState<string | null>(null)
+
+  useEffect(() => {
+    // No fetch in the editor preview: nobody drawing this block in Puck is a
+    // signed-in shopper, so it could only ever draw an empty picker.
+    if (preview) return
+    let cancelled = false
+    fetch('/api/m/shop/member/addresses')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { addresses?: SavedAddress[] } | null) => {
+        const list = d?.addresses ?? []
+        if (cancelled || list.length === 0) return
+        setSavedAddresses(list)
+        // Only fill the form from the book when there is nothing in it to lose.
+        // A shopper who has already typed an address, or who has stepped back to
+        // this block mid-checkout, keeps what they have.
+        if (getCheckoutState().shippingAddress.line1.trim().length > 0) return
+        const preferred = list.find((a) => a.isDefault) ?? list[0]
+        if (!preferred) return
+        const form = toAddressForm(preferred.address)
+        setAddress(form)
+        setSelectedSavedId(preferred.id)
+        updateCheckoutState({ shippingAddress: form })
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [preview])
 
   useEffect(() => {
     let cancelled = false
@@ -58,6 +119,28 @@ export function CheckoutShippingClient({
     const next = { ...address, [key]: value }
     setAddress(next)
     updateCheckoutState({ shippingAddress: next })
+    // Typing over a picked address means this is no longer that address. The
+    // radio moves to "a different address" rather than leaving a saved entry
+    // ticked next to fields that no longer match it - and the shopper's edits
+    // stay put, since nothing in their address book is being changed here.
+    setSelectedSavedId(null)
+  }
+
+  function chooseSaved(saved: SavedAddress) {
+    const form = toAddressForm(saved.address)
+    setAddress(form)
+    setSelectedSavedId(saved.id)
+    updateCheckoutState({ shippingAddress: form })
+    // Errors raised against the address being replaced are not errors in this
+    // one, so the blur-time messages start again from clean.
+    setTouched({})
+  }
+
+  function chooseNew() {
+    setAddress(EMPTY_ADDRESS)
+    setSelectedSavedId(null)
+    updateCheckoutState({ shippingAddress: EMPTY_ADDRESS })
+    setTouched({})
   }
 
   function fieldError(key: keyof ShpAddressForm): string | null {
@@ -108,6 +191,7 @@ export function CheckoutShippingClient({
     const next = { ...address, line1: picked.line1, line2: picked.line2, city: picked.city, county: picked.county, postcode: picked.postcode }
     setAddress(next)
     updateCheckoutState({ shippingAddress: next })
+    setSelectedSavedId(null)
   }
 
   // Real <label>s, not placeholder-as-label: a placeholder vanishes the moment
@@ -145,6 +229,41 @@ export function CheckoutShippingClient({
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Delivery address</h2>
+
+      {/* Only drawn for a signed-in shopper who has an address book with
+          something in it. The fields below stay visible either way, so a picked
+          address can still be corrected before the order goes in. */}
+      {savedAddresses.length > 0 && (
+        <fieldset style={{ display: 'grid', gap: '0.5rem', border: 0, margin: 0, padding: 0 }}>
+          <legend style={{ fontSize: '0.9375rem', fontWeight: 'var(--font-medium)', padding: 0, marginBottom: '0.25rem' }}>Deliver to</legend>
+          {savedAddresses.map((saved) => (
+            <label key={saved.id} style={OPTION_STYLE}>
+              <input
+                type="radio"
+                name="savedAddress"
+                checked={selectedSavedId === saved.id}
+                onChange={() => chooseSaved(saved)}
+                style={{ marginTop: '0.2rem' }}
+              />
+              <span>
+                <span style={{ display: 'block', fontWeight: 'var(--font-medium)' }}>{savedTitle(saved)}</span>
+                <span style={{ display: 'block', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>{savedSummary(saved)}</span>
+              </span>
+            </label>
+          ))}
+          <label style={OPTION_STYLE}>
+            <input
+              type="radio"
+              name="savedAddress"
+              checked={selectedSavedId === null}
+              onChange={chooseNew}
+              style={{ marginTop: '0.2rem' }}
+            />
+            <span>Use a different address</span>
+          </label>
+        </fieldset>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
         {field('firstName', 'First name', 'given-name', true)}
         {field('lastName', 'Last name', 'family-name', true)}
