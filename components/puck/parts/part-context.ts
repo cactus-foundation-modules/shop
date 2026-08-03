@@ -97,6 +97,12 @@ export type DetailPartContext = {
   // has no designed body, where the Description tab falls back to the plain-text
   // `description`. Built once here so the parts stay synchronous.
   descriptionBody?: ReactNode
+  // Where this product is edited, for a signed-in admin looking at its public
+  // page - the Title part turns the product name into a link to it, opened in a
+  // new tab so the storefront stays put. Null for shoppers and for staff without
+  // permission to edit products, so the admin URL never appears in a public
+  // page's markup. Resolved once per page by lib/admin-edit.ts.
+  adminEditHref: string | null
 }
 
 // Injected onto every Product Card part-block, once per product, when a card

@@ -17,6 +17,7 @@ import { resolveShopDetailSpec } from '@/modules/shop/lib/detail-spec'
 import { resolveShopGalleryExtras } from '@/modules/shop/lib/gallery-media'
 import { stripHtmlToPlainText } from '@/modules/shop/lib/strip-html'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
+import { resolveProductAdminEditHref } from '@/modules/shop/lib/admin-edit'
 import type { PuckData } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { shopProductDetailPuckComponent, type ShopProductDetailProps } from './ShopProductDetail'
@@ -51,7 +52,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   // Extra gallery media and contributed tabs are additive and need only the
   // product, so they resolve alongside everything else rather than behind the
   // template.
-  const [media, config, taxDisplay, bp, tags, tagIds, template, provider, galleryExtras, detailTabs, specOverride] = await Promise.all([
+  const [media, config, taxDisplay, bp, tags, tagIds, template, provider, galleryExtras, detailTabs, specOverride, adminEditHref] = await Promise.all([
     getProductMedia(product.id),
     getShopConfigCached(),
     resolveTaxDisplay(),
@@ -63,6 +64,9 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     resolveShopGalleryExtras(product.id),
     resolveShopDetailTabs(product.id),
     resolveShopDetailSpec(product.id),
+    // Whoever is looking gets their own answer, so this cannot be cached
+    // alongside the product: a shopper must never receive an admin's link.
+    resolveProductAdminEditHref(product.id),
   ])
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
   const tagSlugs = tagIds.map((id) => tagById.get(id)).filter((s): s is string => Boolean(s))
@@ -158,6 +162,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     detailTabs,
     specOverride,
     descriptionBody,
+    adminEditHref,
   }
   const data = injectShopProductDetailEmbed(template, ctx)
 

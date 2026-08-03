@@ -383,7 +383,16 @@ export const shopDetailBadgesPuckRscComponent = { ...shopDetailBadgesPuckCompone
 // scroll-margin-top so the Tabs strip's "Configure" action can land the shopper
 // at the top of the configure area (the product name) without the site header
 // or a pinned tab bar covering it - same resting line the sections use.
-const titleCss = `.spd-title{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:34px;line-height:1.2;margin:6px 0;color:var(--color-fg);scroll-margin-top:calc(var(--spd-header-h,72px) + var(--spd-tabnav-h,0px) + 16px)}`
+// The admin edit link inherits the heading entirely - same face, same weight,
+// same colour - so a shopper's page and an admin's page read identically. The
+// only tell is the dimmed pencil, which brightens and underlines on hover or
+// keyboard focus. Colours are currentColor rather than a token so the link
+// tracks whatever colour the heading itself has been given.
+const titleCss = `.spd-title{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:34px;line-height:1.2;margin:6px 0;color:var(--color-fg);scroll-margin-top:calc(var(--spd-header-h,72px) + var(--spd-tabnav-h,0px) + 16px)}
+.spd-title-edit{color:inherit;text-decoration:none}
+.spd-title-edit:hover,.spd-title-edit:focus-visible{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:5px}
+.spd-title-edit svg{width:.48em;height:.48em;margin-left:.28em;vertical-align:middle;opacity:.3;transition:opacity .15s ease}
+.spd-title-edit:hover svg,.spd-title-edit:focus-visible svg{opacity:.75}`
 
 type TitleProps = { _ctx?: DetailPartContext; size?: number; align?: string }
 
@@ -435,7 +444,31 @@ export function ShopDetailTitleRsc(props: TitleProps) {
       {/* id="spd-top" is the Configure action's landing target - the top of the
           configure area, so the shopper sees the name and the option pickers
           together. */}
-      <h1 id="spd-top" className="spd-title" style={style}>{_ctx.product.name}</h1>
+      <h1 id="spd-top" className="spd-title" style={style}>
+        {_ctx.adminEditHref
+          ? (
+            // Only ever rendered for a signed-in admin who may edit products
+            // (see lib/admin-edit.ts), so the admin URL stays off a shopper's
+            // page. New tab, because the point is to fix a typo without losing
+            // the storefront view being checked. The pencil is decorative - the
+            // link's accessible name is the product name, and the title
+            // attribute says where it goes.
+            <a
+              className="spd-title-edit"
+              href={_ctx.adminEditHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Edit this product (opens a new tab)"
+            >
+              {_ctx.product.name}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+            </a>
+          )
+          : _ctx.product.name}
+      </h1>
     </>
   )
 }
