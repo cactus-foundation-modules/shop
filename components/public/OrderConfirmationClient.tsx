@@ -363,6 +363,26 @@ export function OrderConfirmationClient() {
           </div>
         )}
 
+        {/* Guest orders only, and only where the site actually takes
+            registrations - the server has already made that call. Sits below the
+            payment details and above the receipt: anything the shopper still has
+            to do about their money comes first, and the offer is then in front of
+            them rather than stranded under a long list of items. */}
+        {data.accountPrompt && !failed && (
+          <div className="soc-account">
+            <h2>Keep track of this order</h2>
+            <p>Create an account with {order.customerEmail} and this order joins it automatically. It takes about a minute.</p>
+            <ul>
+              <li>Track and revisit every order in one place</li>
+              <li>Check out faster next time - your address is already there</li>
+              <li>No password to remember: sign in from a link we email you</li>
+            </ul>
+            <div className="soc-actions">
+              <a className="soc-btn soc-btn-primary" href={data.accountPrompt.registerUrl}>Create an account</a>
+            </div>
+          </div>
+        )}
+
         <div className="soc-card">
           <div className="soc-card-head">
             <h2 className="soc-card-title">Order {order.orderNumber}</h2>
@@ -454,25 +474,6 @@ export function OrderConfirmationClient() {
             </p>
           </div>
         </div>
-
-        {/* Guest orders only, and only where the site actually takes
-            registrations - the server has already made that call. Placed after
-            the receipt on purpose: the shopper came here to find out what
-            happened to their money, not to be sold a login. */}
-        {data.accountPrompt && !failed && (
-          <div className="soc-account">
-            <h2>Keep track of this order</h2>
-            <p>Create an account with {order.customerEmail} and this order joins it automatically. It takes about a minute.</p>
-            <ul>
-              <li>Track and revisit every order in one place</li>
-              <li>Check out faster next time - your address is already there</li>
-              <li>No password to remember: sign in from a link we email you</li>
-            </ul>
-            <div className="soc-actions">
-              <a className="soc-btn soc-btn-primary" href={data.accountPrompt.registerUrl}>Create an account</a>
-            </div>
-          </div>
-        )}
 
         {!failed && (
           <div className="soc-actions">
