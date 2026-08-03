@@ -8,29 +8,14 @@ import type { ShpConfig } from '@/modules/shop/lib/config'
 import type { ShpAdminPaymentMethod } from '@/modules/shop/lib/payments/admin-methods'
 import { PaymentsSettings, PAYMENT_METHODS_TAB, isHostedPaymentPanelTab } from '@/modules/shop/components/admin/PaymentsSettings'
 import { PRICE_TYPES, PRICE_TYPE_META } from '@/modules/shop/lib/pricing'
-import type { ShpEmailTemplate, ShpEmailTemplateTrigger } from '@/modules/shop/lib/types'
 
-const TEMPLATE_LABELS: Record<ShpEmailTemplateTrigger, string> = {
-  ORDER_CONFIRMED: 'Order confirmed',
-  STATUS_PROCESSING: 'Order processing',
-  STATUS_SHIPPED: 'Order shipped',
-  STATUS_COMPLETED: 'Order completed',
-  STATUS_CANCELLED: 'Order cancelled',
-  PARTIAL_SHIPPED: 'Part of an order dispatched',
-  ADMIN_NEW_ORDER: 'New order (admin alert)',
-  LOW_STOCK: 'Low stock (admin alert)',
-  BACK_IN_STOCK: 'Back in stock',
-  IMPORT_COMPLETE: 'Import complete (admin alert)',
-}
-
-type SubTab = 'general' | 'checkout' | 'payments' | 'notifications' | 'templates'
+type SubTab = 'general' | 'checkout' | 'payments' | 'notifications'
 
 const SUB_TABS: { key: SubTab; label: string }[] = [
   { key: 'general', label: 'General' },
   { key: 'checkout', label: 'Checkout' },
   { key: 'payments', label: 'Payments' },
   { key: 'notifications', label: 'Notifications' },
-  { key: 'templates', label: 'Email templates' },
 ]
 
 // Two slots this tab publishes for other modules' settings panels (`host` on
@@ -87,14 +72,6 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
   // know the set of.
   const [subTab, setSubTab] = useState<string>('general')
 
-  const [templates, setTemplates] = useState<ShpEmailTemplate[]>([])
-  const [activeTrigger, setActiveTrigger] = useState<ShpEmailTemplateTrigger | null>(null)
-  const [templateSubject, setTemplateSubject] = useState('')
-  const [templateBody, setTemplateBody] = useState('')
-  const [templateActive, setTemplateActive] = useState(true)
-  const [templateSaving, setTemplateSaving] = useState(false)
-  const [templateMessage, setTemplateMessage] = useState('')
-  const [templateError, setTemplateError] = useState('')
 
   // Which payment method's own settings the Payments sub-tab is showing.
   // Lifted, because shop's Save button has to stand down while a panel that
@@ -112,25 +89,8 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
       setPaymentMethods(data.paymentMethods ?? [])
       setMembers(data.members ?? null)
     })
-    loadTemplates()
   }, [])
 
-  function loadTemplates() {
-    fetch('/api/m/shop/admin/email-templates').then(async (res) => {
-      if (res.ok) setTemplates((await res.json()).templates)
-    })
-  }
-
-  function selectTemplate(trigger: ShpEmailTemplateTrigger) {
-    const t = templates.find((x) => x.trigger === trigger)
-    if (!t) return
-    setActiveTrigger(trigger)
-    setTemplateSubject(t.subject)
-    setTemplateBody(t.bodyHtml)
-    setTemplateActive(t.isActive)
-    setTemplateMessage('')
-    setTemplateError('')
-  }
 
   async function save() {
     if (!config) return
@@ -159,30 +119,6 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
     }
   }
 
-  async function saveTemplate() {
-    if (!activeTrigger) return
-    setTemplateSaving(true)
-    setTemplateMessage('')
-    setTemplateError('')
-    try {
-      const res = await fetch('/api/m/shop/admin/email-templates', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trigger: activeTrigger, subject: templateSubject, bodyHtml: templateBody, isActive: templateActive }),
-      })
-      if (res.ok) {
-        loadTemplates()
-        setTemplateMessage('Template saved.')
-      } else {
-        const data = await res.json().catch(() => null)
-        setTemplateError(data?.error ?? `Couldn't save (error ${res.status}). Please try again.`)
-      }
-    } catch {
-      setTemplateError("Couldn't reach the server. Check your connection and try again.")
-    } finally {
-      setTemplateSaving(false)
-    }
-  }
-
   if (forbidden) return <div>Only shop managers can view or change shop settings.</div>
   if (!config) return null
 
@@ -194,7 +130,6 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
     set('checkoutSteps', config!.checkoutSteps.map((step) => (step.id === id ? { ...step, ...patch } : step)))
   }
 
-  const activeTemplate = templates.find((t) => t.trigger === activeTrigger)
 
   // Contributed sub-tabs go after shop's own, in module-load order, so a newly
   // installed add-on never reorders the tabs a site owner already knows.
@@ -209,10 +144,9 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-4)' }}>
         {/* A contributed sub-tab saves its own settings through its own module's
-            API, exactly as the templates sub-tab does. Shop's Save button would
-            not save it, so showing one over it only invites the click that
-            appears to do nothing. */}
-        {subTab !== 'templates' && !activeHostedSubTab && !showingHostedPaymentPanel && (
+            API. Shop's Save button would not save it, so showing one over it
+            only invites the click that appears to do nothing. */}
+        {!activeHostedSubTab && !showingHostedPaymentPanel && (
           <button className="btn btn-primary" disabled={saving} onClick={save}>
             {saving ? 'Saving…' : 'Save settings'}
           </button>
@@ -601,6 +535,10 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
 
       {subTab === 'notifications' && (
         <div>
+          <p style={{ margin: '0 0 var(--space-4)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+            Who gets told, and when. What the emails actually say - and the design wrapped around them -
+            lives with every other email on the site, under Settings, on the Emails tab.
+          </p>
           <div className="field">
             <label>Admin order alert email</label>
             <input type="email" value={config.adminOrderAlertEmail} onChange={(e) => set('adminOrderAlertEmail', e.target.value)} />
@@ -613,53 +551,6 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
           <div className="field">
             <label>Low stock alert email</label>
             <input type="email" value={config.lowStockAlertEmail} onChange={(e) => set('lowStockAlertEmail', e.target.value)} />
-          </div>
-        </div>
-      )}
-
-      {subTab === 'templates' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 'var(--space-5)' }}>
-          <div>
-            {templates.map((t) => (
-              <button
-                key={t.trigger}
-                onClick={() => selectTemplate(t.trigger)}
-                className={`btn ${activeTrigger === t.trigger ? 'btn-secondary' : 'btn-ghost'}`}
-                style={{ display: 'block', width: '100%', textAlign: 'left', marginBottom: 'var(--space-1)' }}
-              >
-                {TEMPLATE_LABELS[t.trigger] ?? t.trigger}
-                {!t.isActive && <span className="badge badge-default" style={{ marginLeft: 'var(--space-2)' }}>Off</span>}
-              </button>
-            ))}
-          </div>
-
-          <div>
-            {!activeTemplate && <p style={{ color: 'var(--color-text-muted)' }}>Select a template to edit.</p>}
-            {activeTemplate && (
-              <div className="card">
-                {templateMessage && <div className="alert alert-success">{templateMessage}</div>}
-                {templateError && <div className="alert alert-danger">{templateError}</div>}
-
-                <label style={checkboxRow}>
-                  <input type="checkbox" checked={templateActive} onChange={(e) => setTemplateActive(e.target.checked)} />
-                  Send this email
-                </label>
-
-                <div className="field">
-                  <label>Subject</label>
-                  <input value={templateSubject} onChange={(e) => setTemplateSubject(e.target.value)} />
-                </div>
-
-                <div className="field">
-                  <label>Body (HTML)</label>
-                  <textarea value={templateBody} onChange={(e) => setTemplateBody(e.target.value)} rows={10} style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 'var(--text-sm)' }} />
-                </div>
-
-                <button className="btn btn-primary" disabled={templateSaving} onClick={saveTemplate}>
-                  {templateSaving ? 'Saving…' : 'Save template'}
-                </button>
-              </div>
-            )}
           </div>
         </div>
       )}

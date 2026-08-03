@@ -1,52 +1,31 @@
 import { sendEmail } from '@/lib/email/index'
-import { getEmailTemplate } from '@/modules/shop/lib/db/email-templates'
+import { renderEmailTemplate } from '@/lib/email/render'
 import { logOrderEmail } from '@/modules/shop/lib/db/orders'
+import { SHOP_TRIGGER_TO_TEMPLATE_KEY } from '@/modules/shop/lib/email-templates'
 import type { ShpEmailTemplateTrigger } from '@/modules/shop/lib/types'
 
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-}
-
-// {{#if flag}}...{{/if}} - the one conditional block the spec needs (ORDER_CONFIRMED's
-// pre-order notice, addendum B.6). `flag` must be a key in vars set to the literal
-// string 'true' for the block to render; anything else strips it.
-function applyConditionals(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, key: string, inner: string) => {
-    return vars[key] === 'true' ? inner : ''
-  })
-}
-
-function interpolate(template: string, vars: Record<string, string>, escape: boolean): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
-    const value = vars[key]
-    if (value === undefined) return ''
-    return escape ? escapeHtml(value) : value
-  })
-}
+// The shop's emails are registered with core (see lib/email-templates.ts and
+// the manifest's `emailTemplates` entry), so the wording, the on/off switch and
+// the wrapper design all come from one place - Settings > Emails - alongside
+// every other email the site sends. The shop's own template table and settings
+// tab are gone.
+//
+// The trigger names are unchanged. They appear at every call site and in the
+// order email log, and renaming them would have bought nothing.
 
 export type RenderedShopEmail = { subject: string; html: string; text: string }
 
-// DB row (seeded by the migration, admin-editable) else falls back to a plain
-// default - templates should always exist post-migration, but a missing row
-// must never take checkout down.
+/** Null means the owner has switched this email off, so the caller should
+ * quietly not send. An unknown trigger is a programming error and throws. */
 export async function renderShopEmail(trigger: ShpEmailTemplateTrigger, vars: Record<string, string>): Promise<RenderedShopEmail | null> {
-  const template = await getEmailTemplate(trigger)
-  if (!template || !template.isActive) return null
-
-  const subjectWithConditionals = applyConditionals(template.subject, vars)
-  const bodyWithConditionals = applyConditionals(template.bodyHtml, vars)
-  const bodyTextTemplate = bodyWithConditionals.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-
-  return {
-    subject: interpolate(subjectWithConditionals, vars, false),
-    html: interpolate(bodyWithConditionals, vars, true),
-    text: interpolate(bodyTextTemplate, vars, false),
-  }
+  const key = SHOP_TRIGGER_TO_TEMPLATE_KEY[trigger]
+  if (!key) throw new Error(`Unknown shop email trigger: ${trigger}`)
+  return renderEmailTemplate(key, vars)
 }
 
-// Sends a rendered shp_email_templates trigger to an arbitrary address. When
-// orderId is given, every customer-facing send is logged to shp_order_emails
-// (spec's order email log / Communications tab).
+// Sends a shop email to an arbitrary address. When orderId is given, every
+// customer-facing send is logged to shp_order_emails (spec's order email log /
+// Communications tab).
 export async function sendShopEmail(
   trigger: ShpEmailTemplateTrigger,
   to: string,

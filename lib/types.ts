@@ -421,14 +421,11 @@ export type ShpEmailTemplateTrigger =
   // for this one. See lib/shipment-email.ts.
   | 'PARTIAL_SHIPPED'
   | 'ADMIN_NEW_ORDER' | 'LOW_STOCK' | 'BACK_IN_STOCK' | 'IMPORT_COMPLETE'
-export type ShpEmailTemplate = {
-  id: string
-  trigger: ShpEmailTemplateTrigger
-  subject: string
-  bodyHtml: string
-  isActive: boolean
-  updatedAt: Date
-}
+// ShpEmailTemplate is gone: the shop's email copy lives in core's single email
+// registry now (lib/email-templates.ts + the manifest's `emailTemplates` entry),
+// edited in Settings > Emails alongside every other email the site sends. The
+// trigger names above stay - they are the shop's own vocabulary at every call
+// site and in the order email log.
 
 export type ShpBackInStockSubscription = {
   id: string
