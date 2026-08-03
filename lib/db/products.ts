@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
+import { notifyProductSaved } from '@/modules/shop/lib/product-saved'
 import type { PuckData, ShpProduct, ShpProductMedia, ShpProductStatus, ShpProductType } from '@/modules/shop/lib/types'
 
 function mapProduct(r: Record<string, unknown>): ShpProduct {
@@ -445,10 +446,12 @@ const COLUMN_MAP: Record<Exclude<keyof UpdateProductInput, 'descriptionPuck'>, s
 
 export async function updateProduct(id: string, fields: UpdateProductInput): Promise<void> {
   const sets: Prisma.Sql[] = []
+  const written: string[] = []
   // jsonb column: the generic assignment below can't cast a JS value to jsonb,
   // so stringify and cast explicitly (same idiom as tax-shipping/import-jobs).
   if (fields.descriptionPuck !== undefined) {
     sets.push(Prisma.sql`"description_puck" = ${fields.descriptionPuck ? JSON.stringify(fields.descriptionPuck) : null}::jsonb`)
+    written.push('descriptionPuck')
   }
   for (const key of Object.keys(fields) as (keyof UpdateProductInput)[]) {
     if (key === 'descriptionPuck') continue
@@ -456,6 +459,7 @@ export async function updateProduct(id: string, fields: UpdateProductInput): Pro
     if (value === undefined) continue
     const column = COLUMN_MAP[key]
     sets.push(Prisma.sql`${Prisma.raw(`"${column}"`)} = ${value}`)
+    written.push(key)
   }
   if (sets.length === 0) return
   sets.push(Prisma.sql`"updated_at" = CURRENT_TIMESTAMP`)
@@ -463,6 +467,11 @@ export async function updateProduct(id: string, fields: UpdateProductInput): Pro
   // restock (or a further drop) should be eligible for its own alert.
   if ('stockCount' in fields) sets.push(Prisma.sql`"low_stock_alerted_at" = NULL`)
   await prisma.$executeRaw`UPDATE "shp_products" SET ${Prisma.join(sets, ', ')} WHERE "id" = ${id}`
+  // Let any module keeping its own rows in step with this product know what
+  // moved (see lib/product-saved). Awaited so a listener's write lands before
+  // the caller reads the product back, and swallowing its own failures so a
+  // listener can never lose the owner's edit.
+  await notifyProductSaved(id, written)
 }
 
 export type LowStockProduct = { id: string; name: string; stockCount: number | null; lowStockThreshold: number | null }
