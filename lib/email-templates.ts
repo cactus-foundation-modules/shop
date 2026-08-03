@@ -100,6 +100,45 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     mergeTags: ['createdCount', 'updatedCount', 'skippedCount', 'shopName'],
     transactional: false,
   },
+  // Cancel and return requests. One template per stage rather than one with
+  // three branches: an owner rewriting "we have your request" should not risk
+  // rewording "we have said no" by accident.
+  {
+    key: 'shop.request-received',
+    label: 'Cancel or return request received',
+    subject: "We've got your {{requestType}} request for order {{orderNumber}}",
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>Thanks - we have your {{requestType}} request for order <strong>{{orderNumber}}</strong> and someone will look at it shortly.</p><p>Reason given: {{requestReason}}</p>{{#if hasItems}}<p><strong>Items:</strong></p><p>{{requestItems}}</p>{{/if}}<p>We will email you as soon as there is a decision.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'requestType', 'requestReason', 'requestItems', 'shopName'],
+    transactional: false,
+  },
+  {
+    key: 'shop.request-approved',
+    label: 'Cancel or return request approved',
+    subject: 'Your {{requestType}} request for order {{orderNumber}} is approved',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>Good news - we have approved your {{requestType}} request for order <strong>{{orderNumber}}</strong>.</p>{{#if hasAdminNote}}<p>{{adminNote}}</p>{{/if}}{{#if hasRefund}}<p>A refund of {{refundAmount}} is on its way back to you. Depending on your bank it can take a few working days to show up.</p>{{/if}}<p>Thanks for your patience.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'requestType', 'adminNote', 'refundAmount', 'shopName'],
+    transactional: false,
+  },
+  {
+    key: 'shop.request-declined',
+    label: 'Cancel or return request declined',
+    subject: 'About your {{requestType}} request for order {{orderNumber}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>We have looked at your {{requestType}} request for order <strong>{{orderNumber}}</strong>, and unfortunately we are not able to accept it this time.</p>{{#if hasAdminNote}}<p>{{adminNote}}</p>{{/if}}<p>If you think that is wrong, reply to this email and we will take another look.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'requestType', 'adminNote', 'shopName'],
+    transactional: false,
+  },
+  {
+    key: 'shop.admin-new-request',
+    label: 'New cancel or return request (admin alert)',
+    subject: 'New {{requestType}} request: order {{orderNumber}}',
+    bodyHtml:
+      '<p>{{customerName}} ({{customerEmail}}) has asked for a {{requestType}} on order <strong>{{orderNumber}}</strong>.</p><p>Reason: {{requestReason}}</p>{{#if hasItems}}<p><strong>Items:</strong></p><p>{{requestItems}}</p>{{/if}}{{#if hasCustomerNote}}<p>They said: {{customerNote}}</p>{{/if}}',
+    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'requestType', 'requestReason', 'requestItems', 'customerNote', 'shopName'],
+    transactional: false,
+  },
 ]
 
 /** shp_email_templates.trigger to the key core knows it by. The trigger names
@@ -115,4 +154,8 @@ export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   LOW_STOCK: 'shop.low-stock',
   BACK_IN_STOCK: 'shop.back-in-stock',
   IMPORT_COMPLETE: 'shop.import-complete',
+  REQUEST_RECEIVED: 'shop.request-received',
+  REQUEST_APPROVED: 'shop.request-approved',
+  REQUEST_DECLINED: 'shop.request-declined',
+  ADMIN_NEW_REQUEST: 'shop.admin-new-request',
 }

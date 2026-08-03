@@ -351,6 +351,40 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
             <input type="checkbox" checked={config.requirePhone} onChange={(e) => set('requirePhone', e.target.checked)} />
             Require a phone number at checkout
           </label>
+
+          <hr style={hr} />
+          <h3 style={sectionHeading}>Cancellations and returns</h3>
+          <p className="field-hint" style={{ marginTop: '-0.5rem' }}>
+            Requests arrive under Shop → Cancellations &amp; returns for you to approve or decline. Nothing is ever
+            decided automatically, and no money moves until you say so.
+          </p>
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.cancelRequestsEnabled} onChange={(e) => set('cancelRequestsEnabled', e.target.checked)} />
+            Let customers ask to cancel an order
+          </label>
+          <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
+            Only offered while nothing has been dispatched. Once part of an order is on its way, it is a return.
+          </p>
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.returnRequestsEnabled} onChange={(e) => set('returnRequestsEnabled', e.target.checked)} />
+            Let customers ask to return something
+          </label>
+          {config.returnRequestsEnabled && (
+            <div className="field" style={{ margin: '0 0 0.5rem', maxWidth: 260 }}>
+              <label>Return window (days)</label>
+              <input
+                type="number"
+                min={0}
+                max={3650}
+                value={config.returnWindowDays}
+                onChange={(e) => set('returnWindowDays', Math.max(0, Math.min(3650, Number(e.target.value) || 0)))}
+              />
+              <p className="field-hint">
+                Counted from the day the last parcel went out, not the day they ordered - an order that waited on your
+                shelf should not eat the customer&rsquo;s window. Zero takes returns off the website entirely.
+              </p>
+            </div>
+          )}
           <div style={fieldGrid}>
             <div className="field" style={{ margin: 0 }}>
               <label>Minimum order value</label>

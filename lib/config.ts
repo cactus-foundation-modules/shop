@@ -177,6 +177,22 @@ export const ShpConfigSchema = z.object({
 
   // Pre-orders (addendum B)
   preOrderMixedCartBehaviour: z.enum(['HOLD_ALL', 'PROMPT_SPLIT']).default('HOLD_ALL'),
+
+  // Customer cancel and return requests.
+  //
+  // Both default ON: a shopper who cannot ask has to email instead, and that
+  // email lands in an inbox with no record against the order. A shop that wants
+  // the conversation elsewhere can still turn them off.
+  //
+  // Neither switch ever decides anything by itself - a request is a request,
+  // and an owner approves or declines it. Auto-approval was deliberately left
+  // out: money leaving on a timer is not a default anyone should inherit.
+  cancelRequestsEnabled: z.boolean().default(true),
+  returnRequestsEnabled: z.boolean().default(true),
+  // Days after the last parcel goes out that a return can still be asked for.
+  // 0 means no window at all rather than "always", so the off switch stays the
+  // off switch and this stays a length of time.
+  returnWindowDays: z.number().int().min(0).max(3650).default(30),
 })
 
 export type ShpConfig = z.infer<typeof ShpConfigSchema>

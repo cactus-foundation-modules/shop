@@ -393,6 +393,36 @@ export type ShpOrderDispatchSummary = {
   partiallyDispatched: boolean
 }
 
+// A customer asking for an order to be called off or sent back. The asking and
+// the doing are separate on purpose: approving a request is what calls the
+// existing cancel or refund machinery, so a decline - or an approval whose
+// refund then fails at the provider - still leaves an honest record of what was
+// asked for. See lib/db/order-requests.ts.
+export type ShpOrderRequestType = 'CANCEL' | 'RETURN'
+export type ShpOrderRequestStatus = 'PENDING' | 'APPROVED' | 'DECLINED' | 'WITHDRAWN'
+
+export type ShpOrderRequest = {
+  id: string
+  orderId: string
+  memberId: string | null
+  type: ShpOrderRequestType
+  status: ShpOrderRequestStatus
+  /** Code from SHP_REQUEST_REASONS, not free text. */
+  reason: string
+  customerNote: string | null
+  /** Shown to the customer with the decision. */
+  adminNote: string | null
+  decidedAt: Date | null
+  decidedBy: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+/** Empty on a CANCEL: it covers the whole order, and "everything" is not a list. */
+export type ShpOrderRequestItem = { id: string; requestId: string; orderItemId: string; quantity: number }
+
+export type ShpOrderRequestWithItems = ShpOrderRequest & { items: ShpOrderRequestItem[] }
+
 export type ShpOrderNote = {
   id: string
   orderId: string
@@ -421,6 +451,8 @@ export type ShpEmailTemplateTrigger =
   // for this one. See lib/shipment-email.ts.
   | 'PARTIAL_SHIPPED'
   | 'ADMIN_NEW_ORDER' | 'LOW_STOCK' | 'BACK_IN_STOCK' | 'IMPORT_COMPLETE'
+  // Cancel / return requests. See lib/order-request-actions.ts.
+  | 'REQUEST_RECEIVED' | 'REQUEST_APPROVED' | 'REQUEST_DECLINED' | 'ADMIN_NEW_REQUEST'
 // ShpEmailTemplate is gone: the shop's email copy lives in core's single email
 // registry now (lib/email-templates.ts + the manifest's `emailTemplates` entry),
 // edited in Settings > Emails alongside every other email the site sends. The

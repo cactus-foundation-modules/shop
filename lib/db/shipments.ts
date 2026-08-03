@@ -52,7 +52,10 @@ function mapShipmentItem(r: Record<string, unknown>): ShpShipmentItem {
 // had just decided were still dispatchable, and the dispatched + refunded total
 // would quietly exceed what the customer bought. Sharing the namespace means
 // one of the two simply waits (or is turned away with a 409) instead.
-const ORDER_LOCK_NAMESPACE = 0x53485250
+// Exported so lib/db/order-requests.ts can take the same lock rather than
+// keeping a fourth copy of the literal: approving a return refunds units, so it
+// polices exactly the same quantities as dispatch and refunds do.
+export const ORDER_LOCK_NAMESPACE = 0x53485250
 
 const ORDER_BUSY_ERROR = 'Something else is updating this order right now. Give it a moment and try again.'
 

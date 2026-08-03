@@ -2,11 +2,13 @@ import { redirect, notFound } from 'next/navigation'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { getMembersConfig } from '@/lib/members/config'
 import { getMemberAreaPath } from '@/lib/members/paths'
+import MemberAccountShell from '@/components/members/account/MemberAccountShell'
 import { AddressesClient } from '@/modules/shop/components/public/AddressesClient'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 
 export const metadata = { title: 'Saved addresses' }
+export const dynamic = 'force-dynamic'
 
 export default async function ShopAccountAddressesPage() {
   const membersConfig = await getMembersConfig()
@@ -19,10 +21,15 @@ export default async function ShopAccountAddressesPage() {
   if (!member) redirect(`/${getMemberAreaPath()}/login?redirect=/shop/account/addresses`)
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: '2rem 1.5rem' }}>
+    <MemberAccountShell member={member} maxWidth={880}>
       {gate.staffPreview && <ShopStaffPreviewBanner />}
-      <h1 style={{ fontSize: '1.5rem' }}>Saved addresses</h1>
+      <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-semibold)', margin: '0 0 var(--space-2)', color: 'var(--color-text)' }}>
+        Saved addresses
+      </h1>
+      <p style={{ color: 'var(--color-text-muted)', margin: '0 0 var(--space-4)' }}>
+        Addresses saved here are offered at checkout, so you only type them once.
+      </p>
       <AddressesClient />
-    </div>
+    </MemberAccountShell>
   )
 }

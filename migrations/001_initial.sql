@@ -572,6 +572,71 @@ CREATE INDEX IF NOT EXISTS "shp_shipment_items_shipment_id_idx" ON "shp_shipment
 CREATE INDEX IF NOT EXISTS "shp_shipment_items_order_item_id_idx" ON "shp_shipment_items" ("order_item_id");
 
 -- ---------------------------------------------------------------------------
+-- Customer cancel and return requests
+--
+-- The third table pair in the same shape: a header row per request and a line
+-- per order item with the quantity it covers. A cancel covers the whole order
+-- and writes no item rows - "everything" is not a list.
+--
+-- A request is the asking, not the act. Approving one calls the existing cancel
+-- or refund machinery; nothing here moves money or stock by itself.
+--
+-- Also shipped as migrations/015_order_requests.sql for installs that predate
+-- this block; both are idempotent, so the overlap is harmless.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS "shp_order_requests" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "order_id" TEXT NOT NULL,
+    -- Nullable for the same reason shp_orders.member_id is: an order can be a
+    -- guest's, and guest orders are claimed by an account later.
+    "member_id" TEXT,
+    "type" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    -- A code from a fixed list (lib/order-requests.ts), not free text: it is
+    -- what the owner filters on. The shopper's own words go in customer_note.
+    "reason" TEXT NOT NULL,
+    "customer_note" TEXT,
+    -- Shown to the customer with the decision. Private notes go on shp_order_notes.
+    "admin_note" TEXT,
+    "decided_at" TIMESTAMP(3),
+    -- Core User id. Plain TEXT, no FK, as shp_refunds.created_by is.
+    "decided_by" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "shp_order_requests_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "shp_order_requests_type_check" CHECK ("type" IN ('CANCEL', 'RETURN')),
+    CONSTRAINT "shp_order_requests_status_check" CHECK ("status" IN ('PENDING', 'APPROVED', 'DECLINED', 'WITHDRAWN')),
+    CONSTRAINT "shp_order_requests_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "shp_order_requests_order_id_idx" ON "shp_order_requests" ("order_id");
+CREATE INDEX IF NOT EXISTS "shp_order_requests_member_id_idx" ON "shp_order_requests" ("member_id");
+CREATE INDEX IF NOT EXISTS "shp_order_requests_status_created_at_idx" ON "shp_order_requests" ("status", "created_at");
+
+-- One open request per order: two racing to approval would refund the same
+-- lines twice.
+CREATE UNIQUE INDEX IF NOT EXISTS "shp_order_requests_one_open_idx"
+    ON "shp_order_requests" ("order_id") WHERE "status" = 'PENDING';
+
+CREATE TABLE IF NOT EXISTS "shp_order_request_items" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "request_id" TEXT NOT NULL,
+    "order_item_id" TEXT NOT NULL,
+    "quantity" INTEGER NOT NULL,
+
+    CONSTRAINT "shp_order_request_items_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "shp_order_request_items_quantity_check" CHECK ("quantity" > 0),
+    CONSTRAINT "shp_order_request_items_request_id_fkey" FOREIGN KEY ("request_id") REFERENCES "shp_order_requests"("id") ON DELETE CASCADE,
+    CONSTRAINT "shp_order_request_items_order_item_id_fkey" FOREIGN KEY ("order_item_id") REFERENCES "shp_order_items"("id") ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS "shp_order_request_items_request_id_idx" ON "shp_order_request_items" ("request_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "shp_order_request_items_request_item_idx"
+    ON "shp_order_request_items" ("request_id", "order_item_id");
+
+-- ---------------------------------------------------------------------------
 -- Order notes and email log
 -- ---------------------------------------------------------------------------
 
