@@ -4,6 +4,7 @@ import { decrementStockOnShip, incrementPreOrderCount, getProductById } from '@/
 import { incrementCouponUsage } from '@/modules/shop/lib/db/discounts'
 import { createDigitalDownload } from '@/modules/shop/lib/db/digital'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
 import { sendShopEmail } from '@/modules/shop/lib/email'
 import { formatMoney } from '@/modules/shop/lib/money'
 
@@ -15,6 +16,12 @@ function formatAddress(address: { line1: string; line2?: string; city: string; p
 // return value first - never call this twice for the same order (stock/coupon
 // usage/pre-order counters/digital downloads must all be exactly-once side effects).
 export async function fulfillPaidOrder(orderId: string): Promise<void> {
+  // Before anything is read: the money has just landed, so let any module that
+  // wrote a line snapshot conditional on payment say the true thing now (a
+  // delivery date counted from today rather than a lead time). Done first so the
+  // confirmation email below carries the restated wording rather than yesterday's.
+  await applyOrderPaymentState(orderId)
+
   const order = await getOrderById(orderId)
   if (!order) return
   const items = await getOrderItems(orderId)

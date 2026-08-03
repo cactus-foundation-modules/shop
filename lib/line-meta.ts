@@ -201,6 +201,11 @@ export async function resolveLineMeta(
   let control: CartLineControl | null = null
   let displayTitle: CartLineTitle | null = null
   const fields = []
+  // Every resolver's opaque state shares one bag on the line (see LineMeta.data),
+  // so keys are the writing module's to namespace. First writer keeps the key: a
+  // later resolver silently overwriting another module's state would be the worst
+  // of the two outcomes, and there is nothing here shop could sensibly merge.
+  let data: Record<string, unknown> | undefined
   // Charges accumulate across providers exactly as prices do - two modules can
   // each attribute a slice of their own adjustment without knowing about each
   // other, and same-labelled slices simply sum in the cart.
@@ -213,6 +218,12 @@ export async function resolveLineMeta(
     }
     priceAdjust += Number.isFinite(res.priceAdjust) ? res.priceAdjust : 0
     if (res.persistMeta?.fields?.length) fields.push(...res.persistMeta.fields)
+    if (res.persistMeta?.data) {
+      data = data ?? {}
+      for (const [key, value] of Object.entries(res.persistMeta.data)) {
+        if (!(key in data)) data[key] = value
+      }
+    }
     // First provider to offer a control wins the slot (there is one picker row
     // per line); further ones fold their price and fields but not a second box.
     if (!control && res.control) control = res.control
@@ -229,7 +240,9 @@ export async function resolveLineMeta(
   return {
     valid,
     priceAdjust,
-    persistMeta: fields.length ? { fields } : null,
+    // Data with no fields is still worth persisting: a resolver may carry state
+    // for a later restatement without having anything to print today.
+    persistMeta: fields.length || data ? { fields, ...(data ? { data } : {}) } : null,
     reason,
     control,
     displayTitle,

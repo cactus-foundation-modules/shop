@@ -8,6 +8,7 @@ import { getShopConfigCached, getAvailablePaymentMethods, resolveCheckoutAgreeme
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
+import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 import type { ShpAddress } from '@/modules/shop/lib/types'
@@ -187,6 +188,13 @@ export async function POST(request: NextRequest) {
     })),
   })
 
+  // The order now exists AND knows how it is being paid for, which is the first
+  // moment anything can say what that means for these lines. A method that takes
+  // the money here and now changes nothing; one that leaves the order unpaid
+  // (bank transfer) lets a module restate what it promised - and hand back a
+  // sentence for the checkout explaining why. See lib/order-payment-state.ts.
+  const notes = await applyOrderPaymentState(orderId)
+
   const provider = getPaymentProvider(data.paymentMethod)
   if (!provider) return NextResponse.json({ error: 'Selected payment method is not available.' }, { status: 400 })
   const intent = await provider.createIntent({
@@ -194,5 +202,5 @@ export async function POST(request: NextRequest) {
     customerEmail: data.customerEmail, customerName: data.customerName,
   })
 
-  return NextResponse.json({ orderId, orderNumber, ...intent })
+  return NextResponse.json({ orderId, orderNumber, ...intent, notes })
 }

@@ -6,6 +6,7 @@ import { resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkou
 import { findShippingZoneForPostcode } from '@/modules/shop/lib/db/tax-shipping'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
 import { syncSupplierNavEntry } from '@/modules/shop/lib/supplier-nav'
 
 export async function GET(request: NextRequest) {
@@ -82,6 +83,12 @@ export async function POST(request: NextRequest) {
       isPreOrder: l.isPreOrder, preOrderDispatchDate: l.product.preOrderDispatchDate, lineMeta: l.lineMeta,
     })),
   })
+
+  // An order taken over the phone is unpaid on a method of the owner's choosing,
+  // exactly like one placed at the checkout, so its lines get the same chance to
+  // say what that means (see lib/order-payment-state.ts). No notes to show here -
+  // this is the admin, and the customer is the one who reads them.
+  await applyOrderPaymentState(id)
 
   return NextResponse.json({ id, orderNumber }, { status: 201 })
 }

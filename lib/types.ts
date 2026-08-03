@@ -10,7 +10,14 @@ export type PuckData = { root: { props?: Record<string, unknown> }; content: unk
 // label/value pairs wherever it lists line items. A `href` renders the value as a
 // download link (used by file-upload personalisation).
 export type LineMetaField = { label: string; value: string; href?: string }
-export type LineMeta = { fields: LineMetaField[] }
+// `data` is opaque machine-readable state a resolver stashes alongside the human
+// fields - shop stores it and hands it back, and never reads or interprets a
+// single key of it. It exists because the snapshot is otherwise prose: a module
+// that later has to RESTATE one of its own fields (see lib/order-payment-state.ts,
+// where a delivery date is re-worded once the money arrives) would otherwise have
+// to parse its own sentence back out. Keys are namespaced by the module that
+// wrote them, since every resolver's data shares one bag.
+export type LineMeta = { fields: LineMetaField[]; data?: Record<string, unknown> }
 
 export type ShpAddress = {
   firstName: string

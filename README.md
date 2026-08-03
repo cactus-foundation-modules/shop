@@ -20,6 +20,7 @@ manifest. Every one of them is inert on a shop with no add-ons installed.
 | `shop.cart-header-actions` | Puts a control on the cart page's own heading row, to the right of "Your cart" - for something a shopper has to be able to find without having been told it exists. See `lib/cart-header-actions.ts`. |
 | `shop.cart-line-resolver` (+ `-prefetch`) | Prices and validates per-line personalisation, and may offer a per-line picker. See `lib/line-meta.ts`. |
 | `shop.cart-summary` | Adds whole-basket notes to the cart and drawer. See `lib/cart-summary.ts`. |
+| `shop.order-payment-state` | Restates what an order's own lines say when its payment state moves - once when the order is placed and knows how it is being paid for, again when the money lands - and offers the checkout a sentence about the chosen method. For anything a line promises that is only true once paid: a method that takes payment later cannot promise a delivery date from the day of the order. See `lib/order-payment-state.ts`. |
 | `shop.product-detail-parts` | Takes over a claimed product's gallery, price and purchase area. See `lib/detail-slot.ts`. |
 | `shop.product-detail-tabs` / `-spec` | Adds a product tab, or replaces the Specification body. |
 | `shop.card-media` / `shop.product-card-prices` | Adds card images/overlays, or prices a card itself. |
