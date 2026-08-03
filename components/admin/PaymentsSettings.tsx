@@ -54,6 +54,14 @@ type BuiltInMethodMeta = {
   instructionsKey?: 'bankTransferInstructions' | 'cashInstructions'
   instructionsLabel?: string
   instructionsHint?: string
+  /**
+   * The switch deciding whether those words also appear on the checkout page
+   * itself, rather than only once the order is placed. Kept beside the box it
+   * governs, since it is a question about that wording and nothing else.
+   */
+  instructionsOnCheckoutKey?: 'bankTransferInstructionsOnCheckout' | 'cashInstructionsOnCheckout'
+  instructionsOnCheckoutLabel?: string
+  instructionsOnCheckoutHint?: string
   /** Said plainly because these two are settled by hand, long after checkout. */
   manualNote?: string
 }
@@ -90,14 +98,20 @@ const BUILT_IN_META: Record<string, BuiltInMethodMeta> = {
     blurb: 'The shopper is given your bank details and sends the money themselves. Nothing is taken automatically, so the order sits and waits until you say it has landed.',
     instructionsKey: 'bankTransferInstructions',
     instructionsLabel: 'What to tell the shopper',
-    instructionsHint: 'Shown on the thank-you page and in the order confirmation email. Account name, sort code and account number, and ask them to quote the order number as the reference.',
+    instructionsHint: 'Shown on the thank-you page once the order is placed. Account name, sort code and account number, and ask them to quote the order number as the reference.',
+    instructionsOnCheckoutKey: 'bankTransferInstructionsOnCheckout',
+    instructionsOnCheckoutLabel: 'Show this on the checkout page too',
+    instructionsOnCheckoutHint: 'On, and the shopper sees your bank details the moment they pick this method. Off, and they wait until the order is placed - the thank-you page and their order page still show them either way.',
     manualNote: 'Orders paid this way arrive marked awaiting payment. Open the order and press Confirm payment once the money is in.',
   },
   CASH: {
     blurb: 'Paying on collection or on the doorstep. Same arrangement as a bank transfer: the order waits until you mark it paid.',
     instructionsKey: 'cashInstructions',
     instructionsLabel: 'What to tell the shopper',
-    instructionsHint: 'Where to come, when you are open, and whether you can take a card on the day.',
+    instructionsHint: 'Where to come, when you are open, and whether you can take a card on the day. Shown on the thank-you page once the order is placed.',
+    instructionsOnCheckoutKey: 'cashInstructionsOnCheckout',
+    instructionsOnCheckoutLabel: 'Show this on the checkout page too',
+    instructionsOnCheckoutHint: 'On, and the collection details appear the moment the shopper picks this method. Off, and they wait until the order is placed - the thank-you page and their order page still show them either way.',
     manualNote: 'Orders paid this way arrive marked awaiting payment. Open the order and press Confirm payment once you have the money.',
   },
 }
@@ -659,6 +673,19 @@ function BuiltInMethodPanel({
               onChange={(e) => set(meta.instructionsKey!, e.target.value)}
             />
           </div>
+          {meta.instructionsOnCheckoutKey && (
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+              <div style={{ flex: '1 1 20rem' }}>
+                <span style={{ fontWeight: 500 }}>{meta.instructionsOnCheckoutLabel}</span>
+                <p className="field-hint" style={{ margin: '0.125rem 0 0' }}>{meta.instructionsOnCheckoutHint}</p>
+              </div>
+              <Switch
+                checked={config[meta.instructionsOnCheckoutKey]}
+                onChange={(next) => set(meta.instructionsOnCheckoutKey!, next)}
+                label={meta.instructionsOnCheckoutLabel ?? 'Show this on the checkout page too'}
+              />
+            </div>
+          )}
         </>
       )}
 

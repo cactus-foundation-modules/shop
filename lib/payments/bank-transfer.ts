@@ -3,6 +3,12 @@ import type { ShpOrderDraft, ShpPaymentIntent, ShpPaymentProvider, ShpPaymentRes
 
 async function createIntent(_order: ShpOrderDraft): Promise<ShpPaymentIntent> {
   const config = await getShopConfigCached()
+  // Withheld here rather than hidden in the browser: an owner who does not want
+  // their bank details on the checkout page would not want them sitting in that
+  // page's network response either. The thank-you page and the shopper's own
+  // order page read the same setting's words straight from shop settings, so
+  // switching this off costs the shopper nothing once the order exists.
+  if (!config.bankTransferInstructionsOnCheckout) return {}
   return { instructions: config.bankTransferInstructions }
 }
 

@@ -132,6 +132,14 @@ export const ShpConfigSchema = z.object({
   paymentMethodOrder: z.array(z.string()).default([]),
   bankTransferInstructions: z.string().default(''),
   cashInstructions: z.string().default(''),
+  // Whether those same words also appear on the checkout page the moment the
+  // method is picked, as well as on the thank-you page afterwards. On by
+  // default, which is what the shop has always done. An owner who would rather
+  // their bank details only went to someone who has actually placed an order
+  // can switch this off without emptying the box - the thank-you page and the
+  // shopper's order page still print them, so nothing is lost.
+  bankTransferInstructionsOnCheckout: z.boolean().default(true),
+  cashInstructionsOnCheckout: z.boolean().default(true),
 
   // Notifications
   adminOrderAlertEmail: z.string().default(''),

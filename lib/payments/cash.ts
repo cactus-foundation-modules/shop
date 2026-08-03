@@ -3,6 +3,8 @@ import type { ShpOrderDraft, ShpPaymentIntent, ShpPaymentProvider, ShpPaymentRes
 
 async function createIntent(_order: ShpOrderDraft): Promise<ShpPaymentIntent> {
   const config = await getShopConfigCached()
+  // Same reasoning as bank transfer: kept off the wire, not merely off screen.
+  if (!config.cashInstructionsOnCheckout) return {}
   return { instructions: config.cashInstructions }
 }
 
