@@ -88,6 +88,74 @@ export function subscribeCheckoutState(callback: () => void): () => void {
   return () => window.removeEventListener(EVENT, callback)
 }
 
+// --- The order this browsing session placed --------------------------------
+//
+// Remembered so the confirmation page can tell the shopper who has just paid
+// from someone opening a confirmation link out of an email weeks later. Only
+// the first of those should have their basket emptied.
+//
+// Written to BOTH storages deliberately. sessionStorage is the tighter signal,
+// but the basket lives in localStorage and so outlives its own marker: a
+// shopper handed off to a payment provider and handed back into a tab with a
+// fresh session (a restored tab, a link opened through the provider's own app,
+// storage partitioning on some mobile browsers) arrived at a thank-you page
+// with their basket still full. The localStorage copy is timestamped and only
+// trusted for a few hours, which is what keeps the weeks-later case safe.
+const PLACED_ORDER_KEY = 'cactus_shop_placed_order'
+const PLACED_ORDER_TTL_MS = 6 * 60 * 60 * 1000
+
+type PlacedOrder = { orderId: string; orderNumber: string; at: number }
+
+function readPlacedOrder(): PlacedOrder | null {
+  try {
+    const raw = window.localStorage.getItem(PLACED_ORDER_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<PlacedOrder>
+    if (typeof parsed?.orderNumber !== 'string' || typeof parsed?.at !== 'number') return null
+    if (Date.now() - parsed.at > PLACED_ORDER_TTL_MS) return null
+    return { orderId: String(parsed.orderId ?? ''), orderNumber: parsed.orderNumber, at: parsed.at }
+  } catch {
+    return null
+  }
+}
+
+export function rememberPlacedOrder(orderId: string, orderNumber: string): void {
+  try {
+    window.sessionStorage.setItem('cactus_shop_order_id', orderId)
+    window.sessionStorage.setItem('cactus_shop_order_number', orderNumber)
+    window.localStorage.setItem(
+      PLACED_ORDER_KEY,
+      JSON.stringify({ orderId, orderNumber, at: Date.now() } satisfies PlacedOrder)
+    )
+  } catch {
+    // A browser refusing storage still gets a working checkout; it just won't
+    // have its basket emptied for it, which is the smaller of the two failures.
+  }
+}
+
+// Whether this browser is the one that placed the order being looked at.
+export function isPlacedOrder(orderNumber: string): boolean {
+  try {
+    if (window.sessionStorage.getItem('cactus_shop_order_number') === orderNumber) return true
+  } catch {
+    // fall through to the longer-lived copy
+  }
+  return readPlacedOrder()?.orderNumber === orderNumber
+}
+
+// Dropped once the order is finished with, so a completed order is never
+// something a later checkout could confirm itself against.
+export function forgetPlacedOrder(): void {
+  try {
+    window.sessionStorage.removeItem('cactus_shop_order_id')
+    window.sessionStorage.removeItem('cactus_shop_order_number')
+    window.sessionStorage.removeItem('cactus_shop_paypal_order_id')
+    window.localStorage.removeItem(PLACED_ORDER_KEY)
+  } catch {
+    // Nothing to clean up if storage is unavailable.
+  }
+}
+
 // Contact + shipping are separate Puck blocks with no step gating between them,
 // so Payment/Review can mount (and fire their network calls) before those fields
 // are filled in. Both check this before hitting an endpoint that requires them.

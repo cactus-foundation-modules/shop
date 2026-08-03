@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
 import {
   getCheckoutState, updateCheckoutState, isContactAndShippingComplete, areAgreementsAccepted, subscribeCheckoutState,
+  rememberPlacedOrder,
   type CheckoutState,
 } from '@/modules/shop/components/public/checkout-state'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
@@ -135,8 +136,10 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
       // "Place order" acts on.
       if (getCheckoutState().paymentMethod !== next) return prepared
 
-      sessionStorage.setItem('cactus_shop_order_id', data.orderId)
-      sessionStorage.setItem('cactus_shop_order_number', data.orderNumber)
+      // Recorded in both storages: the confirmation page uses it to recognise
+      // the shopper who placed this order, and a payment taken on the
+      // provider's own site can hand the browser back with a fresh session.
+      rememberPlacedOrder(data.orderId, data.orderNumber)
 
       setNotes(Array.isArray(data.notes) ? data.notes.filter((n: unknown): n is string => typeof n === 'string' && n.length > 0) : [])
 

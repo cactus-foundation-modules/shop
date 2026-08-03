@@ -69,17 +69,24 @@ function isManualPayment(data: OrderStatusResponse): boolean {
 // Only an automated payment that is still settling is worth waiting on. A manual
 // method can sit at AWAITING_CONFIRMATION for days while the shopper gets round
 // to the transfer, and polling for that would be a slow way to achieve nothing.
+//
+// PENDING counts as settling too. A shopper redirected back from the provider
+// before its return route could confirm the payment - or before the webhook
+// landed - arrives on an order that has not moved off PENDING yet. Left out of
+// this test, that page never polled, so it never noticed the payment settle and
+// never emptied the basket.
 function isSettling(data: OrderStatusResponse): boolean {
-  return data.order.paymentStatus === 'AWAITING_CONFIRMATION' && !isManualPayment(data)
+  const status = data.order.paymentStatus
+  return (status === 'AWAITING_CONFIRMATION' || status === 'PENDING') && !isManualPayment(data)
 }
 
-// A shopper who paid off-site (PayPal, open banking) reaches this page by
-// redirect from the provider's return route, so nothing has cleared their
+// A shopper who paid off-site (PayPal, open banking, Square) reaches this page
+// by redirect from the provider's return route, so nothing has cleared their
 // basket the way the on-page confirm path does - they'd be thanked for their
 // order while still carrying it. Clear it here, but ONLY for the order this
 // browsing session actually placed: the same page is where a confirmation link
 // out of an email lands weeks later, and that must not empty a basket somebody
-// has since refilled. Dropping the stored order keys afterwards also stops a
+// has since refilled. Dropping the stored order afterwards also stops a
 // finished order lingering as something a later checkout could confirm against.
 //
 // A failed payment keeps its basket. Emptying it would leave the shopper on a
@@ -89,12 +96,11 @@ function isSettling(data: OrderStatusResponse): boolean {
 // basket had already gone - needs to be told about differently.
 async function clearPlacedOrderState(orderNumber: string, paymentStatus: string): Promise<boolean> {
   if (paymentStatus !== 'PAID' && paymentStatus !== 'AWAITING_CONFIRMATION') return false
-  if (sessionStorage.getItem('cactus_shop_order_number') !== orderNumber) return false
-  sessionStorage.removeItem('cactus_shop_order_id')
-  sessionStorage.removeItem('cactus_shop_order_number')
-  sessionStorage.removeItem('cactus_shop_paypal_order_id')
+  const { isPlacedOrder, forgetPlacedOrder, clearOrderSpecificState } =
+    await import('@/modules/shop/components/public/checkout-state')
+  if (!isPlacedOrder(orderNumber)) return false
+  forgetPlacedOrder()
   const { clearCart } = await import('@/modules/shop/components/public/cart')
-  const { clearOrderSpecificState } = await import('@/modules/shop/components/public/checkout-state')
   clearCart()
   clearOrderSpecificState()
   return true
@@ -163,12 +169,29 @@ export function OrderConfirmationClient() {
       return
     }
 
+    // Narrowed once here: the guard above doesn't reach inside the hoisted
+    // helpers below, and an assertion at each use is a worse way to say it.
+    const placedOrderNumber: string = orderNumber
     const url = `/api/m/shop/public/orders/status?orderNumber=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(email)}`
     const startedAt = Date.now()
     let cancelled = false
     let loaded = false
+    let cleared = false
     let latest: OrderStatusResponse | null = null
     let timer: ReturnType<typeof setTimeout> | undefined
+
+    // Attempted after every read rather than only the first. An order that had
+    // not settled by the time this page opened settles a moment later, with the
+    // shopper whose basket it is sitting right here watching it happen - and
+    // before, nothing tried again, so they were thanked for an order they were
+    // still carrying.
+    async function tryClearBasket(body: OrderStatusResponse) {
+      if (cleared) return
+      const didClear = await clearPlacedOrderState(placedOrderNumber, body.order.paymentStatus)
+      if (cancelled || !didClear) return
+      cleared = true
+      setBasketCleared(true)
+    }
 
     async function load(): Promise<OrderStatusResponse | null> {
       let body: OrderStatusResponse & { error?: string }
@@ -191,6 +214,7 @@ export function OrderConfirmationClient() {
       loaded = true
       latest = body
       setData(body)
+      await tryClearBasket(body)
       return body
     }
 
@@ -222,11 +246,8 @@ export function OrderConfirmationClient() {
       if (!body || isSettling(body)) schedule()
     }
 
-    load().then(async (body) => {
+    load().then((body) => {
       if (cancelled || !body) return
-      const cleared = await clearPlacedOrderState(orderNumber, body.order.paymentStatus)
-      if (cancelled) return
-      if (cleared) setBasketCleared(true)
       if (isSettling(body)) { setWatched(true); schedule() }
     })
 
