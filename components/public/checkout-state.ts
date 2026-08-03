@@ -118,9 +118,13 @@ export function isContactAndShippingComplete(
 // because the two answer different questions and are shown differently: an
 // unfilled address field is a step not finished yet, an unticked box is a
 // decision the shopper has to make on this page before the button will work.
+//
+// Takes the ticks rather than the whole state so the block that draws the boxes
+// can ask about the ticks it is drawing, which is not always the same object as
+// the one in storage on the render it is asking on.
 export function areAgreementsAccepted(
-  state: CheckoutState,
+  ticked: Record<string, boolean>,
   agreements: Array<{ id: string; required: boolean }>,
 ): boolean {
-  return agreements.every((a) => !a.required || state.agreements[a.id] === true)
+  return agreements.every((a) => !a.required || ticked[a.id] === true)
 }

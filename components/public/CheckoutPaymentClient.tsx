@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
-import { getCheckoutState, updateCheckoutState, isContactAndShippingComplete } from '@/modules/shop/components/public/checkout-state'
+import {
+  getCheckoutState, updateCheckoutState, isContactAndShippingComplete, areAgreementsAccepted, subscribeCheckoutState,
+  type CheckoutState,
+} from '@/modules/shop/components/public/checkout-state'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
 type ShopClientConfig = {
@@ -13,6 +16,10 @@ type ShopClientConfig = {
   // Optional so a response from an older cached bundle still works - the
   // fallback is the rule as it was before the business-name box existed.
   businessName?: { required?: boolean }
+  // The review step's tickboxes. Needed here because the route that creates the
+  // order refuses one with a compulsory box unticked, so this block has to know
+  // when it is worth calling at all.
+  checkoutAgreements?: { id: string; required: boolean }[]
 }
 
 // The pending order + provider intent that "Place order" will act on. Held for
@@ -67,10 +74,23 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
   const [notes, setNotes] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // What the rest of the checkout still owes before this method can be set up.
+  // Shown as a note beside the chosen method, never as a refusal to choose it.
+  const [awaiting, setAwaiting] = useState<'details' | 'agreements' | null>(null)
   const elementsRef = useRef<HTMLDivElement>(null)
   const stripeInstanceRef = useRef<ReturnType<NonNullable<typeof window.Stripe>> | null>(null)
   const stripeElementsRef = useRef<unknown>(null)
   const preparedRef = useRef<PreparedPayment | null>(null)
+  const preparingRef = useRef(false)
+  // The choice the current prepare attempt belongs to. Every attempt creates a
+  // real order and a real provider intent, so a choice gets exactly one - a
+  // shopper still typing their address must not leave a trail of pending orders.
+  const attemptedForRef = useRef<string | null>(null)
+  // Only a method picked during this mount is prepared on its own. One restored
+  // from sessionStorage on a fresh page load is deliberately left alone: a
+  // reload would otherwise create a pending order and a live provider intent
+  // before the shopper had touched anything.
+  const pickedThisMountRef = useRef(false)
 
   useEffect(() => {
     fetch('/api/m/shop/public/config').then((r) => r.json()).then(setConfig)
@@ -101,6 +121,20 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Could not start checkout')
 
+      const prepared: PreparedPayment = {
+        method: next,
+        orderId: data.orderId,
+        orderNumber: data.orderNumber,
+        approvalUrl: data.approvalUrl,
+        providerOrderId: data.providerOrderId,
+      }
+
+      // The shopper may have switched method while this was in flight. The
+      // order is theirs either way and the caller still gets it back, but it
+      // must not paint bank details under a card form or become the thing
+      // "Place order" acts on.
+      if (getCheckoutState().paymentMethod !== next) return prepared
+
       sessionStorage.setItem('cactus_shop_order_id', data.orderId)
       sessionStorage.setItem('cactus_shop_order_number', data.orderNumber)
 
@@ -117,13 +151,6 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
         setInstructions(data.instructions)
       }
 
-      const prepared: PreparedPayment = {
-        method: next,
-        orderId: data.orderId,
-        orderNumber: data.orderNumber,
-        approvalUrl: data.approvalUrl,
-        providerOrderId: data.providerOrderId,
-      }
       preparedRef.current = prepared
       return prepared
     } finally {
@@ -131,13 +158,17 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
     }
   }, [config])
 
-  async function chooseMethod(next: string) {
-    const state = getCheckoutState()
-    if (!isContactAndShippingComplete(state, { businessNameRequired: config?.businessName?.required === true })) {
-      setError('Please fill in your contact and shipping details above before choosing a payment method.')
-      return
-    }
+  // What the order-creating route insists on before it will hand back an intent:
+  // the details above filled in, and every compulsory tickbox on the review step
+  // ticked. Choosing a method is never gated on any of it - only the network
+  // call behind the choice is, and only until the shopper has finished.
+  const outstandingRequirement = useCallback((state: CheckoutState): 'details' | 'agreements' | null => {
+    if (!isContactAndShippingComplete(state, { businessNameRequired: config?.businessName?.required === true })) return 'details'
+    if (!areAgreementsAccepted(state.agreements, config?.checkoutAgreements ?? [])) return 'agreements'
+    return null
+  }, [config])
 
+  function chooseMethod(next: string) {
     setMethod(next)
     setError(null)
     // Instructions belong to the method that was showing a moment ago - leaving
@@ -146,14 +177,50 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
     setInstructions(null)
     setNotes([])
     preparedRef.current = null
+    attemptedForRef.current = null
+    pickedThisMountRef.current = true
     updateCheckoutState({ paymentMethod: next })
-
-    try {
-      await prepareIntent(next)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start checkout')
-    }
+    // No prepareIntent call here on purpose: the effect below owns preparing, so
+    // there is exactly one place that can create an order and no way for a click
+    // and a state change to race into creating two.
   }
+
+  // Prepares the chosen method the moment it can be prepared. A shopper who
+  // picked one before finishing the form gets their card fields (or their bank
+  // details) as soon as the last box is done, rather than a radio button that
+  // tells them off for the order they did things in.
+  useEffect(() => {
+    function sync() {
+      const state = getCheckoutState()
+      // The choice is read from checkout state rather than from `method`:
+      // updateCheckoutState fires this synchronously, well before React has
+      // re-rendered with the new value, and preparing the method the shopper
+      // has just moved off would create an order for the wrong one.
+      const chosen = state.paymentMethod
+      if (!config || !chosen || !pickedThisMountRef.current) return
+
+      const outstanding = outstandingRequirement(state)
+      setAwaiting(outstanding)
+      // preparedRef is checked as well as the attempt marker because "Place
+      // order" prepares by its own route: without this, a state change after
+      // that would order the same thing twice.
+      if (outstanding || preparingRef.current || attemptedForRef.current === chosen || preparedRef.current?.method === chosen) return
+
+      attemptedForRef.current = chosen
+      preparingRef.current = true
+      prepareIntent(chosen)
+        .catch((err) => setError(err instanceof Error ? err.message : 'Could not start checkout'))
+        .finally(() => {
+          preparingRef.current = false
+          // A method chosen while that call was in flight cleared the attempt
+          // marker and found the door shut. Knock again.
+          sync()
+        })
+    }
+
+    sync()
+    return subscribeCheckoutState(sync)
+  }, [config, method, outstandingRequirement, prepareIntent])
 
   // The Review block's "Place order" button dispatches this event - the actual
   // Stripe/manual confirmation logic lives here since this is the block that
@@ -254,14 +321,28 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
           {notes.map((note, i) => <p key={i} style={{ margin: 0 }}>{note}</p>)}
         </div>
       )}
+      {/* Says what is still owed and what it unlocks. It is a note, not a
+          rebuke: the choice above has been kept, and nothing has gone wrong. */}
+      {method && awaiting && (
+        <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', margin: 0 }}>
+          {awaiting === 'details'
+            ? 'Fill in your contact and delivery details above and this payment method will be set up for you.'
+            : 'Tick the boxes at the bottom of the page and this payment method will be set up for you.'}
+        </p>
+      )}
       {method === 'STRIPE' && (
         <div style={{ display: 'grid', gap: '0.5rem' }}>
+          {/* Mounted whether or not the card fields have been created yet: the
+              Stripe Elements instance needs this node to already exist when it
+              arrives, so it must not wait on a render of its own. */}
           <div ref={elementsRef} />
           {/* Reassurance sits with the card fields - the point of anxiety - not
               in a footer nobody reads. */}
-          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', margin: 0 }}>
-            🔒 Card details go straight to the payment provider, encrypted - they never touch this site.
-          </p>
+          {!awaiting && (
+            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', margin: 0 }}>
+              🔒 Card details go straight to the payment provider, encrypted - they never touch this site.
+            </p>
+          )}
         </div>
       )}
       {instructions && <p style={{ whiteSpace: 'pre-wrap', color: 'var(--color-text-muted)' }}>{instructions}</p>}

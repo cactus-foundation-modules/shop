@@ -71,10 +71,10 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
   // re-renders on a tick. checkout-state stays the source of truth, because the
   // payment block reads it from there when it posts the order.
   const [ticked, setTicked] = useState<Record<string, boolean>>({})
-  // Set only once the shopper has tried to place the order with a box still
-  // empty. Shouting about an untouched tickbox the moment the page loads is
-  // telling someone off for not having done something yet.
-  const [showAgreementError, setShowAgreementError] = useState(false)
+  // Mirrored out of checkout state for the same reason as the tickboxes: the
+  // radio buttons live in the payment block, and this block has to know whether
+  // one has been picked before it will let the order be placed.
+  const [paymentMethod, setPaymentMethod] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -94,6 +94,7 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
       const state = getCheckoutState()
       const lines = getCart()
       setTicked(state.agreements ?? {})
+      setPaymentMethod(state.paymentMethod)
       if (lines.length === 0 || !isContactAndShippingComplete(state, { businessNameRequired })) {
         setIncomplete(true)
         setSummary(null)
@@ -125,14 +126,24 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
     const next = { ...getCheckoutState().agreements, [id]: accepted }
     setTicked(next)
     updateCheckoutState({ agreements: next })
-    if (accepted) setShowAgreementError(false)
+  }
+
+  // What is still outstanding, in the order the page presents it. Null means the
+  // order can be placed. The button reads this rather than shouting after a
+  // click: a shopper should be able to see what is left, not discover it by
+  // being refused.
+  function blockedReason(): string | null {
+    if (!paymentMethod) return 'Choose a payment method above to place your order.'
+    if (!areAgreementsAccepted(ticked, agreements)) {
+      return `Tick the box${agreements.filter((a) => a.required).length === 1 ? '' : 'es'} marked * to place your order.`
+    }
+    return null
   }
 
   function placeOrder() {
-    if (!areAgreementsAccepted(getCheckoutState(), agreements)) {
-      setShowAgreementError(true)
-      return
-    }
+    // The button is disabled while anything is outstanding, so this is a guard
+    // rather than a code path - it exists so a stale render can never post.
+    if (blockedReason()) return
     setPlacing(true)
     setError(null)
     window.dispatchEvent(new CustomEvent('cactus-shop-place-order'))
@@ -153,6 +164,7 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
   if (!summary) return error ? <p style={{ color: 'var(--color-danger)' }}>{error}</p> : null
 
   const money = (n: number) => `${summary.currencySymbol}${n.toFixed(2)}`
+  const blocked = blockedReason()
 
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
@@ -189,45 +201,53 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
           to work for a reason that has scrolled off the screen. */}
       {agreements.length > 0 && (
         <div style={{ display: 'grid', gap: '0.5rem' }}>
-          {agreements.map((agreement) => {
-            const missing = showAgreementError && agreement.required && ticked[agreement.id] !== true
-            return (
-              <label
-                key={agreement.id}
-                style={{
-                  display: 'flex', gap: '0.625rem', alignItems: 'start', cursor: 'pointer', lineHeight: 1.45,
-                  border: `1px solid ${missing ? 'var(--color-danger)' : 'var(--color-border)'}`,
-                  borderRadius: 6, padding: '0.625rem 0.75rem',
-                  background: missing ? 'var(--color-error-bg)' : 'transparent',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={ticked[agreement.id] === true}
-                  onChange={(e) => setAgreement(agreement.id, e.target.checked)}
-                  required={agreement.required}
-                  aria-invalid={missing ? true : undefined}
-                  style={{ marginTop: '0.1875rem', flex: '0 0 auto' }}
-                />
-                <span>
-                  {renderStatement(agreement)}
-                  {agreement.required && <span aria-hidden="true" style={{ color: 'var(--color-danger)' }}> *</span>}
-                </span>
-              </label>
-            )
-          })}
-          {showAgreementError && (
-            <p role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem', margin: 0 }}>
-              Please tick the box{agreements.filter((a) => a.required).length === 1 ? '' : 'es'} marked * to place your order.
-            </p>
-          )}
+          {agreements.map((agreement) => (
+            <label
+              key={agreement.id}
+              style={{
+                display: 'flex', gap: '0.625rem', alignItems: 'start', cursor: 'pointer', lineHeight: 1.45,
+                border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.625rem 0.75rem',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={ticked[agreement.id] === true}
+                onChange={(e) => setAgreement(agreement.id, e.target.checked)}
+                required={agreement.required}
+                style={{ marginTop: '0.1875rem', flex: '0 0 auto' }}
+              />
+              <span>
+                {renderStatement(agreement)}
+                {agreement.required && <span aria-hidden="true" style={{ color: 'var(--color-danger)' }}> *</span>}
+              </span>
+            </label>
+          ))}
         </div>
       )}
       {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
+      {/* Sits above the button rather than below it, and appears before the
+          click rather than after: the one thing left to do should be readable
+          in the same glance as the button it is holding shut. */}
+      {blocked && (
+        <p id="shop-place-order-blocked" role="status" style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem', margin: 0 }}>
+          {blocked}
+        </p>
+      )}
       <button
         onClick={placeOrder}
-        disabled={placing}
-        style={{ background: 'var(--color-primary)', color: 'var(--color-on-primary)', border: 'none', borderRadius: 8, padding: '0.75rem 1.25rem', fontWeight: 600, cursor: 'pointer' }}
+        disabled={placing || blocked !== null}
+        aria-describedby={blocked ? 'shop-place-order-blocked' : undefined}
+        style={{
+          background: blocked ? 'var(--color-bg-subtle)' : 'var(--color-primary)',
+          // Secondary rather than muted: a disabled control still has to be
+          // readable, and muted-on-subtle misses AA in both themes.
+          color: blocked ? 'var(--color-text-secondary)' : 'var(--color-on-primary)',
+          // Transparent rather than none, so the button does not change size
+          // when it becomes placeable.
+          border: `1px solid ${blocked ? 'var(--color-border)' : 'transparent'}`,
+          borderRadius: 8, padding: '0.75rem 1.25rem', fontWeight: 600,
+          cursor: blocked ? 'not-allowed' : 'pointer',
+        }}
       >
         {/* The button states exactly what happens, amount included - no
             surprises on the far side of a click. */}
