@@ -44,12 +44,16 @@ export default async function ShopOrderDetailPage({ params }: { params: Promise<
   return (
     <OrderDetailScreen orderId={id}>
       {order && sectionIds.length > 0 && (
-        <section>
-          <h3 style={{ fontSize: '0.9375rem' }}>Customer Communications</h3>
-          {sectionIds.map((sid) => {
-            const Section = sectionComponents[sid]
-            return Section ? <Section key={sid} orderId={order.id} orderNumber={order.orderNumber} customerEmail={order.customerEmail} /> : null
-          })}
+        // Rendered inside the order screen's main column, so it wears the same
+        // card as everything else there rather than being a bare heading.
+        <section className="sox-card">
+          <div className="sox-card-head"><h2>Customer communications</h2></div>
+          <div className="sox-card-body">
+            {sectionIds.map((sid) => {
+              const Section = sectionComponents[sid]
+              return Section ? <Section key={sid} orderId={order.id} orderNumber={order.orderNumber} customerEmail={order.customerEmail} /> : null
+            })}
+          </div>
         </section>
       )}
     </OrderDetailScreen>

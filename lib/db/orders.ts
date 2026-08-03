@@ -336,42 +336,247 @@ export async function pruneAbandonedPendingOrders(olderThanHours: number): Promi
   `
 }
 
+// How much of an order has left the building, and how much is still owed, said
+// in SQL so a list of orders can be filtered and counted on it without loading
+// every line into JavaScript first.
+//
+// Both correlate on o."id", so they only ever appear inside a query that has
+// "shp_orders" aliased as `o`. Units already dispatched are summed from
+// shp_shipment_items through a subquery keyed by order item BEFORE anything is
+// joined to the order lines - joining the parcel lines straight onto the order
+// lines fans a line out once per parcel and counts it twice, which is the exact
+// trap that once caused real overselling (see lib/db/shipments.ts).
+const DISPATCHED_UNITS_SQL = Prisma.sql`
+  COALESCE((
+    SELECT SUM(si."quantity")::int
+    FROM "shp_shipment_items" si
+    JOIN "shp_order_items" oi_d ON oi_d."id" = si."order_item_id"
+    WHERE oi_d."order_id" = o."id"
+  ), 0)
+`
+const OUTSTANDING_UNITS_SQL = Prisma.sql`
+  COALESCE((
+    SELECT SUM(GREATEST(oi_o."quantity" - oi_o."refunded_qty" - COALESCE(sent."qty", 0), 0))::int
+    FROM "shp_order_items" oi_o
+    LEFT JOIN (
+      SELECT si2."order_item_id" AS order_item_id, SUM(si2."quantity")::int AS qty
+      FROM "shp_shipment_items" si2 GROUP BY si2."order_item_id"
+    ) sent ON sent."order_item_id" = oi_o."id"
+    WHERE oi_o."order_id" = o."id"
+  ), 0)
+`
+
+// Dispatch progress as something an owner can filter a list by. Deliberately
+// the same three readings the order screen shows as a badge, so "Partly
+// dispatched" in the list and "Partly dispatched" on the order can never mean
+// two different things. Not a stored status - see ShpOrderDispatchSummary.
+export type OrderFulfilment = 'UNDISPATCHED' | 'PARTIAL' | 'DISPATCHED'
+
+const FULFILMENT_CONDITION: Record<OrderFulfilment, Prisma.Sql> = {
+  UNDISPATCHED: Prisma.sql`${DISPATCHED_UNITS_SQL} = 0 AND ${OUTSTANDING_UNITS_SQL} > 0`,
+  PARTIAL: Prisma.sql`${DISPATCHED_UNITS_SQL} > 0 AND ${OUTSTANDING_UNITS_SQL} > 0`,
+  DISPATCHED: Prisma.sql`${DISPATCHED_UNITS_SQL} > 0 AND ${OUTSTANDING_UNITS_SQL} = 0`,
+}
+
+export type OrderSort = 'newest' | 'oldest' | 'total-desc' | 'total-asc' | 'customer-asc' | 'status'
+
+const SORT_CLAUSE: Record<OrderSort, Prisma.Sql> = {
+  newest: Prisma.sql`ORDER BY o."created_at" DESC`,
+  oldest: Prisma.sql`ORDER BY o."created_at" ASC`,
+  'total-desc': Prisma.sql`ORDER BY o."total" DESC, o."created_at" DESC`,
+  'total-asc': Prisma.sql`ORDER BY o."total" ASC, o."created_at" DESC`,
+  'customer-asc': Prisma.sql`ORDER BY lower(o."customer_name") ASC, o."created_at" DESC`,
+  status: Prisma.sql`ORDER BY o."status" ASC, o."created_at" DESC`,
+}
+
 export type ListOrdersFilter = {
   page?: number
   perPage?: number
   status?: ShpOrderStatus
-  paymentStatus?: ShpPaymentStatus
+  // 'UNPAID' is the useful reading of "money still owed" - an order sitting on
+  // PENDING and one parked on AWAITING_CONFIRMATION are the same job from the
+  // owner's side, and having to check both separately is how one gets forgotten.
+  paymentStatus?: ShpPaymentStatus | 'UNPAID'
   search?: string
   preOrder?: boolean
+  fulfilment?: OrderFulfilment
+  // Hides cancelled orders. The counters on the orders screen are all "what is
+  // still to do", so every one of them is counted this way; the tiles link
+  // through with it set, which is what keeps a tile's number and its list the
+  // same length.
+  openOnly?: boolean
   dateFrom?: Date
   dateTo?: Date
+  sort?: OrderSort
 }
+
+const OPEN_ONLY_SQL = Prisma.sql`o."status" <> 'CANCELLED'`
+const UNPAID_SQL = Prisma.sql`o."payment_status" IN ('PENDING', 'AWAITING_CONFIRMATION')`
 
 export async function listOrders(filter: ListOrdersFilter): Promise<{ orders: ShpOrder[]; total: number }> {
   const page = Math.max(1, Math.floor(Number(filter.page)) || 1)
-  const perPage = Math.min(100, Math.max(1, Math.floor(Number(filter.perPage)) || 25))
+  const perPage = Math.min(200, Math.max(1, Math.floor(Number(filter.perPage)) || 25))
   const offset = (page - 1) * perPage
 
   const conditions: Prisma.Sql[] = []
   if (filter.status) conditions.push(Prisma.sql`o."status" = ${filter.status}`)
-  if (filter.paymentStatus) conditions.push(Prisma.sql`o."payment_status" = ${filter.paymentStatus}`)
+  if (filter.paymentStatus === 'UNPAID') conditions.push(UNPAID_SQL)
+  else if (filter.paymentStatus) conditions.push(Prisma.sql`o."payment_status" = ${filter.paymentStatus}`)
+  if (filter.openOnly) conditions.push(OPEN_ONLY_SQL)
   if (filter.search) conditions.push(Prisma.sql`(o."order_number" ILIKE ${`%${filter.search}%`} OR o."customer_email" ILIKE ${`%${filter.search}%`} OR o."customer_name" ILIKE ${`%${filter.search}%`})`)
   if (filter.dateFrom) conditions.push(Prisma.sql`o."created_at" >= ${filter.dateFrom}`)
   if (filter.dateTo) conditions.push(Prisma.sql`o."created_at" <= ${filter.dateTo}`)
   if (filter.preOrder) {
     conditions.push(Prisma.sql`o."id" IN (SELECT "order_id" FROM "shp_order_items" WHERE "is_pre_order" = true)`)
   }
+  if (filter.fulfilment) conditions.push(Prisma.sql`(${FULFILMENT_CONDITION[filter.fulfilment]})`)
 
   const where = conditions.length ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty
-  const orderBy = filter.preOrder
-    ? Prisma.sql`ORDER BY (SELECT MIN("pre_order_dispatch_date") FROM "shp_order_items" WHERE "order_id" = o."id") ASC NULLS LAST`
-    : Prisma.sql`ORDER BY o."created_at" DESC`
+  // The pre-order view is sorted by what the shop is waiting on rather than by
+  // when the order arrived, because that is the question it exists to answer -
+  // unless the owner has picked a sort of their own.
+  const orderBy = filter.sort
+    ? SORT_CLAUSE[filter.sort]
+    : filter.preOrder
+      ? Prisma.sql`ORDER BY (SELECT MIN("pre_order_dispatch_date") FROM "shp_order_items" WHERE "order_id" = o."id") ASC NULLS LAST`
+      : SORT_CLAUSE.newest
 
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
     SELECT o.* FROM "shp_orders" o ${where} ${orderBy} LIMIT ${perPage} OFFSET ${offset}
   `
   const countRows = await prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*)::bigint AS count FROM "shp_orders" o ${where}`
   return { orders: rows.map(mapOrder), total: Number(countRows[0]?.count ?? 0) }
+}
+
+// What a row on the orders list needs beyond the order itself: how big it is,
+// how much of it has gone out, and whether any of it is a pre-order. Fetched
+// for a whole page of orders in one query rather than per row, so a page of 50
+// orders is two round trips in total, not fifty-one.
+export type OrderRowMetrics = {
+  lineCount: number
+  unitCount: number
+  refundedUnits: number
+  dispatchedUnits: number
+  outstandingUnits: number
+  hasPreOrder: boolean
+}
+
+export async function getOrderRowMetrics(orderIds: string[]): Promise<Record<string, OrderRowMetrics>> {
+  if (orderIds.length === 0) return {}
+  const rows = await prisma.$queryRaw<Array<{
+    order_id: string
+    line_count: number
+    unit_count: number
+    refunded_units: number
+    dispatched_units: number
+    outstanding_units: number
+    has_pre_order: boolean
+  }>>`
+    SELECT oi."order_id" AS order_id,
+           COUNT(*)::int AS line_count,
+           COALESCE(SUM(oi."quantity"), 0)::int AS unit_count,
+           COALESCE(SUM(oi."refunded_qty"), 0)::int AS refunded_units,
+           COALESCE(SUM(COALESCE(sent."qty", 0)), 0)::int AS dispatched_units,
+           COALESCE(SUM(GREATEST(oi."quantity" - oi."refunded_qty" - COALESCE(sent."qty", 0), 0)), 0)::int AS outstanding_units,
+           BOOL_OR(oi."is_pre_order") AS has_pre_order
+    FROM "shp_order_items" oi
+    LEFT JOIN (
+      SELECT si."order_item_id" AS order_item_id, SUM(si."quantity")::int AS qty
+      FROM "shp_shipment_items" si GROUP BY si."order_item_id"
+    ) sent ON sent."order_item_id" = oi."id"
+    WHERE oi."order_id" IN (${Prisma.join(orderIds)})
+    GROUP BY oi."order_id"
+  `
+  const out: Record<string, OrderRowMetrics> = {}
+  for (const r of rows) {
+    out[r.order_id] = {
+      lineCount: r.line_count,
+      unitCount: r.unit_count,
+      refundedUnits: r.refunded_units,
+      dispatchedUnits: r.dispatched_units,
+      outstandingUnits: r.outstanding_units,
+      hasPreOrder: r.has_pre_order,
+    }
+  }
+  return out
+}
+
+// The numbers worth putting at the top of the orders screen. Counted over the
+// whole shop rather than the current filter on purpose: they are there to say
+// what still needs doing, and a filter that hides the work would defeat the
+// point of showing them.
+//
+// Each counter is defined as exactly the filter its tile links through to, so
+// clicking "3 to send" always lands on three orders. Any counter that cannot be
+// expressed as a filter belongs on a tile that does not link anywhere.
+export type OrdersOverview = {
+  awaitingPayment: number
+  toDispatch: number
+  preOrdersOutstanding: number
+  paidOrders30d: number
+  revenue30d: string
+}
+
+export async function getOrdersOverview(): Promise<OrdersOverview> {
+  const rows = await prisma.$queryRaw<Array<{
+    awaiting_payment: number
+    to_dispatch: number
+    pre_orders_outstanding: number
+    paid_orders_30d: number
+    revenue_30d: { toString(): string }
+  }>>`
+    SELECT
+      COUNT(*) FILTER (WHERE ${UNPAID_SQL} AND ${OPEN_ONLY_SQL})::int AS awaiting_payment,
+      COUNT(*) FILTER (
+        WHERE o."payment_status" = 'PAID'
+          AND ${OPEN_ONLY_SQL}
+          AND ${FULFILMENT_CONDITION.UNDISPATCHED}
+      )::int AS to_dispatch,
+      COUNT(*) FILTER (
+        WHERE ${OPEN_ONLY_SQL}
+          AND EXISTS (
+            SELECT 1 FROM "shp_order_items" oi_p
+            WHERE oi_p."order_id" = o."id" AND oi_p."is_pre_order" = true
+          )
+      )::int AS pre_orders_outstanding,
+      COUNT(*) FILTER (
+        WHERE o."payment_status" = 'PAID' AND o."paid_at" >= NOW() - INTERVAL '30 days'
+      )::int AS paid_orders_30d,
+      COALESCE(SUM(o."total") FILTER (
+        WHERE o."payment_status" = 'PAID' AND o."paid_at" >= NOW() - INTERVAL '30 days'
+      ), 0) AS revenue_30d
+    FROM "shp_orders" o
+  `
+  const r = rows[0]
+  return {
+    awaitingPayment: r?.awaiting_payment ?? 0,
+    toDispatch: r?.to_dispatch ?? 0,
+    preOrdersOutstanding: r?.pre_orders_outstanding ?? 0,
+    paidOrders30d: r?.paid_orders_30d ?? 0,
+    revenue30d: r?.revenue_30d ? r.revenue_30d.toString() : '0',
+  }
+}
+
+// How this customer has behaved before, for the panel on a single order. Prior
+// orders are the ones that are not this one, so an order always reads as "their
+// third" rather than counting itself.
+export type CustomerSummary = { orderCount: number; paidOrderCount: number; totalSpent: string; firstOrderAt: Date | null }
+
+export async function getCustomerSummary(email: string): Promise<CustomerSummary> {
+  const rows = await prisma.$queryRaw<Array<{ order_count: number; paid_order_count: number; total_spent: { toString(): string }; first_order_at: Date | null }>>`
+    SELECT COUNT(*)::int AS order_count,
+           COUNT(*) FILTER (WHERE "payment_status" = 'PAID')::int AS paid_order_count,
+           COALESCE(SUM("total") FILTER (WHERE "payment_status" = 'PAID'), 0) AS total_spent,
+           MIN("created_at") AS first_order_at
+    FROM "shp_orders" WHERE lower("customer_email") = lower(${email})
+  `
+  const r = rows[0]
+  return {
+    orderCount: r?.order_count ?? 0,
+    paidOrderCount: r?.paid_order_count ?? 0,
+    totalSpent: r?.total_spent ? r.total_spent.toString() : '0',
+    firstOrderAt: r?.first_order_at ?? null,
+  }
 }
 
 export async function listOrdersByEmail(email: string): Promise<ShpOrder[]> {
@@ -460,8 +665,21 @@ export async function addOrderNote(orderId: string, content: string, isInternal:
   `
 }
 
-export async function listOrderNotes(orderId: string) {
-  return prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_order_notes" WHERE "order_id" = ${orderId} ORDER BY "created_at" ASC`
+// Mapped to camelCase like every other read in this file. It used to hand back
+// raw rows, so `isInternal` and `createdAt` were simply undefined on the admin
+// screen while `content` happened to work - the kind of quiet mismatch that only
+// shows up as a blank timestamp.
+export type OrderNoteRow = { id: string; content: string; isInternal: boolean; createdBy: string | null; createdAt: Date }
+
+export async function listOrderNotes(orderId: string): Promise<OrderNoteRow[]> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_order_notes" WHERE "order_id" = ${orderId} ORDER BY "created_at" ASC`
+  return rows.map((r) => ({
+    id: r.id as string,
+    content: r.content as string,
+    isInternal: r.is_internal as boolean,
+    createdBy: (r.created_by as string | null) ?? null,
+    createdAt: r.created_at as Date,
+  }))
 }
 
 export async function logOrderEmail(orderId: string, subject: string, to: string, trigger: string): Promise<void> {
@@ -470,6 +688,15 @@ export async function logOrderEmail(orderId: string, subject: string, to: string
   `
 }
 
-export async function listOrderEmails(orderId: string) {
-  return prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_order_emails" WHERE "order_id" = ${orderId} ORDER BY "sent_at" ASC`
+export type OrderEmailRow = { id: string; subject: string; to: string; trigger: string; sentAt: Date }
+
+export async function listOrderEmails(orderId: string): Promise<OrderEmailRow[]> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_order_emails" WHERE "order_id" = ${orderId} ORDER BY "sent_at" ASC`
+  return rows.map((r) => ({
+    id: r.id as string,
+    subject: r.subject as string,
+    to: r.to as string,
+    trigger: r.trigger as string,
+    sentAt: r.sent_at as Date,
+  }))
 }

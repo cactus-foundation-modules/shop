@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { listOrders, createPendingOrder } from '@/modules/shop/lib/db'
+import { getOrderRowMetrics, getOrdersOverview } from '@/modules/shop/lib/db/orders'
+import { parseOrderListFilter } from '@/modules/shop/lib/order-filters'
 import { resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkout'
 import { findShippingZoneForPostcode } from '@/modules/shop/lib/db/tax-shipping'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
@@ -19,15 +21,17 @@ export async function GET(request: NextRequest) {
   await syncSupplierNavEntry((await getShopConfigCached()).supplierFieldEnabled)
 
   const params = request.nextUrl.searchParams
-  const { orders, total } = await listOrders({
-    status: (params.get('status') as never) ?? undefined,
-    paymentStatus: (params.get('paymentStatus') as never) ?? undefined,
-    search: params.get('search') ?? undefined,
-    preOrder: params.get('preOrder') === 'true',
-    page: params.get('page') ? Number(params.get('page')) : undefined,
-    perPage: params.get('perPage') ? Number(params.get('perPage')) : undefined,
-  })
-  return NextResponse.json({ orders, total })
+  const { orders, total } = await listOrders(parseOrderListFilter(params))
+
+  // Row metrics are one query for the whole page, not one per row. The overview
+  // counters are asked for separately (`stats=1`) so paging through a list does
+  // not re-run four aggregates over every order in the shop each time.
+  const [metrics, overview] = await Promise.all([
+    getOrderRowMetrics(orders.map((o) => o.id)),
+    params.get('stats') === '1' ? getOrdersOverview() : Promise.resolve(null),
+  ])
+
+  return NextResponse.json({ orders, total, metrics, overview })
 }
 
 const AddressSchema = z.object({

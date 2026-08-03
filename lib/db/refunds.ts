@@ -29,6 +29,18 @@ export async function listRefundsForOrder(orderId: string): Promise<ShpRefund[]>
   return rows.map(mapRefund)
 }
 
+// Every refund line on an order in one query, for the admin's refund history.
+// Per-refund lookups would be one query per refund on a screen that already
+// makes several calls, and refunds arrive in ones and twos.
+export async function listRefundItemsForOrder(orderId: string): Promise<ShpRefundItem[]> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT ri.* FROM "shp_refund_items" ri
+    JOIN "shp_refunds" r ON r."id" = ri."refund_id"
+    WHERE r."order_id" = ${orderId}
+  `
+  return rows.map(mapRefundItem)
+}
+
 export async function getRefundItems(refundId: string): Promise<ShpRefundItem[]> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_refund_items" WHERE "refund_id" = ${refundId}`
   return rows.map(mapRefundItem)
