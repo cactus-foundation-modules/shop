@@ -23,11 +23,23 @@
 import { prisma } from '@/lib/db/prisma'
 import { gatherCartExtensionPoint } from '@/modules/shop/lib/line-meta'
 import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
-import type { LineMeta, LineMetaField, ShpOrder, ShpOrderItem } from '@/modules/shop/lib/types'
+import type { ResolvedCartLine } from '@/modules/shop/lib/checkout'
+import type { LineMeta, LineMetaField, ShpAddress, ShpOrder, ShpOrderItem } from '@/modules/shop/lib/types'
 
 export type OrderPaymentStateInput = {
   order: ShpOrder
   items: ShpOrderItem[]
+  // True when this is a look-ahead for an order that does not exist yet: the
+  // shopper has picked a payment method at the checkout and wants to know what
+  // it means before filling in the rest. `order` and `items` are then a
+  // prospective shape rather than rows - the payment method and the lines are
+  // real, every other figure is a placeholder and the ids point at nothing.
+  //
+  // A provider that only reads what it is handed needs to do nothing about
+  // this. One that goes back to the database for its own order row, or that
+  // writes anything of its own, must return null when it is set: line
+  // restatements are discarded in preview, since there is no line to restate.
+  preview?: boolean
 }
 
 export type OrderPaymentStateResult = {
@@ -117,5 +129,86 @@ export async function applyOrderPaymentState(orderId: string): Promise<string[]>
     `
   }
 
+  return notes
+}
+
+// A stand-in for the order the shopper has not placed yet. Everything on it
+// except the payment method is a placeholder, deliberately and visibly so: at
+// this point in the checkout the address may be half-typed and the totals are
+// not settled, and a provider inventing a sentence out of either would be
+// quoting figures nobody has agreed to. `preview` on the input says as much.
+function prospectiveOrder(paymentMethod: string): ShpOrder {
+  const now = new Date()
+  const nowhere: ShpAddress = { firstName: '', lastName: '', line1: '', city: '', postcode: '', country: 'GB' }
+  return {
+    id: '', orderNumber: '', status: 'PENDING', memberId: null,
+    customerEmail: '', customerName: '', customerPhone: null,
+    shippingAddress: nowhere, billingAddress: null,
+    subtotal: '0', discountAmount: '0', shippingAmount: '0', taxAmount: '0', total: '0',
+    taxMode: 'INCLUSIVE', currency: '', couponId: null, couponCode: null,
+    paymentMethod,
+    // The point of the whole exercise: nothing has been paid, which is what
+    // makes a pay-later method worth saying anything about at all.
+    paymentStatus: 'PENDING',
+    paymentReference: null, paidAt: null, shippingRateId: null, shippingRateName: null,
+    agreements: null, createdAt: now, updatedAt: now,
+  }
+}
+
+// The cart as the order items it is about to become. The line meta is the real
+// thing - server-resolved, the same value that will be snapshotted onto the
+// order - because that is where a provider's own state lives and the only part
+// of a line a note can honestly be derived from before checkout finishes.
+function prospectiveItems(lines: ResolvedCartLine[]): ShpOrderItem[] {
+  return lines.map((line, index) => ({
+    id: `preview-${index}`,
+    orderId: '',
+    productId: line.product.id,
+    productName: line.product.name,
+    productSku: line.product.sku,
+    productType: line.product.type,
+    quantity: line.quantity,
+    unitPrice: '0', taxRate: '0', taxAmount: '0', total: '0',
+    refundedQty: 0,
+    isPreOrder: line.isPreOrder,
+    preOrderDispatchDate: line.product.preOrderDispatchDate,
+    lineMeta: line.lineMeta,
+  }))
+}
+
+/**
+ * What the registered providers would say about this cart on this payment
+ * method, asked before any order exists.
+ *
+ * The same sentences come back from the order-creating route, but that route
+ * cannot be called until the checkout is filled in and every compulsory box is
+ * ticked - so a shopper choosing between card and bank transfer would only be
+ * told what bank transfer costs them well after the point they were deciding.
+ * This asks the same question with nothing at stake: no order row, no provider
+ * intent, and any line restatements a provider offers are dropped on the floor
+ * because there is no line to restate yet.
+ */
+export async function previewOrderPaymentNotes(paymentMethod: string, lines: ResolvedCartLine[]): Promise<string[]> {
+  const providers = await gatherCartExtensionPoint<OrderPaymentStateProvider>(POINT)
+  if (providers.length === 0 || lines.length === 0) return []
+
+  const input: OrderPaymentStateInput = {
+    order: prospectiveOrder(paymentMethod),
+    items: prospectiveItems(lines),
+    preview: true,
+  }
+
+  const notes: string[] = []
+  for (const provider of providers) {
+    try {
+      const result = await provider(input)
+      if (result?.note) notes.push(result.note)
+    } catch (err) {
+      // Nothing is riding on this one - the shopper simply is not told a thing
+      // they would otherwise have been told, and the order route asks again in
+      // earnest later.
+      console.error(`[shop.order-payment-state] preview provider failed for ${paymentMethod}`, err)
+    }
+  }
   return notes
 }

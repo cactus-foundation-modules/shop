@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getCart } from '@/modules/shop/components/public/cart'
+import { getCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import {
   getCheckoutState, updateCheckoutState, isContactAndShippingComplete, areAgreementsAccepted, subscribeCheckoutState,
   rememberPlacedOrder,
@@ -232,6 +232,45 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
     return subscribeCheckoutState(sync)
   }, [config, method, outstandingRequirement, prepareIntent])
 
+  // What the chosen method means for this order, asked for the moment it is
+  // chosen. The order-creating route hands back the same sentences, but it
+  // cannot be called until the checkout is filled in and every compulsory box is
+  // ticked - so a shopper weighing card against bank transfer used to be told
+  // what bank transfer does to their delivery dates only after they had agreed
+  // to the terms, which is some way past the point they were deciding. This
+  // creates nothing; see the payment-note route.
+  useEffect(() => {
+    if (!method || !populated) return
+    let cancelled = false
+
+    function fetchNote() {
+      const chosen = method
+      if (!chosen) return
+      fetch('/api/m/shop/public/checkout/payment-note', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lines: getCart(), paymentMethod: chosen }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          // A method switched during the round trip owns the panel now. And once
+          // there is a real order for this method, its own notes are the ones
+          // that count - they were computed from the lines as actually ordered.
+          if (cancelled || !data || getCheckoutState().paymentMethod !== chosen) return
+          if (preparedRef.current?.method === chosen) return
+          setNotes(Array.isArray(data.notes) ? data.notes.filter((n: unknown): n is string => typeof n === 'string' && n.length > 0) : [])
+        })
+        // Silent: this is something extra the shopper is being told, and failing
+        // to tell them must not put an error on a checkout that is working.
+        .catch(() => {})
+    }
+
+    fetchNote()
+    // The sentence quotes a figure off the basket (the longest lead time in it),
+    // so a basket edited on the checkout page has to ask again.
+    const unsubscribe = subscribeCart(fetchNote)
+    return () => { cancelled = true; unsubscribe() }
+  }, [method, populated])
+
   // The Review block's "Place order" button dispatches this event - the actual
   // Stripe/manual confirmation logic lives here since this is the block that
   // holds the mounted Elements instance (Puck blocks don't share React state).
@@ -332,12 +371,13 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
         </div>
       )}
       {/* Says what is still owed and what it unlocks. It is a note, not a
-          rebuke: the choice above has been kept, and nothing has gone wrong. */}
-      {method && awaiting && (
+          rebuke: the choice above has been kept, and nothing has gone wrong.
+          Only the details are worth mentioning - the tickboxes sit right beside
+          the button that is about to ask for them, and being told twice on one
+          screen to tick a box you can already see reads as nagging. */}
+      {method && awaiting === 'details' && (
         <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', margin: 0 }}>
-          {awaiting === 'details'
-            ? 'Fill in your contact and delivery details above and this payment method will be set up for you.'
-            : 'Tick the boxes at the bottom of the page and this payment method will be set up for you.'}
+          Fill in your contact and delivery details above and this payment method will be set up for you.
         </p>
       )}
       {method === 'STRIPE' && (
