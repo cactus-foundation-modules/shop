@@ -4,8 +4,9 @@ import { getProductMediaForProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getPaymentProvider, getPaymentMethodLabels } from '@/modules/shop/lib/payments/registry'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
-import { getMembersConfig } from '@/lib/members/config'
+import { getMembersConfig, type MembersConfig } from '@/lib/members/config'
 import { getMemberAreaPath } from '@/lib/members/paths'
+import { prisma } from '@/lib/db/prisma'
 
 // Preferred display names for the built-in methods; anything else falls back to
 // the provider's own registered label, then the raw code.
@@ -67,14 +68,50 @@ export async function GET(request: NextRequest) {
   // This is the switch that used to do nothing: `postPurchaseAccountPrompt` was
   // saved by the settings screen and read by absolutely nobody, so the prompt
   // it promised had never once appeared.
+  //
+  // The prompt carries the registration form itself rather than a link to it,
+  // so it has to hand over everything that form needs: the registration mode,
+  // which fields the site asks for, and the privacy policy people are agreeing
+  // to. Read from the same places the register page reads them, so an owner who
+  // drops the username picker doesn't find it back again on the confirmation.
   const membersConfig = await getMembersConfig()
-  const accountPrompt =
+  type AccountPrompt = {
+    registerUrl: string
+    verifyEmailUrl: string
+    registrationMode: MembersConfig['registrationMode']
+    collectUsername: boolean
+    collectDisplayName: boolean
+    privacyPolicyUrl: string | null
+  }
+  let accountPrompt: AccountPrompt | null = null
+  if (
     config.postPurchaseAccountPrompt &&
     membersConfig.enabled &&
     membersConfig.registrationMode !== 'INVITE_ONLY' &&
     !order.memberId
-      ? { registerUrl: `/${getMemberAreaPath()}/register?email=${encodeURIComponent(order.customerEmail)}` }
+  ) {
+    const siteConfig = await prisma.siteConfig.findUnique({
+      where: { id: 'singleton' },
+      select: { privacyPolicyPageId: true },
+    })
+    const privacyPage = siteConfig?.privacyPolicyPageId
+      ? await prisma.infoPage.findUnique({
+          where: { id: siteConfig.privacyPolicyPageId },
+          select: { slug: true },
+        })
       : null
+    const memberArea = getMemberAreaPath()
+    accountPrompt = {
+      registerUrl: `/${memberArea}/register?email=${encodeURIComponent(order.customerEmail)}`,
+      // Spelt out rather than derived from the current path: the form is on the
+      // confirmation page now, not on /register, so there is nothing to derive.
+      verifyEmailUrl: `/${memberArea}/verify-email`,
+      registrationMode: membersConfig.registrationMode,
+      collectUsername: membersConfig.registrationCollectUsername,
+      collectDisplayName: membersConfig.registrationCollectDisplayName,
+      privacyPolicyUrl: privacyPage?.slug ? `/${privacyPage.slug}` : null,
+    }
+  }
 
   // Module-contributed methods can be renamed by the shop owner, so their label
   // is resolved rather than read off a fixed map.

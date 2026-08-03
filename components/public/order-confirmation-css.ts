@@ -119,6 +119,11 @@ export const ORDER_CONFIRMATION_CSS = `
 .soc-account h2{margin:0;font-size:1.0625rem;font-weight:650}
 .soc-account p{margin:0;color:var(--color-text-secondary)}
 .soc-account ul{margin:0;padding-left:1.125rem;color:var(--color-text-secondary);display:grid;gap:0.25rem}
+/* The embedded registration form brings the site's own form styling with it, so
+   there is nothing to restyle here. The one collision is the paragraph rule
+   above, which would repaint the form's own hint text. */
+.soc-account form{margin:0}
+.soc-account form p.field-hint{color:var(--color-text-muted)}
 
 /* --- Buttons ----------------------------------------------------------- */
 .soc-actions{display:flex;flex-wrap:wrap;gap:0.625rem}

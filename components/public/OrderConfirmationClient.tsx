@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { ORDER_CONFIRMATION_CSS } from '@/modules/shop/components/public/order-confirmation-css'
+import RegisterForm from '@/components/members/RegisterForm'
 import type { ShpAddress } from '@/modules/shop/lib/types'
 
 type OrderStatusResponse = {
@@ -43,7 +44,19 @@ type OrderStatusResponse = {
   // Present only when this order was placed as a guest, the owner has asked for
   // the prompt, and the site actually takes registrations. Optional so a
   // response from an older cached bundle simply shows no prompt.
-  accountPrompt?: { registerUrl: string } | null
+  //
+  // Everything past registerUrl is what the embedded registration form needs.
+  // All optional, because an older cached bundle answers with the url alone -
+  // and without a registration mode there is no form to render, so that case
+  // falls back to the link this prompt used to be.
+  accountPrompt?: {
+    registerUrl: string
+    verifyEmailUrl?: string
+    registrationMode?: 'OPEN' | 'INVITE_ONLY' | 'APPROVAL_REQUIRED'
+    collectUsername?: boolean
+    collectDisplayName?: boolean
+    privacyPolicyUrl?: string | null
+  } | null
   currencySymbol: string
 }
 
@@ -398,9 +411,27 @@ export function OrderConfirmationClient() {
               <li>Check out faster next time - your address is already there</li>
               <li>No password to remember: sign in from a link we email you</li>
             </ul>
-            <div className="soc-actions">
-              <a className="soc-btn soc-btn-primary" href={data.accountPrompt.registerUrl}>Create an account</a>
-            </div>
+            {/* The form itself, not a link to it. Sending someone who has just
+                finished paying off to another page to fill in three boxes is
+                how an offer worth about a minute of their time gets declined.
+                Heading suppressed because the box already has one, and the
+                verify-email destination is spelt out because the form can no
+                longer work it out from the address bar. */}
+            {data.accountPrompt.registrationMode ? (
+              <RegisterForm
+                registrationMode={data.accountPrompt.registrationMode}
+                initialEmail={order.customerEmail}
+                privacyPolicyUrl={data.accountPrompt.privacyPolicyUrl ?? undefined}
+                collectUsername={data.accountPrompt.collectUsername}
+                collectDisplayName={data.accountPrompt.collectDisplayName}
+                verifyEmailUrl={data.accountPrompt.verifyEmailUrl}
+                showHeading={false}
+              />
+            ) : (
+              <div className="soc-actions">
+                <a className="soc-btn soc-btn-primary" href={data.accountPrompt.registerUrl}>Create an account</a>
+              </div>
+            )}
           </div>
         )}
 
