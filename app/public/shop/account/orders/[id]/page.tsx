@@ -32,11 +32,59 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: 'Cash',
 }
 
+// The manual methods, and which setting holds the words that tell a shopper how
+// to actually hand the money over. Named one by one rather than read off the
+// provider registry's `confirmMode`, because a manual method contributed by a
+// module keeps its instructions in its own settings, not in either of these two
+// boxes - matching on "manual" alone would have printed the cash wording under
+// somebody else's method.
+const MANUAL_INSTRUCTION_KEYS = {
+  BANK_TRANSFER: 'bankTransferInstructions',
+  CASH: 'cashInstructions',
+} as const
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="card" style={{ padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-3)' }}>
       <h2 className="card-title" style={{ margin: 0 }}>{title}</h2>
       {children}
+    </div>
+  )
+}
+
+// How to pay, for the methods where paying is still a job the shopper has to go
+// and do. The thank-you page says this once, at a moment nobody is reading
+// carefully; this is where they come back to it a week later with their banking
+// app open, so it sits above everything else the page has to say.
+//
+// Two readings, and they must not sound alike. Money still owed is an
+// outstanding task and gets the warning band. Money already handed over leaves
+// the same words on screen plainly - there is often a reference or an account
+// name in them worth being able to look up - but must never read as a demand.
+function PaymentInstructions({
+  instructions,
+  outstanding,
+  amount,
+}: {
+  instructions: string
+  outstanding: boolean
+  amount: string
+}) {
+  return (
+    <div
+      className={outstanding ? 'alert alert-warning' : 'card'}
+      // `.alert` carries its own bottom margin, which inside this grid would sit
+      // on top of the gap and open a hole under the panel. The grid decides the
+      // spacing here, as it does for every other block on the page.
+      style={{ padding: 'var(--space-4)', marginBottom: 0, display: 'grid', gap: 'var(--space-2)' }}
+    >
+      <strong>{outstanding ? `How to pay - ${amount} still to reach us` : 'How you paid'}</strong>
+      {outstanding && (
+        <p style={{ margin: 0 }}>
+          Your order is awaiting payment confirmation. We will be in touch once it clears.
+        </p>
+      )}
+      <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{instructions}</p>
     </div>
   )
 }
@@ -74,6 +122,17 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
   const itemsById = new Map(lines.map((line) => [line.item.id, line.item]))
   const decided = requests.filter((request) => request.status !== 'PENDING')
 
+  const instructionsKey = MANUAL_INSTRUCTION_KEYS[order.paymentMethod as keyof typeof MANUAL_INSTRUCTION_KEYS]
+  const paymentInstructions = instructionsKey ? config[instructionsKey].trim() : ''
+  // Outstanding, as against settled or written off. A cancelled or refunded
+  // order asking to be paid would be worse than saying nothing at all, so both
+  // fall out of the warning band even while the payment sits at PENDING - which
+  // is exactly where a cancelled bank transfer stays, since nobody ever paid it.
+  const paymentOutstanding =
+    (order.paymentStatus === 'PENDING' || order.paymentStatus === 'AWAITING_CONFIRMATION') &&
+    order.status !== 'CANCELLED' &&
+    order.status !== 'REFUNDED'
+
   return (
     <MemberAccountShell member={member} maxWidth={880}>
       {gate.staffPreview && <ShopStaffPreviewBanner />}
@@ -98,6 +157,14 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
       </div>
 
       <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
+        {paymentInstructions && (
+          <PaymentInstructions
+            instructions={paymentInstructions}
+            outstanding={paymentOutstanding}
+            amount={formatMoney(order.total, symbol)}
+          />
+        )}
+
         {openRequest && (
           <div className="alert alert-warning">
             <strong>{REQUEST_TYPE_LABEL[openRequest.type]} request sent.</strong>{' '}
