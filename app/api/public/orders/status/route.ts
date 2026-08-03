@@ -76,6 +76,10 @@ export async function GET(request: NextRequest) {
       ? { registerUrl: `/${getMemberAreaPath()}/register?email=${encodeURIComponent(order.customerEmail)}` }
       : null
 
+  // Module-contributed methods can be renamed by the shop owner, so their label
+  // is resolved rather than read off a fixed map.
+  const moduleMethodLabels = await getPaymentMethodLabels()
+
   // Deliberately NOT the whole order row. This used to spread `SELECT *` out to
   // anyone holding an order number and an email address, which handed over the
   // internal row id and the payment provider's own reference - neither of which
@@ -97,7 +101,7 @@ export async function GET(request: NextRequest) {
       shippingRateName: order.shippingRateName,
       paymentMethod: order.paymentMethod,
       paymentMethodLabel:
-        BUILT_IN_METHOD_LABELS[order.paymentMethod] ?? getPaymentMethodLabels()[order.paymentMethod] ?? order.paymentMethod,
+        BUILT_IN_METHOD_LABELS[order.paymentMethod] ?? moduleMethodLabels[order.paymentMethod] ?? order.paymentMethod,
       paymentStatus: order.paymentStatus,
       createdAt: order.createdAt,
     },

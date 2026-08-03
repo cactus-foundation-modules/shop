@@ -51,9 +51,26 @@ export function getModuleProviderEntryIds(): Record<string, string> {
   return byMethod
 }
 
+// What to call a method on screen: the owner-set name where the provider offers
+// one, otherwise the fixed label it ships with. A provider that throws while
+// looking its name up still gets named - a checkout radio with no wording next
+// to it is worse than a slightly stale one.
+export async function resolveProviderLabel(provider: ShpPaymentProvider): Promise<string> {
+  if (!provider.getLabel) return provider.label
+  try {
+    const own = (await provider.getLabel()).trim()
+    return own || provider.label
+  } catch (error) {
+    console.error(`[shop] payment provider "${provider.id}" failed to resolve its label:`, error)
+    return provider.label
+  }
+}
+
 // id -> human label for every registered provider, for the checkout UI.
-export function getPaymentMethodLabels(): Record<string, string> {
+export async function getPaymentMethodLabels(): Promise<Record<string, string>> {
+  const providers = getAllPaymentProviders()
+  const resolved = await Promise.all(providers.map((p) => resolveProviderLabel(p)))
   const labels: Record<string, string> = {}
-  for (const p of getAllPaymentProviders()) labels[p.id] = p.label
+  providers.forEach((p, i) => { labels[p.id] = resolved[i] ?? p.label })
   return labels
 }

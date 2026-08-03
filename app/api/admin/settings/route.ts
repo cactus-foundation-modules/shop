@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfig, updateShopConfig, ShpConfigSchema, BUILT_IN_PAYMENT_METHODS } from '@/modules/shop/lib/config'
-import { getAllPaymentProviders, getModuleProviderEntryIds } from '@/modules/shop/lib/payments/registry'
+import { getAllPaymentProviders, getModuleProviderEntryIds, resolveProviderLabel } from '@/modules/shop/lib/payments/registry'
 import type { ShpAdminPaymentMethod } from '@/modules/shop/lib/payments/admin-methods'
 import { isStripeConfigured, isPayPalConfigured } from '@/modules/shop/lib/env'
 import { syncSupplierNavEntry } from '@/modules/shop/lib/supplier-nav'
@@ -59,7 +59,7 @@ async function listPaymentMethodsForAdmin(): Promise<ShpAdminPaymentMethod[]> {
 
     return {
       id: provider.id,
-      label: provider.label,
+      label: await resolveProviderLabel(provider),
       builtIn,
       ready,
       panelId: builtIn ? null : (panelIds[provider.id] ?? null),

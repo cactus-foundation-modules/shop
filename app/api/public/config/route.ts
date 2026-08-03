@@ -69,7 +69,7 @@ export async function GET() {
     checkoutAgreements: await resolveCheckoutAgreements(config),
     checkoutSteps: config.checkoutSteps,
     enabledPaymentMethods,
-    paymentMethodLabels: getPaymentMethodLabels(),
+    paymentMethodLabels: await getPaymentMethodLabels(),
     stripePublishableKey: publishableKey,
     // How this shop is transacted with at all: shop's own basket-and-checkout,
     // or an add-on's quote flow, in which case the buttons say something else,

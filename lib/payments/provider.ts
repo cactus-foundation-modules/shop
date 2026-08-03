@@ -13,6 +13,12 @@ export type ShpOrderDraft = {
 export interface ShpPaymentProvider {
   id: ShpPaymentMethod
   label: string
+  // Optional: the name to show for this method at checkout and in the admin on
+  // a shop whose owner gets to name it themselves. Resolved per request, so a
+  // provider is free to read it from its own settings. `label` is the fallback
+  // for a provider that does not offer one, or whose owner left it blank -
+  // never leaving the method nameless.
+  getLabel?(): Promise<string>
   // 'manual' providers (bank transfer, cash) have no automated confirmation -
   // the confirm route parks the order at AWAITING_CONFIRMATION for an admin to
   // clear, rather than calling confirmPayment. Defaults to 'auto' when unset.
