@@ -102,6 +102,11 @@ export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: M
   const router = useRouter()
   const [config, setConfig] = useState<ShpConfig | null>(null)
   const [envStatus, setEnvStatus] = useState<{ stripe: boolean; paypal: boolean } | null>(null)
+  // Whether the site takes member registrations at all. The post-purchase
+  // account prompt needs it, and null (an older cached bundle, or a response
+  // that never arrived) means say nothing rather than warn about a state we
+  // have not actually been told about.
+  const [members, setMembers] = useState<{ enabled: boolean; inviteOnly: boolean } | null>(null)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [saveError, setSaveError] = useState('')
@@ -135,6 +140,7 @@ export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: M
       const data = await res.json()
       setConfig(data.config)
       setEnvStatus(data.envStatus)
+      setMembers(data.members ?? null)
     })
     loadTemplates()
     fetch('/api/admin/env').then(async (res) => {
@@ -451,6 +457,20 @@ export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: M
             <input type="checkbox" checked={config.postPurchaseAccountPrompt} onChange={(e) => set('postPurchaseAccountPrompt', e.target.checked)} />
             Prompt guests to create an account after purchase
           </label>
+          {/* Said here, where the switch is, rather than left for the owner to
+              work out from a confirmation page that never mentions accounts. */}
+          {config.postPurchaseAccountPrompt && members && !members.enabled && (
+            <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
+              This is doing nothing at the moment: accounts are switched off for the whole site, so there is none for a
+              shopper to create. Turn them on under Settings → Users → Registration.
+            </p>
+          )}
+          {config.postPurchaseAccountPrompt && members?.enabled && members.inviteOnly && (
+            <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
+              This is doing nothing at the moment: accounts are invite-only, so a shopper who accepted would only be
+              turned away. Change that under Settings → Users → Registration.
+            </p>
+          )}
           <label style={checkboxRow}>
             <input type="checkbox" checked={config.requirePhone} onChange={(e) => set('requirePhone', e.target.checked)} />
             Require a phone number at checkout

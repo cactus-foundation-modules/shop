@@ -197,10 +197,14 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
 
         const customerEmail = getCheckoutState().customerEmail
 
-        const { clearCart } = await import('@/modules/shop/components/public/cart')
-        const { clearOrderSpecificState } = await import('@/modules/shop/components/public/checkout-state')
-        clearCart()
-        clearOrderSpecificState()
+        // Deliberately does NOT empty the basket here. Emptying it fires the
+        // cart subscription, every block on this page decides checkout has
+        // nothing to sell, and the shopper watches their order turn into "Your
+        // basket is empty" for the length of a page load - having just paid.
+        // The confirmation page clears it on arrival instead (see
+        // clearPlacedOrderState), which is already how a shopper coming back
+        // from PayPal or their bank gets emptied, and it has the better
+        // instinct besides: a payment that comes back failed keeps its basket.
         window.location.href = `/shop/checkout/confirmation?orderNumber=${encodeURIComponent(prepared.orderNumber)}&email=${encodeURIComponent(customerEmail)}`
       } catch (err) {
         window.dispatchEvent(new CustomEvent('cactus-shop-order-error', { detail: err instanceof Error ? err.message : 'Payment failed' }))

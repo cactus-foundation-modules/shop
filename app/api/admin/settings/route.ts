@@ -4,6 +4,7 @@ import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfig, updateShopConfig, ShpConfigSchema } from '@/modules/shop/lib/config'
 import { isStripeConfigured, isPayPalConfigured } from '@/modules/shop/lib/env'
 import { syncSupplierNavEntry } from '@/modules/shop/lib/supplier-nav'
+import { getMembersConfig } from '@/lib/members/config'
 
 export async function GET() {
   const gate = await requireShopUser('shop.manage')
@@ -21,7 +22,19 @@ export async function GET() {
     if (firstAdmin) config.storeEmail = firstAdmin.email
   }
 
-  return NextResponse.json({ config, envStatus: { stripe: isStripeConfigured(), paypal: isPayPalConfigured() } })
+  // "Prompt guests to create an account" is a shop switch with a dependency
+  // outside the shop: there has to be somewhere for a guest to register. With
+  // the site's member system off, or registration invite-only, the switch is on
+  // and does nothing - and the only way an owner found that out was by placing
+  // an order and watching the prompt not appear. Reported so the settings screen
+  // can say so instead.
+  const members = await getMembersConfig()
+
+  return NextResponse.json({
+    config,
+    envStatus: { stripe: isStripeConfigured(), paypal: isPayPalConfigured() },
+    members: { enabled: members.enabled, inviteOnly: members.registrationMode === 'INVITE_ONLY' },
+  })
 }
 
 export async function PUT(request: NextRequest) {
