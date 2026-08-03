@@ -24,8 +24,19 @@
 // Overlay components arrive as props (their client component + an opaque payload),
 // passed down across the RSC boundary from the card context - the same way
 // `shop.gallery-media` hands its Thumbs/Stage to the detail gallery.
+//
+// A companion module that filters the grid (filters-for-shop) may CONSTRAIN the
+// carousel to particular contributed photos rather than fight this island for the
+// <img> src: it writes the allowed `sourceId`s, space-separated, into
+// `data-shop-media-sources` on the `.shop-card` ancestor and dispatches a
+// `shop:card-media-sources` event on that element. While the attribute is present
+// the carousel shows only images whose sourceId is listed (falling back to the
+// full set if none match), starts from the first of them, and suspends the
+// hover-swap - the shopper asked for those colours, so hover must not flick to a
+// different one. Removing the attribute (plus the same event) restores everything.
+// The attribute is the single source of truth; the event just says "re-read it".
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PartImage } from '@/modules/shop/components/puck/parts/part-context'
 import type { CardOverlay } from '@/modules/shop/lib/card-media'
 
@@ -49,12 +60,42 @@ export function ShopCardMedia({
   productId: string
 }) {
   const [index, setIndex] = useState(0)
+  // Allowed sourceIds pushed in by a filtering module via the data attribute /
+  // event contract described up top; null means unconstrained.
+  const [allowed, setAllowed] = useState<string[] | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
-  const count = images.length
-  // Guard the index against an images list that changed length under us (defensive;
-  // the list is fixed per render today).
+
+  // Read the constraint off the `.shop-card` ancestor: once on mount (the filter
+  // may have dressed the cards from the URL before this island hydrated) and again
+  // on every re-read event. The index snaps back to the first allowed picture.
+  useEffect(() => {
+    const card = rootRef.current?.closest<HTMLElement>('.shop-card')
+    if (!card) return
+    const read = () => {
+      const raw = card.dataset.shopMediaSources
+      setAllowed(raw === undefined ? null : raw.split(' ').filter(Boolean))
+      setIndex(0)
+    }
+    read()
+    card.addEventListener('shop:card-media-sources', read)
+    return () => card.removeEventListener('shop:card-media-sources', read)
+  }, [])
+
+  const shown = useMemo(() => {
+    if (!allowed || allowed.length === 0) return images
+    const set = new Set(allowed)
+    const subset = images.filter((i) => i.sourceId && set.has(i.sourceId))
+    // A constraint nothing here matches (the module named variations whose photos
+    // never made the carousel) falls back to the full set rather than a blank card.
+    return subset.length > 0 ? subset : images
+  }, [images, allowed])
+  const constrained = shown !== images
+
+  const count = shown.length
+  // Guard the index against an images list that changed length under us (the
+  // constraint can shrink it between renders).
   const at = Math.min(Math.max(index, 0), Math.max(count - 1, 0))
-  const current = images[at]
+  const current = shown[at]
   // Which entity the current picture belongs to (a variation, for a contributed
   // photo), handed to the overlays so the 3D control follows the shopper's flicking.
   const activeSourceId = current?.sourceId
@@ -62,8 +103,10 @@ export function ShopCardMedia({
   // Whether the product has a genuine second OWN photo to reveal on hover. Own photos
   // (no sourceId) come first, then contributed variation photos, so images[1] is the
   // second own photo exactly when it carries no sourceId; a variation there means the
-  // product has only the one own photo, and hover leaves the main in place.
-  const hasOwnSecond = count > 1 && !images[1]?.sourceId
+  // product has only the one own photo, and hover leaves the main in place. While a
+  // filter constrains the carousel the hover-swap is off entirely - the first allowed
+  // picture IS the point, and hover must not flick away from the chosen colour.
+  const hasOwnSecond = !constrained && count > 1 && !shown[1]?.sourceId
 
   const step = (delta: number) => (e: React.MouseEvent) => {
     e.preventDefault()
