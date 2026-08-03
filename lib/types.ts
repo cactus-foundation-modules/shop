@@ -268,6 +268,18 @@ export type ShpOrderStatus =
 export type ShpPaymentMethod = 'STRIPE' | 'PAYPAL' | 'BANK_TRANSFER' | 'CASH' | (string & {})
 export type ShpPaymentStatus = 'PENDING' | 'PAID' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | 'FAILED' | 'AWAITING_CONFIRMATION'
 
+// One checkout tickbox as the shopper met it, snapshotted onto the order.
+// The wording is stored, not just the setting's id, so an owner rewriting a
+// statement later cannot change what a past order appears to have agreed to.
+export type ShpOrderAgreement = {
+  id: string
+  statement: string
+  linkUrl: string
+  required: boolean
+  accepted: boolean
+  acceptedAt: string | null
+}
+
 export type ShpOrder = {
   id: string
   orderNumber: string
@@ -293,6 +305,9 @@ export type ShpOrder = {
   paidAt: Date | null
   shippingRateId: string | null
   shippingRateName: string | null
+  // NULL on an order placed while the shop had no tickboxes switched on -
+  // "nobody was asked" rather than "asked and ticked nothing".
+  agreements: ShpOrderAgreement[] | null
   createdAt: Date
   updatedAt: Date
 }

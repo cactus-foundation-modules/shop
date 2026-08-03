@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import { decrementPreOrderCount, getProductById } from '@/modules/shop/lib/db/products'
-import type { LineMeta, ShpAddress, ShpOrder, ShpOrderItem, ShpOrderStatus, ShpPaymentMethod, ShpPaymentStatus } from '@/modules/shop/lib/types'
+import type { LineMeta, ShpAddress, ShpOrder, ShpOrderAgreement, ShpOrderItem, ShpOrderStatus, ShpPaymentMethod, ShpPaymentStatus } from '@/modules/shop/lib/types'
 
 function mapOrder(r: Record<string, unknown>): ShpOrder {
   return {
@@ -29,6 +29,9 @@ function mapOrder(r: Record<string, unknown>): ShpOrder {
     paidAt: (r.paid_at as Date | null) ?? null,
     shippingRateId: (r.shipping_rate_id as string | null) ?? null,
     shippingRateName: (r.shipping_rate_name as string | null) ?? null,
+    // jsonb comes back already parsed; NULL on an order placed before the shop
+    // asked anything.
+    agreements: (r.agreements as ShpOrderAgreement[] | null) ?? null,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
   }
@@ -113,6 +116,7 @@ export type CreateOrderInput = {
   paymentMethod: ShpPaymentMethod
   shippingRateId?: string | null
   shippingRateName?: string | null
+  agreements?: ShpOrderAgreement[] | null
   items: Array<{
     productId: string | null
     productName: string
@@ -139,13 +143,14 @@ export async function createPendingOrder(data: CreateOrderInput): Promise<{ id: 
         "order_number", "member_id", "customer_email", "customer_name", "customer_phone",
         "shipping_address", "billing_address", "subtotal", "discount_amount", "shipping_amount",
         "tax_amount", "total", "tax_mode", "currency", "coupon_id", "coupon_code",
-        "payment_method", "shipping_rate_id", "shipping_rate_name"
+        "payment_method", "shipping_rate_id", "shipping_rate_name", "agreements"
       ) VALUES (
         ${data.orderNumber}, ${data.memberId ?? null}, ${data.customerEmail}, ${data.customerName}, ${data.customerPhone ?? null},
         ${JSON.stringify(data.shippingAddress)}::jsonb, ${data.billingAddress ? JSON.stringify(data.billingAddress) : null}::jsonb,
         ${data.subtotal}, ${data.discountAmount}, ${data.shippingAmount}, ${data.taxAmount}, ${data.total},
         ${data.taxMode}, ${data.currency}, ${data.couponId ?? null}, ${data.couponCode ?? null},
-        ${data.paymentMethod}, ${data.shippingRateId ?? null}, ${data.shippingRateName ?? null}
+        ${data.paymentMethod}, ${data.shippingRateId ?? null}, ${data.shippingRateName ?? null},
+        ${data.agreements ? JSON.stringify(data.agreements) : null}::jsonb
       )
       RETURNING "id"
     `
@@ -381,6 +386,32 @@ export async function listOrdersByMemberId(memberId: string): Promise<ShpOrder[]
     SELECT * FROM "shp_orders" WHERE "member_id" = ${memberId} ORDER BY "created_at" DESC
   `
   return rows.map(mapOrder)
+}
+
+// Hands a member the guest orders they placed at the same email address.
+//
+// Without this the post-purchase "create an account" prompt is a promise the
+// shop cannot keep: the order's member_id is fixed at checkout from whatever
+// cookie was present, so a shopper who registers ten seconds after paying gets
+// an account whose order history is empty - the one thing they made it for.
+//
+// The email match is only safe once the member has PROVED they own the address,
+// which is why callers pass `emailVerified` rather than this reading the flag
+// itself: an unverified sign-up at someone else's address would otherwise be
+// handed that person's order history, addresses and all. On a shop with email
+// verification switched off nothing is ever claimed, which is the right way
+// round - a missing order history is a nuisance, the alternative is a leak.
+//
+// Idempotent: the member_id IS NULL guard means an order already claimed by
+// anyone (including this member) is never touched, so this can run on every
+// visit to the order list without a second thought.
+export async function claimGuestOrdersForMember(memberId: string, email: string): Promise<number> {
+  const result = await prisma.$executeRaw`
+    UPDATE "shp_orders"
+    SET "member_id" = ${memberId}, "updated_at" = CURRENT_TIMESTAMP
+    WHERE "member_id" IS NULL AND lower("customer_email") = lower(${email})
+  `
+  return result
 }
 
 export async function countPriorOrdersByEmail(email: string, excludeOrderId?: string): Promise<number> {

@@ -85,6 +85,16 @@ const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid var(--co
 const sectionHeading: React.CSSProperties = { margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }
 const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: 'var(--form-gap)' }
 
+// A stable id for a newly added checkout tickbox. It has to outlive the wording
+// it was created with, because it is what an order's recorded agreement points
+// back at - so it is never derived from the statement or the row's position.
+// The fallback covers a browser that withholds randomUUID outside a secure
+// context; a settings screen only ever mints a handful of these.
+function newAgreementId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  return `agr_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+}
+
 // Settings panels other modules contribute to this tab's slots, resolved and
 // rendered by the core config page and handed down (see HOSTED_SUB_TAB_SLOT
 // above, and lib/modules/hosted-settings.ts for the two shapes).
@@ -455,6 +465,115 @@ export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: M
               <input type="number" step="0.01" min={0} value={config.maximumOrderValue ?? ''} onChange={(e) => set('maximumOrderValue', e.target.value ? Number(e.target.value) : null)} placeholder="No maximum" />
             </div>
           </div>
+
+          <hr style={hr} />
+          <h3 style={sectionHeading}>Business name</h3>
+          <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
+            Adds a box above the first line of the delivery address. Worth switching on if you sell to businesses and they need it on the paperwork.
+          </p>
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.businessNameFieldEnabled} onChange={(e) => set('businessNameFieldEnabled', e.target.checked)} />
+            Ask for a business name at checkout
+          </label>
+          {config.businessNameFieldEnabled && (
+            <>
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.businessNameRequired} onChange={(e) => set('businessNameRequired', e.target.checked)} />
+                Orders can&apos;t be placed without one
+              </label>
+              <div className="field">
+                <label>What to call it</label>
+                <input type="text" value={config.businessNameLabel} onChange={(e) => set('businessNameLabel', e.target.value)} placeholder="Business name" />
+                <p className="field-hint">Company name, practice name, school - whatever your customers would call themselves.</p>
+              </div>
+            </>
+          )}
+
+          <hr style={hr} />
+          <h3 style={sectionHeading}>Tickboxes at checkout</h3>
+          <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
+            These appear just above the Place order button. A required one has to be ticked before the order will go through, and what was ticked is
+            recorded on the order exactly as it was worded on the day.
+          </p>
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.termsAgreementEnabled} onChange={(e) => set('termsAgreementEnabled', e.target.checked)} />
+            Ask buyers to agree to your terms and conditions
+          </label>
+          {config.termsAgreementEnabled && (
+            <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.875rem 1rem', marginBottom: 'var(--form-gap)' }}>
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.termsAgreementRequired} onChange={(e) => set('termsAgreementRequired', e.target.checked)} />
+                Must be ticked to place an order
+              </label>
+              <div className="field">
+                <label>Wording</label>
+                <input type="text" value={config.termsAgreementStatement} onChange={(e) => set('termsAgreementStatement', e.target.value)} placeholder="I have read and agree to the [terms and conditions]" />
+                <p className="field-hint">Put square brackets round the words you want turned into the link, like [terms and conditions].</p>
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Link to</label>
+                <input type="text" value={config.termsAgreementUrl} onChange={(e) => set('termsAgreementUrl', e.target.value)} placeholder="Leave blank to use your site's terms page" />
+                <p className="field-hint">Left blank, it points at whichever page you&apos;ve set as your terms page, so moving that page never leaves a dead link here.</p>
+              </div>
+            </div>
+          )}
+
+          {config.checkoutAgreements.map((agreement, index) => (
+            <div key={agreement.id} style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.875rem 1rem', marginBottom: 'var(--form-gap)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <strong style={{ fontSize: '0.875rem' }}>Tickbox {index + 1}</strong>
+                <button
+                  type="button"
+                  onClick={() => set('checkoutAgreements', config.checkoutAgreements.filter((a) => a.id !== agreement.id))}
+                  style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.25rem 0.625rem', color: 'var(--color-danger)', cursor: 'pointer', fontSize: '0.8125rem' }}
+                >
+                  Remove
+                </button>
+              </div>
+              <label style={checkboxRow}>
+                <input
+                  type="checkbox"
+                  checked={agreement.enabled}
+                  onChange={(e) => set('checkoutAgreements', config.checkoutAgreements.map((a) => (a.id === agreement.id ? { ...a, enabled: e.target.checked } : a)))}
+                />
+                Show this one at checkout
+              </label>
+              <label style={checkboxRow}>
+                <input
+                  type="checkbox"
+                  checked={agreement.required}
+                  onChange={(e) => set('checkoutAgreements', config.checkoutAgreements.map((a) => (a.id === agreement.id ? { ...a, required: e.target.checked } : a)))}
+                />
+                Must be ticked to place an order
+              </label>
+              <div className="field">
+                <label>Wording</label>
+                <input
+                  type="text"
+                  value={agreement.statement}
+                  onChange={(e) => set('checkoutAgreements', config.checkoutAgreements.map((a) => (a.id === agreement.id ? { ...a, statement: e.target.value } : a)))}
+                  placeholder="I'm happy to be contacted about my order"
+                />
+                <p className="field-hint">Square brackets make a link, like [privacy notice]. A tickbox with nothing written beside it is simply left out.</p>
+              </div>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Link to (optional)</label>
+                <input
+                  type="text"
+                  value={agreement.linkUrl}
+                  onChange={(e) => set('checkoutAgreements', config.checkoutAgreements.map((a) => (a.id === agreement.id ? { ...a, linkUrl: e.target.value } : a)))}
+                  placeholder="/privacy"
+                />
+              </div>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => set('checkoutAgreements', [...config.checkoutAgreements, { id: newAgreementId(), statement: '', linkUrl: '', required: true, enabled: true }])}
+            style={{ background: 'var(--color-bg-subtle)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.5rem 0.875rem', cursor: 'pointer', marginBottom: 'var(--form-gap)' }}
+          >
+            Add a tickbox
+          </button>
 
           <hr style={hr} />
           <h3 style={sectionHeading}>Checkout steps</h3>

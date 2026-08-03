@@ -2,7 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { getMembersConfig } from '@/lib/members/config'
 import { getMemberAreaPath } from '@/lib/members/paths'
-import { listOrdersByMemberId } from '@/modules/shop/lib/db/orders'
+import { listOrdersForMember } from '@/modules/shop/lib/member-orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
@@ -20,7 +20,10 @@ export default async function ShopAccountOrdersPage() {
   const member = await getMemberFromCookie()
   if (!member) redirect(`/${getMemberAreaPath()}/login?redirect=/shop/account/orders`)
 
-  const [orders, config] = await Promise.all([listOrdersByMemberId(member.id), getShopConfigCached()])
+  // listOrdersForMember, not a plain list-by-id: a shopper who took up the
+  // post-purchase "create an account" prompt placed that order as a guest, and
+  // this is where it gets handed to the account they made for it.
+  const [orders, config] = await Promise.all([listOrdersForMember(member), getShopConfigCached()])
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '2rem 1.5rem' }}>

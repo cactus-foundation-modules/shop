@@ -5,7 +5,15 @@ import { getCart } from '@/modules/shop/components/public/cart'
 import { getCheckoutState, updateCheckoutState, isContactAndShippingComplete } from '@/modules/shop/components/public/checkout-state'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
-type ShopClientConfig = { enabledPaymentMethods: string[]; paymentMethodLabels?: Record<string, string>; stripePublishableKey: string | null; currencySymbol: string }
+type ShopClientConfig = {
+  enabledPaymentMethods: string[]
+  paymentMethodLabels?: Record<string, string>
+  stripePublishableKey: string | null
+  currencySymbol: string
+  // Optional so a response from an older cached bundle still works - the
+  // fallback is the rule as it was before the business-name box existed.
+  businessName?: { required?: boolean }
+}
 
 // The pending order + provider intent that "Place order" will act on. Held for
 // the mount that created it: a page reload (or a trip off-site and back) throws
@@ -80,6 +88,10 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
         body: JSON.stringify({
           lines, customerEmail: state.customerEmail, customerName: state.customerName, customerPhone: state.customerPhone || undefined,
           shippingAddress: state.shippingAddress, shippingRateId: state.shippingRateId, couponCode: state.couponCode, paymentMethod: next,
+          // Which tickboxes the shopper ticked on the review step. Sent as ids,
+          // never as statements: the wording the order records has to be the
+          // shop's own copy of it, not whatever the browser claims it read.
+          agreements: state.agreements,
         }),
       })
       const data = await res.json()
@@ -115,7 +127,7 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
 
   async function chooseMethod(next: string) {
     const state = getCheckoutState()
-    if (!isContactAndShippingComplete(state)) {
+    if (!isContactAndShippingComplete(state, { businessNameRequired: config?.businessName?.required === true })) {
       setError('Please fill in your contact and shipping details above before choosing a payment method.')
       return
     }

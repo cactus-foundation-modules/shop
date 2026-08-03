@@ -1,0 +1,14 @@
+-- Checkout agreements: what the shopper ticked before the order was placed.
+--
+-- Stored as a snapshot of the statements themselves rather than a list of
+-- setting ids, because the whole value of the record is being able to say what
+-- the wording was on the day. An owner editing their terms tickbox next month
+-- must not retrospectively change what every past order agreed to.
+--
+-- Shape: [{ "id": "terms", "statement": "...", "linkUrl": "/terms",
+--           "required": true, "accepted": true, "acceptedAt": "ISO-8601" }]
+--
+-- NULL for every order placed before the shop had any tickboxes switched on,
+-- which is why the column is nullable rather than defaulting to an empty array:
+-- "nobody was asked" and "asked and ticked nothing" are different facts.
+ALTER TABLE "shp_orders" ADD COLUMN IF NOT EXISTS "agreements" JSONB;

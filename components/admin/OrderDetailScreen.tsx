@@ -12,7 +12,12 @@ type OrderDetail = {
   order: {
     id: string; orderNumber: string; status: string; paymentStatus: string; paymentMethod: string
     customerName: string; customerEmail: string; subtotal: string; discountAmount: string; shippingAmount: string; taxAmount: string; total: string
-    shippingAddress: { line1: string; line2?: string; city: string; postcode: string; country: string }
+    shippingAddress: { company?: string; line1: string; line2?: string; city: string; postcode: string; country: string }
+    // What the buyer was asked to tick at checkout, worded as they saw it.
+    // Null on an order placed while the shop had no tickboxes switched on -
+    // which is a different fact from "asked and ticked nothing", so it renders
+    // as no section at all rather than an empty one.
+    agreements?: Array<{ id: string; statement: string; linkUrl: string; required: boolean; accepted: boolean; acceptedAt: string | null }> | null
   }
   items: OrderItem[]
   notes: Array<{ id: string; content: string; isInternal: boolean; createdAt: string }>
@@ -184,8 +189,38 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
 
       <section>
         <h3 style={{ fontSize: '0.9375rem' }}>Shipping address</h3>
-        <p>{order.shippingAddress.line1}{order.shippingAddress.line2 ? `, ${order.shippingAddress.line2}` : ''}, {order.shippingAddress.city}, {order.shippingAddress.postcode}, {order.shippingAddress.country}</p>
+        <p>
+          {order.shippingAddress.company ? <>{order.shippingAddress.company}<br /></> : null}
+          {order.shippingAddress.line1}{order.shippingAddress.line2 ? `, ${order.shippingAddress.line2}` : ''}, {order.shippingAddress.city}, {order.shippingAddress.postcode}, {order.shippingAddress.country}
+        </p>
       </section>
+
+      {/* The point of storing what was ticked is being able to look at it, so
+          it is on the order rather than buried in an export. The statement is
+          the one the shopper actually saw, not today's wording. */}
+      {order.agreements && order.agreements.length > 0 && (
+        <section>
+          <h3 style={{ fontSize: '0.9375rem' }}>Agreed at checkout</h3>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.375rem' }}>
+            {order.agreements.map((agreement) => (
+              <li key={agreement.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline' }}>
+                <span aria-hidden="true" style={{ color: agreement.accepted ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
+                  {agreement.accepted ? '✓' : '✗'}
+                </span>
+                <span>
+                  {agreement.statement.replace(/\[([^\]]*)\]/g, '$1')}
+                  {agreement.required && <span style={{ color: 'var(--color-text-muted)' }}> (required)</span>}
+                  {agreement.acceptedAt && (
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>
+                      {' '}- {new Date(agreement.acceptedAt).toLocaleString()}
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {data.downloads.length > 0 && (
         <section>

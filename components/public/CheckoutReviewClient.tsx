@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
-import { getCheckoutState, isContactAndShippingComplete, subscribeCheckoutState } from '@/modules/shop/components/public/checkout-state'
+import {
+  getCheckoutState, isContactAndShippingComplete, subscribeCheckoutState, updateCheckoutState, areAgreementsAccepted,
+} from '@/modules/shop/components/public/checkout-state'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
 type SessionSummary = {
@@ -32,6 +34,27 @@ const PRE_ORDER_NOTICE: Record<'HOLD_ALL' | 'PROMPT_SPLIT', string> = {
   PROMPT_SPLIT: 'This order contains a pre-order item. Anything in stock can be sent straight away, with the pre-order to follow.',
 }
 
+// A checkout tickbox as the shop has resolved it (see resolveCheckoutAgreements).
+type Agreement = { id: string; statement: string; linkUrl: string; required: boolean }
+
+// A statement may carry one bracketed run - "I agree to the [terms]" - which
+// becomes the link. No brackets and a link still set puts the link at the end,
+// so a statement written before anyone thought about links keeps its link
+// rather than losing it silently. Returns plain text when there is no URL.
+function renderStatement(agreement: Agreement) {
+  const { statement, linkUrl } = agreement
+  if (!linkUrl) return statement.replace(/\[([^\]]*)\]/g, '$1')
+
+  const match = statement.match(/^(.*?)\[([^\]]*)\](.*)$/s)
+  const link = (text: string) => (
+    // Opened away from the checkout deliberately: reading the terms must never
+    // cost a shopper the basket and the form they have just filled in.
+    <a href={linkUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)' }}>{text}</a>
+  )
+  if (!match) return <>{statement} {link('Read them')}</>
+  return <>{match[1]}{link(match[2] ?? '')}{match[3]}</>
+}
+
 // Client island for the checkout review step (order summary + place order).
 // Registered Puck block wrapper (ShopCheckoutReview) is a server component that
 // renders this, so Puck's RSC <Render> never serialises its renderDropZone
@@ -42,12 +65,36 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
   const [error, setError] = useState<string | null>(null)
   const [incomplete, setIncomplete] = useState(true)
   const [placing, setPlacing] = useState(false)
+  const [agreements, setAgreements] = useState<Agreement[]>([])
+  const [businessNameRequired, setBusinessNameRequired] = useState(false)
+  // Which boxes are ticked, mirrored out of checkout state so this block
+  // re-renders on a tick. checkout-state stays the source of truth, because the
+  // payment block reads it from there when it posts the order.
+  const [ticked, setTicked] = useState<Record<string, boolean>>({})
+  // Set only once the shopper has tried to place the order with a box still
+  // empty. Shouting about an untouched tickbox the moment the page loads is
+  // telling someone off for not having done something yet.
+  const [showAgreementError, setShowAgreementError] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/m/shop/public/config')
+      .then((r) => r.json())
+      .then((d: { checkoutAgreements?: Agreement[]; businessName?: { required?: boolean } }) => {
+        if (cancelled) return
+        setAgreements(d.checkoutAgreements ?? [])
+        setBusinessNameRequired(d.businessName?.required === true)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     function loadSummary() {
       const state = getCheckoutState()
       const lines = getCart()
-      if (lines.length === 0 || !isContactAndShippingComplete(state)) {
+      setTicked(state.agreements ?? {})
+      if (lines.length === 0 || !isContactAndShippingComplete(state, { businessNameRequired })) {
         setIncomplete(true)
         setSummary(null)
         return
@@ -69,9 +116,23 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
     function onError(e: Event) { setPlacing(false); setError((e as CustomEvent).detail) }
     window.addEventListener('cactus-shop-order-error', onError)
     return () => { unsubscribe(); window.removeEventListener('cactus-shop-order-error', onError) }
-  }, [])
+    // Re-runs when the business-name rule arrives from config: the completeness
+    // test above closes over it, so a stale `false` would wave through a
+    // checkout the order route is about to refuse.
+  }, [businessNameRequired])
+
+  function setAgreement(id: string, accepted: boolean) {
+    const next = { ...getCheckoutState().agreements, [id]: accepted }
+    setTicked(next)
+    updateCheckoutState({ agreements: next })
+    if (accepted) setShowAgreementError(false)
+  }
 
   function placeOrder() {
+    if (!areAgreementsAccepted(getCheckoutState(), agreements)) {
+      setShowAgreementError(true)
+      return
+    }
     setPlacing(true)
     setError(null)
     window.dispatchEvent(new CustomEvent('cactus-shop-place-order'))
@@ -123,6 +184,45 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
         )}
         <dt style={{ fontWeight: 600 }}>Total</dt><dd style={{ margin: 0, fontWeight: 600 }}>{money(summary.total)}</dd>
       </dl>
+      {/* The shop owner's tickboxes, immediately above the button they gate.
+          Anywhere further up the page and a shopper hits a button that refuses
+          to work for a reason that has scrolled off the screen. */}
+      {agreements.length > 0 && (
+        <div style={{ display: 'grid', gap: '0.5rem' }}>
+          {agreements.map((agreement) => {
+            const missing = showAgreementError && agreement.required && ticked[agreement.id] !== true
+            return (
+              <label
+                key={agreement.id}
+                style={{
+                  display: 'flex', gap: '0.625rem', alignItems: 'start', cursor: 'pointer', lineHeight: 1.45,
+                  border: `1px solid ${missing ? 'var(--color-danger)' : 'var(--color-border)'}`,
+                  borderRadius: 6, padding: '0.625rem 0.75rem',
+                  background: missing ? 'var(--color-error-bg)' : 'transparent',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={ticked[agreement.id] === true}
+                  onChange={(e) => setAgreement(agreement.id, e.target.checked)}
+                  required={agreement.required}
+                  aria-invalid={missing ? true : undefined}
+                  style={{ marginTop: '0.1875rem', flex: '0 0 auto' }}
+                />
+                <span>
+                  {renderStatement(agreement)}
+                  {agreement.required && <span aria-hidden="true" style={{ color: 'var(--color-danger)' }}> *</span>}
+                </span>
+              </label>
+            )
+          })}
+          {showAgreementError && (
+            <p role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem', margin: 0 }}>
+              Please tick the box{agreements.filter((a) => a.required).length === 1 ? '' : 'es'} marked * to place your order.
+            </p>
+          )}
+        </div>
+      )}
       {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
       <button
         onClick={placeOrder}

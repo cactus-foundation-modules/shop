@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getShopConfigCached, getAvailablePaymentMethods, resolveSupplierLabel } from '@/modules/shop/lib/config'
+import { getShopConfigCached, getAvailablePaymentMethods, resolveSupplierLabel, resolveCheckoutAgreements } from '@/modules/shop/lib/config'
 import { getPaymentMethodLabels } from '@/modules/shop/lib/payments/registry'
 import { displayTaxMode } from '@/modules/shop/lib/tax-display-shared'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
@@ -54,6 +54,19 @@ export async function GET() {
     minimumOrderValue: config.minimumOrderValue,
     maximumOrderValue: config.maximumOrderValue,
     requirePhone: config.requirePhone,
+    // The business-name box above address line 1, and whether an order can be
+    // placed without one. The shipping step draws the box from this; the route
+    // that creates the order enforces the same rule again, because a setting
+    // the browser is told about is a setting the browser can ignore.
+    businessName: {
+      enabled: config.businessNameFieldEnabled,
+      required: config.businessNameRequired,
+      label: config.businessNameLabel.trim() || 'Business name',
+    },
+    // Checkout tickboxes, already resolved: disabled and blank ones dropped,
+    // and the terms link filled in from the site's own terms page where the
+    // owner left the URL blank.
+    checkoutAgreements: await resolveCheckoutAgreements(config),
     checkoutSteps: config.checkoutSteps,
     enabledPaymentMethods,
     paymentMethodLabels: getPaymentMethodLabels(),

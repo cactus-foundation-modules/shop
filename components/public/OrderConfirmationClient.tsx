@@ -3,15 +3,47 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { ORDER_CONFIRMATION_CSS } from '@/modules/shop/components/public/order-confirmation-css'
+import type { ShpAddress } from '@/modules/shop/lib/types'
 
 type OrderStatusResponse = {
-  order: { orderNumber: string; total: string; paymentMethod: string; paymentStatus: string }
-  items: Array<{ productName: string; quantity: number; total: string; lineMeta?: { fields: Array<{ label: string; value: string; href?: string }> } | null }>
+  order: {
+    orderNumber: string
+    status: string
+    customerName: string
+    customerEmail: string
+    shippingAddress: ShpAddress
+    subtotal: string
+    discountAmount: string
+    shippingAmount: string
+    taxAmount: string
+    total: string
+    taxMode: 'INCLUSIVE' | 'EXCLUSIVE'
+    couponCode: string | null
+    shippingRateName: string | null
+    paymentMethod: string
+    paymentMethodLabel: string
+    paymentStatus: string
+    createdAt: string
+  }
+  items: Array<{
+    productName: string
+    productSku: string | null
+    quantity: number
+    unitPrice: string
+    total: string
+    lineMeta?: { fields: Array<{ label: string; value: string; href?: string }> } | null
+    imageUrl?: string | null
+  }>
   instructions: string | null
   // Whether the method has no automated confirmation (bank transfer, cash), from
   // the provider's own confirmMode. Optional so a response from an older cached
   // bundle still renders - the fallback is the built-in-methods test below.
   manualPayment?: boolean
+  // Present only when this order was placed as a guest, the owner has asked for
+  // the prompt, and the site actually takes registrations. Optional so a
+  // response from an older cached bundle simply shows no prompt.
+  accountPrompt?: { registerUrl: string } | null
   currencySymbol: string
 }
 
@@ -66,6 +98,46 @@ async function clearPlacedOrderState(orderNumber: string, paymentStatus: string)
   clearCart()
   clearOrderSpecificState()
   return true
+}
+
+const ICON_TICK = <path d="m4 12 5.5 5.5L20 7" />
+const ICON_CLOCK = <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>
+const ICON_INFO = <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>
+const ICON_ALERT = <><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></>
+const ICON_IMAGE = <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m4 16 5-5 4 4 3-3 4 4" /></>
+
+function Icon({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <svg className={className} viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">{children}</svg>
+}
+
+// First name only, and only when it looks like one. "Thanks, Dr Amelia
+// Fortescue-Smythe" is not how anyone is thanked out loud, and a name field
+// holding a company ("Fortescue Ltd") should simply drop out rather than be
+// chopped into something that reads as a person.
+function greetingName(customerName: string, address: ShpAddress): string | null {
+  const first = (address.firstName || customerName.trim().split(/\s+/)[0] || '').trim()
+  return first.length > 0 && first.length <= 24 ? first : null
+}
+
+// The address as an envelope would carry it: blank lines dropped, no trailing
+// commas, business name above the street where a business address puts it.
+function addressLines(address: ShpAddress): string[] {
+  return [
+    [address.firstName, address.lastName].filter(Boolean).join(' '),
+    address.company,
+    address.line1,
+    address.line2,
+    address.city,
+    address.county,
+    address.postcode,
+    address.country && address.country !== 'GB' ? address.country : '',
+  ].map((line) => (line ?? '').trim()).filter((line) => line.length > 0)
+}
+
+function formatOrderDate(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
 // Client island for the order-confirmation view (reads order from the URL query).
@@ -166,87 +238,248 @@ export function OrderConfirmationClient() {
     }
   }, [])
 
-  if (error) return <p style={{ color: 'var(--color-danger)' }}>{error}</p>
+  if (error) {
+    return (
+      <>
+        <style dangerouslySetInnerHTML={{ __html: ORDER_CONFIRMATION_CSS }} />
+        <section className="soc">
+          <div className="soc-note soc-note-bad" role="alert">
+            <Icon>{ICON_ALERT}</Icon>
+            <p>{error}</p>
+          </div>
+        </section>
+      </>
+    )
+  }
   if (!data) return null
 
+  const { order, items } = data
+  const money = (amount: string | number) => formatMoney(amount, data.currencySymbol)
   const isManual = isManualPayment(data)
-  const awaiting = data.order.paymentStatus === 'AWAITING_CONFIRMATION'
-  const failed = data.order.paymentStatus === 'FAILED'
+  const awaiting = order.paymentStatus === 'AWAITING_CONFIRMATION'
+  const failed = order.paymentStatus === 'FAILED'
+  const paid = order.paymentStatus === 'PAID'
   // Announced only to the shopper who sat here through the wait. Someone opening
   // the same link later just sees an ordinary confirmed order.
-  const settledWhileWatching = watched && data.order.paymentStatus === 'PAID'
+  const settledWhileWatching = watched && paid
+  const name = greetingName(order.customerName, order.shippingAddress)
+
+  // A payment that failed on the provider's side still lands here, because the
+  // return route has nowhere else to send it. Thanking someone for an order that
+  // was never paid for is the wrong thing to say - and neither is a manual
+  // method, where the money has not moved yet and saying so plainly is the only
+  // way the shopper knows they still have something to do.
+  const hero = failed
+    ? { mark: 'soc-mark-bad', icon: ICON_ALERT, title: 'Your payment didn’t go through' }
+    : awaiting && isManual
+      ? { mark: 'soc-mark-todo', icon: ICON_CLOCK, title: 'Order received' }
+      : awaiting
+        ? { mark: 'soc-mark-wait', icon: ICON_CLOCK, title: 'Payment on its way' }
+        : { mark: 'soc-mark-ok', icon: ICON_TICK, title: name ? `Thanks, ${name}` : 'Thanks for your order' }
+
+  const discount = Number(order.discountAmount)
+  const shipping = Number(order.shippingAmount)
+  const tax = Number(order.taxAmount)
 
   return (
-    <section style={{ display: 'grid', gap: '1rem', maxWidth: 480 }}>
-      {/* A payment that failed on the provider's side still lands here, because
-          the return route has nowhere else to send it. Thanking someone for an
-          order that was never paid for is the wrong thing to say. */}
-      <h1 style={{ fontSize: '1.5rem', margin: 0 }}>{failed ? 'Your payment didn’t go through' : 'Thanks for your order'}</h1>
-      <p style={{ color: 'var(--color-text-muted)' }}>Order <strong>{data.order.orderNumber}</strong></p>
-      {/* Two different failures, and the difference is whether the basket is
-          still there. Straight out of the bank it is, because nothing was
-          cleared. Falling over after settling had begun means the basket went
-          when the order looked good, so pointing at a checkout that is now empty
-          would be the second unhelpful thing to happen in a row. */}
-      {failed && (
-        <p style={{ background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.75rem' }}>
-          Your bank didn&apos;t complete the payment, so this order hasn&apos;t been placed and you haven&apos;t been charged.{' '}
-          {basketCleared ? (
-            <>Do start again from <Link href="/shop">the shop</Link> whenever you&apos;re ready - and sorry for the runaround.</>
-          ) : (
-            <>Your basket is still where you left it - <Link href="/shop/checkout">head back to checkout</Link> and try again,
-              with another payment method if you&apos;d rather.</>
+    <>
+      <style dangerouslySetInnerHTML={{ __html: ORDER_CONFIRMATION_CSS }} />
+      <section className="soc">
+        <header className="soc-hero">
+          <div className={`soc-mark ${hero.mark}`}><Icon>{hero.icon}</Icon></div>
+          <h1 className="soc-title">{hero.title}</h1>
+          {/* The one sentence anyone actually reads. Where the confirmation is
+              going matters more than the order number - a typo in the email
+              address is the single most common reason a shopper thinks nothing
+              happened, and this is the only moment they can still spot it. */}
+          {!failed && (
+            <p className="soc-sub">
+              {isManual && awaiting
+                ? <>We’ve got your order. There are payment details below - your confirmation is on its way to <strong>{order.customerEmail}</strong>.</>
+                : <>A confirmation is on its way to <strong>{order.customerEmail}</strong>.</>}
+            </p>
           )}
-        </p>
-      )}
-      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.375rem' }}>
-        {data.items.map((item, i) => (
-          <li key={i} style={{ display: 'grid', gap: '0.125rem' }}>
-            <span style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>{item.productName} x{item.quantity}</span>
-              <span>{formatMoney(item.total, data.currencySymbol)}</span>
-            </span>
-            {item.lineMeta?.fields?.length ? (
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.125rem' }}>
-                {item.lineMeta.fields.map((f, j) => (
-                  <li key={j} style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                    <span style={{ fontWeight: 500 }}>{f.label}:</span>{' '}
-                    {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-      {/* "Awaiting confirmation" means two opposite things, so it must not read
-          the same way twice. On a manual method the shopper still has to go and
-          pay; on an automated one they already have, and all that is left is the
-          wait. Saying "a few minutes" out loud stops the order looking stuck to
-          someone refreshing the page. */}
-      {awaiting && isManual && (
-        <p style={{ background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.75rem' }}>
-          Your order is awaiting payment confirmation. We&apos;ll be in touch once it clears.
-        </p>
-      )}
-      {awaiting && !isManual && (
-        <p style={{ background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.75rem' }}>
-          Your payment has gone through, thank you. Banks being banks, it usually takes a few minutes to clear -
-          this page updates itself the moment it does, and your confirmation email follows then.
-          Nothing further is needed from you in the meantime.
-          {pollGaveUp && ' This one is taking longer than usual, which happens. Feel free to close the page: the email will still arrive.'}
-        </p>
-      )}
-      {settledWhileWatching && (
-        <p style={{ background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.75rem' }}>
-          That&apos;s the payment cleared - your order is now being processed, and the confirmation email is on its way.
-        </p>
-      )}
-      {isManual && data.instructions && (
-        <p style={{ whiteSpace: 'pre-wrap', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.75rem' }}>
-          {data.instructions}
-        </p>
-      )}
-    </section>
+        </header>
+
+        {/* Two different failures, and the difference is whether the basket is
+            still there. Straight out of the bank it is, because nothing was
+            cleared. Falling over after settling had begun means the basket went
+            when the order looked good, so pointing at a checkout that is now empty
+            would be the second unhelpful thing to happen in a row. */}
+        {failed && (
+          <div className="soc-note soc-note-bad" role="alert">
+            <Icon>{ICON_ALERT}</Icon>
+            <p>
+              Your bank didn&apos;t complete the payment, so this order hasn&apos;t been placed and you haven&apos;t been charged.{' '}
+              {basketCleared ? (
+                <>Do start again from <Link href="/shop">the shop</Link> whenever you&apos;re ready - and sorry for the runaround.</>
+              ) : (
+                <>Your basket is still where you left it - <Link href="/shop/checkout">head back to checkout</Link> and try again,
+                  with another payment method if you&apos;d rather.</>
+              )}
+            </p>
+          </div>
+        )}
+
+        {/* "Awaiting confirmation" means two opposite things, so it must not read
+            the same way twice. On a manual method the shopper still has to go and
+            pay; on an automated one they already have, and all that is left is the
+            wait. Saying "a few minutes" out loud stops the order looking stuck to
+            someone refreshing the page. */}
+        {awaiting && isManual && (
+          <div className="soc-note soc-note-warn">
+            <Icon>{ICON_CLOCK}</Icon>
+            <div>
+              <p>Your order is awaiting payment confirmation. We&apos;ll be in touch once it clears.</p>
+              {data.instructions && <p className="soc-instructions">{data.instructions}</p>}
+            </div>
+          </div>
+        )}
+        {awaiting && !isManual && (
+          <div className="soc-note soc-note-info" aria-live="polite">
+            <Icon>{ICON_CLOCK}</Icon>
+            <p>
+              Your payment has gone through, thank you. Banks being banks, it usually takes a few minutes to clear -
+              this page updates itself the moment it does, and your confirmation email follows then.
+              Nothing further is needed from you in the meantime.
+              {pollGaveUp && ' This one is taking longer than usual, which happens. Feel free to close the page: the email will still arrive.'}
+            </p>
+          </div>
+        )}
+        {settledWhileWatching && (
+          <div className="soc-note soc-note-ok" aria-live="polite">
+            <Icon>{ICON_TICK}</Icon>
+            <p>That&apos;s the payment cleared - your order is now being processed, and the confirmation email is on its way.</p>
+          </div>
+        )}
+        {/* A manual method that has already been cleared by the shop still has
+            instructions worth keeping on screen (a reference to quote, say), but
+            it is no longer an outstanding task, so it drops out of the warning
+            band above and sits here plainly. */}
+        {isManual && !awaiting && data.instructions && (
+          <div className="soc-note">
+            <Icon>{ICON_INFO}</Icon>
+            <p className="soc-instructions">{data.instructions}</p>
+          </div>
+        )}
+
+        <div className="soc-card">
+          <div className="soc-card-head">
+            <h2 className="soc-card-title">Order {order.orderNumber}</h2>
+            <p className="soc-meta">
+              {formatOrderDate(order.createdAt) && <span>{formatOrderDate(order.createdAt)}</span>}
+              <span>{items.reduce((n, i) => n + i.quantity, 0)} item{items.reduce((n, i) => n + i.quantity, 0) === 1 ? '' : 's'}</span>
+            </p>
+          </div>
+
+          <div className="soc-card-body">
+            <ul className="soc-items">
+              {items.map((item, i) => (
+                <li key={i} className="soc-item">
+                  {item.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- product media is an absolute storage URL, not a build-time asset
+                    <img className="soc-thumb" src={item.imageUrl} alt="" />
+                  ) : (
+                    <div className="soc-thumb soc-thumb-empty" aria-hidden="true"><Icon>{ICON_IMAGE}</Icon></div>
+                  )}
+                  <p className="soc-item-name">{item.productName}</p>
+                  {/* Unit price only where it tells you something a single line
+                      doesn't already: on one of a thing, "£40 x 1" is noise. */}
+                  <span className="soc-item-price">{money(item.total)}</span>
+                  <p className="soc-item-qty">
+                    {item.quantity > 1 ? `${money(item.unitPrice)} × ${item.quantity}` : 'Qty 1'}
+                  </p>
+                  {item.lineMeta?.fields?.length ? (
+                    <ul className="soc-item-meta">
+                      {item.lineMeta.fields.map((f, j) => (
+                        <li key={j}>
+                          <span>{f.label}:</span>{' '}
+                          {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <dl className="soc-totals">
+            <div className="soc-row"><dt>Subtotal</dt><dd>{money(order.subtotal)}</dd></div>
+            {discount > 0 && (
+              <div className="soc-row soc-discount">
+                <dt>Discount{order.couponCode ? <span className="soc-code"> ({order.couponCode})</span> : null}</dt>
+                <dd>-{money(discount)}</dd>
+              </div>
+            )}
+            {shipping > 0 && (
+              <div className="soc-row">
+                <dt>Delivery{order.shippingRateName ? <span className="soc-code"> ({order.shippingRateName})</span> : null}</dt>
+                <dd>{money(shipping)}</dd>
+              </div>
+            )}
+            {/* Free delivery is worth saying out loud - a row that isn't there
+                reads as a charge nobody has told you about yet. */}
+            {shipping === 0 && order.shippingRateName && (
+              <div className="soc-row"><dt>Delivery <span className="soc-code">({order.shippingRateName})</span></dt><dd>Free</dd></div>
+            )}
+            {tax > 0 && (
+              <div className="soc-row">
+                <dt>VAT{order.taxMode === 'INCLUSIVE' ? ' (included)' : ''}</dt>
+                <dd>{money(tax)}</dd>
+              </div>
+            )}
+            <div className="soc-row soc-grand"><dt>Total</dt><dd>{money(order.total)}</dd></div>
+          </dl>
+        </div>
+
+        <div className="soc-details">
+          <div className="soc-detail">
+            <h3>Delivery address</h3>
+            <address>
+              {addressLines(order.shippingAddress).map((line, i) => <div key={i}>{line}</div>)}
+            </address>
+          </div>
+          {order.shippingRateName && (
+            <div className="soc-detail">
+              <h3>Delivery method</h3>
+              <p>{order.shippingRateName}</p>
+            </div>
+          )}
+          <div className="soc-detail">
+            <h3>Payment</h3>
+            <p>{order.paymentMethodLabel}</p>
+            <p className="soc-dim">
+              {paid ? 'Paid' : awaiting && isManual ? 'Awaiting your payment' : awaiting ? 'Clearing' : failed ? 'Not taken' : 'Pending'}
+            </p>
+          </div>
+        </div>
+
+        {/* Guest orders only, and only where the site actually takes
+            registrations - the server has already made that call. Placed after
+            the receipt on purpose: the shopper came here to find out what
+            happened to their money, not to be sold a login. */}
+        {data.accountPrompt && !failed && (
+          <div className="soc-account">
+            <h2>Keep track of this order</h2>
+            <p>Create an account with {order.customerEmail} and this order joins it automatically. It takes about a minute.</p>
+            <ul>
+              <li>Track and revisit every order in one place</li>
+              <li>Check out faster next time - your address is already there</li>
+              <li>No password to remember: sign in from a link we email you</li>
+            </ul>
+            <div className="soc-actions">
+              <a className="soc-btn soc-btn-primary" href={data.accountPrompt.registerUrl}>Create an account</a>
+            </div>
+          </div>
+        )}
+
+        {!failed && (
+          <div className="soc-actions">
+            <Link className="soc-btn soc-btn-primary" href="/shop">Continue shopping</Link>
+          </div>
+        )}
+      </section>
+    </>
   )
 }

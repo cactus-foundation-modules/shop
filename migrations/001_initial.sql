@@ -409,6 +409,13 @@ CREATE TABLE IF NOT EXISTS "shp_orders" (
     "shipping_rate_id" TEXT,
     "shipping_rate_name" TEXT,
 
+    -- What the shopper ticked at checkout, worded exactly as they saw it.
+    -- A snapshot rather than a list of ids on purpose: an owner who later
+    -- rewrites a statement must not be able to change what a past order
+    -- appears to have agreed to. NULL on orders placed before the shop had
+    -- any tickboxes, and on shops that have never switched one on.
+    "agreements" JSONB,
+
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

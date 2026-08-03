@@ -20,6 +20,25 @@ const DEFAULT_CHECKOUT_STEPS = [
   { id: 'review', label: 'Review', enabled: true, required: true },
 ]
 
+// One tickbox the shopper has to deal with before the order can be placed.
+// The terms-and-conditions box is stored separately (its own trio of settings,
+// because it can fall back to the site's own terms page); everything else the
+// owner invents lives in `checkoutAgreements` as one of these.
+//
+// `statement` may carry one bracketed run - "I agree to the [terms]" - which
+// becomes the link when `linkUrl` is set. No brackets and a link still set puts
+// the link after the sentence, so a statement written before anyone thought
+// about links never loses its link.
+const CheckoutAgreementSchema = z.object({
+  id: z.string(),
+  statement: z.string(),
+  linkUrl: z.string().default(''),
+  required: z.boolean().default(true),
+  enabled: z.boolean().default(true),
+})
+
+export type ShpCheckoutAgreementConfig = z.infer<typeof CheckoutAgreementSchema>
+
 export const ShpConfigSchema = z.object({
   // Store identity
   currency: z.string().default('GBP'),
@@ -70,6 +89,28 @@ export const ShpConfigSchema = z.object({
   maximumOrderValue: z.number().nullable().default(null),
   requirePhone: z.boolean().default(false),
   checkoutSteps: z.array(CheckoutStepSchema).default(DEFAULT_CHECKOUT_STEPS),
+
+  // Business name at checkout. Off by default: a shop selling to the public has
+  // no use for it, and an empty box above the address is one more thing to skip.
+  // Enabling it shows the box above address line 1 (where a business address is
+  // actually read); requiring it refuses the order without one, both in the
+  // browser and at the route that creates the order.
+  businessNameFieldEnabled: z.boolean().default(false),
+  businessNameRequired: z.boolean().default(false),
+  businessNameLabel: z.string().default('Business name'),
+
+  // Terms and conditions tickbox at checkout. Kept apart from the owner's own
+  // tickboxes below because it is the one nearly every shop wants and it can
+  // point at the site's own terms page without anyone typing a URL - leave
+  // `termsAgreementUrl` blank and the checkout links to whatever page is set as
+  // the site's terms, so moving that page never leaves a dead link behind.
+  termsAgreementEnabled: z.boolean().default(false),
+  termsAgreementRequired: z.boolean().default(true),
+  termsAgreementStatement: z.string().default('I have read and agree to the [terms and conditions]'),
+  termsAgreementUrl: z.string().default(''),
+
+  // The owner's own tickboxes, in the order they appear beneath the terms one.
+  checkoutAgreements: z.array(CheckoutAgreementSchema).default([]),
 
   // Payment methods. Free-form strings rather than a closed enum so module-
   // contributed methods (via the shop.payment-providers extension point) can be
@@ -125,6 +166,62 @@ export function resolveSupplierLabel(
 ): string {
   if (config.supplierLabelPreset === 'custom') return config.supplierLabelCustom.trim() || 'Supplier'
   return config.supplierLabelPreset
+}
+
+// One tickbox as the checkout actually renders it: the terms box (when switched
+// on) followed by the owner's own, disabled ones dropped. `linkUrl` is already
+// resolved - a blank terms URL has been turned into the site's terms page here,
+// or the link dropped entirely if the site has not nominated one, so no surface
+// downstream has to know that fallback exists.
+export type ShpCheckoutAgreement = {
+  id: string
+  statement: string
+  linkUrl: string
+  required: boolean
+}
+
+export const TERMS_AGREEMENT_ID = 'terms'
+
+// Resolved server-side, never in the browser: the terms link falls back to the
+// site's own terms page, which is a core lookup. Both the public config route
+// (so the checkout can draw the boxes) and the order-creating route (so it can
+// enforce them) read the same list from here, which is what stops the two
+// disagreeing about which boxes were compulsory.
+export async function resolveCheckoutAgreements(config: ShpConfig): Promise<ShpCheckoutAgreement[]> {
+  const agreements: ShpCheckoutAgreement[] = []
+
+  if (config.termsAgreementEnabled) {
+    let linkUrl = config.termsAgreementUrl.trim()
+    if (!linkUrl) {
+      const site = await prisma.siteConfig.findUnique({ where: { id: 'singleton' }, select: { termsPageId: true } })
+      const page = site?.termsPageId
+        ? await prisma.infoPage.findUnique({ where: { id: site.termsPageId }, select: { slug: true } })
+        : null
+      linkUrl = page?.slug ? `/${page.slug}` : ''
+    }
+    agreements.push({
+      id: TERMS_AGREEMENT_ID,
+      statement: config.termsAgreementStatement.trim() || 'I have read and agree to the [terms and conditions]',
+      linkUrl,
+      required: config.termsAgreementRequired,
+    })
+  }
+
+  for (const agreement of config.checkoutAgreements) {
+    if (!agreement.enabled) continue
+    const statement = agreement.statement.trim()
+    // A tickbox with nothing written beside it is an unanswerable question, so
+    // it never reaches the shopper - and never blocks the order either.
+    if (!statement) continue
+    agreements.push({
+      id: agreement.id,
+      statement,
+      linkUrl: agreement.linkUrl.trim(),
+      required: agreement.required,
+    })
+  }
+
+  return agreements
 }
 
 export const SHP_CONFIG_DEFAULTS: ShpConfig = ShpConfigSchema.parse({})

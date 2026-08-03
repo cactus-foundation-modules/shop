@@ -29,6 +29,11 @@ export type CheckoutState = {
   // contribute its own method (open banking, say) through the shop's payment
   // provider extension point, and it has to survive a round trip through here.
   paymentMethod: string | null
+  // Which checkout tickboxes the shopper has ticked, keyed by agreement id.
+  // Lives here rather than in the review block's own state because the block
+  // that draws the boxes and the block that posts the order are different Puck
+  // blocks with no shared React state between them.
+  agreements: Record<string, boolean>
 }
 
 const STORAGE_KEY = 'cactus_shop_checkout'
@@ -41,6 +46,7 @@ export const EMPTY_ADDRESS: ShpAddressForm = {
 export const EMPTY_CHECKOUT_STATE: CheckoutState = {
   customerEmail: '', customerName: '', customerPhone: '',
   shippingAddress: EMPTY_ADDRESS, shippingRateId: null, couponCode: null, paymentMethod: null,
+  agreements: {},
 }
 
 export function getCheckoutState(): CheckoutState {
@@ -68,8 +74,13 @@ export function clearCheckoutState(): void {
 // Called once an order is placed. Contact + shipping address are kept so a
 // shopper placing a second order in the same session doesn't have to retype
 // them - only the bits specific to the order just placed are reset.
+//
+// Agreements reset with the order rather than persisting like the address:
+// agreeing to the terms once is not agreeing to them for every future order,
+// and a pre-ticked box on the next checkout would be a record of consent nobody
+// actually gave.
 export function clearOrderSpecificState(): void {
-  updateCheckoutState({ paymentMethod: null, couponCode: null })
+  updateCheckoutState({ paymentMethod: null, couponCode: null, agreements: {} })
 }
 
 export function subscribeCheckoutState(callback: () => void): () => void {
@@ -80,7 +91,16 @@ export function subscribeCheckoutState(callback: () => void): () => void {
 // Contact + shipping are separate Puck blocks with no step gating between them,
 // so Payment/Review can mount (and fire their network calls) before those fields
 // are filled in. Both check this before hitting an endpoint that requires them.
-export function isContactAndShippingComplete(state: CheckoutState): boolean {
+//
+// `businessNameRequired` comes from shop settings and has to be passed in: this
+// file is shared by blocks that each fetch config at their own pace, and a
+// caller that has not got it yet is better off omitting it than guessing. The
+// order-creating route enforces the same rule server-side regardless, so the
+// worst an un-passed flag costs is a late error instead of an early one.
+export function isContactAndShippingComplete(
+  state: CheckoutState,
+  opts?: { businessNameRequired?: boolean },
+): boolean {
   const a = state.shippingAddress
   return (
     /\S+@\S+\.\S+/.test(state.customerEmail) &&
@@ -89,6 +109,18 @@ export function isContactAndShippingComplete(state: CheckoutState): boolean {
     a.lastName.trim().length > 0 &&
     a.line1.trim().length > 0 &&
     a.city.trim().length > 0 &&
-    a.postcode.trim().length > 0
+    a.postcode.trim().length > 0 &&
+    (!opts?.businessNameRequired || a.company.trim().length > 0)
   )
+}
+
+// Every compulsory tickbox ticked. Separate from the completeness check above
+// because the two answer different questions and are shown differently: an
+// unfilled address field is a step not finished yet, an unticked box is a
+// decision the shopper has to make on this page before the button will work.
+export function areAgreementsAccepted(
+  state: CheckoutState,
+  agreements: Array<{ id: string; required: boolean }>,
+): boolean {
+  return agreements.every((a) => !a.required || state.agreements[a.id] === true)
 }

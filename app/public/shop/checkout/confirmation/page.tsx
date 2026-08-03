@@ -15,7 +15,10 @@ export default async function ShopCheckoutConfirmationPage() {
   if (!layout?.builderData) return null
 
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: '2rem 1.5rem' }}>
+    // Wider than the other shop pages (640) because the confirmation now shows
+    // a receipt with delivery, method and payment side by side. The block sets
+    // its own 720 ceiling; this only has to stop clamping it below that.
+    <div style={{ maxWidth: 780, margin: '0 auto', padding: '2rem 1.5rem' }}>
       {gate.staffPreview && <ShopStaffPreviewBanner />}
       <Render config={getModuleLayoutPuckRscConfig('shopConfirmation') as any} data={layout.builderData as Data} />
     </div>

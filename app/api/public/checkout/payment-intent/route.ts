@@ -4,7 +4,7 @@ import { resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkou
 import { findShippingZoneForPostcode, getShippingRateById } from '@/modules/shop/lib/db/tax-shipping'
 import { createPendingOrder } from '@/modules/shop/lib/db/orders'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
-import { getShopConfigCached, getAvailablePaymentMethods } from '@/modules/shop/lib/config'
+import { getShopConfigCached, getAvailablePaymentMethods, resolveCheckoutAgreements } from '@/modules/shop/lib/config'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
@@ -33,6 +33,10 @@ const Body = z.object({
   shippingRateId: z.string().nullable().optional(),
   couponCode: z.string().nullable().optional(),
   paymentMethod: z.string().min(1),
+  // Which checkout tickboxes the shopper ticked, keyed by agreement id. Ids
+  // only - the wording that goes on the order is taken from the shop's own
+  // settings below, never from the browser.
+  agreements: z.record(z.boolean()).optional(),
 })
 
 // PROTECTED - creates the PENDING order (Q8) then the provider intent. Stock
@@ -62,6 +66,41 @@ export async function POST(request: NextRequest) {
 
   const available = await getAvailablePaymentMethods()
   if (!available.includes(data.paymentMethod)) return NextResponse.json({ error: 'Selected payment method is not available.' }, { status: 400 })
+
+  // A business name the owner has made compulsory has to be enforced where the
+  // order is actually made, not only in the form: the shipping step's `required`
+  // attribute is a courtesy to the shopper, and this route is reachable without
+  // it. Checked against the trimmed value, so a space is not a business name.
+  if (config.businessNameFieldEnabled && config.businessNameRequired && !data.shippingAddress.company?.trim()) {
+    const label = config.businessNameLabel.trim() || 'Business name'
+    return NextResponse.json({ error: `${label} is required.` }, { status: 400 })
+  }
+
+  // Same reasoning for the tickboxes, and rather more at stake: an order placed
+  // without the terms box ticked is an order with no record that they were ever
+  // agreed to, which is the entire point of asking. The statements are read
+  // from settings here rather than taken from the request, so what gets written
+  // onto the order is the shop's own wording and cannot be forged by a client
+  // posting whatever text it fancies.
+  const requiredAgreements = await resolveCheckoutAgreements(config)
+  const ticked = data.agreements ?? {}
+  const unticked = requiredAgreements.find((a) => a.required && ticked[a.id] !== true)
+  if (unticked) {
+    return NextResponse.json({ error: 'Please tick the boxes marked required before placing your order.' }, { status: 400 })
+  }
+  const now = new Date().toISOString()
+  const agreementRecord = requiredAgreements.length > 0
+    ? requiredAgreements.map((a) => ({
+        id: a.id,
+        statement: a.statement,
+        linkUrl: a.linkUrl,
+        required: a.required,
+        accepted: ticked[a.id] === true,
+        // Only a tick has a time. Recording "declined at 14:32" on an optional
+        // box nobody touched would invent a decision that was never made.
+        acceptedAt: ticked[a.id] === true ? now : null,
+      }))
+    : null
 
   const resolvedLines = await resolveCartLines(data.lines)
   if (resolvedLines.some((l) => !l.available) || resolvedLines.length === 0) {
@@ -131,6 +170,7 @@ export async function POST(request: NextRequest) {
     paymentMethod: data.paymentMethod,
     shippingRateId: shippingRate?.id ?? null,
     shippingRateName: shippingRate?.name ?? null,
+    agreements: agreementRecord,
     items: totals.lineItems.map((l) => ({
       productId: l.product.id,
       productName: l.product.name,

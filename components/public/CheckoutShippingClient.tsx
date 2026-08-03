@@ -22,6 +22,11 @@ const REQUIRED_MESSAGES: Partial<Record<keyof ShpAddressForm, string>> = {
   postcode: 'Enter your postcode.',
 }
 
+// The business-name box and whether it is compulsory, from shop settings.
+// Fetched here rather than passed down from the RSC wrapper so the editor
+// preview draws the same form the storefront does.
+type BusinessNameConfig = { enabled: boolean; required: boolean; label: string }
+
 export function CheckoutShippingClient({
   preview = false,
   addressLookup = null,
@@ -38,6 +43,16 @@ export function CheckoutShippingClient({
   const [rates, setRates] = useState<ShippingRateOption[]>([])
   const [selectedRateId, setSelectedRateId] = useState<string | null>(initial.shippingRateId)
   const [touched, setTouched] = useState<Partial<Record<keyof ShpAddressForm, boolean>>>({})
+  const [businessName, setBusinessName] = useState<BusinessNameConfig | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/m/shop/public/config')
+      .then((r) => r.json())
+      .then((d: { businessName?: BusinessNameConfig }) => { if (!cancelled && d.businessName) setBusinessName(d.businessName) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   function set<K extends keyof ShpAddressForm>(key: K, value: ShpAddressForm[K]) {
     const next = { ...address, [key]: value }
@@ -46,7 +61,12 @@ export function CheckoutShippingClient({
   }
 
   function fieldError(key: keyof ShpAddressForm): string | null {
-    const message = REQUIRED_MESSAGES[key]
+    // The business name's message is built from the owner's own label, so it
+    // can't live in the fixed map above - "Enter your delivery depot." reads
+    // properly, "Enter your business name." would be a lie on that shop.
+    const message = key === 'company' && businessName?.required
+      ? `Enter your ${businessName.label.trim().toLowerCase() || 'business name'}.`
+      : REQUIRED_MESSAGES[key]
     if (!message || !touched[key]) return null
     return address[key].trim().length === 0 ? message : null
   }
@@ -129,6 +149,16 @@ export function CheckoutShippingClient({
         {field('firstName', 'First name', 'given-name', true)}
         {field('lastName', 'Last name', 'family-name', true)}
       </div>
+      {/* Above line 1, which is where a business address puts it and where the
+          browser's own autofill expects to find it. Optional by default, so the
+          label says so out loud rather than leaving a shopper wondering whether
+          a blank box will stop them. */}
+      {businessName?.enabled && field(
+        'company',
+        businessName.required ? businessName.label : `${businessName.label} (optional)`,
+        'organization',
+        businessName.required,
+      )}
       {AddressLookup ? (
         <AddressLookup
           value={address.line1}
