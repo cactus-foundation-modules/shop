@@ -61,6 +61,10 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
   const [config, setConfig] = useState<ShopClientConfig | null>(null)
   const [method, setMethod] = useState<string | null>(getCheckoutState().paymentMethod)
   const [instructions, setInstructions] = useState<string | null>(null)
+  // Sentences an installed module offered about what this payment method means
+  // for this order - a pay-later method's effect on delivery dates, say. Shop
+  // only prints them; see lib/order-payment-state.ts.
+  const [notes, setNotes] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const elementsRef = useRef<HTMLDivElement>(null)
@@ -100,6 +104,8 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
       sessionStorage.setItem('cactus_shop_order_id', data.orderId)
       sessionStorage.setItem('cactus_shop_order_number', data.orderNumber)
 
+      setNotes(Array.isArray(data.notes) ? data.notes.filter((n: unknown): n is string => typeof n === 'string' && n.length > 0) : [])
+
       if (next === 'STRIPE' && data.clientSecret && config?.stripePublishableKey) {
         await loadStripeJs()
         const stripe = window.Stripe!(config.stripePublishableKey)
@@ -135,8 +141,10 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
     setMethod(next)
     setError(null)
     // Instructions belong to the method that was showing a moment ago - leaving
-    // bank details on screen under a card form is its own small lie.
+    // bank details on screen under a card form is its own small lie. The same
+    // goes for anything a module said about the old method.
     setInstructions(null)
+    setNotes([])
     preparedRef.current = null
     updateCheckoutState({ paymentMethod: next })
 
@@ -231,6 +239,21 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
           </label>
         ))}
       </div>
+      {/* What this method means for the order, from whichever module knows -
+          above the pay-here fields, because it is a consequence of the choice
+          just made rather than part of paying. */}
+      {notes.length > 0 && (
+        <div
+          role="note"
+          style={{
+            display: 'grid', gap: '0.375rem', margin: 0, padding: '0.625rem 0.75rem',
+            border: '1px solid var(--color-info-border)', borderRadius: 6,
+            background: 'var(--color-info-subtle)', color: 'var(--color-text)', fontSize: '0.875rem',
+          }}
+        >
+          {notes.map((note, i) => <p key={i} style={{ margin: 0 }}>{note}</p>)}
+        </div>
+      )}
       {method === 'STRIPE' && (
         <div style={{ display: 'grid', gap: '0.5rem' }}>
           <div ref={elementsRef} />
