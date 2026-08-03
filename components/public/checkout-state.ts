@@ -168,22 +168,75 @@ export function forgetPlacedOrder(): void {
 // early one.
 export function isContactAndShippingComplete(
   state: CheckoutState,
-  opts?: { businessNameRequired?: boolean; phoneRequired?: boolean },
+  opts?: CheckoutFieldRules,
 ): boolean {
+  return missingCheckoutFields(state, opts).length === 0
+}
+
+// A compulsory box that is not finished yet. `label` is the wording the field's
+// own <label> uses, so a shopper reads back exactly what they are looking at
+// rather than a field name out of the code. `key` is the input's
+// `data-shop-field`, which is what lets the review step send them to it.
+export type MissingCheckoutField = { key: string; label: string; reason: 'empty' | 'invalid' }
+
+export type CheckoutFieldRules = {
+  businessNameRequired?: boolean
+  // The owner's own wording for the business-name box ("Delivery depot", say).
+  // Only used for the label, so a caller without it yet still gets the right
+  // list, just with the default name on that one row.
+  businessNameLabel?: string
+  phoneRequired?: boolean
+}
+
+// Everything still owed before an order can be placed, in the order the page
+// asks for it: contact details, then the delivery address. Drives both the
+// completeness test above and the "still to fill in" list on the review step -
+// one list, so the button and the explanation for it can never disagree.
+export function missingCheckoutFields(
+  state: CheckoutState,
+  opts?: CheckoutFieldRules,
+): MissingCheckoutField[] {
   const a = state.shippingAddress
-  return (
-    /\S+@\S+\.\S+/.test(state.customerEmail) &&
-    state.customerName.trim().length > 0 &&
-    a.firstName.trim().length > 0 &&
-    a.lastName.trim().length > 0 &&
-    a.line1.trim().length > 0 &&
-    a.city.trim().length > 0 &&
-    a.postcode.trim().length > 0 &&
-    (!opts?.businessNameRequired || a.company.trim().length > 0) &&
-    // The contact step's number, not the address's: that is the one the contact
-    // block writes and the one the order carries as customerPhone.
-    (!opts?.phoneRequired || state.customerPhone.trim().length > 0)
-  )
+  const missing: MissingCheckoutField[] = []
+  const add = (key: string, label: string, reason: 'empty' | 'invalid' = 'empty') =>
+    missing.push({ key, label, reason })
+
+  // Typed-but-wrong is worth telling apart from blank: "fill in your email" is
+  // no help at all to somebody who thinks they already have.
+  if (state.customerEmail.trim().length === 0) add('customerEmail', 'Email')
+  else if (!/\S+@\S+\.\S+/.test(state.customerEmail)) add('customerEmail', 'Email', 'invalid')
+
+  if (state.customerName.trim().length === 0) add('customerName', 'Full name')
+  // The contact step's number, not the address's: that is the one the contact
+  // block writes and the one the order carries as customerPhone.
+  if (opts?.phoneRequired && state.customerPhone.trim().length === 0) add('customerPhone', 'Phone')
+
+  if (a.firstName.trim().length === 0) add('firstName', 'First name')
+  if (a.lastName.trim().length === 0) add('lastName', 'Last name')
+  if (opts?.businessNameRequired && a.company.trim().length === 0) {
+    add('company', opts.businessNameLabel?.trim() || 'Business name')
+  }
+  if (a.line1.trim().length === 0) add('line1', 'Address line 1')
+  if (a.city.trim().length === 0) add('city', 'Town or city')
+  if (a.postcode.trim().length === 0) add('postcode', 'Postcode')
+
+  return missing
+}
+
+// Sends the shopper to the box being asked about. The contact and shipping
+// steps mark their inputs with `data-shop-field`; matching them by attribute is
+// what lets the review step reach across, since the three are separate Puck
+// blocks with no shared React state between them.
+//
+// Silently does nothing when the field is not on the page: a layout that has
+// dropped a step still reads correctly, it just cannot jump.
+export function focusCheckoutField(key: string): void {
+  const field = document.querySelector<HTMLElement>(`[data-shop-field="${CSS.escape(key)}"]`)
+  if (!field) return
+  field.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  // The scroll above is the one doing the moving; focus jumping the page to the
+  // same place at full speed would fight it.
+  field.focus({ preventScroll: true })
 }
 
 // Every compulsory tickbox ticked. Separate from the completeness check above

@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
 import {
-  getCheckoutState, isContactAndShippingComplete, subscribeCheckoutState, updateCheckoutState, areAgreementsAccepted,
+  getCheckoutState, subscribeCheckoutState, updateCheckoutState, areAgreementsAccepted,
+  missingCheckoutFields, focusCheckoutField, type MissingCheckoutField,
 } from '@/modules/shop/components/public/checkout-state'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
@@ -64,9 +65,14 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [incomplete, setIncomplete] = useState(true)
+  // Which compulsory boxes above are still outstanding, named as their own
+  // labels name them. The shopper reads this instead of being left to hunt for
+  // whichever field is holding the button shut.
+  const [missing, setMissing] = useState<MissingCheckoutField[]>([])
   const [placing, setPlacing] = useState(false)
   const [agreements, setAgreements] = useState<Agreement[]>([])
   const [businessNameRequired, setBusinessNameRequired] = useState(false)
+  const [businessNameLabel, setBusinessNameLabel] = useState('')
   const [phoneRequired, setPhoneRequired] = useState(false)
   // Which boxes are ticked, mirrored out of checkout state so this block
   // re-renders on a tick. checkout-state stays the source of truth, because the
@@ -81,10 +87,13 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
     let cancelled = false
     fetch('/api/m/shop/public/config')
       .then((r) => r.json())
-      .then((d: { checkoutAgreements?: Agreement[]; businessName?: { required?: boolean }; requirePhone?: boolean }) => {
+      .then((d: { checkoutAgreements?: Agreement[]; businessName?: { required?: boolean; label?: string }; requirePhone?: boolean }) => {
         if (cancelled) return
         setAgreements(d.checkoutAgreements ?? [])
         setBusinessNameRequired(d.businessName?.required === true)
+        // The owner's own wording for that box, so the outstanding list calls it
+        // what the form above calls it rather than inventing a name for it.
+        setBusinessNameLabel(d.businessName?.label ?? '')
         setPhoneRequired(d.requirePhone === true)
       })
       .catch(() => {})
@@ -97,7 +106,9 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
       const lines = getCart()
       setTicked(state.agreements ?? {})
       setPaymentMethod(state.paymentMethod)
-      if (lines.length === 0 || !isContactAndShippingComplete(state, { businessNameRequired, phoneRequired })) {
+      const outstandingFields = missingCheckoutFields(state, { businessNameRequired, businessNameLabel, phoneRequired })
+      setMissing(outstandingFields)
+      if (lines.length === 0 || outstandingFields.length > 0) {
         setIncomplete(true)
         setSummary(null)
         return
@@ -122,7 +133,7 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
     // Re-runs when the business-name and phone rules arrive from config: the
     // completeness test above closes over them, so a stale `false` would wave
     // through a checkout the order route is about to refuse.
-  }, [businessNameRequired, phoneRequired])
+  }, [businessNameRequired, businessNameLabel, phoneRequired])
 
   function setAgreement(id: string, accepted: boolean) {
     const next = { ...getCheckoutState().agreements, [id]: accepted }
@@ -130,16 +141,20 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
     updateCheckoutState({ agreements: next })
   }
 
-  // What is still outstanding, in the order the page presents it. Null means the
-  // order can be placed. The button reads this rather than shouting after a
-  // click: a shopper should be able to see what is left, not discover it by
-  // being refused.
+  // What is still outstanding, in the order the page presents it, as one
+  // sentence. Null means the order can be placed. The button reads this rather
+  // than shouting after a click: a shopper should be able to see what is left,
+  // not discover it by being refused - and see all of it, not be sent back for
+  // the second thing once they have done the first.
   function blockedReason(): string | null {
-    if (!paymentMethod) return 'Choose a payment method above to place your order.'
+    const outstanding: string[] = []
+    if (!paymentMethod) outstanding.push('choose a payment method above')
     if (!areAgreementsAccepted(ticked, agreements)) {
-      return `Tick the box${agreements.filter((a) => a.required).length === 1 ? '' : 'es'} marked * to place your order.`
+      outstanding.push(`tick the box${agreements.filter((a) => a.required).length === 1 ? '' : 'es'} marked *`)
     }
-    return null
+    if (outstanding.length === 0) return null
+    const sentence = outstanding.join(' and ')
+    return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)} to place your order.`
   }
 
   function placeOrder() {
@@ -159,7 +174,37 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
     return (
       <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
         <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Order review</h2>
-        <p style={{ color: 'var(--color-text-muted)' }}>Fill in your contact and shipping details above to see your order total.</p>
+        {missing.length === 0 ? (
+          <p style={{ color: 'var(--color-text-muted)' }}>Fill in your contact and shipping details above to see your order total.</p>
+        ) : (
+          <div style={{ display: 'grid', gap: '0.5rem' }}>
+            <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}>
+              Your order total appears once {missing.length === 1 ? 'this is' : 'these are'} filled in above:
+            </p>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', display: 'grid', gap: '0.25rem' }}>
+              {missing.map((field) => (
+                <li key={field.key}>
+                  {/* A button rather than a line of text: naming the field is
+                      most of the answer, but on a long checkout the shopper
+                      still has to go and find it, and the page can do that. */}
+                  <button
+                    type="button"
+                    onClick={() => focusCheckoutField(field.key)}
+                    style={{
+                      background: 'none', border: 0, padding: 0, font: 'inherit',
+                      color: 'var(--color-primary)', textDecoration: 'underline', cursor: 'pointer',
+                    }}
+                  >
+                    {field.label}
+                  </button>
+                  {field.reason === 'invalid' && (
+                    <span style={{ color: 'var(--color-text-secondary)' }}> - that does not look like an email address.</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
     )
   }

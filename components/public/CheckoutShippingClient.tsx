@@ -209,6 +209,11 @@ export function CheckoutShippingClient({
           type="text"
           required={required}
           autoComplete={extra?.autoComplete ?? autoComplete}
+          // How the review step finds this box when it lists what is still
+          // outstanding (see focusCheckoutField). After the spread on purpose:
+          // an address-lookup provider layering itself onto line 1 must not be
+          // able to take the marker off it.
+          data-shop-field={key}
           value={address[key]}
           onChange={(e) => { set(key, e.target.value); extra?.onChange?.(e) }}
           onBlur={(e) => { setTouched((t) => ({ ...t, [key]: true })); extra?.onBlur?.(e) }}

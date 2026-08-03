@@ -47,18 +47,20 @@ export function CheckoutContactClient({ preview = false }: { preview?: boolean }
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Contact details</h2>
       <label style={{ display: 'grid', gap: '0.25rem' }}>
         <span>Email</span>
-        <input type="email" required autoComplete="email" inputMode="email" value={email} onChange={(e) => { setEmail(e.target.value); updateCheckoutState({ customerEmail: e.target.value }) }}
+        {/* data-shop-field is how the review step finds this box when it lists
+            what is still outstanding - see focusCheckoutField. */}
+        <input type="email" required autoComplete="email" inputMode="email" data-shop-field="customerEmail" value={email} onChange={(e) => { setEmail(e.target.value); updateCheckoutState({ customerEmail: e.target.value }) }}
           style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
         <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>Your order confirmation goes here.</span>
       </label>
       <label style={{ display: 'grid', gap: '0.25rem' }}>
         <span>Full name</span>
-        <input type="text" required autoComplete="name" value={name} onChange={(e) => { setName(e.target.value); updateCheckoutState({ customerName: e.target.value }) }}
+        <input type="text" required autoComplete="name" data-shop-field="customerName" value={name} onChange={(e) => { setName(e.target.value); updateCheckoutState({ customerName: e.target.value }) }}
           style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
       </label>
       <label style={{ display: 'grid', gap: '0.25rem' }}>
         <span>{phoneRequired ? 'Phone' : 'Phone (optional)'}</span>
-        <input type="tel" required={phoneRequired} autoComplete="tel" inputMode="tel" value={phone}
+        <input type="tel" required={phoneRequired} autoComplete="tel" inputMode="tel" data-shop-field="customerPhone" value={phone}
           onChange={(e) => { setPhone(e.target.value); updateCheckoutState({ customerPhone: e.target.value }) }}
           onBlur={() => setPhoneTouched(true)}
           aria-invalid={phoneError ? true : undefined}
