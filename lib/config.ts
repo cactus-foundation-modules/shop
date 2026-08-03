@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { prisma } from '@/lib/db/prisma'
 import { isPayPalConfigured, isStripeConfigured } from '@/modules/shop/lib/env'
+import { resolvePaymentMethodOrder, sortPaymentMethods } from '@/modules/shop/lib/payments/admin-methods'
 
 // Shop config, stored as a single JSON column on the shp_settings singleton
 // row (Q2 - no shopConfig column on core SiteConfig). Same "corrupted/partial
@@ -116,6 +117,19 @@ export const ShpConfigSchema = z.object({
   // contributed methods (via the shop.payment-providers extension point) can be
   // enabled here too; availability is still gated in getAvailablePaymentMethods.
   enabledPaymentMethods: z.array(z.string()).default(['STRIPE']),
+  // The shop-wide off switch, and the only one a module-contributed method has.
+  // A built-in method is on by being listed in enabledPaymentMethods; a module
+  // method decides for itself whether it is ready (its own settings tab), which
+  // left the owner no way to park one without pulling its credentials out. Being
+  // named here overrules both, for every method - see getAvailablePaymentMethods.
+  disabledPaymentMethods: z.array(z.string()).default([]),
+  // The order the methods are offered in at checkout, as the owner arranged them
+  // on the Payments tab. Holds every method it was told about, switched on or
+  // not, so switching one back on returns it to where it was. Anything missing
+  // (a method added by a module installed since) sorts to the end. Empty until
+  // the owner first arranges them, and until then the old order stands: whatever
+  // sequence enabledPaymentMethods happens to be in, then the rest.
+  paymentMethodOrder: z.array(z.string()).default([]),
   bankTransferInstructions: z.string().default(''),
   cashInstructions: z.string().default(''),
 
@@ -277,36 +291,57 @@ export async function updateShopConfig(patch: Partial<ShpConfig>): Promise<ShpCo
   return next
 }
 
-// Enabled payment methods filtered by actual availability - a method the admin
-// has ticked but never configured (Stripe/PayPal keys missing, or a module
-// provider reporting itself unconfigured) can never reach checkout.
+// The four methods shop ships itself. Everything else on the list arrived
+// through the shop.payment-providers extension point and gates itself.
+export const BUILT_IN_PAYMENT_METHODS = ['STRIPE', 'PAYPAL', 'BANK_TRANSFER', 'CASH'] as const
+
+// Whether one method should be offered at checkout, before ordering. Split out
+// because the settings screen wants the same answer per method, and two copies
+// of this rule would drift.
+export async function isPaymentMethodAvailable(method: string): Promise<boolean> {
+  const config = await getShopConfigCached()
+  const { getPaymentProvider } = await import('@/modules/shop/lib/payments/registry')
+  const provider = getPaymentProvider(method)
+  if (!provider) return false
+  return paymentMethodAvailability(config, provider)
+}
+
+async function paymentMethodAvailability(
+  config: ShpConfig,
+  provider: { id: string; isAvailable?: () => boolean | Promise<boolean> },
+): Promise<boolean> {
+  // Switched off here beats everything, including a module method that reports
+  // itself perfectly ready.
+  if (config.disabledPaymentMethods.includes(provider.id)) return false
+
+  const builtIn = (BUILT_IN_PAYMENT_METHODS as readonly string[]).includes(provider.id)
+  if (builtIn) {
+    if (!config.enabledPaymentMethods.includes(provider.id)) return false
+    if (provider.id === 'STRIPE') return isStripeConfigured()
+    if (provider.id === 'PAYPAL') return isPayPalConfigured()
+    return true // bank transfer and cash need no credentials
+  }
+
+  // Module-contributed methods self-manage their availability from their own
+  // settings tab (isAvailable), so they appear once configured without needing
+  // to be ticked in shop's settings too.
+  return provider.isAvailable ? await provider.isAvailable() : true
+}
+
+// Payment methods that would actually reach checkout right now, in the order the
+// owner arranged them on the Payments tab. A method ticked but never configured
+// (Stripe/PayPal keys missing, or a module provider reporting itself
+// unconfigured) never makes it out of here.
 export async function getAvailablePaymentMethods(): Promise<string[]> {
   const config = await getShopConfigCached()
   // Dynamic import keeps this file free of a static registry <-> config cycle
   // (bank-transfer / cash providers import getShopConfigCached from here).
-  const { getPaymentProvider, getAllPaymentProviders } = await import('@/modules/shop/lib/payments/registry')
+  const { getAllPaymentProviders } = await import('@/modules/shop/lib/payments/registry')
 
-  const builtInIds = new Set(['STRIPE', 'PAYPAL', 'BANK_TRANSFER', 'CASH'])
   const available: string[] = []
-
-  // Built-in methods are chosen in shop settings (enabledPaymentMethods) and
-  // gated by their env presence.
-  for (const method of config.enabledPaymentMethods) {
-    if (method === 'STRIPE') { if (isStripeConfigured()) available.push(method); continue }
-    if (method === 'PAYPAL') { if (isPayPalConfigured()) available.push(method); continue }
-    if (method === 'BANK_TRANSFER' || method === 'CASH') { available.push(method); continue } // no env vars
-    // A module method explicitly ticked in shop settings is still honoured.
-    const provider = getPaymentProvider(method)
-    if (provider && (provider.isAvailable ? await provider.isAvailable() : true)) available.push(method)
-  }
-
-  // Module-contributed methods self-manage their availability from their own
-  // settings tab (isAvailable), so they appear when configured without needing
-  // to be added to enabledPaymentMethods in shop's settings UI.
   for (const provider of getAllPaymentProviders()) {
-    if (builtInIds.has(provider.id) || available.includes(provider.id)) continue
-    if (provider.isAvailable ? await provider.isAvailable() : true) available.push(provider.id)
+    if (await paymentMethodAvailability(config, provider)) available.push(provider.id)
   }
 
-  return available
+  return sortPaymentMethods(available, resolvePaymentMethodOrder(config))
 }

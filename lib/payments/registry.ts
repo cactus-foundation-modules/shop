@@ -34,6 +34,23 @@ export function getPaymentProvider(method: string): ShpPaymentProvider | undefin
   return getAllPaymentProviders().find((p) => p.id === method)
 }
 
+// payment-method id -> the manifest entry id the contributing module registered
+// the provider under (e.g. GOCARDLESS_IBP -> "gocardless-ibp"). Modules that
+// give their settings panel the same entry id - which every payment module so
+// far does - can have their method row on the Payments tab link straight to
+// their own panel. A module that names the two differently simply gets no link;
+// its panel is still there, on its own tab, so nothing is lost.
+export function getModuleProviderEntryIds(): Record<string, string> {
+  const contributed = moduleExtensionPointComponents['shop.payment-providers']
+  if (!contributed) return {}
+  const byMethod: Record<string, string> = {}
+  for (const [entryId, provider] of Object.entries(contributed)) {
+    const id = (provider as ShpPaymentProvider).id
+    if (id) byMethod[id] = entryId
+  }
+  return byMethod
+}
+
 // id -> human label for every registered provider, for the checkout UI.
 export function getPaymentMethodLabels(): Record<string, string> {
   const labels: Record<string, string> = {}

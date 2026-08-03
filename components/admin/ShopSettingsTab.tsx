@@ -5,16 +5,10 @@ import { useRouter } from 'next/navigation'
 import { TabStrip } from '@/components/admin/TabStrip'
 import type { ModuleSettingsTabProps } from '@/lib/modules/hosted-settings'
 import type { ShpConfig } from '@/modules/shop/lib/config'
+import type { ShpAdminPaymentMethod } from '@/modules/shop/lib/payments/admin-methods'
+import { PaymentsSettings, PAYMENT_METHODS_TAB, isHostedPaymentPanelTab } from '@/modules/shop/components/admin/PaymentsSettings'
 import { PRICE_TYPES, PRICE_TYPE_META } from '@/modules/shop/lib/pricing'
 import type { ShpEmailTemplate, ShpEmailTemplateTrigger } from '@/modules/shop/lib/types'
-
-const PAYMENT_METHODS = ['STRIPE', 'PAYPAL', 'BANK_TRANSFER', 'CASH'] as const
-const PAYMENT_METHOD_LABELS: Record<(typeof PAYMENT_METHODS)[number], string> = {
-  STRIPE: 'Card payments (Stripe)',
-  PAYPAL: 'PayPal',
-  BANK_TRANSFER: 'Bank transfer',
-  CASH: 'Cash on collection',
-}
 
 const TEMPLATE_LABELS: Record<ShpEmailTemplateTrigger, string> = {
   ORDER_CONFIRMED: 'Order confirmed',
@@ -42,9 +36,9 @@ const SUB_TABS: { key: SubTab; label: string }[] = [
 // Two slots this tab publishes for other modules' settings panels (`host` on
 // their manifest settingsTabs entry - see lib/modules/hosted-settings.ts):
 //
-// - 'shop.payments' merges a panel into the Payments sub-tab, under the heading
-//   shop writes. For a payment provider, whose keys and toggle belong next to
-//   Stripe's and PayPal's rather than anywhere else.
+// - 'shop.payments' puts a panel on the Payments sub-tab. Taken as separate
+//   labelled panels rather than one merged node, because each payment method
+//   now gets a chip of its own there and a tab strip needs the labels up front.
 // - 'shop.settings-sub-tabs' gives a panel a sub-tab of its own, labelled from
 //   its manifest entry. For an add-on whose settings are nobody else's business
 //   and would only be noise inside one of shop's own sub-tabs.
@@ -52,33 +46,7 @@ const SUB_TABS: { key: SubTab; label: string }[] = [
 // Both are empty on a shop with no add-ons installed, and an empty slot renders
 // nothing: no extra tab, no gap, no diff for a shop-only site owner.
 const HOSTED_SUB_TAB_SLOT = 'shop.settings-sub-tabs'
-
-type ProviderKeyField = { key: string; label: string; type: 'text' | 'password' | 'select'; options?: string[] }
-type ProviderSection = { id: 'stripe' | 'paypal'; title: string; description: string; keys: ProviderKeyField[] }
-
-const PROVIDER_SECTIONS: ProviderSection[] = [
-  {
-    id: 'stripe',
-    title: 'Stripe',
-    description: 'Card payments. Create keys at dashboard.stripe.com → Developers → API keys.',
-    keys: [
-      { key: 'STRIPE_PUBLISHABLE_KEY', label: 'Publishable key', type: 'text' },
-      { key: 'STRIPE_SECRET_KEY', label: 'Secret key', type: 'password' },
-      { key: 'STRIPE_WEBHOOK_SECRET', label: 'Webhook signing secret', type: 'password' },
-    ],
-  },
-  {
-    id: 'paypal',
-    title: 'PayPal',
-    description: 'Create an app at developer.paypal.com → Apps & Credentials.',
-    keys: [
-      { key: 'PAYPAL_CLIENT_ID', label: 'Client ID', type: 'text' },
-      { key: 'PAYPAL_CLIENT_SECRET', label: 'Client secret', type: 'password' },
-      { key: 'PAYPAL_WEBHOOK_ID', label: 'Webhook ID', type: 'text' },
-      { key: 'PAYPAL_MODE', label: 'Mode', type: 'select', options: ['sandbox', 'live'] },
-    ],
-  },
-]
+const HOSTED_PAYMENTS_SLOT = 'shop.payments'
 
 const checkboxRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)', cursor: 'pointer' }
 const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.5rem 0' }
@@ -97,11 +65,15 @@ function newAgreementId(): string {
 
 // Settings panels other modules contribute to this tab's slots, resolved and
 // rendered by the core config page and handed down (see HOSTED_SUB_TAB_SLOT
-// above, and lib/modules/hosted-settings.ts for the two shapes).
-export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: ModuleSettingsTabProps = {}) {
+// above, and lib/modules/hosted-settings.ts for the two shapes). Both slots take
+// the labelled shape: each contributed panel gets a tab, or a chip on Payments,
+// and a tab strip needs the labels up front.
+export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps = {}) {
   const router = useRouter()
   const [config, setConfig] = useState<ShpConfig | null>(null)
-  const [envStatus, setEnvStatus] = useState<{ stripe: boolean; paypal: boolean } | null>(null)
+  // Every payment method registered on this site, shop's own and any a module
+  // contributed, for the Payments tab to list and arrange. Null until it lands.
+  const [paymentMethods, setPaymentMethods] = useState<ShpAdminPaymentMethod[] | null>(null)
   // Whether the site takes member registrations at all. The post-purchase
   // account prompt needs it, and null (an older cached bundle, or a response
   // that never arrived) means say nothing rather than warn about a state we
@@ -124,12 +96,10 @@ export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: M
   const [templateMessage, setTemplateMessage] = useState('')
   const [templateError, setTemplateError] = useState('')
 
-  const [envAdminAllowed, setEnvAdminAllowed] = useState<boolean | null>(null)
-  const [envKeyStatus, setEnvKeyStatus] = useState<Record<string, boolean>>({})
-  const [envFields, setEnvFields] = useState<Record<string, string>>({})
-  const [savingProvider, setSavingProvider] = useState<ProviderSection['id'] | null>(null)
-  const [savedProvider, setSavedProvider] = useState<ProviderSection['id'] | null>(null)
-  const [envSaveError, setEnvSaveError] = useState('')
+  // Which payment method's own settings the Payments sub-tab is showing.
+  // Lifted, because shop's Save button has to stand down while a panel that
+  // saves itself is on screen.
+  const [paymentTab, setPaymentTab] = useState<string>(PAYMENT_METHODS_TAB)
 
   useEffect(() => {
     // no-store: the browser must never serve a cached copy of this response, or
@@ -139,43 +109,11 @@ export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: M
       if (res.status === 403) { setForbidden(true); return }
       const data = await res.json()
       setConfig(data.config)
-      setEnvStatus(data.envStatus)
+      setPaymentMethods(data.paymentMethods ?? [])
       setMembers(data.members ?? null)
     })
     loadTemplates()
-    fetch('/api/admin/env').then(async (res) => {
-      if (!res.ok) { setEnvAdminAllowed(false); return }
-      setEnvAdminAllowed(true)
-      setEnvKeyStatus((await res.json()).vars ?? {})
-    })
   }, [])
-
-  async function saveProviderKeys(provider: ProviderSection['id'], keys: string[]) {
-    setEnvSaveError('')
-    setSavingProvider(provider)
-    setSavedProvider(null)
-    const vars = keys.filter((k) => envFields[k]?.trim()).map((k) => ({ key: k, value: (envFields[k] ?? '').trim() }))
-    if (vars.length === 0) { setSavingProvider(null); return }
-    const res = await fetch('/api/admin/env', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vars }) })
-    const d = await res.json()
-    if (!res.ok) {
-      setEnvSaveError(d.error ?? 'Save failed')
-      setSavingProvider(null)
-      return
-    }
-    setEnvKeyStatus((prev) => {
-      const next = { ...prev }
-      keys.forEach((k) => { if (envFields[k]?.trim()) next[k] = true })
-      return next
-    })
-    setEnvFields((prev) => {
-      const next = { ...prev }
-      keys.forEach((k) => { if (prev[k]?.trim()) next[k] = '' })
-      return next
-    })
-    setSavingProvider(null)
-    setSavedProvider(provider)
-  }
 
   function loadTemplates() {
     fetch('/api/m/shop/admin/email-templates').then(async (res) => {
@@ -262,6 +200,10 @@ export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: M
   // installed add-on never reorders the tabs a site owner already knows.
   const hostedSubTabs = hostedSettingsPanels?.[HOSTED_SUB_TAB_SLOT] ?? []
   const activeHostedSubTab = hostedSubTabs.find((p) => p.id === subTab)
+  const hostedPaymentPanels = hostedSettingsPanels?.[HOSTED_PAYMENTS_SLOT] ?? []
+  // A payment module's own panel is on the Payments tab now, so the same rule
+  // that stands the Save button down for a contributed sub-tab applies there.
+  const showingHostedPaymentPanel = subTab === 'payments' && isHostedPaymentPanelTab(paymentTab)
 
   return (
     <div>
@@ -270,7 +212,7 @@ export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: M
             API, exactly as the templates sub-tab does. Shop's Save button would
             not save it, so showing one over it only invites the click that
             appears to do nothing. */}
-        {subTab !== 'templates' && !activeHostedSubTab && (
+        {subTab !== 'templates' && !activeHostedSubTab && !showingHostedPaymentPanel && (
           <button className="btn btn-primary" disabled={saving} onClick={save}>
             {saving ? 'Saving…' : 'Save settings'}
           </button>
@@ -647,93 +589,14 @@ export function ShopSettingsTab({ hostedSettingsSlots, hostedSettingsPanels }: M
       )}
 
       {subTab === 'payments' && (
-        <div>
-          {PAYMENT_METHODS.map((method) => {
-            const configured = method === 'STRIPE' ? envStatus?.stripe : method === 'PAYPAL' ? envStatus?.paypal : true
-            return (
-              <label key={method} style={checkboxRow}>
-                <input
-                  type="checkbox"
-                  checked={config.enabledPaymentMethods.includes(method)}
-                  onChange={(e) => set('enabledPaymentMethods', e.target.checked
-                    ? [...config.enabledPaymentMethods, method]
-                    : config.enabledPaymentMethods.filter((m) => m !== method))}
-                />
-                {PAYMENT_METHOD_LABELS[method]}
-                {!configured && <span className="badge badge-default">Env vars not set</span>}
-              </label>
-            )
-          })}
-
-          <hr style={hr} />
-          <h3 style={sectionHeading}>Payment provider credentials</h3>
-          {envAdminAllowed === false && (
-            <p className="field-hint" style={{ marginBottom: '1rem' }}>Only a full admin can manage payment provider keys. Ask an admin to add these under Settings.</p>
-          )}
-          {envAdminAllowed && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem', alignItems: 'start' }}>
-              {envSaveError && <div className="alert alert-danger" style={{ gridColumn: '1 / -1' }}>{envSaveError}</div>}
-              {PROVIDER_SECTIONS.map((section) => {
-                const keys = section.keys.map((f) => f.key)
-                const hasEntries = keys.some((k) => envFields[k]?.trim())
-                const isSaving = savingProvider === section.id
-                const isSaved = savedProvider === section.id
-                return (
-                  <div className="card" key={section.id}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                      <div>
-                        <h3 style={{ margin: '0 0 0.25rem', fontSize: '1rem' }}>{section.title}</h3>
-                        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', margin: 0 }}>{section.description}</p>
-                      </div>
-                      <span className={keys.some((k) => envKeyStatus[k]) ? 'badge badge-success' : 'badge badge-default'}>
-                        {keys.some((k) => envKeyStatus[k]) ? '● Set' : '○ Not set'}
-                      </span>
-                    </div>
-                    {section.keys.map((f) => (
-                      <div className="field" key={f.key}>
-                        <label style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>{f.label}</span>
-                          {envKeyStatus[f.key] && <span className="badge badge-success">● Set</span>}
-                        </label>
-                        {f.type === 'select' ? (
-                          <select value={envFields[f.key] ?? ''} onChange={(e) => setEnvFields((prev) => ({ ...prev, [f.key]: e.target.value }))}>
-                            <option value="">{envKeyStatus[f.key] ? 'Leave unchanged' : (f.options?.[0] ?? '')}</option>
-                            {f.options?.map((o) => <option key={o} value={o}>{o}</option>)}
-                          </select>
-                        ) : (
-                          <input
-                            type={f.type}
-                            autoComplete="off"
-                            value={envFields[f.key] ?? ''}
-                            onChange={(e) => setEnvFields((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                            placeholder={envKeyStatus[f.key] ? 'Enter new value to change' : ''}
-                          />
-                        )}
-                      </div>
-                    ))}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      <button className="btn btn-primary" style={{ fontSize: '0.875rem' }} disabled={isSaving || !hasEntries} onClick={() => saveProviderKeys(section.id, keys)}>
-                        {isSaving ? 'Saving…' : isSaved ? '✓ Saved' : 'Save credentials'}
-                      </button>
-                      <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>{isSaved ? 'Redeploy to apply' : 'Takes effect on next deployment'}</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {hostedSettingsSlots?.['shop.payments'] && (
-            <>
-              <hr style={hr} />
-              {hostedSettingsSlots['shop.payments']}
-            </>
-          )}
-
-          <hr style={hr} />
-          <div className="field"><label>Bank transfer instructions</label><textarea rows={3} value={config.bankTransferInstructions} onChange={(e) => set('bankTransferInstructions', e.target.value)} /></div>
-          <div className="field"><label>Cash instructions</label><textarea rows={3} value={config.cashInstructions} onChange={(e) => set('cashInstructions', e.target.value)} /></div>
-        </div>
+        <PaymentsSettings
+          config={config}
+          set={set}
+          methods={paymentMethods}
+          hostedPanels={hostedPaymentPanels}
+          activeTab={paymentTab}
+          onTabChange={setPaymentTab}
+        />
       )}
 
       {subTab === 'notifications' && (

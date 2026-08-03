@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { requireShopUser } from '@/modules/shop/lib/access'
-import { getShopConfig, updateShopConfig, ShpConfigSchema } from '@/modules/shop/lib/config'
+import { getShopConfig, updateShopConfig, ShpConfigSchema, BUILT_IN_PAYMENT_METHODS } from '@/modules/shop/lib/config'
+import { getAllPaymentProviders, getModuleProviderEntryIds } from '@/modules/shop/lib/payments/registry'
+import type { ShpAdminPaymentMethod } from '@/modules/shop/lib/payments/admin-methods'
 import { isStripeConfigured, isPayPalConfigured } from '@/modules/shop/lib/env'
 import { syncSupplierNavEntry } from '@/modules/shop/lib/supplier-nav'
 import { getMembersConfig } from '@/lib/members/config'
@@ -34,7 +36,35 @@ export async function GET() {
     config,
     envStatus: { stripe: isStripeConfigured(), paypal: isPayPalConfigured() },
     members: { enabled: members.enabled, inviteOnly: members.registrationMode === 'INVITE_ONLY' },
+    paymentMethods: await listPaymentMethodsForAdmin(),
   })
+}
+
+// Every payment method registered on this site - shop's own four plus whatever
+// installed modules contribute - so the Payments tab can list, switch and
+// arrange all of them without shop naming a single module. `ready` is only ever
+// about the method's own side of things (keys entered, module connected and
+// switched on); shop's own on/off switch is config, and the screen reads it
+// from there.
+async function listPaymentMethodsForAdmin(): Promise<ShpAdminPaymentMethod[]> {
+  const builtInIds = BUILT_IN_PAYMENT_METHODS as readonly string[]
+  const panelIds = getModuleProviderEntryIds()
+
+  return Promise.all(getAllPaymentProviders().map(async (provider) => {
+    const builtIn = builtInIds.includes(provider.id)
+    let ready = true
+    if (provider.id === 'STRIPE') ready = isStripeConfigured()
+    else if (provider.id === 'PAYPAL') ready = isPayPalConfigured()
+    else if (!builtIn) ready = provider.isAvailable ? await provider.isAvailable() : true
+
+    return {
+      id: provider.id,
+      label: provider.label,
+      builtIn,
+      ready,
+      panelId: builtIn ? null : (panelIds[provider.id] ?? null),
+    }
+  }))
 }
 
 export async function PUT(request: NextRequest) {
