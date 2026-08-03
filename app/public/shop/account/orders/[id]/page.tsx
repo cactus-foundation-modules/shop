@@ -57,33 +57,23 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 // carefully; this is where they come back to it a week later with their banking
 // app open, so it sits above everything else the page has to say.
 //
-// Two readings, and they must not sound alike. Money still owed is an
-// outstanding task and gets the warning band. Money already handed over leaves
-// the same words on screen plainly - there is often a reference or an account
-// name in them worth being able to look up - but must never read as a demand.
-function PaymentInstructions({
-  instructions,
-  outstanding,
-  amount,
-}: {
-  instructions: string
-  outstanding: boolean
-  amount: string
-}) {
+// It is an outstanding task or it is nothing. Once the money has been marked as
+// arrived there is no job left, and a panel of bank details on a settled order
+// reads as a second demand for a bill already paid - so the whole thing goes
+// rather than softening into a "how you paid" note nobody asked for.
+function PaymentInstructions({ instructions, amount }: { instructions: string; amount: string }) {
   return (
     <div
-      className={outstanding ? 'alert alert-warning' : 'card'}
+      className="alert alert-warning"
       // `.alert` carries its own bottom margin, which inside this grid would sit
       // on top of the gap and open a hole under the panel. The grid decides the
       // spacing here, as it does for every other block on the page.
       style={{ padding: 'var(--space-4)', marginBottom: 0, display: 'grid', gap: 'var(--space-2)' }}
     >
-      <strong>{outstanding ? `How to pay - ${amount} still to reach us` : 'How you paid'}</strong>
-      {outstanding && (
-        <p style={{ margin: 0 }}>
-          Your order is awaiting payment confirmation. We will be in touch once it clears.
-        </p>
-      )}
+      <strong>How to pay - {amount} still to reach us</strong>
+      <p style={{ margin: 0 }}>
+        Your order is awaiting payment confirmation. We will be in touch once it clears.
+      </p>
       <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{instructions}</p>
     </div>
   )
@@ -157,12 +147,8 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
       </div>
 
       <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
-        {paymentInstructions && (
-          <PaymentInstructions
-            instructions={paymentInstructions}
-            outstanding={paymentOutstanding}
-            amount={formatMoney(order.total, symbol)}
-          />
+        {paymentInstructions && paymentOutstanding && (
+          <PaymentInstructions instructions={paymentInstructions} amount={formatMoney(order.total, symbol)} />
         )}
 
         {openRequest && (

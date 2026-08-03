@@ -45,8 +45,17 @@ export async function GET(request: NextRequest) {
   // Manual payment methods have no provider confirmation step, so the
   // instructions the shopper needs (where to send the transfer / bring the
   // cash) only live in shop settings - surface them here for the confirmation page.
+  //
+  // Only while there is still something to pay. Once the shop has marked the
+  // money as arrived the instructions have no job left, and the owner's bank
+  // details should stop travelling to anyone holding an order number and an
+  // email address for the rest of time.
+  const paymentOutstanding =
+    (order.paymentStatus === 'PENDING' || order.paymentStatus === 'AWAITING_CONFIRMATION') &&
+    order.status !== 'CANCELLED' &&
+    order.status !== 'REFUNDED'
   let instructions: string | null = null
-  if (order.paymentMethod === 'BANK_TRANSFER' || order.paymentMethod === 'CASH') {
+  if (paymentOutstanding && (order.paymentMethod === 'BANK_TRANSFER' || order.paymentMethod === 'CASH')) {
     instructions = order.paymentMethod === 'BANK_TRANSFER' ? config.bankTransferInstructions : config.cashInstructions
   }
 

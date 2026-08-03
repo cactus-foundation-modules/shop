@@ -121,7 +121,6 @@ async function clearPlacedOrderState(orderNumber: string, paymentStatus: string)
 
 const ICON_TICK = <path d="m4 12 5.5 5.5L20 7" />
 const ICON_CLOCK = <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>
-const ICON_INFO = <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>
 const ICON_ALERT = <><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></>
 const ICON_IMAGE = <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m4 16 5-5 4 4 3-3 4 4" /></>
 
@@ -386,16 +385,10 @@ export function OrderConfirmationClient() {
             <p>That&apos;s the payment cleared - your order is now being processed, and the confirmation email is on its way.</p>
           </div>
         )}
-        {/* A manual method that has already been cleared by the shop still has
-            instructions worth keeping on screen (a reference to quote, say), but
-            it is no longer an outstanding task, so it drops out of the warning
-            band above and sits here plainly. */}
-        {isManual && !awaiting && data.instructions && (
-          <div className="soc-note">
-            <Icon>{ICON_INFO}</Icon>
-            <p className="soc-instructions">{data.instructions}</p>
-          </div>
-        )}
+        {/* Nothing here for a manual method that has already been cleared: the
+            instructions are a job to go and do, and once the shop has marked the
+            money as arrived the job is done. Leaving the bank details up reads as
+            a second demand for a bill already paid. */}
 
         {/* Guest orders only, and only where the site actually takes
             registrations - the server has already made that call. Sits below the

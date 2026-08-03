@@ -7,7 +7,9 @@ async function createIntent(_order: ShpOrderDraft): Promise<ShpPaymentIntent> {
   // their bank details on the checkout page would not want them sitting in that
   // page's network response either. The thank-you page and the shopper's own
   // order page read the same setting's words straight from shop settings, so
-  // switching this off costs the shopper nothing once the order exists.
+  // switching this off costs the shopper nothing for as long as there is still a
+  // transfer to make - which is the whole window either of those pages prints
+  // them in, since both drop the details once the payment is marked as arrived.
   if (!config.bankTransferInstructionsOnCheckout) return {}
   return { instructions: config.bankTransferInstructions }
 }
