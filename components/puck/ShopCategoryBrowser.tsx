@@ -1,3 +1,5 @@
+import { shopCategoryPillsCss } from '@/modules/shop/components/public/ShopCategoryPills.shared'
+
 // EDITOR half only: placeholder + Puck field config. The server render lives in
 // ShopCategoryBrowser.rsc.tsx (wired by `rscImport` in the manifest) so
 // next/server + db imports never land in the client editor bundle.
@@ -6,10 +8,25 @@
 // viewed (lib/inject-category-context.ts), so the block lists that category's
 // sub-categories without the owner naming one - one layout serves every category
 // page. On the Shop Home layout it is a real, editable field.
-export type ShopCategoryBrowserProps = { parentCategorySlug?: string; columns?: number; ctaLabel?: string }
+export type ShopCategoryBrowserProps = { parentCategorySlug?: string; columns?: number; ctaLabel?: string; display?: string }
 
 export function ShopCategoryBrowser(props: ShopCategoryBrowserProps) {
   const columns = props.columns ?? 4
+  if (props.display === 'pills') {
+    // Sample pills through the real classes and stylesheet, so the canvas
+    // shows exactly the chrome the live page will print - only the names are
+    // stand-ins, since the editor half cannot fetch.
+    return (
+      <>
+        <style dangerouslySetInnerHTML={{ __html: shopCategoryPillsCss }} />
+        <nav className="shop-cat-pills" aria-label="Sub-categories" style={{ opacity: 0.6, pointerEvents: 'none' }}>
+          {['Sub-category', 'Another one', 'A third', 'One more'].map((name) => (
+            <a key={name} className="shop-cat-pill" href="#">{name}</a>
+          ))}
+        </nav>
+      </>
+    )
+  }
   return (
     <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: '1rem', opacity: 0.6 }}>
       {Array.from({ length: columns }).map((_, i) => (
@@ -29,9 +46,17 @@ export const shopCategoryBrowserPuckComponent = {
   label: 'Shop: Category Browser',
   fields: {
     parentCategorySlug: { type: 'text' as const, label: 'Parent category slug (ignored on a category page)' },
-    columns: { type: 'number' as const, label: 'Columns' },
-    ctaLabel: { type: 'text' as const, label: 'Link wording' },
+    display: {
+      type: 'select' as const,
+      label: 'Show as',
+      options: [
+        { value: 'cards', label: 'Cards' },
+        { value: 'pills', label: 'Pills' },
+      ],
+    },
+    columns: { type: 'number' as const, label: 'Columns (cards only)' },
+    ctaLabel: { type: 'text' as const, label: 'Link wording (cards only)' },
   },
-  defaultProps: { parentCategorySlug: '', columns: 4, ctaLabel: 'Browse' },
+  defaultProps: { parentCategorySlug: '', display: 'cards', columns: 4, ctaLabel: 'Browse' },
   render: ShopCategoryBrowser,
 }

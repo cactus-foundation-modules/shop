@@ -2,6 +2,7 @@ import { connection } from 'next/server'
 import { listCategories } from '@/modules/shop/lib/db'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { ShopCategoryCards } from '@/modules/shop/components/public/ShopCategoryCards'
+import { ShopCategoryPills } from '@/modules/shop/components/public/ShopCategoryPills'
 import { shopCategoryBrowserPuckComponent, type ShopCategoryBrowserProps } from './ShopCategoryBrowser'
 
 // Server (RSC) half of Shop: Category Browser. Kept out of the client editor
@@ -21,6 +22,10 @@ export async function ShopCategoryBrowserRsc(props: ShopCategoryBrowserProps) {
     : all.filter((c) => !c.parentId)
 
   if (categories.length === 0) return null
+
+  // The compact strip for pages where the sub-categories are shortcuts, not
+  // the main event - a filtered category page keeps its height for products.
+  if (props.display === 'pills') return <ShopCategoryPills categories={categories} />
 
   return (
     <ShopCategoryCards
