@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyInternalExportBearer } from '@/lib/members/export'
 import { listOrdersByMemberId, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { listSavedAddresses } from '@/modules/shop/lib/db/addresses'
+import { getMemberCart } from '@/modules/shop/lib/db/member-cart'
 import { prisma } from '@/lib/db/prisma'
 
 // Internal bearer only - called self-origin by core's assembleMemberExport(),
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest) {
   const ordersWithItems = await Promise.all(orders.map(async (order) => ({ order, items: await getOrderItems(order.id) })))
   const addresses = await listSavedAddresses(memberId)
   const subscriptions = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_back_in_stock_subscriptions" WHERE "member_id" = ${memberId}`
+  const cart = await getMemberCart(memberId)
 
-  return NextResponse.json({ orders: ordersWithItems, addresses, backInStockSubscriptions: subscriptions })
+  return NextResponse.json({ orders: ordersWithItems, addresses, backInStockSubscriptions: subscriptions, cart })
 }

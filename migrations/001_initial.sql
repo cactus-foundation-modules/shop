@@ -690,6 +690,22 @@ CREATE TABLE IF NOT EXISTS "shp_saved_addresses" (
 CREATE INDEX IF NOT EXISTS "shp_saved_addresses_member_id_idx" ON "shp_saved_addresses" ("member_id");
 
 -- ---------------------------------------------------------------------------
+-- Member baskets (see 016_member_carts.sql - same table, kept here so a fresh
+-- install gets it in one pass). One row per member, the whole basket in one
+-- jsonb array in the shape the browser already stores. No FK on member_id, for
+-- the same reason shp_saved_addresses has none.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS "shp_member_carts" (
+    "member_id" TEXT NOT NULL,
+    "lines" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "shp_member_carts_pkey" PRIMARY KEY ("member_id")
+);
+
+-- ---------------------------------------------------------------------------
 -- Email templates (seeded below)
 -- ---------------------------------------------------------------------------
 

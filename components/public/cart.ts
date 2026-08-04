@@ -1,13 +1,25 @@
 'use client'
 
-// Client-side cart: localStorage only, server revalidates on every checkout
-// step (Q9 - no shp_carts table, no abandoned-cart tracking in v0.1.0).
+// Client-side cart: localStorage, read synchronously, no round-trip to render -
+// and for a guest that is still the whole story. The server revalidates on every
+// checkout step, so nothing stored here is ever trusted for price or stock.
+//
+// A signed-in shopper additionally gets the basket kept on the server, so one
+// started on a phone is waiting on the laptop. That lives entirely in cart-sync,
+// which merges on sign-in, pushes on change and pulls when a tab comes back to
+// the front. This file stays the single place the basket is read and written;
+// sync only ever hands it a new set of lines through applyServerCart.
 //
 // A line may carry `meta`: per-line personalisation (engraving text, chosen
 // options, upload tokens) captured at add-to-cart. Personalised lines get a
 // client-generated `lineId` so two of the same product with different options
 // never merge; the server prices the meta authoritatively at checkout. Plain
 // lines have no lineId/meta and merge by productId exactly as before.
+
+// Imports back from cart-sync, which imports from here. The cycle is deliberate
+// and harmless: both sides export nothing but hoisted function declarations, and
+// neither runs anything at module scope that touches the other.
+import { ensureCartSync } from '@/modules/shop/components/public/cart-sync'
 
 export type CartLine = { productId: string; quantity: number; lineId?: string; meta?: Record<string, unknown> }
 
@@ -84,6 +96,15 @@ export function addToCart(
   }
   persist(lines)
   window.dispatchEvent(new CustomEvent(CART_ADD_EVENT))
+  ensureCartSync()
+}
+
+// Sync's one way in: replaces the basket wholesale with what the member's other
+// device left on the server. Goes through persist like every other write, so
+// every cart surface refreshes from the one event they already listen to.
+export function applyServerCart(lines: CartLine[]): void {
+  if (typeof window === 'undefined') return
+  persist(lines)
 }
 
 // `key` is a cartLineKey (productId for plain lines, lineId for personalised).
@@ -132,6 +153,7 @@ export function clearCart(): void {
 }
 
 export function subscribeCart(callback: () => void): () => void {
+  ensureCartSync()
   window.addEventListener(CART_EVENT, callback)
   window.addEventListener('storage', callback)
   return () => {

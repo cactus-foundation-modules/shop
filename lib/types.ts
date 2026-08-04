@@ -444,6 +444,24 @@ export type ShpSavedAddress = {
   updatedAt: Date
 }
 
+// One line of a signed-in shopper's saved basket. Deliberately the same shape
+// the browser keeps in localStorage (see components/public/cart.ts): the server
+// stores the shopping list verbatim and reads nothing out of `meta`, so a
+// companion module that puts its own state on a line gets it back untouched on
+// the shopper's other device.
+export type ShpMemberCartLine = {
+  productId: string
+  quantity: number
+  lineId?: string
+  meta?: Record<string, unknown>
+}
+
+export type ShpMemberCart = {
+  memberId: string
+  lines: ShpMemberCartLine[]
+  updatedAt: Date
+}
+
 export type ShpEmailTemplateTrigger =
   | 'ORDER_CONFIRMED' | 'STATUS_PROCESSING' | 'STATUS_SHIPPED' | 'STATUS_COMPLETED' | 'STATUS_CANCELLED'
   // Sent per shipment when only some of an order's lines have gone out.
