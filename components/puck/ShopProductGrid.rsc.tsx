@@ -35,6 +35,7 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
       tagSlug: props.tagSlug || undefined,
       perPage: props.limit ?? 12,
       excludeHidden: true,
+      storefront: true,
     }),
     resolveCardTemplate(props.layoutRef),
   ])

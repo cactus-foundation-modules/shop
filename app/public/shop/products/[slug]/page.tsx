@@ -7,7 +7,8 @@ import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getProductBySlug } from '@/modules/shop/lib/db/products'
 import { resolveAliasedProduct } from '@/modules/shop/lib/product-page-resolver'
 import { getShopGate } from '@/modules/shop/lib/access'
-import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
+import { ShopClosedNotice, ShopStaffPreviewBanner, ShopStockHiddenBanner } from '@/modules/shop/components/public/ShopClosedNotice'
+import { getProductPageStockGate } from '@/modules/shop/lib/stock-visibility'
 import { injectProductContext } from '@/modules/shop/lib/inject-product-context'
 import type { PuckData } from '@/modules/shop/lib/types'
 
@@ -28,6 +29,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   // global-not-found convention exists - adding one flips metadata resolution
   // back to the page and would publish a hidden product's name.
   if (found && found.status === 'ACTIVE' && !found.catalogueHidden) {
+    if ((await getProductPageStockGate(found.id)).notFound) return {}
     return {
       title: found.metaTitle || found.name,
       description: found.metaDescription || found.shortDescription || undefined,
@@ -39,6 +41,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   // description from the parent it resolved to.
   const parent = await resolveAliasedProduct(slug, found)
   if (!parent) return {}
+  if ((await getProductPageStockGate(parent.id)).notFound) return {}
   return {
     title: found?.name || parent.metaTitle || parent.name,
     description: parent.metaDescription || parent.shortDescription || undefined,
@@ -63,6 +66,12 @@ export default async function ShopProductPage({ params }: { params: Promise<{ sl
     product = aliased
   }
 
+  // A shop set to hide sold-out products everywhere turns this page away too.
+  // Checked on the product that will actually render, so a variant deep link is
+  // judged by the listing it opens rather than by the child row behind it.
+  const stock = await getProductPageStockGate(product.id)
+  if (stock.notFound) notFound()
+
   // From here `product` is the visible, active product to render: the one the URL
   // names, or the parent a deep link resolved to. Its own slug drives the layout
   // choice and the context shop injects into its blocks, so the parent's page
@@ -76,6 +85,7 @@ export default async function ShopProductPage({ params }: { params: Promise<{ sl
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
       {gate.staffPreview && <ShopStaffPreviewBanner />}
+      {stock.staffPreview && <ShopStockHiddenBanner />}
       <Render config={getModuleLayoutPuckRscConfig('shopProduct') as any} data={data as Data} />
     </div>
   )

@@ -160,6 +160,37 @@ export const ShpConfigSchema = z.object({
   // can override this via its own product_display_mode.
   categoryProductDisplayMode: z.enum(['rollup', 'exact']).default('rollup'),
 
+  // What the storefront does with a product that has sold out. One decision at
+  // three depths, and 'SHOW' is what the shop has always done: the product stays
+  // in the grid wearing its "Out of stock" badge, which suits a shop whose stock
+  // comes back next week.
+  //
+  // 'HIDE_FROM_LISTS' drops it from category pages, collections, product grids,
+  // search results and the sitemap while its own page stays up. A link somebody
+  // has already shared, an ad still running, or a search engine's memory of the
+  // page all land somewhere honest instead of on a not-found page, and the
+  // notify-me form on it keeps collecting addresses for when it returns.
+  //
+  // 'HIDE_EVERYWHERE' takes the page as well, so shoppers get the not-found
+  // page. For a shop whose sold out means gone for good.
+  //
+  // Neither level changes what can be bought: an out-of-stock product could not
+  // be bought before this setting existed either. And neither touches the admin
+  // Products screen, which always lists everything - hiding the sold-out stock
+  // from the person whose job is to reorder it would be a strange way to help.
+  //
+  // What counts as out of stock is the same rule the "Out of stock" badge has
+  // always used: the product tracks stock, has none left, is not on backorder
+  // and is not a pre-order. A product not tracking stock at all is never hidden.
+  // See lib/stock-visibility.ts.
+  outOfStockVisibility: z.enum(['SHOW', 'HIDE_FROM_LISTS', 'HIDE_EVERYWHERE']).default('SHOW'),
+  // Whether the hiding applies to signed-in staff too. Off by default: staff
+  // keep seeing what shoppers cannot, badged "Out of stock" as ever, because a
+  // shop that hides sold-out stock from its own staff is a shop where products
+  // quietly vanish and nobody notices for a month. Switch it on to walk the
+  // storefront exactly as a shopper sees it.
+  outOfStockHiddenFromStaff: z.boolean().default(false),
+
   // Supplier. Off by default, because plenty of shops never care who they
   // bought the thing from. The label is what the field gets called everywhere
   // it appears - the four presets cover nearly everyone, and 'custom' hands the

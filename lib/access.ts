@@ -35,6 +35,18 @@ export async function canPreviewClosedShop(): Promise<boolean> {
   return hasShopPermission(user, 'shop.access', { allowAccess: true })
 }
 
+// Staff who keep seeing products the shop hides from shoppers for being out of
+// stock (see lib/stock-visibility.ts). Same bar as the closed-shop preview, for
+// the same reason: this is a read of the storefront, and anyone with shop access
+// already sees every sold-out product on the admin Products screen. Only called
+// once the owner has actually switched hiding on, so an untouched shop never
+// reads a cookie for it and never loses its cacheable public pages.
+export async function canSeeHiddenOutOfStock(): Promise<boolean> {
+  const user = await getSessionFromCookie()
+  if (!user) return false
+  return hasShopPermission(user, 'shop.access', { allowAccess: true })
+}
+
 export type ShopGate =
   | { blocked: true; message: string; staffPreview: false }
   | { blocked: false; staffPreview: boolean }

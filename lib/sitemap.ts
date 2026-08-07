@@ -1,6 +1,8 @@
 import type { MetadataRoute } from 'next'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { hidesOutOfStockFromShoppers, outOfStockSql } from '@/modules/shop/lib/stock-visibility'
 
 // Active products, categories with products, and collections (spec 14.1) -
 // getPublicSitemapEntries is the actual mechanism scanned by
@@ -9,8 +11,17 @@ export async function getPublicSitemapEntries(siteUrl: string): Promise<Metadata
   const shopConfig = await getShopConfigCached()
   if (shopConfig.shopStatus === 'CLOSED') return []
 
+  // A sitemap is one file served to the whole world, so it takes the shopper's
+  // answer and never the staff exemption: listing the URLs of products the shop
+  // is hiding would hand search engines the very thing the setting withholds.
+  // A shop hiding lists only keeps the pages themselves live, but an unlisted
+  // product has no business being advertised for indexing either.
+  const inStockOnly = hidesOutOfStockFromShoppers(shopConfig)
+    ? Prisma.sql`AND NOT ${await outOfStockSql()}`
+    : Prisma.empty
   const products = await prisma.$queryRaw<Array<{ slug: string; updated_at: Date }>>`
-    SELECT "slug", "updated_at" FROM "shp_products" WHERE "status" = 'ACTIVE' AND "catalogue_hidden" = false
+    SELECT p."slug", p."updated_at" FROM "shp_products" p
+    WHERE p."status" = 'ACTIVE' AND p."catalogue_hidden" = false ${inStockOnly}
   `
   const categories = await prisma.$queryRaw<Array<{ slug: string; updated_at: Date }>>`
     SELECT c."slug", c."updated_at" FROM "shp_categories" c

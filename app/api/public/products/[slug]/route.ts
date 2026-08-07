@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { errorResponse } from '@/lib/utils'
 import { getProductBySlug, getProductMedia, getProductCategoryIds, getProductTagIds } from '@/modules/shop/lib/db'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
+import { getProductPageStockGate } from '@/modules/shop/lib/stock-visibility'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const closed = await shopClosedResponse()
@@ -10,6 +11,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   const { slug } = await params
   const product = await getProductBySlug(slug)
   if (!product || product.status !== 'ACTIVE' || product.catalogueHidden) return errorResponse('Product not found', 404)
+  // Same answer the product page gives: a shop hiding sold-out products
+  // everywhere must not hand them out through the back door either.
+  if ((await getProductPageStockGate(product.id)).notFound) return errorResponse('Product not found', 404)
 
   const [media, categoryIds, tagIds] = await Promise.all([
     getProductMedia(product.id),

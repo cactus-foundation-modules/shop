@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     page: params.get('page') ? Number(params.get('page')) : undefined,
     perPage: params.get('perPage') ? Number(params.get('perPage')) : undefined,
     excludeHidden: true,
+    storefront: true,
   })
   return NextResponse.json({ products, total })
 }

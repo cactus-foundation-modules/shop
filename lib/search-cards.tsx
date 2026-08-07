@@ -8,6 +8,7 @@ import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
 import { resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
+import { filterHiddenOutOfStock } from '@/modules/shop/lib/stock-visibility'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 
 // Provider for the search module's `search.shop-cards` extension point.
@@ -31,10 +32,15 @@ export const shopSearchCardProvider = {
       getProductsByIds(productIds),
       resolveCardTemplate(null),
     ])
-    // Preserve the caller's (relevance) order; drop anything not publicly listable.
-    const products = productIds
-      .map((id) => productById.get(id))
-      .filter((p): p is NonNullable<typeof p> => Boolean(p && p.status === 'ACTIVE' && !p.catalogueHidden))
+    // Preserve the caller's (relevance) order; drop anything not publicly
+    // listable, including whatever the shop is hiding for being out of stock -
+    // a search box that turns up what the category page will not is no use to
+    // anybody.
+    const products = await filterHiddenOutOfStock(
+      productIds
+        .map((id) => productById.get(id))
+        .filter((p): p is NonNullable<typeof p> => Boolean(p && p.status === 'ACTIVE' && !p.catalogueHidden)),
+    )
     if (products.length === 0) return null
 
     const tagById = new Map(tags.map((t) => [t.id, t.slug]))

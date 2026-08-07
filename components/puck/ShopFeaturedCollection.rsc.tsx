@@ -24,7 +24,7 @@ export async function ShopFeaturedCollectionRsc(props: ShopFeaturedCollectionPro
     getShopConfigCached(),
     getShopBreakpoints(),
     listTags(),
-    listProducts({ status: 'ACTIVE', collectionSlug: props.collectionSlug, perPage: props.limit ?? 4, excludeHidden: true }),
+    listProducts({ status: 'ACTIVE', collectionSlug: props.collectionSlug, perPage: props.limit ?? 4, excludeHidden: true, storefront: true }),
     resolveCardTemplate(),
   ])
   const { products } = listed

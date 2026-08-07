@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.194",
+  "version": "0.1.195",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.896",
@@ -609,6 +609,12 @@
       "id": "shop",
       "import": "./lib/search-cards",
       "component": "shopSearchCardProvider"
+    },
+    {
+      "point": "shop.product-listability",
+      "id": "shop",
+      "import": "./lib/listability",
+      "component": "shopProductListabilityProvider"
     },
     {
       "point": "core.menu-entity-provider",

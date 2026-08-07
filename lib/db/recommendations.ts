@@ -36,35 +36,56 @@ export async function getAutoExcludedIds(productId: string): Promise<string[]> {
 // Automatic-selection resolver (addendum D.3): primary category, active
 // products only, excluding self + any per-product auto-exclusions, ordered by
 // recency, capped at `limit`. No category = no fallback results.
+//
+// Every caller of this is a storefront strip, so the shop's out-of-stock hiding
+// applies. It goes in the WHERE rather than over the results, so a strip asked
+// for four still comes back with four when one of them has sold out.
 export async function resolveAutomaticRecommendations(productId: string, limit: number): Promise<ShpProduct[]> {
   const categoryId = await getPrimaryCategoryId(productId)
   if (!categoryId) return []
   const excludedIds = await getAutoExcludedIds(productId)
   const excludeList = [productId, ...excludedIds]
+  const { getStockGate, outOfStockSql } = await import('@/modules/shop/lib/stock-visibility')
+  const inStockOnly = (await getStockGate()).hideFromLists
+    ? Prisma.sql`AND NOT ${await outOfStockSql()}`
+    : Prisma.empty
 
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT p."id" FROM "shp_products" p
     JOIN "shp_product_categories" pc ON pc."product_id" = p."id"
     WHERE pc."category_id" = ${categoryId} AND p."status" = 'ACTIVE' AND p."id" NOT IN (${Prisma.join(excludeList)})
+      ${inStockOnly}
     ORDER BY p."created_at" DESC
     LIMIT ${limit}
   `
   return mapProductRows(rows)
 }
 
+// A hand-picked list, with anything the shop is hiding taken out. Filtered
+// before the limit is applied, so a strip of four that has one sold-out entry
+// shows the next one down rather than a gap.
+async function visibleRecommendations(products: ShpProduct[], limit?: number): Promise<ShpProduct[]> {
+  const { filterHiddenOutOfStock } = await import('@/modules/shop/lib/stock-visibility')
+  const visible = await filterHiddenOutOfStock(products)
+  return limit == null ? visible : visible.slice(0, limit)
+}
+
 // Resolves related products for display: manual list if non-empty, else the
 // automatic fallback when the product is in AUTOMATIC mode (addendum D.1).
 export async function resolveRelatedProducts(product: ShpProduct): Promise<ShpProduct[]> {
-  if (product.relatedMode === 'MANUAL') return getManualRelatedProducts(product.id)
+  if (product.relatedMode === 'MANUAL') return visibleRecommendations(await getManualRelatedProducts(product.id))
+  // Whether the owner has picked a list is decided on their list as they left
+  // it, so a strip whose every pick has sold out stays their empty strip rather
+  // than quietly turning into automatic suggestions.
   const manual = await getManualRelatedProducts(product.id)
-  if (manual.length > 0) return manual.slice(0, product.relatedLimit)
+  if (manual.length > 0) return visibleRecommendations(manual, product.relatedLimit)
   return resolveAutomaticRecommendations(product.id, product.relatedLimit)
 }
 
 export async function resolveUpsellProducts(product: ShpProduct): Promise<ShpProduct[]> {
-  if (product.upsellMode === 'MANUAL') return getManualUpsellProducts(product.id)
+  if (product.upsellMode === 'MANUAL') return visibleRecommendations(await getManualUpsellProducts(product.id))
   const manual = await getManualUpsellProducts(product.id)
-  if (manual.length > 0) return manual.slice(0, product.upsellLimit)
+  if (manual.length > 0) return visibleRecommendations(manual, product.upsellLimit)
   return resolveAutomaticRecommendations(product.id, product.upsellLimit)
 }
 
@@ -98,9 +119,9 @@ export async function resolveUpsellsForProducts(products: ShpProduct[]): Promise
   await Promise.all(products.map(async (product) => {
     const manual = manualByProduct.get(product.id) ?? []
     if (product.upsellMode === 'MANUAL') {
-      result.set(product.id, manual)
+      result.set(product.id, await visibleRecommendations(manual))
     } else if (manual.length > 0) {
-      result.set(product.id, manual.slice(0, product.upsellLimit))
+      result.set(product.id, await visibleRecommendations(manual, product.upsellLimit))
     } else {
       result.set(product.id, await resolveAutomaticRecommendations(product.id, product.upsellLimit))
     }

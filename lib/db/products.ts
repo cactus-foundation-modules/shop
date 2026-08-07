@@ -247,6 +247,12 @@ export type ListProductsFilter = {
   // grid, search and admin product list pass true; variations' own queries
   // pass false to reach the children.
   excludeHidden?: boolean
+  // This list is being shown to a visitor, so the shop's out-of-stock hiding
+  // applies to it (lib/stock-visibility.ts). Every storefront list passes true;
+  // the admin product list and the CSV export never do, because the screen you
+  // go to in order to reorder something is a poor place to hide it. Costs
+  // nothing on a shop that hides nothing.
+  storefront?: boolean
 }
 
 export async function listProducts(filter: ListProductsFilter): Promise<{ products: ShpProduct[]; total: number }> {
@@ -264,6 +270,12 @@ export async function listProducts(filter: ListProductsFilter): Promise<{ produc
   if (filter.stock === 'low') conditions.push(Prisma.sql`(p."track_inventory" = true AND p."low_stock_threshold" IS NOT NULL AND p."stock_count" IS NOT NULL AND p."stock_count" > 0 AND p."stock_count" <= p."low_stock_threshold")`)
   if (filter.stock === 'in') conditions.push(Prisma.sql`(p."track_inventory" = true AND p."stock_count" IS NOT NULL AND p."stock_count" > 0 AND (p."low_stock_threshold" IS NULL OR p."stock_count" > p."low_stock_threshold"))`)
   if (filter.excludeHidden) conditions.push(Prisma.sql`p."catalogue_hidden" = false`)
+  if (filter.storefront) {
+    // In the WHERE rather than filtered out of the rows afterwards, so a page of
+    // 24 is 24 products and the total underneath it counts the same ones.
+    const { getStockGate, outOfStockSql } = await import('@/modules/shop/lib/stock-visibility')
+    if ((await getStockGate()).hideFromLists) conditions.push(Prisma.sql`NOT ${await outOfStockSql()}`)
+  }
   if (filter.search) {
     const terms = searchTerms(filter.search)
     if (terms.length) {

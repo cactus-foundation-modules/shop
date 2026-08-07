@@ -222,6 +222,41 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
           </div>
 
           <hr style={hr} />
+          <h3 style={sectionHeading}>Out of stock products</h3>
+          <div className="field">
+            <label>When something sells out</label>
+            <select value={config.outOfStockVisibility} onChange={(e) => set('outOfStockVisibility', e.target.value as ShpConfig['outOfStockVisibility'])}>
+              <option value="SHOW">Leave it where it is, marked out of stock</option>
+              <option value="HIDE_FROM_LISTS">Take it out of the listings, keep its page</option>
+              <option value="HIDE_EVERYWHERE">Hide it completely, page and all</option>
+            </select>
+            <span className="field-hint">
+              Taking it out of the listings clears it from category pages, collections, product grids, search and your
+              sitemap, while anyone holding a link to it still lands on the product page and can ask to be told when it
+              is back. Hiding it completely gives them a page-not-found instead. Either way it returns on its own the
+              moment there is stock again.
+            </span>
+          </div>
+          {config.outOfStockVisibility !== 'SHOW' && (
+            <>
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.outOfStockHiddenFromStaff} onChange={(e) => set('outOfStockHiddenFromStaff', e.target.checked)} />
+                Hide them from me and my staff as well
+              </label>
+              <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
+                Leave this off and anyone signed in with shop access still sees hidden products on the storefront,
+                wearing their usual out-of-stock badge, so nothing quietly disappears without you noticing. Tick it to
+                walk your own shop exactly as a shopper sees it.
+              </p>
+            </>
+          )}
+          <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
+            Only things you actually count are ever hidden: a product with stock tracking switched off, one taking
+            backorders, or one on pre-order stays put. Your Products screen always lists the lot regardless, which is
+            rather the point of it.
+          </p>
+
+          <hr style={hr} />
           <h3 style={sectionHeading}>Prices</h3>
           <p className="field-hint" style={{ marginTop: 0 }}>
             Every product has a price, and that one is not optional. Switch on any of the others you keep track of and they appear on the Pricing tab of each product.
