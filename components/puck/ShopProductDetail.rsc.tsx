@@ -18,6 +18,7 @@ import { resolveShopGalleryExtras } from '@/modules/shop/lib/gallery-media'
 import { stripHtmlToPlainText } from '@/modules/shop/lib/strip-html'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { resolveProductAdminEditHref } from '@/modules/shop/lib/admin-edit'
+import { canSeeStockLevels } from '@/modules/shop/lib/admin-stock'
 import type { PuckData } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { shopProductDetailPuckComponent, type ShopProductDetailProps } from './ShopProductDetail'
@@ -52,7 +53,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   // Extra gallery media and contributed tabs are additive and need only the
   // product, so they resolve alongside everything else rather than behind the
   // template.
-  const [media, config, taxDisplay, bp, tags, tagIds, template, provider, galleryExtras, detailTabs, specOverride, adminEditHref] = await Promise.all([
+  const [media, config, taxDisplay, bp, tags, tagIds, template, provider, galleryExtras, detailTabs, specOverride, adminEditHref, showAdminStock] = await Promise.all([
     getProductMedia(product.id),
     getShopConfigCached(),
     resolveTaxDisplay(),
@@ -67,6 +68,8 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     // Whoever is looking gets their own answer, so this cannot be cached
     // alongside the product: a shopper must never receive an admin's link.
     resolveProductAdminEditHref(product.id),
+    // Same again for the stock figure: per-viewer, never cached with the product.
+    canSeeStockLevels(),
   ])
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
   const tagSlugs = tagIds.map((id) => tagById.get(id)).filter((s): s is string => Boolean(s))
@@ -163,6 +166,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     specOverride,
     descriptionBody,
     adminEditHref,
+    showAdminStock,
   }
   const data = injectShopProductDetailEmbed(template, ctx)
 

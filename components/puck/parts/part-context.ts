@@ -103,6 +103,11 @@ export type DetailPartContext = {
   // permission to edit products, so the admin URL never appears in a public
   // page's markup. Resolved once per page by lib/admin-edit.ts.
   adminEditHref: string | null
+  // Whether the person looking may be shown the actual stock figure rather than
+  // just "In stock" - see lib/admin-stock.ts. False for every shopper, so the
+  // number is never rendered into a public page. The Badges part reads it and
+  // takes the figure itself off `product`; nothing else is fetched for it.
+  showAdminStock: boolean
 }
 
 // Injected onto every Product Card part-block, once per product, when a card

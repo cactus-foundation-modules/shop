@@ -317,6 +317,7 @@ const badgesCss = `
 .spd-badge-stock{background:var(--color-success-subtle);color:var(--color-success)}
 .spd-badge-low{background:var(--color-warning-subtle);color:var(--color-warning);border:1px solid var(--color-warning-border)}
 .spd-badge-out{background:var(--color-surface);color:var(--color-text-muted);border:1px solid var(--color-border)}
+.spd-badge-staff{background:var(--color-surface);color:var(--color-text-muted);border:1px dashed var(--color-border);font-variant-numeric:tabular-nums}
 `
 
 type PartProps = { _ctx?: DetailPartContext }
@@ -342,6 +343,14 @@ export function ShopDetailBadgesRsc(props: BadgesProps) {
   const showNew = props.showNew !== 'no'
   const showTrade = props.showTrade !== 'no'
   const showStock = props.showStock !== 'no'
+  // The figure behind "In stock", for staff only. Not tied to the author's stock
+  // badge switch: that switch decides what SHOPPERS are told, and an owner
+  // checking the shelf needs the number on a layout that keeps its stock quiet
+  // too. Withheld on a claimed product, where the parent row this reads is not
+  // what governs buying - the provider owns availability there and shows the
+  // chosen combination's own figure, so printing the parent's beside it would put
+  // two unrelated numbers on one page.
+  const staffStock = _ctx.showAdminStock && !_ctx.slot
   return (
     <>
       <Style css={badgesCss} />
@@ -358,6 +367,14 @@ export function ShopDetailBadgesRsc(props: BadgesProps) {
           ) : (
             <span className="spd-badge spd-badge-stock">In stock</span>
           )
+        )}
+        {staffStock && (
+          // "Not tracked" rather than nothing, so a blank is never read as a
+          // broken figure: this product simply has stock tracking switched off
+          // and is always buyable.
+          <span className="spd-badge spd-badge-staff" title="Only staff signed in to this site can see this">
+            {product.trackInventory ? `Stock: ${product.stockCount ?? 0}` : 'Stock: not tracked'}
+          </span>
         )}
       </div>
     </>
