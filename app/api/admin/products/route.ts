@@ -8,7 +8,7 @@ import { slugify, ensureUniqueProductSlug } from '@/modules/shop/lib/slug'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { syncSupplierNavEntry } from '@/modules/shop/lib/supplier-nav'
 
-const SORTS: ProductSort[] = ['newest', 'oldest', 'name-asc', 'name-desc', 'price-asc', 'price-desc', 'stock-asc', 'stock-desc']
+const SORTS: ProductSort[] = ['newest', 'oldest', 'name-asc', 'name-desc', 'price-asc', 'price-desc', 'stock-asc', 'stock-desc', 'popular']
 const STOCKS: ProductStockFilter[] = ['in', 'low', 'out']
 
 export async function GET(request: NextRequest) {

@@ -5,6 +5,7 @@ import { pruneAbandonedPendingOrders } from '@/modules/shop/lib/db/orders'
 import { pruneOldImportJobs } from '@/modules/shop/lib/db/import-jobs'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { sendShopEmail } from '@/modules/shop/lib/email'
+import { recomputePopularity } from '@/modules/shop/lib/popularity'
 
 const ABANDONED_ORDER_HOURS = 24
 const IMPORT_JOB_RETENTION_DAYS = 30
@@ -40,7 +41,26 @@ async function handle(request: NextRequest) {
   const prunedOrders = await pruneAbandonedPendingOrders(ABANDONED_ORDER_HOURS)
   const prunedImportJobs = await pruneOldImportJobs(IMPORT_JOB_RETENTION_DAYS)
 
-  return NextResponse.json({ ok: true, lowStockAlerted: alerted, prunedAbandonedOrders: prunedOrders, prunedImportJobs })
+  // Best-seller ordering, refreshed once a day rather than on every sale: the
+  // money path stays exactly as it was, and a best-seller list is not a thing
+  // that needs to be right to the second. Daily also ages sales out of the
+  // window, which nothing else would ever trigger.
+  let popularity: { ranked: number; sold: number } | null = null
+  try {
+    popularity = await recomputePopularity()
+  } catch {
+    // A ranking that failed to refresh is yesterday's ranking, which is fine.
+    // It must not cost the owner their low-stock email or the pruning above.
+  }
+
+  return NextResponse.json({
+    ok: true,
+    lowStockAlerted: alerted,
+    prunedAbandonedOrders: prunedOrders,
+    prunedImportJobs,
+    rankedProducts: popularity?.ranked ?? null,
+    productsWithSales: popularity?.sold ?? null,
+  })
 }
 
 export async function GET(request: NextRequest) {

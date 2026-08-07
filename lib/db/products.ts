@@ -49,6 +49,8 @@ function mapProduct(r: Record<string, unknown>): ShpProduct {
     relatedLimit: r.related_limit as number,
     upsellLimit: r.upsell_limit as number,
     catalogueHidden: (r.catalogue_hidden as boolean | null) ?? false,
+    popularitySeed: (r.popularity_seed as number | null) ?? null,
+    popularity: (r.popularity as number | null) ?? null,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
   }
@@ -197,7 +199,7 @@ export type ProductStockFilter = 'in' | 'low' | 'out'
 
 // Whitelist of admin list orderings. Kept as a fixed map (never interpolated
 // from the request) so the ORDER BY can never carry user input into SQL.
-export type ProductSort = 'newest' | 'oldest' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'stock-asc' | 'stock-desc'
+export type ProductSort = 'newest' | 'oldest' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'stock-asc' | 'stock-desc' | 'popular'
 
 const SORT_SQL: Record<ProductSort, Prisma.Sql> = {
   newest: Prisma.sql`p."created_at" DESC`,
@@ -212,6 +214,10 @@ const SORT_SQL: Record<ProductSort, Prisma.Sql> = {
   'price-desc': Prisma.sql`(CASE WHEN p."sale_price" IS NOT NULL AND p."sale_price" < p."price" THEN p."sale_price" ELSE p."price" END) DESC`,
   'stock-asc': Prisma.sql`p."stock_count" ASC NULLS FIRST`,
   'stock-desc': Prisma.sql`p."stock_count" DESC NULLS LAST`,
+  // Best sellers first, unranked products last (lib/popularity.ts recomputes the
+  // figure nightly). A product nobody has ranked sorts below one ranked bottom of
+  // the pile: "we don't know" is not the same claim as "it sells badly".
+  popular: Prisma.sql`p."popularity" DESC NULLS LAST`,
 }
 
 // Split a search box entry into words so "evolve screen" finds

@@ -160,6 +160,12 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
     -- purchasable. Backs the shop-variations child rows; false for everything else.
     "catalogue_hidden" BOOLEAN NOT NULL DEFAULT false,
 
+    -- Best-seller ordering. The seed is given (an imported supplier rank, an
+    -- owner's hand-set favourite), the other is derived from it plus real sales
+    -- and is what everything sorts on. Higher is better, NULL is "no opinion".
+    "popularity_seed" INTEGER,
+    "popularity" INTEGER,
+
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -177,6 +183,7 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
 
 CREATE INDEX IF NOT EXISTS "shp_products_status_idx" ON "shp_products" ("status");
 CREATE INDEX IF NOT EXISTS "shp_products_type_idx" ON "shp_products" ("type");
+CREATE INDEX IF NOT EXISTS "shp_products_popularity_idx" ON "shp_products" ("popularity" DESC NULLS LAST);
 CREATE INDEX IF NOT EXISTS "shp_products_tax_class_id_idx" ON "shp_products" ("tax_class_id");
 CREATE INDEX IF NOT EXISTS "shp_products_digital_file_id_idx" ON "shp_products" ("digital_file_id");
 CREATE INDEX IF NOT EXISTS "shp_products_is_pre_order_idx" ON "shp_products" ("is_pre_order");

@@ -92,6 +92,11 @@ export type ShpProduct = {
   // Purchasable but hidden from the catalogue (grid/search/sitemap/own URL).
   // Backs shop-variations child rows; false for ordinary products.
   catalogueHidden: boolean
+  // Best-seller ordering (lib/popularity.ts). The seed is given, the other is
+  // derived from it plus real sales and is what the grids sort on. Higher is
+  // better; null means nothing has ranked this product either way.
+  popularitySeed: number | null
+  popularity: number | null
   createdAt: Date
   updatedAt: Date
 }

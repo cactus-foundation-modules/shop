@@ -302,6 +302,7 @@ export function ProductsScreen({ toolbarExtras, productsTabs = [], initialTab }:
           <option value="price-desc">Price high–low</option>
           <option value="stock-asc">Stock low–high</option>
           <option value="stock-desc">Stock high–low</option>
+          <option value="popular">Best selling</option>
         </select>
       </div>
 
