@@ -29,7 +29,7 @@ export const shopCartSummaryPuckComponent = {
     ] },
     iconSize: { type: 'number' as const, label: 'Icon size (px)' },
     iconColour: colourField('Icon colour'),
-    label: { type: 'text' as const, label: 'Text label (optional)' },
+    label: { type: 'text' as const, label: 'Text label (blank = icon only, with a "Basket" tooltip)' },
     // Box
     variant: { type: 'select' as const, label: 'Style', options: [
       { value: 'bordered', label: 'Bordered pill' },

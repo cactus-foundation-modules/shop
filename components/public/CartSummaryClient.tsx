@@ -213,16 +213,49 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
   }
 
   // Module CSS ships inline with the island, same as the drawer's stylesheet.
-  // The badge is untouched: it sets its own background/colour.
+  // The tooltip visuals mirror core's .icon-link-tip/.member-signin-tip (hangs
+  // BELOW the icon - the header has no room above) but are a local copy, not
+  // the shared class: this module is versioned and released independently of
+  // core, so it must not depend on a core-internal class name that could be
+  // renamed out from under it. The badge is untouched: it sets its own
+  // background/colour.
   const triggerCss = (
     <style dangerouslySetInnerHTML={{ __html: `
 .shop-cart-trigger {
+  position: relative;
   color: var(--sc-fg, var(--color-text));
   transition: color var(--dur-base) var(--ease-in-out);
 }
 .shop-cart-trigger:hover,
 .shop-cart-trigger:focus-visible {
   color: var(--sc-fg-hover, var(--color-primary));
+}
+.shop-cart-tip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-2px);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  padding: 2px 8px;
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  line-height: 1.5;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  z-index: 10;
+}
+.shop-cart-trigger:hover .shop-cart-tip,
+.shop-cart-trigger:focus-visible .shop-cart-tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+  transition: opacity var(--dur-base), transform var(--dur-base);
 }
 ` }} />
   )
@@ -279,6 +312,7 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
           style={{ ...boxStyle, font: 'inherit', cursor: preview ? 'default' : 'pointer', WebkitAppearance: 'none', appearance: 'none' }}
         >
           {inner}
+          {!o.label && <span className="shop-cart-tip" aria-hidden="true">Basket</span>}
         </button>
         {drawerRequested && (
           <CartDrawer
@@ -298,6 +332,7 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
       {triggerCss}
       <Link href="/shop/cart" aria-label="View cart" className="shop-cart-trigger" style={boxStyle}>
         {inner}
+        {!o.label && <span className="shop-cart-tip" aria-hidden="true">Basket</span>}
       </Link>
     </>
   )
