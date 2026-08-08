@@ -89,7 +89,7 @@ ${shopCardMediaCss}
 .shop-card-compare{font-size:.8125em;color:var(--color-text-muted);text-decoration:line-through}
 .shop-card-rrp{font-size:.75em;color:var(--color-text-muted)}
 .shop-card-taxnote{font-size:.6875em;color:var(--color-text-muted)}
-.shop-card-blurb{margin:.667em 0 0;padding:0 1.333em;font-size:.75em;color:var(--color-text-muted);line-height:1.4}
+.shop-card-blurb{margin:.667em 0 0;padding:0 1.111em;font-size:.9em;color:var(--color-text-muted);line-height:1.4}
 /* Blurb in "fill the spare space" mode. The wrapper is the flex item that soaks
    up whatever height the grid stretch gave this card beyond its own content:
    flex-basis 0 plus an out-of-flow child means it adds NOTHING to the card's
