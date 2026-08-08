@@ -3,6 +3,7 @@
 import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { ShopCardMedia } from '@/modules/shop/components/public/ShopCardMedia'
+import { ShopCardFillBlurb } from '@/modules/shop/components/public/ShopCardFillBlurb'
 import type { CardPartContext } from '@/modules/shop/components/puck/parts/part-context'
 
 // Product Card part-blocks. These make up a Product Card layout (admin >
@@ -89,6 +90,18 @@ ${shopCardMediaCss}
 .shop-card-rrp{font-size:.75em;color:var(--color-text-muted)}
 .shop-card-taxnote{font-size:.6875em;color:var(--color-text-muted)}
 .shop-card-blurb{margin:.667em 0 0;padding:0 1.333em;font-size:.75em;color:var(--color-text-muted);line-height:1.4}
+/* Blurb in "fill the spare space" mode. The wrapper is the flex item that soaks
+   up whatever height the grid stretch gave this card beyond its own content:
+   flex-basis 0 plus an out-of-flow child means it adds NOTHING to the card's
+   intrinsic height (so the description can never make a card - or the row -
+   taller), then grows into the slack the tallest neighbour created. The
+   paragraph inside is measured by the ShopCardFillBlurb island, which sets
+   -webkit-line-clamp to however many whole lines fit and lifts the visibility
+   below; until then (and with scripts off) the text stays hidden, so nothing
+   ever paints half-clipped. Scoped under .shop-card so the layout editor - which
+   has no .shop-card ancestor - keeps the sample paragraph in flow and visible. */
+.shop-card-blurb-fill{flex:1 1 0;min-height:0;position:relative;overflow:hidden}
+.shop-card .shop-card-blurb-fill .shop-card-blurb{position:absolute;top:0;left:0;right:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;visibility:hidden}
 .shop-card-cta{margin-top:auto;padding:.923em 1.231em 0;display:inline-flex;align-items:center;gap:.308em;font-size:.8125em;font-weight:600;color:var(--color-primary)}
 /* The arrow is an <svg> with px width/height attributes, which no stylesheet size
    is inherited into - size it here so it shrinks with the label rather than
@@ -370,11 +383,32 @@ export const shopCardPricePuckRscComponent = { ...shopCardPricePuckComponent, re
 
 type BlurbProps = CardPartProps & { lines?: string }
 
+// The blurb's own line options: the Name part's fixed clamps, plus "fill". Fill
+// is a blurb-only idea - a name that grew and shrank with its neighbours' cards
+// would look broken, but a description reading "as much as fits" is the point.
+const blurbLineOptions = [...clampOptions, { value: 'fill', label: 'Fill the spare space' }]
+
 export function ShopCardBlurb(props: BlurbProps) {
   const _ctx = props._ctx
   // Live: hide when the product has no short description. Editor: show sample.
   if (_ctx && !_ctx.product.shortDescription) return null
   const text = _ctx?.product.shortDescription ?? 'A short line about this product.'
+  // Fill mode: in a grid, cards in a row are all stretched to the tallest one's
+  // height - this turns the shorter cards' dead space into as many whole lines
+  // of description as fit, ellipsis at the cut, and never a line more (so the
+  // description cannot lengthen any card). The wrapper here is the flex item
+  // that absorbs the slack; the island inside measures it and sets the clamp.
+  // See ShopCardFillBlurb and .shop-card-blurb-fill in shopCardCss.
+  if (props.lines === 'fill') {
+    return (
+      <>
+        <EditorStyle ctx={_ctx} />
+        <div className="shop-card-blurb-fill" ref={dragRefOf(props)}>
+          <ShopCardFillBlurb text={text} />
+        </div>
+      </>
+    )
+  }
   return (
     <>
       <EditorStyle ctx={_ctx} />
@@ -387,7 +421,7 @@ export const shopCardBlurbPuckComponent = {
   label: 'Card: Short description',
   inline: true,
   fields: {
-    lines: { type: 'select' as const, label: 'Longest it may run', options: clampOptions },
+    lines: { type: 'select' as const, label: 'Longest it may run', options: blurbLineOptions },
   },
   defaultProps: { lines: 'none' },
   render: ShopCardBlurb,
