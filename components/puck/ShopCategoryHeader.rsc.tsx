@@ -31,10 +31,13 @@ export async function ShopCategoryHeaderRsc(props: ShopCategoryHeaderProps) {
   const category = await getCategoryBySlug(props.categorySlug)
   if (!category) return null
   const crumbs = (await getCategoryAncestorPath(category.id)).filter((a) => a.id !== category.id)
+  // ?? not ||: a layout saved before the setting existed passes nothing and
+  // keeps the historical wording; an owner blanking the field hides the line.
+  const eyebrow = props.eyebrow ?? 'The range'
 
   return (
     <div>
-      {crumbs.length > 0 && (
+      {props.showBreadcrumbs !== 'no' && crumbs.length > 0 && (
         <nav aria-label="Breadcrumb" style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>
           <Link href="/shop" style={{ color: 'inherit', textDecoration: 'none' }}>Shop</Link>
           {crumbs.map((a) => (
@@ -45,13 +48,13 @@ export async function ShopCategoryHeaderRsc(props: ShopCategoryHeaderProps) {
           ))}
         </nav>
       )}
-      <span style={EYEBROW}>The range</span>
+      {eyebrow && <span style={EYEBROW}>{eyebrow}</span>}
       <h1 style={HEADING}>{category.name}</h1>
       {/* The header takes the short blurb, leaving the long description to the
           Category Description block (or the fallback page's own render of it).
           Falling back to `description` keeps every category that was written up
           before short descriptions existed looking exactly as it did. */}
-      {(category.shortDescription || category.description) && (
+      {props.showBlurb !== 'no' && (category.shortDescription || category.description) && (
         <p style={{ margin: '0.75rem 0 0', fontSize: '1.0625rem', maxWidth: '60ch', color: 'var(--color-text-muted)' }}>
           {category.shortDescription || category.description}
         </p>

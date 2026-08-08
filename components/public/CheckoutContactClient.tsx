@@ -7,7 +7,7 @@ import { useCartPopulated } from '@/modules/shop/components/public/use-cart-popu
 // Client island for the checkout contact step. Registered Puck block wrapper
 // (ShopCheckoutContact) is a server component that renders this, so Puck's RSC
 // <Render> never serialises its renderDropZone function bag into the client.
-export function CheckoutContactClient({ preview = false }: { preview?: boolean }) {
+export function CheckoutContactClient({ preview = false, heading }: { preview?: boolean; heading?: string }) {
   const populated = useCartPopulated(preview)
   const initial = getCheckoutState()
   const [email, setEmail] = useState(initial.customerEmail)
@@ -44,7 +44,7 @@ export function CheckoutContactClient({ preview = false }: { preview?: boolean }
 
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
-      <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Contact details</h2>
+      <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Contact details'}</h2>
       <label style={{ display: 'grid', gap: '0.25rem' }}>
         <span>Email</span>
         {/* data-shop-field is how the review step finds this box when it lists

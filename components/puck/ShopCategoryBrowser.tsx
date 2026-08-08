@@ -8,7 +8,7 @@ import { shopCategoryPillsCss } from '@/modules/shop/components/public/ShopCateg
 // viewed (lib/inject-category-context.ts), so the block lists that category's
 // sub-categories without the owner naming one - one layout serves every category
 // page. On the Shop Home layout it is a real, editable field.
-export type ShopCategoryBrowserProps = { parentCategorySlug?: string; columns?: number; ctaLabel?: string; display?: string }
+export type ShopCategoryBrowserProps = { parentCategorySlug?: string; columns?: number; ctaLabel?: string; display?: string; showBlurb?: string }
 
 export function ShopCategoryBrowser(props: ShopCategoryBrowserProps) {
   const columns = props.columns ?? 4
@@ -56,7 +56,8 @@ export const shopCategoryBrowserPuckComponent = {
     },
     columns: { type: 'number' as const, label: 'Columns (cards only)' },
     ctaLabel: { type: 'text' as const, label: 'Link wording (cards only)' },
+    showBlurb: { type: 'select' as const, label: 'Show category descriptions (cards only)', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
   },
-  defaultProps: { parentCategorySlug: '', display: 'cards', columns: 4, ctaLabel: 'Browse' },
+  defaultProps: { parentCategorySlug: '', display: 'cards', columns: 4, ctaLabel: 'Browse', showBlurb: 'yes' },
   render: ShopCategoryBrowser,
 }

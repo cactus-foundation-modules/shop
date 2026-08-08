@@ -1,5 +1,5 @@
 import { connection } from 'next/server'
-import { listProducts, getProductMedia, getProductTagIds } from '@/modules/shop/lib/db'
+import { listProducts, getProductMedia, getProductTagIds, type ProductSort } from '@/modules/shop/lib/db'
 import { listTags, resolveCategoryProductFilter } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
@@ -8,7 +8,7 @@ import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
 import { resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
-import { shopProductGridPuckComponent, type ShopProductGridProps } from './ShopProductGrid'
+import { shopProductGridPuckComponent, GridSectionHead, type ShopProductGridProps } from './ShopProductGrid'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 
 // Server (RSC) half of Shop: Product Grid. Kept out of the client editor bundle
@@ -34,6 +34,9 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
       collectionSlug: props.collectionSlug || undefined,
       tagSlug: props.tagSlug || undefined,
       perPage: props.limit ?? 12,
+      // listProducts whitelists the sort key itself (unknown values fall back
+      // to newest), so the block prop can pass straight through.
+      sort: (props.sort || 'newest') as ProductSort,
       excludeHidden: true,
       storefront: true,
     }),
@@ -43,7 +46,7 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
 
   if (products.length === 0) {
-    return <p style={{ color: 'var(--color-text-muted)' }}>No products to show yet.</p>
+    return <p style={{ color: 'var(--color-text-muted)' }}>{props.emptyText || 'No products to show yet.'}</p>
   }
 
   // Load each product's media + tags once, up front - the injected context
@@ -73,6 +76,7 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
+      <GridSectionHead heading={props.heading} subheading={props.subheading} />
       <div className="shop-grid" style={{ ['--shop-cols' as string]: String(columns) } as React.CSSProperties}>
         {cards}
       </div>

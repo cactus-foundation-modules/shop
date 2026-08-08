@@ -60,7 +60,7 @@ function renderStatement(agreement: Agreement) {
 // Registered Puck block wrapper (ShopCheckoutReview) is a server component that
 // renders this, so Puck's RSC <Render> never serialises its renderDropZone
 // function bag into the client.
-export function CheckoutReviewClient({ preview = false }: { preview?: boolean }) {
+export function CheckoutReviewClient({ preview = false, heading, buttonLabel, trustText }: { preview?: boolean; heading?: string; buttonLabel?: string; trustText?: string }) {
   const populated = useCartPopulated(preview)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -173,7 +173,7 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
   if (incomplete) {
     return (
       <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
-        <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Order review</h2>
+        <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Order review'}</h2>
         {missing.length === 0 ? (
           <p style={{ color: 'var(--color-text-muted)' }}>Fill in your contact and shipping details above to see your order total.</p>
         ) : (
@@ -215,7 +215,7 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
 
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
-      <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Order review</h2>
+      <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Order review'}</h2>
       {summary.hasPreOrderItems && (
         <p style={{ background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem', fontSize: '0.875rem' }}>
           {PRE_ORDER_NOTICE[summary.preOrderMixedCartBehaviour ?? 'HOLD_ALL']}
@@ -298,11 +298,15 @@ export function CheckoutReviewClient({ preview = false }: { preview?: boolean })
       >
         {/* The button states exactly what happens, amount included - no
             surprises on the far side of a click. */}
-        {placing ? 'Placing order…' : `Place order - ${money(summary.total)}`}
+        {placing ? 'Placing order…' : `${buttonLabel || 'Place order'} - ${money(summary.total)}`}
       </button>
-      <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', margin: 0, textAlign: 'center' }}>
-        🔒 Payment details are encrypted and never stored by this site.
-      </p>
+      {/* Absent prop = the standard line (every layout saved before the block
+          had wording settings); set blank on the block to drop the line. */}
+      {(trustText ?? '🔒 Payment details are encrypted and never stored by this site.') && (
+        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', margin: 0, textAlign: 'center' }}>
+          {trustText ?? '🔒 Payment details are encrypted and never stored by this site.'}
+        </p>
+      )}
     </section>
   )
 }

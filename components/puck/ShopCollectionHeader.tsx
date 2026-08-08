@@ -3,7 +3,8 @@
 // EDITOR half only: placeholder + Puck field config. The server render lives in
 // ShopCollectionHeader.rsc.tsx (wired by `rscImport` in the manifest) so
 // next/server + db imports never land in the client editor bundle.
-export type ShopCollectionHeaderProps = { collectionSlug?: string }
+// Absent props = the historical look, so pre-settings layouts are unchanged.
+export type ShopCollectionHeaderProps = { collectionSlug?: string; showBreadcrumbs?: string; showDescription?: string }
 
 export function ShopCollectionHeader() {
   return (
@@ -17,8 +18,11 @@ export function ShopCollectionHeader() {
 
 export const shopCollectionHeaderPuckComponent = {
   label: 'Shop: Collection Header [Anchor]',
-  fields: {},
-  defaultProps: {},
+  fields: {
+    showBreadcrumbs: { type: 'select' as const, label: 'Show breadcrumb trail', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
+    showDescription: { type: 'select' as const, label: 'Show the collection description', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
+  },
+  defaultProps: { showBreadcrumbs: 'yes', showDescription: 'yes' },
   permissions: { delete: false, duplicate: false },
   render: ShopCollectionHeader,
 }

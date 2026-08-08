@@ -23,7 +23,8 @@ const UPSELL_CSS = `
 
 // Client island for the cart-driven upsell strip. Registered Puck block wrapper
 // (ShopUpsellProducts) is a server component that passes plain props here.
-export function UpsellClient({ heading }: { heading?: string }) {
+// maxItems caps how many suggestion pills print (the API may return more).
+export function UpsellClient({ heading, maxItems = 4 }: { heading?: string; maxItems?: number }) {
   const [products, setProducts] = useState<UpsellProduct[]>([])
   const [currencySymbol, setCurrencySymbol] = useState('£')
 
@@ -60,7 +61,9 @@ export function UpsellClient({ heading }: { heading?: string }) {
       })
       if (cancelled || !res.ok) return
       const { products: suggested } = await res.json()
-      if (!cancelled) setProducts((suggested as UpsellProduct[]).slice(0, 4))
+      // Keep the whole list; the render slices to maxItems so the cap can be a
+      // plain prop without re-running this effect.
+      if (!cancelled) setProducts(suggested as UpsellProduct[])
     }
 
     refresh()
@@ -82,7 +85,7 @@ export function UpsellClient({ heading }: { heading?: string }) {
         <div className="spu-body">
           <b className="spu-title">{heading || 'Step up your setup'}</b>
           <div className="spu-items">
-            {products.map((p) => (
+            {products.slice(0, Math.max(1, maxItems)).map((p) => (
               <a key={p.id} href={`/shop/products/${p.slug}`} className="spu-item">
                 <span className="spu-name">{p.name}</span>
                 <span className="spu-price">{formatMoney(p.price, currencySymbol)}</span>

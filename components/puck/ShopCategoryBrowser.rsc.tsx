@@ -33,6 +33,7 @@ export async function ShopCategoryBrowserRsc(props: ShopCategoryBrowserProps) {
       columns={columns}
       breakpoints={breakpoints}
       ctaLabel={props.ctaLabel || 'Browse'}
+      showBlurb={props.showBlurb !== 'no'}
     />
   )
 }

@@ -18,7 +18,8 @@ const SBIS_CSS = `
 // Client island for the back-in-stock form. Registered Puck block wrapper is a
 // server component (ShopBackInStockForm) that passes plain props in here, so
 // Puck's RSC <Render> never has to serialise a function into a client boundary.
-export function BackInStockClient({ productId, buttonLabel, heading }: { productId?: string; buttonLabel?: string; heading?: string }) {
+// Absent wording props = the historical strings.
+export function BackInStockClient({ productId, buttonLabel, heading, prompt, successText, placeholder }: { productId?: string; buttonLabel?: string; heading?: string; prompt?: string; successText?: string; placeholder?: string }) {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<'idle' | 'submitting' | 'submitted' | 'error'>('idle')
 
@@ -36,15 +37,15 @@ export function BackInStockClient({ productId, buttonLabel, heading }: { product
       <style dangerouslySetInnerHTML={{ __html: SBIS_CSS }} />
       <p className="sbis-h">{heading || 'Out of stock'}</p>
       {status === 'submitted' ? (
-        <p className="sbis-ok">Thanks - we&apos;ll email you the moment it&apos;s back.</p>
+        <p className="sbis-ok">{successText || 'Thanks - we’ll email you the moment it’s back.'}</p>
       ) : (
         <>
-          <p className="sbis-p">Pop your email in and we&apos;ll let you know when it&apos;s back in stock.</p>
+          <p className="sbis-p">{prompt || 'Pop your email in and we’ll let you know when it’s back in stock.'}</p>
           <div className="sbis-row">
             <input
               type="email"
               className="sbis-input"
-              placeholder="Your email"
+              placeholder={placeholder || 'Your email'}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />

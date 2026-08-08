@@ -35,7 +35,7 @@ export const shopRelatedProductsPuckComponent = {
   fields: {
     heading: { type: 'text' as const, label: 'Heading' },
     subheading: { type: 'text' as const, label: 'Subheading (optional)' },
-    layout: { type: 'select' as const, label: 'Layout', options: [{ value: 'Grid', label: 'Grid' }] },
+    layout: { type: 'select' as const, label: 'Layout', options: [{ value: 'Grid', label: 'Grid' }, { value: 'Carousel', label: 'Carousel (scrolls sideways)' }] },
   },
   defaultProps: { heading: 'Completes the setup', subheading: 'Frequently bought together', layout: 'Grid' },
   render: ShopRelatedProducts,

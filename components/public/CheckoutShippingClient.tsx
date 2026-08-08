@@ -60,12 +60,16 @@ const OPTION_STYLE: CSSProperties = {
 export function CheckoutShippingClient({
   preview = false,
   addressLookup = null,
+  heading,
+  methodHeading,
 }: {
   preview?: boolean
   // Resolved server-side from the 'shop.checkout-address-lookup' extension
   // point (see lib/checkout-address-lookup.ts) - null when no provider module
   // is installed, and always null in the editor preview.
   addressLookup?: ComponentType<ShopCheckoutAddressLookupProps> | null
+  heading?: string
+  methodHeading?: string
 }) {
   const populated = useCartPopulated(preview)
   const initial = getCheckoutState()
@@ -233,7 +237,7 @@ export function CheckoutShippingClient({
 
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
-      <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Delivery address</h2>
+      <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Delivery address'}</h2>
 
       {/* Only drawn for a signed-in shopper who has an address book with
           something in it. The fields below stay visible either way, so a picked
@@ -300,7 +304,7 @@ export function CheckoutShippingClient({
 
       {rates.length > 0 && (
         <div style={{ display: 'grid', gap: '0.5rem' }}>
-          <h3 style={{ fontSize: '0.9375rem', margin: 0 }}>Delivery method</h3>
+          <h3 style={{ fontSize: '0.9375rem', margin: 0 }}>{methodHeading || 'Delivery method'}</h3>
           {rates.map((rate) => (
             <label key={rate.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
               <input type="radio" name="shippingRate" checked={selectedRateId === rate.id} onChange={() => { setSelectedRateId(rate.id); updateCheckoutState({ shippingRateId: rate.id }) }} />

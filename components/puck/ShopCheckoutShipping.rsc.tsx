@@ -6,10 +6,11 @@
 // code the editor bundle must never see.
 import { CheckoutShippingClient } from '@/modules/shop/components/public/CheckoutShippingClient'
 import { resolveCheckoutAddressLookup } from '@/modules/shop/lib/checkout-address-lookup'
-import { shopCheckoutShippingPuckComponent } from '@/modules/shop/components/puck/ShopCheckoutShipping'
+import { shopCheckoutShippingPuckComponent, type ShopCheckoutShippingProps } from '@/modules/shop/components/puck/ShopCheckoutShipping'
 
-export function ShopCheckoutShippingRsc() {
-  return <CheckoutShippingClient addressLookup={resolveCheckoutAddressLookup()} />
+// Explicit props only across the client boundary - never a spread of the puck bag.
+export function ShopCheckoutShippingRsc(props: ShopCheckoutShippingProps) {
+  return <CheckoutShippingClient addressLookup={resolveCheckoutAddressLookup()} heading={props.heading} methodHeading={props.methodHeading} />
 }
 
 export const shopCheckoutShippingPuckRscComponent = {

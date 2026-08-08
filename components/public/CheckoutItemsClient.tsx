@@ -52,6 +52,9 @@ export type CheckoutItemsOptions = {
   // CSS length the sticky summary keeps clear of the top - set it to the site
   // header's height plus breathing room when the header is sticky too.
   stickyOffset?: string
+  // Wording overrides; absent = the historical strings.
+  heading?: string
+  editLabel?: string
 }
 
 // Sticky only above the cart breakpoint: below it the layout collapses to one
@@ -81,7 +84,8 @@ const SCI_CSS = `
 // Registered Puck block wrapper (ShopCheckoutItems) is a server component that
 // renders this, so Puck's RSC <Render> never serialises its renderDropZone
 // function bag into the client.
-export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOffset = '1rem' }: CheckoutItemsOptions) {
+export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOffset = '1rem', heading, editLabel }: CheckoutItemsOptions) {
+  const headingText = heading || 'Your order'
   const [lines, setLines] = useState<ValidatedLine[] | null>(null)
   const [notes, setNotes] = useState<Note[]>([])
   const [symbol, setSymbol] = useState('£')
@@ -129,7 +133,7 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
   if (empty) {
     return (
       <section style={{ display: 'grid', gap: '0.75rem' }}>
-        <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Your order</h2>
+        <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{headingText}</h2>
         <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>
           Your basket is empty. <Link href="/shop" style={{ color: 'var(--color-primary)' }}>Continue shopping</Link>
         </p>
@@ -144,7 +148,7 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
   if (lines.length === 0) {
     return (
       <section style={{ display: 'grid', gap: '0.75rem' }}>
-        <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Your order</h2>
+        <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{headingText}</h2>
         <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>
           The items in your basket are no longer available.{' '}
           <Link href="/shop" style={{ color: 'var(--color-primary)' }}>Continue shopping</Link>
@@ -165,14 +169,14 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
     >
       <style>{SCI_CSS}</style>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '1rem' }}>
-        <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Your order</h2>
+        <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{headingText}</h2>
         <span style={{ display: 'flex', gap: '0.75rem', alignItems: 'baseline' }}>
           <button type="button" className="sci-toggle" aria-expanded={!collapsed} onClick={() => setCollapsed((c) => !c)}>
             {collapsed ? 'Show' : 'Hide'}
           </button>
           {/* Changes happen in the basket, not here - checkout stays a straight
               line and the basket keeps its pickers, quantities and undo. */}
-          <Link href="/shop/cart" style={{ color: 'var(--color-primary)', fontSize: '0.875rem' }}>Edit basket</Link>
+          <Link href="/shop/cart" style={{ color: 'var(--color-primary)', fontSize: '0.875rem' }}>{editLabel || 'Edit basket'}</Link>
         </span>
       </div>
       <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', margin: 0 }}>

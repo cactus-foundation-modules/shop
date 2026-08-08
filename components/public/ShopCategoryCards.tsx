@@ -34,11 +34,14 @@ export type ShopCategoryCardItem = {
   imageUrl: string | null
 }
 
-export function ShopCategoryCards({ categories, columns, breakpoints, ctaLabel = 'Browse' }: {
+export function ShopCategoryCards({ categories, columns, breakpoints, ctaLabel = 'Browse', showBlurb = true }: {
   categories: ShopCategoryCardItem[]
   columns: number
   breakpoints: Breakpoints
   ctaLabel?: string
+  // Whether the tile prints the category's short description under its name.
+  // On (the historical look) unless the block turns it off for a tighter grid.
+  showBlurb?: boolean
 }) {
   if (categories.length === 0) return null
 
@@ -50,7 +53,7 @@ export function ShopCategoryCards({ categories, columns, breakpoints, ctaLabel =
           // The short one if there is one, else the opening of the long one -
           // better a trimmed paragraph than a blank tile, and the card is the one
           // place the full thing would never fit anyway.
-          const blurb = c.shortDescription || c.description
+          const blurb = showBlurb ? c.shortDescription || c.description : null
           return (
             <a key={c.id} className="shop-card" href={`/shop/categories/${c.slug}`}>
               <div className="shop-card-img">

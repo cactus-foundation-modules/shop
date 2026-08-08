@@ -68,7 +68,7 @@ function loadStripeJs(): Promise<void> {
 // instance). Registered Puck block wrapper (ShopCheckoutPayment) is a server
 // component that renders this, so Puck's RSC <Render> never serialises its
 // renderDropZone function bag into the client.
-export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }) {
+export function CheckoutPaymentClient({ preview = false, heading }: { preview?: boolean; heading?: string }) {
   const populated = useCartPopulated(preview)
   const [config, setConfig] = useState<ShopClientConfig | null>(null)
   const [method, setMethod] = useState<string | null>(getCheckoutState().paymentMethod)
@@ -345,7 +345,7 @@ export function CheckoutPaymentClient({ preview = false }: { preview?: boolean }
 
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
-      <h2 style={{ fontSize: '1.125rem', margin: 0 }}>Payment method</h2>
+      <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Payment method'}</h2>
       {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
       <div style={{ display: 'grid', gap: '0.5rem' }}>
         {(config?.enabledPaymentMethods ?? []).map((m) => (

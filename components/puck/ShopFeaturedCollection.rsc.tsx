@@ -1,5 +1,5 @@
 import { connection } from 'next/server'
-import { getCollectionBySlug, listProducts, getProductMedia, getProductTagIds } from '@/modules/shop/lib/db'
+import { getCollectionBySlug, listProducts, getProductMedia, getProductTagIds, type ProductSort } from '@/modules/shop/lib/db'
 import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
@@ -24,7 +24,7 @@ export async function ShopFeaturedCollectionRsc(props: ShopFeaturedCollectionPro
     getShopConfigCached(),
     getShopBreakpoints(),
     listTags(),
-    listProducts({ status: 'ACTIVE', collectionSlug: props.collectionSlug, perPage: props.limit ?? 4, excludeHidden: true, storefront: true }),
+    listProducts({ status: 'ACTIVE', collectionSlug: props.collectionSlug, perPage: props.limit ?? 4, sort: (props.sort || 'newest') as ProductSort, excludeHidden: true, storefront: true }),
     resolveCardTemplate(),
   ])
   const { products } = listed
@@ -58,7 +58,16 @@ export async function ShopFeaturedCollectionRsc(props: ShopFeaturedCollectionPro
     <section>
       <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
       <div className="shop-sec-head">
-        <h2>{collection.name}</h2>
+        <h2>{props.heading || collection.name}</h2>
+        {props.subheading && <span>{props.subheading}</span>}
+        {props.showViewAll === 'yes' && (
+          <a
+            href={`/shop/collections/${props.collectionSlug}`}
+            style={{ marginLeft: 'auto', fontSize: 14, fontWeight: 600, color: 'var(--color-primary)', textDecoration: 'none' }}
+          >
+            {props.viewAllLabel || 'View all'}
+          </a>
+        )}
       </div>
       {carousel ? (
         <div className="shop-scroller">{cards}</div>

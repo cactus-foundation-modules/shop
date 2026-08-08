@@ -3,7 +3,11 @@
 // EDITOR half only: placeholder + Puck field config. The server render lives in
 // ShopCategoryHeader.rsc.tsx (wired by `rscImport` in the manifest) so
 // next/server + db imports never land in the client editor bundle.
-export type ShopCategoryHeaderProps = { categorySlug?: string }
+//
+// A layout saved before these settings existed passes nothing; the RSC half
+// falls back to the historical look (breadcrumbs, "The range", the blurb), so
+// nothing changes until a setting is changed.
+export type ShopCategoryHeaderProps = { categorySlug?: string; eyebrow?: string; showBreadcrumbs?: string; showBlurb?: string }
 
 export function ShopCategoryHeader() {
   return (
@@ -17,8 +21,12 @@ export function ShopCategoryHeader() {
 
 export const shopCategoryHeaderPuckComponent = {
   label: 'Shop: Category Header [Anchor]',
-  fields: {},
-  defaultProps: {},
+  fields: {
+    eyebrow: { type: 'text' as const, label: 'Small line above the name (blank hides it)' },
+    showBreadcrumbs: { type: 'select' as const, label: 'Show breadcrumb trail', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
+    showBlurb: { type: 'select' as const, label: 'Show the category description', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
+  },
+  defaultProps: { eyebrow: 'The range', showBreadcrumbs: 'yes', showBlurb: 'yes' },
   permissions: { delete: false, duplicate: false },
   render: ShopCategoryHeader,
 }

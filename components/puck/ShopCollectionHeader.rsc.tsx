@@ -14,13 +14,15 @@ export async function ShopCollectionHeaderRsc(props: ShopCollectionHeaderProps) 
 
   return (
     <div>
-      <nav aria-label="Breadcrumb" style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>
-        <Link href="/shop" style={{ color: 'inherit' }}>Shop</Link>
-        <span style={{ margin: '0 0.375rem' }}>/</span>
-        <span>{collection.name}</span>
-      </nav>
+      {props.showBreadcrumbs !== 'no' && (
+        <nav aria-label="Breadcrumb" style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>
+          <Link href="/shop" style={{ color: 'inherit' }}>Shop</Link>
+          <span style={{ margin: '0 0.375rem' }}>/</span>
+          <span>{collection.name}</span>
+        </nav>
+      )}
       <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.75rem' }}>{collection.name}</h1>
-      {collection.description && <p style={{ margin: 0, fontSize: '1.0625rem', color: 'var(--color-text-muted)' }}>{collection.description}</p>}
+      {props.showDescription !== 'no' && collection.description && <p style={{ margin: 0, fontSize: '1.0625rem', color: 'var(--color-text-muted)' }}>{collection.description}</p>}
     </div>
   )
 }

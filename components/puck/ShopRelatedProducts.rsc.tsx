@@ -52,6 +52,7 @@ export async function ShopRelatedProductsRsc(props: ShopRelatedProductsProps) {
 
   const columns = Math.min(items.length, 4)
   const cards = template ? await renderCards(template, items) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)
+  const carousel = props.layout === 'Carousel'
 
   return (
     <section>
@@ -60,9 +61,13 @@ export async function ShopRelatedProductsRsc(props: ShopRelatedProductsProps) {
         <h2>{props.heading || 'Completes the setup'}</h2>
         {props.subheading && <span>{props.subheading}</span>}
       </div>
-      <div className="shop-grid" style={{ ['--shop-cols' as string]: String(columns) } as React.CSSProperties}>
-        {cards}
-      </div>
+      {carousel ? (
+        <div className="shop-scroller">{cards}</div>
+      ) : (
+        <div className="shop-grid" style={{ ['--shop-cols' as string]: String(columns) } as React.CSSProperties}>
+          {cards}
+        </div>
+      )}
     </section>
   )
 }

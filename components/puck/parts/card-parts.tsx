@@ -215,12 +215,22 @@ export const shopCardImagePuckRscComponent = { ...shopCardImagePuckComponent, re
 
 type CardPartProps = PuckPart & { _ctx?: CardPartContext }
 
-export function ShopCardBadge(props: CardPartProps) {
+type BadgeProps = CardPartProps & { showNew?: string; showLow?: string; showTrade?: string; showMuted?: string }
+
+// Which badge kinds this card prints. All on by default (the historical look);
+// a shop that finds "Low stock" too pushy on browse pages switches that one off
+// without losing "New".
+function badgeShown(props: BadgeProps, variant: 'new' | 'low' | 'trade' | 'muted'): boolean {
+  const toggle = { new: props.showNew, low: props.showLow, trade: props.showTrade, muted: props.showMuted }[variant]
+  return toggle !== 'no'
+}
+
+export function ShopCardBadge(props: BadgeProps) {
   const _ctx = props._ctx
   const badge = _ctx?.badge
   // In the editor (no ctx) show a sample so the part is visible; live shows the
-  // real badge, or nothing when the product has none.
-  if (_ctx && !badge) return null
+  // real badge, or nothing when the product has none (or its kind is off).
+  if (_ctx && (!badge || !badgeShown(props, badge.variant))) return null
   const shown = badge ?? { label: 'New', variant: 'new' as const }
   return (
     <>
@@ -230,23 +240,61 @@ export function ShopCardBadge(props: CardPartProps) {
   )
 }
 
-export const shopCardBadgePuckComponent = { label: 'Card: Badge', inline: true, fields: {}, defaultProps: {}, render: ShopCardBadge }
+export const shopCardBadgePuckComponent = {
+  label: 'Card: Badge',
+  inline: true,
+  fields: {
+    showNew: { type: 'select' as const, label: 'Show "New" badges', options: yesNo },
+    showLow: { type: 'select' as const, label: 'Show stock badges', options: yesNo },
+    showTrade: { type: 'select' as const, label: 'Show "Trade price" badges', options: yesNo },
+    showMuted: { type: 'select' as const, label: 'Show other badges', options: yesNo },
+  },
+  defaultProps: { showNew: 'yes', showLow: 'yes', showTrade: 'yes', showMuted: 'yes' },
+  render: ShopCardBadge,
+}
 export const shopCardBadgePuckRscComponent = { ...shopCardBadgePuckComponent, render: ShopCardBadge }
 
 // ---------------------------------------------------------------------------
 // Name
 // ---------------------------------------------------------------------------
 
-export function ShopCardName(props: CardPartProps) {
+// Long names and blurbs can make one card in a row twice the height of its
+// neighbours; clamping trims to N lines with an ellipsis. 'none' (the default,
+// and every card saved before the option existed) adds no style at all.
+const clampOptions = [
+  { value: 'none', label: 'No limit' },
+  { value: '1', label: '1 line' },
+  { value: '2', label: '2 lines' },
+  { value: '3', label: '3 lines' },
+]
+
+function clampStyle(lines?: string): React.CSSProperties | undefined {
+  if (!lines || lines === 'none') return undefined
+  const n = Number(lines)
+  if (!Number.isFinite(n) || n < 1) return undefined
+  return { display: '-webkit-box', WebkitLineClamp: n, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' }
+}
+
+type NameProps = CardPartProps & { lines?: string }
+
+export function ShopCardName(props: NameProps) {
   return (
     <>
       <EditorStyle ctx={props._ctx} />
-      <h3 className="shop-card-name" ref={dragRefOf(props)}>{props._ctx?.product.name ?? 'Product name'}</h3>
+      <h3 className="shop-card-name" style={clampStyle(props.lines)} ref={dragRefOf(props)}>{props._ctx?.product.name ?? 'Product name'}</h3>
     </>
   )
 }
 
-export const shopCardNamePuckComponent = { label: 'Card: Name', inline: true, fields: {}, defaultProps: {}, render: ShopCardName }
+export const shopCardNamePuckComponent = {
+  label: 'Card: Name',
+  inline: true,
+  fields: {
+    lines: { type: 'select' as const, label: 'Longest a name may run', options: clampOptions },
+  },
+  defaultProps: { lines: 'none' },
+  render: ShopCardName,
+}
 export const shopCardNamePuckRscComponent = { ...shopCardNamePuckComponent, render: ShopCardName }
 
 // ---------------------------------------------------------------------------
@@ -320,7 +368,9 @@ export const shopCardPricePuckRscComponent = { ...shopCardPricePuckComponent, re
 // Blurb (short description)
 // ---------------------------------------------------------------------------
 
-export function ShopCardBlurb(props: CardPartProps) {
+type BlurbProps = CardPartProps & { lines?: string }
+
+export function ShopCardBlurb(props: BlurbProps) {
   const _ctx = props._ctx
   // Live: hide when the product has no short description. Editor: show sample.
   if (_ctx && !_ctx.product.shortDescription) return null
@@ -328,12 +378,20 @@ export function ShopCardBlurb(props: CardPartProps) {
   return (
     <>
       <EditorStyle ctx={_ctx} />
-      <p className="shop-card-blurb" ref={dragRefOf(props)}>{text}</p>
+      <p className="shop-card-blurb" style={clampStyle(props.lines)} ref={dragRefOf(props)}>{text}</p>
     </>
   )
 }
 
-export const shopCardBlurbPuckComponent = { label: 'Card: Short description', inline: true, fields: {}, defaultProps: {}, render: ShopCardBlurb }
+export const shopCardBlurbPuckComponent = {
+  label: 'Card: Short description',
+  inline: true,
+  fields: {
+    lines: { type: 'select' as const, label: 'Longest it may run', options: clampOptions },
+  },
+  defaultProps: { lines: 'none' },
+  render: ShopCardBlurb,
+}
 export const shopCardBlurbPuckRscComponent = { ...shopCardBlurbPuckComponent, render: ShopCardBlurb }
 
 // ---------------------------------------------------------------------------
