@@ -225,15 +225,15 @@ export const ShpConfigSchema = z.object({
   // off switch and this stays a length of time.
   returnWindowDays: z.number().int().min(0).max(3650).default(30),
 
-  // "Buy again" / "Choose options again" on a past order line. Defaults ON,
+  // "Buy again" on a past order line. Defaults ON,
   // because re-ordering the thing you already liked is the cheapest sale a shop
   // gets. Off suits a shop whose catalogue moves faster than its order history
   // - made-to-order, one-offs, or anything where sending someone back to a
   // product page a year later is more likely to disappoint than to sell.
   //
-  // One switch covers both faces of the same button: a plain line re-adds
-  // straight to the basket, a personalised one links to the product page to
-  // pick the options over again.
+  // One switch, one label, two behaviours behind it: a plain line re-adds
+  // straight to the basket, a personalised one opens the product page on the
+  // variation that was bought so the choices are already made.
   buyAgainEnabled: z.boolean().default(true),
 })
 

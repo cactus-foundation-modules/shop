@@ -398,8 +398,8 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
           </label>
           <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
             Puts a &ldquo;Buy again&rdquo; button on every line, which drops it straight back in the basket. A line with
-            options picked on it offers &ldquo;Choose options again&rdquo; instead and sends them to the product page,
-            because guessing at last year&rsquo;s choices is how somebody ends up with the wrong colour.
+            options picked on it sends them to the product page with those same options already chosen, because
+            guessing at last year&rsquo;s engraving is how somebody ends up with the wrong name on it.
           </p>
 
           <hr style={hr} />
