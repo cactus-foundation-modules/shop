@@ -39,6 +39,7 @@ export const shopCartSummaryPuckComponent = {
     bgColour: colourField('Background colour'),
     borderColour: colourField('Border colour'),
     textColour: colourField('Text colour'),
+    hoverColour: colourField('Hover colour'),
     borderRadius: { type: 'number' as const, label: 'Corner radius (px)' },
     // Count
     showCount: { type: 'select' as const, label: 'Show item count', options: yesNo },
@@ -88,7 +89,7 @@ export const shopCartSummaryPuckComponent = {
   },
   defaultProps: {
     icon: 'cart', iconSize: 20, iconColour: '', label: '',
-    variant: 'bordered', bgColour: '', borderColour: '', textColour: '', borderRadius: 8,
+    variant: 'bordered', bgColour: '', borderColour: '', textColour: '', hoverColour: '', borderRadius: 8,
     showCount: 'yes', countStyle: 'badge', itemWord: 'item', itemWordPlural: 'items',
     badgeBg: 'var(--color-primary)', badgeText: 'var(--color-on-primary)', hideBadgeWhenZero: 'yes',
     showSubtotal: 'no', hideWhenEmpty: 'no', audience: 'everyone',

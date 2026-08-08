@@ -35,6 +35,10 @@ export type CartSummaryOptions = {
   bgColour: string
   borderColour: string
   textColour: string
+  // Colour on hover/focus. Blank falls back to --color-primary, the same token
+  // core's theme toggle and Icon Link blocks hover to, so the header icon
+  // family matches out of the box.
+  hoverColour: string
   borderRadius: number
   showCount: 'yes' | 'no'
   countStyle: 'badge' | 'inline'
@@ -63,7 +67,7 @@ export type CartSummaryOptions = {
 
 const DEFAULTS: CartSummaryOptions = {
   icon: 'cart', iconSize: 20, iconColour: '', label: '',
-  variant: 'bordered', bgColour: '', borderColour: '', textColour: '', borderRadius: 8,
+  variant: 'bordered', bgColour: '', borderColour: '', textColour: '', hoverColour: '', borderRadius: 8,
   showCount: 'yes', countStyle: 'badge', itemWord: 'item', itemWordPlural: 'items',
   badgeBg: 'var(--color-primary)', badgeText: 'var(--color-on-primary)', hideBadgeWhenZero: 'yes',
   showSubtotal: 'no', hideWhenEmpty: 'no', audience: 'everyone',
@@ -194,11 +198,34 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
     : (o.variant === 'bordered' ? (o.bgColour || 'transparent') : 'transparent')
   const border = o.variant === 'bordered' ? `1px solid ${o.borderColour || 'var(--color-border)'}` : 'none'
 
+  // Resting/hover colours ride on custom properties so the .shop-cart-trigger
+  // rules below can swap them on :hover/:focus-visible - an inline `color`
+  // would beat any stylesheet hover rule. Blanks fall back to the same tokens
+  // core's theme toggle and Icon Link use (--color-text / --color-primary).
+  const colourVars: Record<string, string> = {}
+  if (o.textColour) colourVars['--sc-fg'] = o.textColour
+  if (o.hoverColour) colourVars['--sc-fg-hover'] = o.hoverColour
+
   const boxStyle: CSSProperties = {
     display: 'inline-flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none',
-    color: o.textColour || 'var(--color-text)', background, border,
+    ...colourVars, background, border,
     borderRadius: o.borderRadius, padding, lineHeight: 1,
   }
+
+  // Module CSS ships inline with the island, same as the drawer's stylesheet.
+  // The badge is untouched: it sets its own background/colour.
+  const triggerCss = (
+    <style dangerouslySetInnerHTML={{ __html: `
+.shop-cart-trigger {
+  color: var(--sc-fg, var(--color-text));
+  transition: color var(--dur-base) var(--ease-in-out);
+}
+.shop-cart-trigger:hover,
+.shop-cart-trigger:focus-visible {
+  color: var(--sc-fg-hover, var(--color-primary));
+}
+` }} />
+  )
 
   const inner = (
     <>
@@ -236,6 +263,7 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
   if (o.clickAction === 'drawer') {
     return (
       <>
+        {triggerCss}
         <button
           ref={triggerRef}
           type="button"
@@ -247,6 +275,7 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
             setDrawerRequested(true)
             setDrawerOpen(true)
           }}
+          className="shop-cart-trigger"
           style={{ ...boxStyle, font: 'inherit', cursor: preview ? 'default' : 'pointer', WebkitAppearance: 'none', appearance: 'none' }}
         >
           {inner}
@@ -265,8 +294,11 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
   }
 
   return (
-    <Link href="/shop/cart" aria-label="View cart" style={boxStyle}>
-      {inner}
-    </Link>
+    <>
+      {triggerCss}
+      <Link href="/shop/cart" aria-label="View cart" className="shop-cart-trigger" style={boxStyle}>
+        {inner}
+      </Link>
+    </>
   )
 }
