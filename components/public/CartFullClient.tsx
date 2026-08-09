@@ -472,10 +472,22 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
     )
     if (!attachment) return body
     return (
-      <div className="scl-att" style={{ paddingLeft: `${0.875 + indent}rem`, borderLeft: '2px solid var(--color-border)' }}>
+      <div className="scl-att" style={{ paddingLeft: `${0.875 + indent}rem` }}>
         {body}
       </div>
     )
+  }
+
+  // True when the display line AFTER this one is an attachment of this line's
+  // own group - the two are halves of one set, so the divider (and the visual
+  // full stop it draws) stays out from between them.
+  function groupJoinsNext(line: ValidatedLine, displayLines: ValidatedLine[], index: number): boolean {
+    const next = displayLines[index + 1]
+    if (!next) return false
+    const nextGroup = effectiveGroup(next, lines)
+    if (!nextGroup || nextGroup.role !== 'attachment') return false
+    const own = effectiveGroup(line, lines)
+    return !!own && own.key === nextGroup.key
   }
 
   // The remove-together question, rendered full-width directly under the main
@@ -814,7 +826,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
         // in the stylesheet where the mobile restack can leave it behind.
         style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', rowGap: density.gap, ['--scl-cols' as string]: cols }}
       >
-        {displayLines.map((line) => (
+        {displayLines.map((line, index) => (
           <li
             key={lineKey(line)}
             className="scl"
@@ -822,7 +834,9 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
               paddingBottom: density.padY,
               ...(layoutStyle === 'cards'
                 ? { background: panelBg, border: '1px solid var(--color-border)', borderRadius: panelRadius, padding: density.padY }
-                : showDivider ? { borderBottom: '1px solid var(--color-border)' } : {}),
+                // No divider between a product and its own attachments - the
+                // group reads as one entry, so the line waits until the set ends.
+                : showDivider && !groupJoinsNext(line, displayLines, index) ? { borderBottom: '1px solid var(--color-border)' } : {}),
             }}
           >
             {renderThumb(line)}
@@ -863,23 +877,25 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
             </tr>
           </thead>
           <tbody>
-            {displayLines.map((line) => {
+            {displayLines.map((line, index) => {
               const columnCount = 2 + (anyDelivery ? 1 : 0) + (showUnitPrice ? 1 : 0) + (showLinePrice ? 1 : 0) + (showRemove ? 1 : 0)
               const confirm = renderGroupConfirm(line)
+              // Same no-divider-inside-a-group rule as the flow layout below.
+              const rowTd = groupJoinsNext(line, displayLines, index) ? { ...td, borderBottom: 'none' } : td
               return (
                 <Fragment key={lineKey(line)}>
                   <tr>
-                    <td style={td}>
+                    <td style={rowTd}>
                       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                         {renderThumb(line)}
                         <div style={{ minWidth: 0 }}>{renderName(line)}{renderMeta(line)}</div>
                       </div>
                     </td>
-                    {anyDelivery && <td style={{ ...td, minWidth: 0 }}>{renderDelivery(line)}</td>}
-                    {showUnitPrice && <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{money(line.unitPrice)}</td>}
-                    <td style={{ ...td, textAlign: 'center' }}>{renderQty(line)}</td>
-                    {showLinePrice && <td style={{ ...td, textAlign: 'right', color: accent, fontWeight: 600, whiteSpace: 'nowrap' }}>{money(line.lineSubtotal)}</td>}
-                    {showRemove && <td style={{ ...td, textAlign: 'right' }}>{renderRemove(line)}</td>}
+                    {anyDelivery && <td style={{ ...rowTd, minWidth: 0 }}>{renderDelivery(line)}</td>}
+                    {showUnitPrice && <td style={{ ...rowTd, textAlign: 'right', whiteSpace: 'nowrap' }}>{money(line.unitPrice)}</td>}
+                    <td style={{ ...rowTd, textAlign: 'center' }}>{renderQty(line)}</td>
+                    {showLinePrice && <td style={{ ...rowTd, textAlign: 'right', color: accent, fontWeight: 600, whiteSpace: 'nowrap' }}>{money(line.lineSubtotal)}</td>}
+                    {showRemove && <td style={{ ...rowTd, textAlign: 'right' }}>{renderRemove(line)}</td>}
                   </tr>
                   {confirm && (
                     <tr>

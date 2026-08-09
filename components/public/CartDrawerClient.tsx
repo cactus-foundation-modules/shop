@@ -256,7 +256,7 @@ export function CartDrawerClient({
     const displayLines = sortLinesByGroup(lines)
     return (
       <ul className="scd-list">
-        {displayLines.map((line) => {
+        {displayLines.map((line, index) => {
           const title = line.displayTitle?.name || line.name
           const secondary = line.displayTitle?.secondary
           const key = lineKey(line)
@@ -264,8 +264,20 @@ export function CartDrawerClient({
           const attachment = grp && grp.role === 'attachment' ? grp : null
           const members = groupMemberKeys(line, lines, lineKey)
           const collective = line.group?.collectiveLabel || 'attached items'
+          // No divider between a product and its own attachments - the group
+          // reads as one entry, so the rule waits until the set ends.
+          const next = displayLines[index + 1]
+          const nextGroup = next ? effectiveGroup(next, lines) : null
+          const joinsNext = !!grp && !!nextGroup && nextGroup.role === 'attachment' && nextGroup.key === grp.key
           return (
-            <li key={key} className="scd-line" style={attachment ? { paddingLeft: `${0.875 + Math.max(0, (attachment.depth ?? 1) - 1) * 0.75}rem`, borderLeft: '2px solid var(--color-border)' } : undefined}>
+            <li
+              key={key}
+              className="scd-line"
+              style={{
+                ...(attachment ? { paddingLeft: `${0.875 + Math.max(0, (attachment.depth ?? 1) - 1) * 0.75}rem` } : {}),
+                ...(joinsNext ? { borderBottom: 'none', paddingBottom: '0.375rem' } : {}),
+              }}
+            >
               {showImage && (line.imageUrl
                 // eslint-disable-next-line @next/next/no-img-element -- module-supplied absolute media URL, not a build-time asset
                 ? <img className="scd-thumb" src={line.imageUrl} alt="" width={64} height={64} style={{ borderRadius: 6 }} />
