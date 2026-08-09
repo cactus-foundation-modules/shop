@@ -70,6 +70,36 @@ export type CartLineControl = {
   optionsSelfLabelled?: boolean
 }
 
+// A declarative statement that this line belongs with others in the basket. A
+// resolver marks one line the group's `main` and the rest `attachment`s (an
+// accessory sold alongside a desk, say); shop then keeps the group together -
+// attachments sorted directly beneath their main, indented, each showing its
+// `caption` - and treats removing the main as a question about the whole set.
+// Shop never learns WHY the lines belong together: it only sorts, indents and
+// prints what it was handed, exactly as it renders a control or a retitle.
+//
+// `key` names the group (the writing module's to mint - unique per purchase, not
+// per product). `depth` is the attachment's indent level, for chains of
+// attachments (an accessory of an accessory); absent means 1. `order` sorts
+// attachments within their group (cart storage order is add-order, which is
+// backwards); absent sorts after every ordered sibling, by cart order. An
+// attachment whose main is missing from the basket is rendered flat, exactly as
+// if it had no group - see lib/cart-group.ts - so a half-removed group degrades
+// to ordinary lines rather than to orphaned indentation.
+// `collectiveLabel` is what the attachments are called as a set ("accessories"),
+// carried on the MAIN line's declaration. Shop uses it in the wording it has to
+// compose itself - the remove-together question, the undo toast - and falls
+// back to neutral wording when absent. The label is the module's (and through
+// it the site owner's); shop never invents the word.
+export type CartLineGroup = {
+  key: string
+  role: 'main' | 'attachment'
+  caption?: string
+  depth?: number
+  order?: number
+  collectiveLabel?: string
+}
+
 // How a line is titled in the cart. A resolver may hand back a base `name` (shown
 // as the linked product title, on its own line) and an optional `secondary` line
 // beneath it - a variant's chosen options, say, lifted out of the product's own
@@ -104,6 +134,11 @@ export type CartLineResolution = {
   displayTitle?: CartLineTitle | null
   // Optional attribution of part of priceAdjust to a named charge (see above).
   charges?: CartLineCharge[] | null
+  // Optional declaration that this line belongs with others (see CartLineGroup).
+  // Copied onto the persisted meta as well, so surfaces that render an order
+  // long after the resolvers ran (the confirmation page, an email, a quote's
+  // document) can keep the group together without re-resolving anything.
+  group?: CartLineGroup | null
 }
 
 export type CartLineResolver = (
@@ -120,7 +155,20 @@ export type CartLineResolver = (
 // cache the per-line resolver reads. A resolver that offers no prefetcher, or an
 // older shop that never calls one, still works (the resolver falls back to its
 // own per-line resolve).
-export type CartLineResolverPrefetch = (products: ShpProduct[]) => Promise<void> | void
+//
+// The optional second argument is the whole cart as LINES - product, quantity
+// and the raw client meta. A resolver whose answer for one line depends on the
+// others (is this attachment's main still in the basket? does its quantity
+// still match?) has nowhere else to learn that: the per-line resolve is
+// deliberately blind to its neighbours. Optional at both ends - an older shop
+// passes products alone, an older prefetcher ignores the extra argument - so
+// neither side needs the other upgraded first.
+export type CartLinePrefetchLine = {
+  product: ShpProduct
+  quantity: number
+  meta: Record<string, unknown> | undefined
+}
+export type CartLineResolverPrefetch = (products: ShpProduct[], lines?: CartLinePrefetchLine[]) => Promise<void> | void
 
 type ExtensionPointEntry = { point: string; id: string; permission?: string }
 
@@ -200,6 +248,7 @@ export async function resolveLineMeta(
   let reason: string | undefined
   let control: CartLineControl | null = null
   let displayTitle: CartLineTitle | null = null
+  let group: CartLineGroup | null = null
   const fields = []
   // Every resolver's opaque state shares one bag on the line (see LineMeta.data),
   // so keys are the writing module's to namespace. First writer keeps the key: a
@@ -229,6 +278,8 @@ export async function resolveLineMeta(
     if (!control && res.control) control = res.control
     // Likewise the first retitle wins - a line has one name.
     if (!displayTitle && res.displayTitle) displayTitle = res.displayTitle
+    // And the first group - a line belongs to at most one set at a time.
+    if (!group && res.group) group = res.group
     // A charge only ever names money already counted in priceAdjust, so a
     // negative one would be money invented. Those are dropped rather than
     // trusted; the caller clamps the total against the line price (see
@@ -241,11 +292,18 @@ export async function resolveLineMeta(
     valid,
     priceAdjust,
     // Data with no fields is still worth persisting: a resolver may carry state
-    // for a later restatement without having anything to print today.
-    persistMeta: fields.length || data ? { fields, ...(data ? { data } : {}) } : null,
+    // for a later restatement without having anything to print today. A group is
+    // persisted for the same reason as data - the order's own surfaces need it -
+    // and it rides on the meta rather than in a module's namespaced bag because
+    // it is SHOP's contract: the confirmation page and the emails read it
+    // without knowing which module grouped the lines.
+    persistMeta: fields.length || data || group
+      ? { fields, ...(data ? { data } : {}), ...(group ? { group } : {}) }
+      : null,
     reason,
     control,
     displayTitle,
     charges: charges.length ? charges : null,
+    group,
   }
 }

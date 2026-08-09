@@ -83,6 +83,7 @@ export const ORDER_CONFIRMATION_CSS = `
 .soc-thumb-empty{display:grid;place-items:center;color:var(--color-text-muted)}
 .soc-thumb-empty svg{width:22px;height:22px;stroke-width:1.75;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .soc-item-name{margin:0;font-weight:550;overflow-wrap:anywhere}
+.soc-item-groupcap{font-weight:400;font-size:0.75rem;color:var(--color-text-muted)}
 .soc-item-qty{margin:0.125rem 0 0;font-size:0.8125rem;color:var(--color-text-secondary);font-variant-numeric:tabular-nums}
 .soc-item-price{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 /* Personalisation captured at add-to-cart. Sits under the name, indented into

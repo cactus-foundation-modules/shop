@@ -17,7 +17,17 @@ export type LineMetaField = { label: string; value: string; href?: string }
 // where a delivery date is re-worded once the money arrives) would otherwise have
 // to parse its own sentence back out. Keys are namespaced by the module that
 // wrote them, since every resolver's data shares one bag.
-export type LineMeta = { fields: LineMetaField[]; data?: Record<string, unknown> }
+// `group` is shop's own generic statement that this line belongs with others in
+// the same order - see CartLineGroup in lib/line-meta.ts. Persisted (unlike the
+// runtime-only control) because the surfaces that need it - the confirmation
+// page, an order email, a quote's document - render long after the resolvers
+// ran. Shape kept structural here rather than imported so this file stays free
+// of lib/line-meta's server imports for client consumers.
+export type LineMeta = {
+  fields: LineMetaField[]
+  data?: Record<string, unknown>
+  group?: { key: string; role: 'main' | 'attachment'; caption?: string; depth?: number; order?: number; collectiveLabel?: string } | null
+}
 
 export type ShpAddress = {
   firstName: string

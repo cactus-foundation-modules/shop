@@ -45,6 +45,12 @@ export type ShopDetailTabProvider = {
   // products - Downloads. A provider choosing one of those names leaves the
   // shopper with two tabs called the same thing, so pick another.
   label: string
+  // Optional dynamic name: called with whatever `load` returned, and its answer
+  // replaces `label` when it is a non-empty string. For a provider whose tab is
+  // named by the site owner (a setting read inside `load` and carried on the
+  // payload) rather than fixed in code. Falling back to `label` keeps every
+  // existing provider - and any error-shy new one - exactly as it was.
+  labelFor?: (payload: unknown) => string | null | undefined
   // Where the tab sits. Shop's own run 10 (Description), 20 (Specification),
   // 30 (Dimensions) and 40 (Downloads); a provider that says nothing lands after
   // the lot.
@@ -110,9 +116,20 @@ export async function resolveShopDetailTabs(productId: string): Promise<ShopDeta
       try {
         const payload = await provider.load(productId)
         if (payload == null) continue
+        // A dynamic name that misbehaves must not cost the tab: fall back to the
+        // static label on any thrown error or empty answer.
+        let label = provider.label
+        if (provider.labelFor) {
+          try {
+            const dynamic = provider.labelFor(payload)
+            if (typeof dynamic === 'string' && dynamic.trim()) label = dynamic.trim()
+          } catch {
+            // keep the static label
+          }
+        }
         resolved.push({
           id: entry.id,
-          label: provider.label,
+          label,
           order: provider.order ?? DEFAULT_ORDER,
           payload,
           Panel: provider.Panel,

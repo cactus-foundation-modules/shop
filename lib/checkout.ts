@@ -7,7 +7,7 @@ import { getCouponByCode, listAutomaticDiscounts } from '@/modules/shop/lib/db/d
 import { countPriorCouponOrdersByEmail } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { effectivePrice } from '@/modules/shop/lib/pricing'
-import { getCartLineResolvers, getCartLineResolverPrefetchers, resolveLineMeta, type CartLineCharge, type CartLineControl, type CartLineTitle } from '@/modules/shop/lib/line-meta'
+import { getCartLineResolvers, getCartLineResolverPrefetchers, resolveLineMeta, type CartLineCharge, type CartLineControl, type CartLineGroup, type CartLineTitle } from '@/modules/shop/lib/line-meta'
 import type { CartLine } from '@/modules/shop/components/public/cart'
 import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 
@@ -41,6 +41,9 @@ export type ResolvedCartLine = {
   // attributes to a named charge rather than to the goods - see CartLineCharge.
   // Held here as line totals, not per unit, so every consumer sums the same way.
   charges?: CartLineCharge[] | null
+  // Which basket group this line belongs to, if a resolver declared one - see
+  // CartLineGroup. Display ordering only; it never moves money.
+  group?: CartLineGroup | null
 }
 
 // Turns a resolver's per-unit charge attributions into this line's own totals,
@@ -79,10 +82,18 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
 
   // Warm every contributing module's request-scoped cache once for the whole
   // cart (delivery estimates, add-on lookups). After this the per-line resolvers
-  // read from cache instead of each firing its own handful of queries.
+  // read from cache instead of each firing its own handful of queries. The full
+  // line view (product + quantity + raw meta) rides along for prefetchers whose
+  // per-line answers depend on the rest of the basket - see CartLinePrefetchLine.
   const cartProducts = [...products.values()]
   if (prefetchers.length > 0 && cartProducts.length > 0) {
-    await Promise.all(prefetchers.map((prefetch) => prefetch(cartProducts)))
+    const prefetchLines = cart
+      .map((line) => {
+        const product = products.get(line.productId)
+        return product ? { product, quantity: line.quantity, meta: line.meta } : null
+      })
+      .filter((line): line is { product: ShpProduct; quantity: number; meta: Record<string, unknown> | undefined } => line !== null)
+    await Promise.all(prefetchers.map((prefetch) => prefetch(cartProducts, prefetchLines)))
   }
 
   // Resolve every line concurrently. Each line is now an independent set of cache
@@ -152,6 +163,7 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       // so the charges are never allowed to outrun the line price - a provider
       // and a discounted product can otherwise disagree about what is left.
       charges: attributeCharges(metaResolution.charges, unitPrice, line.quantity),
+      group: metaResolution.group ?? null,
     }
   }))
   return resolved.filter((line): line is ResolvedCartLine => line !== null)

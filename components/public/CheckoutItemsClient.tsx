@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import { postCartValidate } from '@/modules/shop/components/public/validated-cache'
+import { sortLinesByGroup } from '@/modules/shop/lib/cart-group'
 import type { LineMeta } from '@/modules/shop/lib/types'
 
 type ValidatedLine = {
@@ -184,8 +185,12 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
       </p>
       <div className="sci-body" style={{ display: 'grid', gap: '0.75rem' }}>
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.75rem' }}>
-          {lines.map((line) => {
+          {/* Grouped lines (a product and its accessories) in the same order the
+              basket showed them - via the persisted meta's group, so this list
+              and the basket never disagree about who belongs with whom. */}
+          {sortLinesByGroup(lines.map((l) => ({ ...l, group: l.lineMeta?.group ?? null }))).map((line) => {
             const title = line.displayTitle?.name ?? line.name
+            const caption = line.group?.role === 'attachment' ? line.group.caption : undefined
             return (
               <li key={line.lineId ?? line.productId} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '0.75rem', alignItems: 'start', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
                 {line.imageUrl ? (
@@ -195,6 +200,9 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
                   <span aria-hidden style={{ width: 56, height: 56, borderRadius: 6, background: 'var(--color-bg-subtle)', display: 'block' }} />
                 )}
                 <div style={{ display: 'grid', gap: '0.125rem', minWidth: 0 }}>
+                  {caption && (
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}><span aria-hidden="true">↳ </span>{caption}</span>
+                  )}
                   <span style={{ fontWeight: 600 }}>{title}</span>
                   {line.displayTitle?.secondary && (
                     <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>{line.displayTitle.secondary}</span>

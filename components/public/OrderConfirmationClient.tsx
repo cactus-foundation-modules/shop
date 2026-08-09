@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { sortLinesByGroup } from '@/modules/shop/lib/cart-group'
 import { ORDER_CONFIRMATION_CSS } from '@/modules/shop/components/public/order-confirmation-css'
 import RegisterForm from '@/components/members/RegisterForm'
 import type { ShpAddress } from '@/modules/shop/lib/types'
@@ -33,7 +34,11 @@ type OrderStatusResponse = {
     quantity: number
     unitPrice: string
     total: string
-    lineMeta?: { fields: Array<{ label: string; value: string; href?: string }> } | null
+    lineMeta?: {
+      fields: Array<{ label: string; value: string; href?: string }>
+      // Shop's own generic grouping, persisted at checkout - see lib/cart-group.
+      group?: { key: string; role: 'main' | 'attachment'; caption?: string; depth?: number; order?: number } | null
+    } | null
     imageUrl?: string | null
   }>
   instructions: string | null
@@ -439,7 +444,9 @@ export function OrderConfirmationClient() {
 
           <div className="soc-card-body">
             <ul className="soc-items">
-              {items.map((item, i) => (
+              {/* Grouped lines (a product and its accessories) kept together,
+                  from the group persisted on the order's own line meta. */}
+              {sortLinesByGroup(items.map((item) => ({ ...item, group: item.lineMeta?.group ?? null }))).map((item, i) => (
                 <li key={i} className="soc-item">
                   {item.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- product media is an absolute storage URL, not a build-time asset
@@ -447,7 +454,12 @@ export function OrderConfirmationClient() {
                   ) : (
                     <div className="soc-thumb soc-thumb-empty" aria-hidden="true"><Icon>{ICON_IMAGE}</Icon></div>
                   )}
-                  <p className="soc-item-name">{item.productName}</p>
+                  <p className="soc-item-name">
+                    {item.group?.role === 'attachment' && item.group.caption && (
+                      <span className="soc-item-groupcap"><span aria-hidden="true">↳ </span>{item.group.caption}<br /></span>
+                    )}
+                    {item.productName}
+                  </p>
                   {/* Unit price only where it tells you something a single line
                       doesn't already: on one of a thing, "£40 x 1" is noise. */}
                   <span className="soc-item-price">{money(item.total)}</span>

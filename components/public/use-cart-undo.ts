@@ -12,12 +12,15 @@
 // which is what raises the sticky checkout bar. Without IntersectionObserver it
 // simply stays false, so the bar never appears rather than appearing wrongly.
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
-import { type CartLine, cartLineKey, getCart, removeFromCart, restoreCartLine } from '@/modules/shop/components/public/cart'
+import { type CartLine, cartLineKey, getCart, removeCartLines, removeFromCart, restoreCartLine, restoreCartLines } from '@/modules/shop/components/public/cart'
 
 const VISIBLE_MS = 5000
 const FADE_MS = 300
 
-type PendingRemoval = { line: CartLine; index: number; message: string }
+// One removal the toast can put back: a single line, or a whole group (a
+// product and its accessories removed together). Either way the snapshots keep
+// each line's place, so undo is a true undo.
+type PendingRemoval = { snapshots: { line: CartLine; index: number }[]; message: string }
 
 export function useCartUndo(enabled: boolean) {
   const [toast, setToast] = useState<{ message: string; leaving: boolean } | null>(null)
@@ -36,26 +39,49 @@ export function useCartUndo(enabled: boolean) {
     setToast(null)
   }, [])
 
+  const raiseToast = useCallback((snapshots: { line: CartLine; index: number }[], message: string) => {
+    if (!enabled || snapshots.length === 0) return
+    clearTimers()
+    pending.current = { snapshots, message }
+    setToast({ message, leaving: false })
+    timers.current.push(setTimeout(() => setToast((t) => (t ? { ...t, leaving: true } : null)), VISIBLE_MS))
+    timers.current.push(setTimeout(() => { pending.current = null; setToast(null) }, VISIBLE_MS + FADE_MS))
+  }, [enabled])
+
   const removeLine = useCallback((key: string, name: string) => {
     const cart = getCart()
     const index = cart.findIndex((l) => cartLineKey(l) === key)
     const snapshot = index >= 0 ? cart[index] : undefined
     removeFromCart(key)
-    if (!enabled || !snapshot) return
-    clearTimers()
-    pending.current = { line: snapshot, index, message: `Removed ${name}.` }
-    setToast({ message: `Removed ${name}.`, leaving: false })
-    timers.current.push(setTimeout(() => setToast((t) => (t ? { ...t, leaving: true } : null)), VISIBLE_MS))
-    timers.current.push(setTimeout(() => { pending.current = null; setToast(null) }, VISIBLE_MS + FADE_MS))
-  }, [enabled])
+    if (snapshot) raiseToast([{ line: snapshot, index }], `Removed ${name}.`)
+  }, [raiseToast])
+
+  // A whole group's removal in one write and one toast. The message is the
+  // caller's ("Removed Impulse Desk and 2 accessories."), since only it knows
+  // what the set was called.
+  const removeLines = useCallback((keys: readonly string[], message: string) => {
+    const cart = getCart()
+    const set = new Set(keys)
+    const snapshots = cart
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => set.has(cartLineKey(line)))
+    removeCartLines(keys)
+    raiseToast(snapshots, message)
+  }, [raiseToast])
 
   const undo = useCallback(() => {
-    const snapshot = pending.current
+    const removal = pending.current
     dismiss()
-    if (snapshot) restoreCartLine(snapshot.line, snapshot.index)
+    if (!removal) return
+    if (removal.snapshots.length === 1) {
+      const only = removal.snapshots[0]!
+      restoreCartLine(only.line, only.index)
+    } else {
+      restoreCartLines(removal.snapshots)
+    }
   }, [dismiss])
 
-  return { toast, removeLine, undo }
+  return { toast, removeLine, removeLines, undo }
 }
 
 export function useOutOfView(ref: RefObject<HTMLElement | null>, enabled: boolean): boolean {

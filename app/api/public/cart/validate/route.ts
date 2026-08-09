@@ -98,6 +98,9 @@ export async function POST(request: NextRequest) {
       control,
       // Optional cart-display retitle (e.g. a variant's base name + options).
       displayTitle: line.displayTitle ?? null,
+      // Which basket group the line belongs to, when a resolver declared one -
+      // the cart sorts attachments under their main and indents them from this.
+      group: line.group ?? null,
       // The slice of this line's money a resolver attributes to a named charge
       // (a delivery service) rather than to the goods, so the cart can show it
       // on a line of its own instead of burying it in the subtotal.

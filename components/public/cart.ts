@@ -136,6 +136,14 @@ export function removeFromCart(key: string): void {
   persist(getCart().filter((l) => cartLineKey(l) !== key))
 }
 
+// Removes a set of lines in one write - a grouped removal (a product and its
+// accessories together) must not fire a persist, a change event and a sync push
+// per line when one of each covers the lot.
+export function removeCartLines(keys: readonly string[]): void {
+  const set = new Set(keys)
+  persist(getCart().filter((l) => !set.has(cartLineKey(l))))
+}
+
 // Puts a removed line back exactly as it was - same quantity, same meta, same
 // place in the cart - so the cart's undo really is an undo rather than a fresh
 // add. `index` is where the line sat before it went; a cart that has moved on
@@ -146,6 +154,26 @@ export function restoreCartLine(line: CartLine, index: number): void {
   const at = Math.max(0, Math.min(index, lines.length))
   lines.splice(at, 0, line)
   persist(lines)
+}
+
+// The multi-line undo: puts a removed set back exactly where each line sat, in
+// one write (same batching argument as removeCartLines). Lines that have since
+// been re-added by hand are left alone, exactly as restoreCartLine skips them.
+export function restoreCartLines(snapshots: readonly { line: CartLine; index: number }[]): void {
+  const lines = getCart()
+  const present = new Set(lines.map((l) => cartLineKey(l)))
+  // Ascending by original index, so each splice lands against a list that
+  // already has the earlier lines back in it and every line regains its place.
+  const ordered = [...snapshots].sort((a, b) => a.index - b.index)
+  let changed = false
+  for (const { line, index } of ordered) {
+    if (present.has(cartLineKey(line))) continue
+    const at = Math.max(0, Math.min(index, lines.length))
+    lines.splice(at, 0, line)
+    present.add(cartLineKey(line))
+    changed = true
+  }
+  if (changed) persist(lines)
 }
 
 export function clearCart(): void {

@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { getCart, setLineQuantity, setLineMeta, subscribeCart } from '@/modules/shop/components/public/cart'
 import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } from '@/modules/shop/components/public/validated-cache'
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import type { LineMeta, LineMetaField } from '@/modules/shop/lib/types'
-import type { CartLineControl, CartLineTitle } from '@/modules/shop/lib/line-meta'
+import type { CartLineControl, CartLineGroup, CartLineTitle } from '@/modules/shop/lib/line-meta'
+import { effectiveGroup, groupMemberKeys, sortLinesByGroup } from '@/modules/shop/lib/cart-group'
 import {
   commerceModeButtonLabel,
   commerceModeMoney,
@@ -39,6 +40,9 @@ type ValidatedLine = {
   // Named slices of this line's money a resolver attributes elsewhere (e.g. a
   // delivery service), already counted inside lineSubtotal - see CartLineCharge.
   charges?: { label: string; amount: number }[] | null
+  // Which basket group this line belongs to, when a resolver declared one - the
+  // cart keeps the set together and indents the attachments (see lib/cart-group).
+  group?: CartLineGroup | null
   // This line's tax rate as a fraction, quoted against the shop's default zone.
   taxRate?: number
 }
@@ -231,7 +235,10 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   const footerRef = useRef<HTMLDivElement>(null)
   const stickyVisible = useOutOfView(footerRef, !preview && withFooter && yes(props.stickyBar) && hasLoaded && lines.length > 0)
   // Undo goes with the remove buttons, so the totals half never raises a toast.
-  const { toast, removeLine, undo } = useCartUndo(!preview && withItems && yes(props.undoRemove))
+  const { toast, removeLine, removeLines, undo } = useCartUndo(!preview && withItems && yes(props.undoRemove))
+  // The line whose remove is waiting on the "its accessories too?" question - a
+  // grouped main's removal asks before it acts, every other line removes at once.
+  const [confirmingKey, setConfirmingKey] = useState<string | null>(null)
 
   async function applyCoupon() {
     if (preview || !couponCode) return
@@ -250,8 +257,32 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
 
   const onQty = (id: string, q: number) => { if (!preview) setLineQuantity(id, Math.max(0, q)) }
   // Removal goes through the undo hook, which snapshots the line first so the
-  // toast can put it back where it was.
-  const onRemove = (line: ValidatedLine) => { if (!preview) removeLine(lineKey(line), line.displayTitle?.name || line.name) }
+  // toast can put it back where it was. A main line with attachments still in
+  // the basket asks the question first (see renderGroupConfirm) rather than
+  // quietly leaving the accessories behind or quietly taking them too.
+  const onRemove = (line: ValidatedLine) => {
+    if (preview) return
+    const key = lineKey(line)
+    const members = groupMemberKeys(line, lines, lineKey)
+    if (members.length > 1) { setConfirmingKey(key); return }
+    removeLine(key, line.displayTitle?.name || line.name)
+  }
+  // The two answers to the question. "All" removes the set in one write and one
+  // toast; "just this" removes only the main - its attachments degrade to flat
+  // lines by themselves (see effectiveGroup).
+  const onRemoveGroup = (line: ValidatedLine, all: boolean) => {
+    if (preview) return
+    setConfirmingKey(null)
+    const key = lineKey(line)
+    const name = line.displayTitle?.name || line.name
+    if (!all) { removeLine(key, name); return }
+    const members = groupMemberKeys(line, lines, lineKey)
+    // No count in the wording: the collective label is the only word we have and
+    // it is plural ("accessories"), so "and its accessories" reads right whether
+    // one line or three went with it. The undo restores the exact set regardless.
+    const collective = line.group?.collectiveLabel || 'attached items'
+    removeLines(members, `Removed ${name} and its ${collective}.`)
+  }
   // Writes a generic per-line control's choice into the line meta; the cart's
   // own subscribe/refresh then re-validates and re-prices with no extra wiring.
   // The chosen value is applied to local state at once so the <select> never
@@ -346,6 +377,11 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   // no delivery column anywhere, the product column keeps the whole row as before.
   const anyDelivery = lines.some((line) => line.control && line.control.options.length > 0)
 
+  // Display order: each group's attachments directly beneath their main,
+  // indented; everything else in basket order. Storage is untouched - see
+  // lib/cart-group.ts for why the raw order cannot be trusted for display.
+  const displayLines = sortLinesByGroup(lines)
+
   // While the client fetches the localStorage cart, show a shimmer skeleton
   // rather than a blank gap. The validate call folds every cart-line resolver
   // (delivery estimates, personalisation) so it can take a moment; a blank made
@@ -399,15 +435,33 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
     return <div className="scl-thumb" aria-hidden style={{ width: imageSize, height: imageSize, borderRadius: imageRadius, background: 'var(--color-bg-subtle)', flexShrink: 0 }} />
   }
 
+  // An attachment line's group for DISPLAY - null when its main is gone from
+  // the basket, so a half-removed group renders flat rather than indented under
+  // a heading that is not there.
+  const displayGroup = (line: ValidatedLine) => {
+    const group = effectiveGroup(line, lines)
+    return group && group.role === 'attachment' ? group : null
+  }
+
   // Name line, plus - when a resolver split the line's title (a variant, say) -
   // the chosen options on their own muted line beneath it, so the product name
-  // and the variation no longer share one line.
+  // and the variation no longer share one line. An attachment line leads with
+  // its group caption ("Accessory for Impulse Desk") behind a connector glyph,
+  // and indents by its chain depth - inside the name cell only, so the shared
+  // column tracks stay aligned across every line.
   function renderName(line: ValidatedLine) {
     const style = { color: 'inherit', textDecoration: 'none', fontWeight: 600 } as const
     const title = line.displayTitle?.name || line.name
     const secondary = line.displayTitle?.secondary
-    return (
+    const attachment = displayGroup(line)
+    const indent = attachment ? Math.max(0, (attachment.depth ?? 1) - 1) * 0.875 : 0
+    const body = (
       <>
+        {attachment?.caption && (
+          <p className="scl-att-cap" style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', margin: '0 0 0.125rem' }}>
+            <span aria-hidden="true">↳ </span>{attachment.caption}
+          </p>
+        )}
         {preview
           ? <span style={style}>{title}</span>
           : <a href={`/shop/products/${line.slug}`} style={style}>{title}</a>}
@@ -415,6 +469,43 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
           <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>{secondary}</p>
         )}
       </>
+    )
+    if (!attachment) return body
+    return (
+      <div className="scl-att" style={{ paddingLeft: `${0.875 + indent}rem`, borderLeft: '2px solid var(--color-border)' }}>
+        {body}
+      </div>
+    )
+  }
+
+  // The remove-together question, rendered full-width directly under the main
+  // line it belongs to. Wording comes from the group's own collective label so
+  // shop never invents the word for what the attachments are.
+  function renderGroupConfirm(line: ValidatedLine) {
+    if (preview || confirmingKey !== lineKey(line)) return null
+    const collective = line.group?.collectiveLabel || 'attached items'
+    return (
+      <div
+        className="scl-grpconfirm"
+        role="group"
+        aria-label={`Remove its ${collective} too?`}
+        style={{
+          gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem',
+          padding: '0.5rem 0.75rem', margin: '0.375rem 0 0', borderRadius: 8,
+          background: 'var(--color-bg-subtle)', border: '1px solid var(--color-border)', fontSize: '0.8125rem',
+        }}
+      >
+        <span>Remove its {collective} too?</span>
+        <button type="button" onClick={() => onRemoveGroup(line, true)} style={{ background: 'var(--color-primary)', color: 'var(--color-on-primary)', border: 'none', borderRadius: 6, padding: '0.3rem 0.75rem', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600 }}>
+          Yes, remove everything
+        </button>
+        <button type="button" onClick={() => onRemoveGroup(line, false)} style={{ background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.3rem 0.75rem', cursor: 'pointer', fontSize: '0.8125rem' }}>
+          No, keep them
+        </button>
+        <button type="button" aria-label="Cancel removing" onClick={() => setConfirmingKey(null)} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.8125rem' }}>
+          Cancel
+        </button>
+      </div>
     )
   }
 
@@ -723,7 +814,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
         // in the stylesheet where the mobile restack can leave it behind.
         style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', rowGap: density.gap, ['--scl-cols' as string]: cols }}
       >
-        {lines.map((line) => (
+        {displayLines.map((line) => (
           <li
             key={lineKey(line)}
             className="scl"
@@ -745,6 +836,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
             {renderQty(line)}
             {renderLinePrice(line)}
             {renderRemove(line)}
+            {renderGroupConfirm(line)}
           </li>
         ))}
       </ul>
@@ -771,21 +863,32 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
             </tr>
           </thead>
           <tbody>
-            {lines.map((line) => (
-              <tr key={lineKey(line)}>
-                <td style={td}>
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                    {renderThumb(line)}
-                    <div style={{ minWidth: 0 }}>{renderName(line)}{renderMeta(line)}</div>
-                  </div>
-                </td>
-                {anyDelivery && <td style={{ ...td, minWidth: 0 }}>{renderDelivery(line)}</td>}
-                {showUnitPrice && <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{money(line.unitPrice)}</td>}
-                <td style={{ ...td, textAlign: 'center' }}>{renderQty(line)}</td>
-                {showLinePrice && <td style={{ ...td, textAlign: 'right', color: accent, fontWeight: 600, whiteSpace: 'nowrap' }}>{money(line.lineSubtotal)}</td>}
-                {showRemove && <td style={{ ...td, textAlign: 'right' }}>{renderRemove(line)}</td>}
-              </tr>
-            ))}
+            {displayLines.map((line) => {
+              const columnCount = 2 + (anyDelivery ? 1 : 0) + (showUnitPrice ? 1 : 0) + (showLinePrice ? 1 : 0) + (showRemove ? 1 : 0)
+              const confirm = renderGroupConfirm(line)
+              return (
+                <Fragment key={lineKey(line)}>
+                  <tr>
+                    <td style={td}>
+                      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                        {renderThumb(line)}
+                        <div style={{ minWidth: 0 }}>{renderName(line)}{renderMeta(line)}</div>
+                      </div>
+                    </td>
+                    {anyDelivery && <td style={{ ...td, minWidth: 0 }}>{renderDelivery(line)}</td>}
+                    {showUnitPrice && <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{money(line.unitPrice)}</td>}
+                    <td style={{ ...td, textAlign: 'center' }}>{renderQty(line)}</td>
+                    {showLinePrice && <td style={{ ...td, textAlign: 'right', color: accent, fontWeight: 600, whiteSpace: 'nowrap' }}>{money(line.lineSubtotal)}</td>}
+                    {showRemove && <td style={{ ...td, textAlign: 'right' }}>{renderRemove(line)}</td>}
+                  </tr>
+                  {confirm && (
+                    <tr>
+                      <td colSpan={columnCount} style={{ padding: 0, border: 'none' }}>{confirm}</td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
           </tbody>
         </table>
       </div>

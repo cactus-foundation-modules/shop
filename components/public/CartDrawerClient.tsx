@@ -34,7 +34,8 @@ import {
   SHOP_DEFAULT_COMMERCE_MODE,
 } from '@/modules/shop/lib/commerce-mode-shared'
 import type { LineMeta } from '@/modules/shop/lib/types'
-import type { CartLineControl, CartLineTitle } from '@/modules/shop/lib/line-meta'
+import type { CartLineControl, CartLineGroup, CartLineTitle } from '@/modules/shop/lib/line-meta'
+import { effectiveGroup, groupMemberKeys, sortLinesByGroup } from '@/modules/shop/lib/cart-group'
 
 // The cart validate's line shape, as the cart page reads it too. Kept in step
 // with CartFullClient's copy by hand: the response is the module's own, so a
@@ -46,6 +47,7 @@ type ValidatedLine = {
   lineId?: string | null; lineMeta?: LineMeta | null
   control?: CartLineControl | null
   displayTitle?: CartLineTitle | null
+  group?: CartLineGroup | null
 }
 
 const lineKey = (l: Pick<ValidatedLine, 'productId' | 'lineId'>) => l.lineId ?? l.productId
@@ -99,7 +101,10 @@ export function CartDrawerClient({
   // own basket-and-checkout until the config lands.
   const [commerce, setCommerce] = useState(SHOP_DEFAULT_COMMERCE_MODE)
   const [hasLoaded, setHasLoaded] = useState(false)
-  const { toast, removeLine, undo } = useCartUndo(true)
+  const { toast, removeLine, removeLines, undo } = useCartUndo(true)
+  // The line whose remove is waiting on the "its accessories too?" question -
+  // same behaviour as the cart page, phrased to fit the panel.
+  const [confirmingKey, setConfirmingKey] = useState<string | null>(null)
 
   // The portal target. Safe to read while rendering because this component is
   // only ever reached through a client-side dynamic import with ssr:false (see
@@ -246,19 +251,29 @@ export function CartDrawerClient({
         </div>
       )
     }
+    // Attachments beneath their main, indented - same ordering the cart page
+    // shows, from the same helper, so the two never disagree about a group.
+    const displayLines = sortLinesByGroup(lines)
     return (
       <ul className="scd-list">
-        {lines.map((line) => {
+        {displayLines.map((line) => {
           const title = line.displayTitle?.name || line.name
           const secondary = line.displayTitle?.secondary
           const key = lineKey(line)
+          const grp = effectiveGroup(line, lines)
+          const attachment = grp && grp.role === 'attachment' ? grp : null
+          const members = groupMemberKeys(line, lines, lineKey)
+          const collective = line.group?.collectiveLabel || 'attached items'
           return (
-            <li key={key} className="scd-line">
+            <li key={key} className="scd-line" style={attachment ? { paddingLeft: `${0.875 + Math.max(0, (attachment.depth ?? 1) - 1) * 0.75}rem`, borderLeft: '2px solid var(--color-border)' } : undefined}>
               {showImage && (line.imageUrl
                 // eslint-disable-next-line @next/next/no-img-element -- module-supplied absolute media URL, not a build-time asset
                 ? <img className="scd-thumb" src={line.imageUrl} alt="" width={64} height={64} style={{ borderRadius: 6 }} />
                 : <div className="scd-thumb" aria-hidden style={{ width: 64, height: 64, borderRadius: 6 }} />)}
               <div className="scd-main">
+                {attachment?.caption && (
+                  <p className="scd-sec" style={{ margin: '0 0 0.125rem' }}><span aria-hidden="true">↳ </span>{attachment.caption}</p>
+                )}
                 <a className="scd-name" href={`/shop/products/${line.slug}`}>{title}</a>
                 {secondary && <p className="scd-sec">{secondary}</p>}
                 {!line.available && <p className="scd-warn">{line.availabilityReason || 'Unavailable'}</p>}
@@ -280,11 +295,28 @@ export function CartDrawerClient({
                 </div>
                 <button
                   type="button" className="scd-removetxt" aria-label={`Remove ${title}`}
-                  onClick={() => removeLine(key, title)}
+                  onClick={() => (members.length > 1 ? setConfirmingKey(key) : removeLine(key, title))}
                 >
                   Remove
                 </button>
               </div>
+              {confirmingKey === key && members.length > 1 && (
+                <div
+                  role="group" aria-label={`Remove its ${collective} too?`}
+                  style={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 0.6rem', borderRadius: 8, background: 'var(--color-bg-subtle)', border: '1px solid var(--color-border)', fontSize: '0.8rem' }}
+                >
+                  <span>Remove its {collective} too?</span>
+                  <button type="button" onClick={() => { setConfirmingKey(null); removeLines(members, `Removed ${title} and its ${collective}.`) }} style={{ background: 'var(--color-primary)', color: 'var(--color-on-primary)', border: 'none', borderRadius: 6, padding: '0.25rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
+                    Yes, remove everything
+                  </button>
+                  <button type="button" onClick={() => { setConfirmingKey(null); removeLine(key, title) }} style={{ background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.25rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem' }}>
+                    No, keep them
+                  </button>
+                  <button type="button" aria-label="Cancel removing" onClick={() => setConfirmingKey(null)} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.8rem' }}>
+                    Cancel
+                  </button>
+                </div>
+              )}
               {/* Full width beneath the thumbnail and the name, not beside them:
                   a delivery tier's options are the widest thing on a line and a
                   420px panel has no side column to spare for them. */}
