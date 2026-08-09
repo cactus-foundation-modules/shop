@@ -279,12 +279,14 @@ export async function listProducts(filter: ListProductsFilter): Promise<{ produc
   if (filter.search) {
     const terms = searchTerms(filter.search)
     if (terms.length) {
-      conditions.push(Prisma.join(
-        terms.map((t) => Prisma.sql`(p."name" ILIKE ${`%${t}%`} OR p."sku" ILIKE ${`%${t}%`})`),
-        ' AND ',
-        '(',
-        ')',
-      ))
+      // Name and SKU, plus whatever a companion module says counts as a match -
+      // shop-variations answers with its hidden children's SKUs, so a variation
+      // code finds the listing it belongs to. Imported here rather than at the
+      // top of the file so the generated extension-point registry is only pulled
+      // in by a query that actually searches (lib/product-search.ts).
+      const { productSearchSql } = await import('@/modules/shop/lib/product-search')
+      const searchSql = await productSearchSql(terms)
+      if (searchSql) conditions.push(searchSql)
     }
   }
   if (filter.categorySlug) {

@@ -24,6 +24,7 @@ manifest. Every one of them is inert on a shop with no add-ons installed.
 | `shop.product-detail-parts` | Takes over a claimed product's gallery, price and purchase area. See `lib/detail-slot.ts`. |
 | `shop.product-detail-tabs` / `-spec` | Adds a product tab, or replaces the Specification body. |
 | `shop.card-media` / `shop.product-card-prices` | Adds card images/overlays, or prices a card itself. |
+| `shop.product-search` | Widens what a search box (admin product list, storefront search) matches a product on, beyond its own name and SKU. See `lib/product-search.ts`. |
 | `shop.payment-providers` | Adds a payment method. |
 | `shop.tax-shipping-tabs` | Adds an admin tab under Shop > Tax & shipping. |
 | `shop.settings-sub-tabs` / `shop.payments` | Hosts another module's settings panel inside Shop's own settings tab (`host` on its manifest `settingsTabs` entry). |
