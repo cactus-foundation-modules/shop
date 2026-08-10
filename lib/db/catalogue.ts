@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
-import type { PuckData, ShpCategory, ShpTag, ShpCollection } from '@/modules/shop/lib/types'
+import type { PuckData, ShpCategory, ShpTag, ShpTagAutoRule, ShpCollection } from '@/modules/shop/lib/types'
 
 // ---------------------------------------------------------------------------
 // Categories
@@ -228,11 +228,41 @@ export async function resolveCategoryProductFilter(
 // ---------------------------------------------------------------------------
 
 function mapTag(r: Record<string, unknown>): ShpTag {
-  return { id: r.id as string, name: r.name as string, slug: r.slug as string }
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    slug: r.slug as string,
+    description: (r.description as string | null) ?? null,
+    storefrontVisible: (r.storefront_visible as boolean | null) ?? true,
+    badgeEnabled: (r.badge_enabled as boolean | null) ?? false,
+    badgeLabel: (r.badge_label as string | null) ?? null,
+    badgeBg: (r.badge_bg as string | null) ?? null,
+    badgeBgDark: (r.badge_bg_dark as string | null) ?? null,
+    badgeText: (r.badge_text as string | null) ?? null,
+    badgeTextDark: (r.badge_text_dark as string | null) ?? null,
+    position: (r.position as number | null) ?? 0,
+    metaTitle: (r.meta_title as string | null) ?? null,
+    metaDescription: (r.meta_description as string | null) ?? null,
+    // Anything other than the one rule this module understands reads as an
+    // ordinary tag rather than as a rule nothing implements.
+    autoRule: r.auto_rule === 'sale' ? 'sale' : null,
+  }
 }
 
+// Position first, name as the tie-break: an install where nothing has been
+// dragged yet (every position 0) still reads alphabetically.
 export async function listTags(): Promise<ShpTag[]> {
-  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_tags" ORDER BY "name" ASC`
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "shp_tags" ORDER BY "position" ASC, "name" ASC
+  `
+  return rows.map(mapTag)
+}
+
+// The storefront's list: tags filed for admin use only never reach a shopper.
+export async function listVisibleTags(): Promise<ShpTag[]> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "shp_tags" WHERE "storefront_visible" = true ORDER BY "position" ASC, "name" ASC
+  `
   return rows.map(mapTag)
 }
 
@@ -240,7 +270,7 @@ export async function getTagsWithCounts(): Promise<Array<ShpTag & { productCount
   const rows = await prisma.$queryRaw<Array<Record<string, unknown> & { product_count: bigint }>>`
     SELECT t.*, COUNT(pt."product_id")::bigint AS product_count
     FROM "shp_tags" t LEFT JOIN "shp_product_tags" pt ON pt."tag_id" = t."id"
-    GROUP BY t."id" ORDER BY t."name" ASC
+    GROUP BY t."id" ORDER BY t."position" ASC, t."name" ASC
   `
   return rows.map((r) => ({ ...mapTag(r), productCount: Number(r.product_count) }))
 }
@@ -250,11 +280,71 @@ export async function getTagBySlug(slug: string): Promise<ShpTag | null> {
   return rows[0] ? mapTag(rows[0]) : null
 }
 
+// Whether the tag at this slug is worked out rather than ticked, and by which
+// rule. One narrow query on purpose: the product list asks per query, not per
+// row, and does not want the whole row for the answer.
+export async function tagAutoRule(slug: string): Promise<ShpTagAutoRule> {
+  const rows = await prisma.$queryRaw<Array<{ auto_rule: string | null }>>`
+    SELECT "auto_rule" FROM "shp_tags" WHERE "slug" = ${slug} LIMIT 1
+  `
+  return rows[0]?.auto_rule === 'sale' ? 'sale' : null
+}
+
+// A new tag lands at the end of the list rather than jumping to the top: one
+// past the highest position in use, and COALESCE keeps the very first tag at 0.
 export async function createTag(name: string, slug: string): Promise<{ id: string }> {
   const rows = await prisma.$queryRaw<[{ id: string }]>`
-    INSERT INTO "shp_tags" ("name", "slug") VALUES (${name}, ${slug}) RETURNING "id"
+    INSERT INTO "shp_tags" ("name", "slug", "position")
+    VALUES (${name}, ${slug}, (SELECT COALESCE(MAX("position"), -1) + 1 FROM "shp_tags"))
+    RETURNING "id"
   `
   return rows[0]
+}
+
+export type TagWritableFields = Partial<{
+  name: string
+  slug: string
+  description: string | null
+  storefrontVisible: boolean
+  badgeEnabled: boolean
+  badgeLabel: string | null
+  badgeBg: string | null
+  badgeBgDark: string | null
+  badgeText: string | null
+  badgeTextDark: string | null
+  position: number
+  metaTitle: string | null
+  metaDescription: string | null
+}>
+
+// Same shape as updateCategory: only the keys actually sent are written, so a
+// screen editing one field cannot blank the rest. shp_tags carries no
+// updated_at, so unlike its category sibling there is no timestamp to stamp.
+export async function updateTag(id: string, fields: TagWritableFields): Promise<void> {
+  const sets: Prisma.Sql[] = []
+  if (fields.name !== undefined) sets.push(Prisma.sql`"name" = ${fields.name}`)
+  if (fields.slug !== undefined) sets.push(Prisma.sql`"slug" = ${fields.slug}`)
+  if (fields.description !== undefined) sets.push(Prisma.sql`"description" = ${fields.description}`)
+  if (fields.storefrontVisible !== undefined) sets.push(Prisma.sql`"storefront_visible" = ${fields.storefrontVisible}`)
+  if (fields.badgeEnabled !== undefined) sets.push(Prisma.sql`"badge_enabled" = ${fields.badgeEnabled}`)
+  if (fields.badgeLabel !== undefined) sets.push(Prisma.sql`"badge_label" = ${fields.badgeLabel}`)
+  if (fields.badgeBg !== undefined) sets.push(Prisma.sql`"badge_bg" = ${fields.badgeBg}`)
+  if (fields.badgeBgDark !== undefined) sets.push(Prisma.sql`"badge_bg_dark" = ${fields.badgeBgDark}`)
+  if (fields.badgeText !== undefined) sets.push(Prisma.sql`"badge_text" = ${fields.badgeText}`)
+  if (fields.badgeTextDark !== undefined) sets.push(Prisma.sql`"badge_text_dark" = ${fields.badgeTextDark}`)
+  if (fields.position !== undefined) sets.push(Prisma.sql`"position" = ${fields.position}`)
+  if (fields.metaTitle !== undefined) sets.push(Prisma.sql`"meta_title" = ${fields.metaTitle}`)
+  if (fields.metaDescription !== undefined) sets.push(Prisma.sql`"meta_description" = ${fields.metaDescription}`)
+  if (sets.length === 0) return
+  await prisma.$executeRaw`UPDATE "shp_tags" SET ${Prisma.join(sets, ', ')} WHERE "id" = ${id}`
+}
+
+// Position is written as the array index, the way reorderCategories does it.
+export async function reorderTags(orderedIds: string[]): Promise<void> {
+  if (orderedIds.length === 0) return
+  await prisma.$transaction(
+    orderedIds.map((id, i) => prisma.$executeRaw`UPDATE "shp_tags" SET "position" = ${i} WHERE "id" = ${id}`)
+  )
 }
 
 // Finds an existing tag by slug, else creates one - used by the CSV importer

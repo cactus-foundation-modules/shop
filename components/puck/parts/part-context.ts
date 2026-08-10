@@ -26,7 +26,21 @@ import type { ShpProduct } from '@/modules/shop/lib/types'
 // product's own photos.
 export type PartImage = { url: string; alt: string; sourceId?: string }
 
-export type CardBadge = { label: string; variant: 'new' | 'low' | 'trade' | 'muted' }
+// The four original variants each map to a `.shop-card-badge-*` class of fixed
+// token colours. 'tag' is the owner-defined one: a tag row switched its badge on
+// and chose its own colours, which arrive in `colours` as already-sanitised CSS
+// values and are painted inline (there is no class to write - the colours are
+// per tag, not per site). Light and dark are both carried because a card is
+// server-rendered once for both themes; the part emits a scoped rule rather than
+// picking a side. Absent `colours` on a 'tag' badge just leaves it unstyled
+// rather than blank, which cannot happen from the admin (the picker seeds both).
+export type CardBadgeColours = { bg?: string; bgDark?: string; text?: string; textDark?: string }
+
+export type CardBadge = {
+  label: string
+  variant: 'new' | 'low' | 'trade' | 'muted' | 'tag'
+  colours?: CardBadgeColours
+}
 
 // Injected onto every Product Detail part-block before the detail template
 // renders. Derived values (outOfStock/lowStock/prices) are precomputed

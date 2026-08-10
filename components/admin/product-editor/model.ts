@@ -13,6 +13,11 @@ export type RecommendationMode = 'MANUAL' | 'AUTOMATIC'
 export type MediaItem = { type: 'IMAGE' | 'VIDEO_FILE' | 'VIDEO_URL'; url: string; altText?: string | null; isPrimary?: boolean }
 export type PickedProduct = { id: string; name: string }
 export type Term = { id: string; name: string; slug: string }
+// A tag as the editor sees it. `autoRule` is set on a tag whose membership is
+// worked out rather than ticked (the pre-made "On Sale" one), which is why the
+// Organisation panel lists those separately instead of offering a checkbox that
+// would do nothing.
+export type TagTerm = Term & { autoRule?: 'sale' | null }
 export type CategoryTerm = Term & { parentId: string | null; position: number }
 
 export type ProductForm = {

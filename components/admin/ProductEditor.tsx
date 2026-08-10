@@ -136,6 +136,34 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
     }
   }, [loadSuppliers])
 
+  const loadTags = useCallback(async () => {
+    const r = await fetch('/api/m/shop/admin/tags').catch(() => null)
+    if (r?.ok) setTags((await r.json()).tags)
+  }, [])
+
+  /**
+   * Make a tag from inside the product editor, the same way a supplier is made
+   * above: thinking of a label while filing a product should not mean leaving
+   * the half-edited product to go and make it elsewhere. Returns the error text
+   * on failure and null on success, with the tag list refreshed and the new tag
+   * ticked by the caller.
+   */
+  const createTag = useCallback(async (name: string): Promise<{ id: string } | string> => {
+    try {
+      const res = await fetch('/api/m/shop/admin/tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) return (await res.json().catch(() => ({}))).error ?? 'Could not add that tag. It may already exist.'
+      const { id } = await res.json()
+      await loadTags()
+      return { id }
+    } catch {
+      return 'Could not reach the server. Check your connection and try again.'
+    }
+  }, [loadTags])
+
   const load = useCallback(async () => {
     const next = await fetchState()
     if (!next) return
@@ -376,7 +404,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
       { id: 'media', label: 'Images', order: SHOP_TAB_ORDER.media, render: () => <MediaPanel {...panelProps} productId={productId} /> },
       { id: 'pricing', label: 'Pricing', order: SHOP_TAB_ORDER.pricing, render: () => <PricingPanel {...panelProps} taxClasses={taxClasses} /> },
       { id: 'stock', label: 'Stock & delivery', order: SHOP_TAB_ORDER.stock, render: () => <StockPanel {...panelProps} /> },
-      { id: 'organisation', label: 'Organisation', order: SHOP_TAB_ORDER.organisation, render: () => <OrganisationPanel {...panelProps} categories={categories} tags={tags} collections={collections} /> },
+      { id: 'organisation', label: 'Organisation', order: SHOP_TAB_ORDER.organisation, render: () => <OrganisationPanel {...panelProps} categories={categories} tags={tags} collections={collections} createTag={createTag} /> },
       { id: 'recommendations', label: 'Recommendations', order: SHOP_TAB_ORDER.recommendations, render: () => <RecommendationsPanel {...panelProps} productId={productId} /> },
       { id: 'seo', label: 'Search', order: SHOP_TAB_ORDER.seo, render: () => <SeoPanel {...panelProps} siteUrl={siteUrl} /> },
     ]
@@ -390,7 +418,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
       render: () => t.node,
     }))
     return [...own, ...contributed].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
-  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier, taxClasses, categories, tags, collections, productId, siteUrl, extraTabs, openDescriptionEditor])
+  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier, taxClasses, categories, tags, collections, createTag, productId, siteUrl, extraTabs, openDescriptionEditor])
 
   // Derived, not stored: a tab that vanishes (the product stopped being digital)
   // or a ?tab= naming a module that isn't installed falls back to the first tab

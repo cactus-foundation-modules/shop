@@ -1,8 +1,8 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { Field, Grid, Section, Select } from '@/modules/shop/components/admin/product-editor/fields'
-import type { CategoryTerm, EditorState, PanelProps, Term } from '@/modules/shop/components/admin/product-editor/model'
+import type { CategoryTerm, EditorState, PanelProps, TagTerm, Term } from '@/modules/shop/components/admin/product-editor/model'
 
 function toggle(list: string[], id: string): string[] {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id]
@@ -28,10 +28,51 @@ function CheckList({ items, selected, onToggle, empty, indentOf }: {
   )
 }
 
-export function OrganisationPanel({ state, setField, patch, categories, tags, collections }: PanelProps & {
+// Make a tag without leaving the product. The panel only holds the box and the
+// button; the editor above owns the request and the refreshed list, the same
+// split the supplier field uses.
+function AddTag({ onCreate }: { onCreate: (name: string) => Promise<{ id: string } | string> }) {
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit() {
+    const trimmed = name.trim()
+    if (trimmed === '' || busy) return
+    setBusy(true)
+    const result = await onCreate(trimmed)
+    setBusy(false)
+    if (typeof result === 'string') { setError(result); return }
+    setError(null)
+    setName('')
+  }
+
+  return (
+    <div className="spe-add-tag">
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
+        <input
+          value={name}
+          placeholder="New tag name"
+          aria-label="New tag name"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void submit() } }}
+        />
+        <button type="button" className="btn btn-secondary" disabled={busy || name.trim() === ''} onClick={() => void submit()}>
+          {busy ? 'Adding…' : 'Add tag'}
+        </button>
+      </div>
+      {error && <p style={{ color: 'var(--color-danger)', fontSize: '0.75rem', margin: '0.25rem 0 0' }}>{error}</p>}
+    </div>
+  )
+}
+
+export function OrganisationPanel({ state, setField, patch, categories, tags, collections, createTag }: PanelProps & {
   categories: CategoryTerm[]
-  tags: Term[]
+  tags: TagTerm[]
   collections: Term[]
+  // Absent where a caller has not wired it; the panel then simply offers no
+  // "add tag" box and points at the Tags page instead.
+  createTag?: (name: string) => Promise<{ id: string } | string>
 }) {
   const f = state.form
 
@@ -47,6 +88,11 @@ export function OrganisationPanel({ state, setField, patch, categories, tags, co
     walk(null, 0)
     return { ordered: rows, depthOf: (id: string) => depth.get(id) ?? 0 }
   }, [categories])
+
+  // A tag that applies itself gets no checkbox: ticking it would write a row
+  // nothing reads and would go stale the next time a price moved.
+  const pickable = useMemo(() => tags.filter((t) => !t.autoRule), [tags])
+  const automatic = useMemo(() => tags.filter((t) => t.autoRule), [tags])
 
   const chosenCategories = categories.filter((c) => state.categoryIds.includes(c.id))
   const masterName = categories.find((c) => c.id === f.masterCategoryId)?.name ?? 'uncategorised'
@@ -88,7 +134,21 @@ export function OrganisationPanel({ state, setField, patch, categories, tags, co
       </Section>
 
       <Section title="Tags" blurb="Loose labels for search and filtering. Nothing to do with categories.">
-        <CheckList items={tags} selected={state.tagIds} onToggle={setIds('tagIds')} empty="No tags yet. Add some under Shop, then Products." />
+        <CheckList items={pickable} selected={state.tagIds} onToggle={setIds('tagIds')} empty="No tags yet. Add one below, or set them up under Shop, then Tags." />
+        {automatic.length > 0 && (
+          <p className="spe-hint" style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', margin: '0.5rem 0 0' }}>
+            {automatic.map((t) => t.name).join(', ')} {automatic.length === 1 ? 'looks after itself' : 'look after themselves'} - a product joins
+            while it is reduced, whether the discount is on the product or on one of its variations, and drops out again when it is not.
+          </p>
+        )}
+        {createTag && (
+          <AddTag onCreate={async (name) => {
+            const result = await createTag(name)
+            // A tag made here is meant for the product in hand, so tick it.
+            if (typeof result !== 'string') patch((s) => ({ ...s, tagIds: [...s.tagIds, result.id] }))
+            return result
+          }} />
+        )}
       </Section>
 
       <Section title="Collections" blurb="Hand-picked groupings, like Summer Sale or Staff Picks.">

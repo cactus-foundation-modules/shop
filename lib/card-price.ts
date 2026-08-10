@@ -21,6 +21,12 @@ export type ShopCardFromPrice = {
   price: string
   // Whether anything dearer is on offer under the same product.
   varies: boolean
+  // Whether any of the choices under this product is actually reduced, which is
+  // what puts the listing in the automatic "On Sale" tag. Optional: a provider
+  // built before that tag existed simply says nothing, and the listing falls
+  // back to shop's own sale columns - which for a variations listing means it is
+  // never counted, exactly as it was not before.
+  onSale?: boolean
 }
 
 export type ShopCardPriceProvider = {

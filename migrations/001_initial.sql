@@ -278,15 +278,42 @@ CREATE INDEX IF NOT EXISTS "shp_product_categories_category_id_idx" ON "shp_prod
 -- Tags
 -- ---------------------------------------------------------------------------
 
+-- The columns below "slug" arrived with 019_tag_display.sql and are repeated
+-- here so a fresh install gets them without waiting for that file to replay.
+-- See 019 for what each one is for; in short, a tag has its own page, its own
+-- optional card badge (colours held as frozen values, never palette vars) and
+-- its own place in the order.
 CREATE TABLE IF NOT EXISTS "shp_tags" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     "name" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
+    "description" TEXT,
+    "storefront_visible" BOOLEAN NOT NULL DEFAULT true,
+    "badge_enabled" BOOLEAN NOT NULL DEFAULT false,
+    "badge_label" TEXT,
+    "badge_bg" TEXT,
+    "badge_bg_dark" TEXT,
+    "badge_text" TEXT,
+    "badge_text_dark" TEXT,
+    "position" INTEGER NOT NULL DEFAULT 0,
+    "meta_title" TEXT,
+    "meta_description" TEXT,
+    -- NULL for an ordinary hand-ticked tag; 'sale' for the seeded "On Sale" tag,
+    -- whose membership is worked out at read time rather than stored. See 019.
+    "auto_rule" TEXT,
 
     CONSTRAINT "shp_tags_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "shp_tags_name_key" UNIQUE ("name"),
     CONSTRAINT "shp_tags_slug_key" UNIQUE ("slug")
 );
+
+CREATE INDEX IF NOT EXISTS "shp_tags_position_idx" ON "shp_tags" ("position");
+
+-- Seeded here as well as in 019 so a fresh install starts with the same "On
+-- Sale" tag an updated one picks up.
+INSERT INTO "shp_tags" ("name", "slug", "description", "badge_enabled", "badge_label", "badge_bg", "badge_bg_dark", "badge_text", "badge_text_dark", "auto_rule")
+VALUES ('On Sale', 'on-sale', 'Everything with money off at the moment.', true, 'Sale', '#b91c1c', '#f87171', '#ffffff', '#450a0a', 'sale')
+ON CONFLICT DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS "shp_product_tags" (
     "product_id" TEXT NOT NULL,

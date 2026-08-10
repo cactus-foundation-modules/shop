@@ -304,11 +304,25 @@ export async function listProducts(filter: ListProductsFilter): Promise<{ produc
     )`)
   }
   if (filter.tagSlug) {
-    conditions.push(Prisma.sql`p."id" IN (
-      SELECT "product_id" FROM "shp_product_tags" pt
-      JOIN "shp_tags" t ON t."id" = pt."tag_id"
-      WHERE t."slug" = ${filter.tagSlug}
-    )`)
+    // An automatic tag ("On Sale") has no rows in shp_product_tags at all - its
+    // membership is the rule, worked out here so the page stays one query and
+    // its count agrees with its rows. Imported inside the branch so a list that
+    // is not filtered by tag never pulls in the extension-point registry.
+    const { tagAutoRule } = await import('@/modules/shop/lib/db/catalogue')
+    const rule = await tagAutoRule(filter.tagSlug)
+    if (rule === 'sale') {
+      const { productOnSaleSql } = await import('@/modules/shop/lib/product-sale')
+      const saleSql = await productOnSaleSql()
+      // Sale prices switched off shop-wide means nothing is reduced. An empty
+      // list is the honest answer; matching everything would be a lie.
+      conditions.push(saleSql ?? Prisma.sql`false`)
+    } else {
+      conditions.push(Prisma.sql`p."id" IN (
+        SELECT "product_id" FROM "shp_product_tags" pt
+        JOIN "shp_tags" t ON t."id" = pt."tag_id"
+        WHERE t."slug" = ${filter.tagSlug}
+      )`)
+    }
   }
   if (filter.collectionSlug) {
     conditions.push(Prisma.sql`p."id" IN (

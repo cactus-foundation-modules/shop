@@ -4,7 +4,7 @@ import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakp
 import { formatMoney } from '@/modules/shop/lib/money'
 import { ShopCardMedia } from '@/modules/shop/components/public/ShopCardMedia'
 import { ShopCardFillBlurb } from '@/modules/shop/components/public/ShopCardFillBlurb'
-import type { CardPartContext } from '@/modules/shop/components/puck/parts/part-context'
+import type { CardBadge, CardPartContext } from '@/modules/shop/components/puck/parts/part-context'
 
 // Product Card part-blocks. These make up a Product Card layout (admin >
 // Layouts > Shop > Product Card), which is then stamped once per product by
@@ -83,6 +83,16 @@ ${shopCardMediaCss}
 .shop-card-badge-low{background:var(--color-warning-subtle);color:var(--color-warning);border:1px solid var(--color-warning-border)}
 .shop-card-badge-trade{background:var(--color-fg);color:var(--color-bg)}
 .shop-card-badge-muted{background:var(--color-surface);color:var(--color-text-muted);border:1px solid var(--color-border)}
+/* Owner-defined badge (a tag with its badge switched on). Its colours are per
+   tag, not per site, so there is no token to name here - the part sets
+   --shop-tag-* inline per card and this rule reads them, falling back to the
+   muted look for a tag whose colours were left blank. Dark mode is handled here
+   rather than by picking a side at render time, because a card is server-
+   rendered once for both themes. Same two dark selectors the design tokens use:
+   the explicit toggle, then the OS preference where the toggle is untouched. */
+.shop-card-badge-tag{background:var(--shop-tag-bg,var(--color-surface));color:var(--shop-tag-fg,var(--color-text-muted))}
+[data-theme="dark"] .shop-card-badge-tag{background:var(--shop-tag-bg-dark,var(--shop-tag-bg,var(--color-surface)));color:var(--shop-tag-fg-dark,var(--shop-tag-fg,var(--color-text-muted)))}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .shop-card-badge-tag{background:var(--shop-tag-bg-dark,var(--shop-tag-bg,var(--color-surface)));color:var(--shop-tag-fg-dark,var(--shop-tag-fg,var(--color-text-muted)))}}
 .shop-card-name{margin:.875em 0 0;padding:0 1em;font-size:1em;font-weight:600;color:var(--color-fg);line-height:1.3}
 .shop-card-pricerow{display:flex;gap:.5em;align-items:baseline;margin-top:.5em;padding:0 1em}
 .shop-card-price{font-size:1em;font-weight:600;color:var(--color-primary)}
@@ -228,14 +238,30 @@ export const shopCardImagePuckRscComponent = { ...shopCardImagePuckComponent, re
 
 type CardPartProps = PuckPart & { _ctx?: CardPartContext }
 
-type BadgeProps = CardPartProps & { showNew?: string; showLow?: string; showTrade?: string; showMuted?: string }
+type BadgeProps = CardPartProps & { showNew?: string; showLow?: string; showTrade?: string; showMuted?: string; showTag?: string }
 
 // Which badge kinds this card prints. All on by default (the historical look);
 // a shop that finds "Low stock" too pushy on browse pages switches that one off
-// without losing "New".
-function badgeShown(props: BadgeProps, variant: 'new' | 'low' | 'trade' | 'muted'): boolean {
-  const toggle = { new: props.showNew, low: props.showLow, trade: props.showTrade, muted: props.showMuted }[variant]
+// without losing "New". 'tag' is the owner's own badge, set on the tag itself
+// under Shop > Tags.
+function badgeShown(props: BadgeProps, variant: CardBadge['variant']): boolean {
+  const toggle = { new: props.showNew, low: props.showLow, trade: props.showTrade, muted: props.showMuted, tag: props.showTag }[variant]
   return toggle !== 'no'
+}
+
+// A tag badge's colours ride in as custom properties rather than as background/
+// color directly, so the stylesheet above can pick the light or dark one per
+// theme. Already sanitised upstream (cssValue, in card-template); an unset
+// colour is simply left off, which drops that side through to the fallback.
+function tagColourVars(badge: CardBadge): React.CSSProperties | undefined {
+  if (badge.variant !== 'tag' || !badge.colours) return undefined
+  const { bg, bgDark, text, textDark } = badge.colours
+  return {
+    ...(bg ? { '--shop-tag-bg': bg } : {}),
+    ...(bgDark ? { '--shop-tag-bg-dark': bgDark } : {}),
+    ...(text ? { '--shop-tag-fg': text } : {}),
+    ...(textDark ? { '--shop-tag-fg-dark': textDark } : {}),
+  } as React.CSSProperties
 }
 
 export function ShopCardBadge(props: BadgeProps) {
@@ -244,11 +270,11 @@ export function ShopCardBadge(props: BadgeProps) {
   // In the editor (no ctx) show a sample so the part is visible; live shows the
   // real badge, or nothing when the product has none (or its kind is off).
   if (_ctx && (!badge || !badgeShown(props, badge.variant))) return null
-  const shown = badge ?? { label: 'New', variant: 'new' as const }
+  const shown: CardBadge = badge ?? { label: 'New', variant: 'new' }
   return (
     <>
       <EditorStyle ctx={_ctx} />
-      <span className={`shop-card-badge shop-card-badge-${shown.variant}`} ref={dragRefOf(props)}>{shown.label}</span>
+      <span className={`shop-card-badge shop-card-badge-${shown.variant}`} style={tagColourVars(shown)} ref={dragRefOf(props)}>{shown.label}</span>
     </>
   )
 }
@@ -260,9 +286,10 @@ export const shopCardBadgePuckComponent = {
     showNew: { type: 'select' as const, label: 'Show "New" badges', options: yesNo },
     showLow: { type: 'select' as const, label: 'Show stock badges', options: yesNo },
     showTrade: { type: 'select' as const, label: 'Show "Trade price" badges', options: yesNo },
+    showTag: { type: 'select' as const, label: 'Show your own tag badges', options: yesNo },
     showMuted: { type: 'select' as const, label: 'Show other badges', options: yesNo },
   },
-  defaultProps: { showNew: 'yes', showLow: 'yes', showTrade: 'yes', showMuted: 'yes' },
+  defaultProps: { showNew: 'yes', showLow: 'yes', showTrade: 'yes', showTag: 'yes', showMuted: 'yes' },
   render: ShopCardBadge,
 }
 export const shopCardBadgePuckRscComponent = { ...shopCardBadgePuckComponent, render: ShopCardBadge }

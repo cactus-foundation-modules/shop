@@ -155,7 +155,55 @@ export type ShpCategory = {
   updatedAt: Date
 }
 
-export type ShpTag = { id: string; name: string; slug: string }
+export type ShpTag = {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  // false files the tag for admin use only: no page of its own, no badge, and
+  // nothing about it printed on the shop.
+  storefrontVisible: boolean
+  // An owner-defined card badge, in place of the two slugs ('new', 'trade') the
+  // card template used to look for by hand. Colours are frozen values (a hex, or
+  // any plain CSS colour), never `var(--color-N)` palette references - see
+  // migrations/019_tag_display.sql. Light and dark are held separately; an unset
+  // dark falls back to the light one.
+  badgeEnabled: boolean
+  badgeLabel: string | null
+  badgeBg: string | null
+  badgeBgDark: string | null
+  badgeText: string | null
+  badgeTextDark: string | null
+  // Admin list order, and badge precedence when a product carries two badge
+  // tags - lowest wins, as with categories.
+  position: number
+  metaTitle: string | null
+  metaDescription: string | null
+  // NULL for an ordinary tag, ticked on a product by hand. 'sale' for the
+  // pre-made "On Sale" tag: nothing is ever written to shp_product_tags for it,
+  // and a product is in it for exactly as long as it is actually reduced. See
+  // migrations/019_tag_display.sql.
+  autoRule: ShpTagAutoRule
+}
+
+export type ShpTagAutoRule = 'sale' | null
+
+// The slice of a tag a product card needs to print a badge. Passed down to
+// buildCardContext by every card surface, so the badge is resolved from data the
+// page already loaded rather than re-queried per product.
+export type ShpTagBadge = {
+  slug: string
+  name: string
+  position: number
+  storefrontVisible: boolean
+  badgeEnabled: boolean
+  badgeLabel: string | null
+  badgeBg: string | null
+  badgeBgDark: string | null
+  badgeText: string | null
+  badgeTextDark: string | null
+  autoRule: ShpTagAutoRule
+}
 
 export type ShpCollection = {
   id: string

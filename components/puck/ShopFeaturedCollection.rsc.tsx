@@ -3,7 +3,7 @@ import { getCollectionBySlug, listProducts, getProductMedia, getProductTagIds, t
 import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
-import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
+import { resolveCardTemplate, buildCardContext, buildTagMaps, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
 import { resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
@@ -29,7 +29,7 @@ export async function ShopFeaturedCollectionRsc(props: ShopFeaturedCollectionPro
   ])
   const { products } = listed
   if (products.length === 0) return null
-  const tagById = new Map(tags.map((t) => [t.id, t.slug]))
+  const { tagById, tagsById } = buildTagMaps(tags)
 
   const productIds = products.map((p) => p.id)
   const [fromPrices, cardExtras, taxDisplay] = await Promise.all([
@@ -46,7 +46,7 @@ export async function ShopFeaturedCollectionRsc(props: ShopFeaturedCollectionPro
   const items: CardItem[] = await Promise.all(
     products.map(async (p) => {
       const [media, tagIds] = await Promise.all([getProductMedia(p.id), getProductTagIds(p.id)])
-      return { product: p, ctx: buildCardContext(p, media, tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id)) }
+      return { product: p, ctx: buildCardContext(p, media, tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id), tagsById) }
     }),
   )
 

@@ -29,6 +29,7 @@ const CATALOGUE_BUILT_INS: BuiltIn[] = [
   { key: 'products', label: 'Products', path: '/m/shop/products', permission: 'shop.products', allowAccess: true },
   { key: 'categories', label: 'Categories', path: '/m/shop/categories', permission: 'shop.products', allowAccess: true },
   { key: 'collections', label: 'Collections', path: '/m/shop/collections', permission: 'shop.products', allowAccess: true },
+  { key: 'tags', label: 'Tags', path: '/m/shop/tags', permission: 'shop.products', allowAccess: true },
 ]
 
 const SALES_BUILT_INS: BuiltIn[] = [
@@ -64,7 +65,7 @@ async function build(
   return tabs
 }
 
-/** Products, Categories, Collections, plus whatever fills `shop.products-tabs`. */
+/** Products, Categories, Collections, Tags, plus whatever fills `shop.products-tabs`. */
 export function resolveCatalogueNavTabs(user: SessionUser | null): Promise<ShopNavTab[]> {
   return build(user, CATALOGUE_BUILT_INS, 'shop.products-tabs', '/m/shop/products')
 }

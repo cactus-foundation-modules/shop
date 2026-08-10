@@ -1,62 +1,62 @@
 import { notFound } from 'next/navigation'
-import { Render } from '@puckeditor/core/rsc'
-import { getCollectionBySlug, listTags } from '@/modules/shop/lib/db/catalogue'
+import Link from 'next/link'
+import { getTagBySlug, listTags } from '@/modules/shop/lib/db/catalogue'
 import { listProducts, getProductMediaForProducts, getProductTagIds } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
-import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
-import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
-import { injectCollectionContext } from '@/modules/shop/lib/inject-collection-context'
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
 import { resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { resolveCardTemplate, buildCardContext, buildTagMaps, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
-import type { PuckData } from '@/modules/shop/lib/types'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
+
+// A tag's own page. Categories are the shelves and collections are the hand-
+// picked groupings; a tag is the loose label that cuts across both, and until
+// now it had nowhere to point at. Same card path as every other product surface,
+// so the shop's one Product Card layout dresses these too.
+//
+// There is no `shopTag` theme layout: unlike the category page this has no
+// builder-designed variant yet, so the page below is what renders. Adding one
+// later means registering the layout type on the blocks that should be offered
+// in it, which is a change of its own.
+
+async function visibleTag(slug: string) {
+  const tag = await getTagBySlug(slug)
+  // A tag kept off the storefront has no page - it is filing, not content.
+  return tag && tag.storefrontVisible ? tag : null
+}
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   if ((await getShopGate()).blocked) return {}
-  const collection = await getCollectionBySlug(slug)
-  if (!collection) return {}
-  return { title: collection.metaTitle || collection.name, description: collection.metaDescription || collection.description || undefined }
+  const tag = await visibleTag(slug)
+  if (!tag) return {}
+  return {
+    title: tag.metaTitle || tag.name,
+    description: tag.metaDescription || tag.description || undefined,
+  }
 }
 
-export default async function ShopCollectionPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ShopTagPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   const gate = await getShopGate()
   if (gate.blocked) return <ShopClosedNotice message={gate.message} />
 
-  const collection = await getCollectionBySlug(slug)
-  if (!collection) notFound()
+  const tag = await visibleTag(slug)
+  if (!tag) notFound()
 
-  const layout = await resolveThemeLayout('shopCollection', { moduleName: 'shop', slug: collection.slug })
-  if (layout?.builderData) {
-    const data = injectCollectionContext(layout.builderData as PuckData, { collectionSlug: collection.slug })
-    return (
-      <>
-        {gate.staffPreview && <ShopStaffPreviewBanner />}
-        <Render config={getModuleLayoutPuckRscConfig('shopCollection') as any} data={data as any} />
-      </>
-    )
-  }
-
-  const [{ products }, config, bp, tags, template] = await Promise.all([
-    listProducts({ status: 'ACTIVE', collectionSlug: slug, perPage: 60, excludeHidden: true, storefront: true }),
-    getShopConfigCached(),
+  const config = await getShopConfigCached()
+  const [{ products }, bp, tags, template] = await Promise.all([
+    listProducts({ status: 'ACTIVE', perPage: 60, excludeHidden: true, storefront: true, tagSlug: tag.slug }),
     getShopBreakpoints(),
     listTags(),
     resolveCardTemplate(),
   ])
   const { tagById, tagsById } = buildTagMaps(tags)
 
-  // Same card path as the Product Grid block, so this fallback page (shown when no
-  // custom collection layout is published) stamps the one shared Product Card
-  // template - image carousel, 3D badge, hover and all - rather than a separate
-  // hand-rolled tile. Editing that single layout restyles every card surface.
   const productIds = products.map((p) => p.id)
   const [mediaByProduct, fromPrices, cardExtras, taxDisplay] = await Promise.all([
     getProductMediaForProducts(productIds),
@@ -64,11 +64,8 @@ export default async function ShopCollectionPage({ params }: { params: Promise<{
     resolveShopCardExtras(productIds),
     resolveTaxDisplay(),
   ])
-  // What the shop prints prices as (net or gross) is a per-shop answer, not a
-  // per-card one, so it is resolved once here and handed to every card.
-  // Whether prices may be shown at all is a per-shop answer too - a quote-only
-  // shop withholds every figure on every card, not some of them. Cached, so this
-  // costs nothing per surface. See lib/commerce-mode.ts.
+  // Resolved once for the whole page and handed to every card, so no two cards
+  // can disagree about net/gross or about whether prices show at all.
   const pricing = { ...config, taxDisplay, commerce: await resolveShopCommerceMode() }
   const items: CardItem[] = await Promise.all(
     products.map(async (p) => {
@@ -81,13 +78,22 @@ export default async function ShopCollectionPage({ params }: { params: Promise<{
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
       {gate.staffPreview && <ShopStaffPreviewBanner />}
-      <h1 style={{ fontSize: '1.75rem' }}>{collection.name}</h1>
-      {collection.description && <p style={{ color: 'var(--color-text-muted)' }}>{collection.description}</p>}
+      <nav aria-label="Breadcrumb" style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
+        <Link href="/shop" style={{ color: 'inherit', textDecoration: 'none' }}>Shop</Link>
+        <span style={{ margin: '0 0.4rem' }}>/</span>
+        <span style={{ color: 'var(--color-text)' }}>{tag.name}</span>
+      </nav>
+
+      <h1 style={{ fontSize: '1.75rem' }}>{tag.name}</h1>
+      {tag.description && <p style={{ color: 'var(--color-text-muted)' }}>{tag.description}</p>}
+
       <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
       <div className="shop-grid" style={{ ['--shop-cols' as string]: '3', marginTop: '1.5rem' } as React.CSSProperties}>
         {cards}
       </div>
-      {products.length === 0 && <p style={{ color: 'var(--color-text-muted)' }}>No products in this collection yet.</p>}
+      {products.length === 0 && (
+        <p style={{ color: 'var(--color-text-muted)', marginTop: '1.5rem' }}>Nothing carries this label yet.</p>
+      )}
     </div>
   )
 }

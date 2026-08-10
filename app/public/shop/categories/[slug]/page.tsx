@@ -13,7 +13,7 @@ import { injectCategoryContext } from '@/modules/shop/lib/inject-category-contex
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
 import { resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
-import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
+import { resolveCardTemplate, buildCardContext, buildTagMaps, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { ShopCategoryCards } from '@/modules/shop/components/public/ShopCategoryCards'
 import { ShopCategoryDescriptionBody } from '@/modules/shop/components/public/ShopCategoryDescriptionBody'
@@ -70,7 +70,7 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
   // Ancestors include the category itself; the trail before it is the crumbs.
   const crumbs = ancestors.filter((a) => a.id !== category.id)
   const children = allCategories.filter((c) => c.parentId === category.id)
-  const tagById = new Map(tags.map((t) => [t.id, t.slug]))
+  const { tagById, tagsById } = buildTagMaps(tags)
 
   // Same card path as the Product Grid block, so this fallback page (shown when no
   // custom category layout is published) stamps the one shared Product Card
@@ -92,7 +92,7 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
   const items: CardItem[] = await Promise.all(
     products.map(async (p) => {
       const tagIds = await getProductTagIds(p.id)
-      return { product: p, ctx: buildCardContext(p, mediaByProduct.get(p.id) ?? [], tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id)) }
+      return { product: p, ctx: buildCardContext(p, mediaByProduct.get(p.id) ?? [], tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id), tagsById) }
     }),
   )
   const cards = template ? await renderCards(template, items) : items.map((i) => <MinimalCard key={i.product.id} {...i} />)

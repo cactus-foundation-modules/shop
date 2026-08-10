@@ -3,7 +3,7 @@ import { getProductsByIds, getProductMedia, getProductTagIds } from '@/modules/s
 import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
-import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
+import { resolveCardTemplate, buildCardContext, buildTagMaps, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
 import { resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
@@ -43,7 +43,7 @@ export const shopSearchCardProvider = {
     )
     if (products.length === 0) return null
 
-    const tagById = new Map(tags.map((t) => [t.id, t.slug]))
+    const { tagById, tagsById } = buildTagMaps(tags)
     const ids = products.map((p) => p.id)
     const [fromPrices, cardExtras, taxDisplay] = await Promise.all([
       resolveCardFromPrices(ids),
@@ -55,7 +55,7 @@ export const shopSearchCardProvider = {
     const items: CardItem[] = await Promise.all(
       products.map(async (product) => {
         const [media, tagIds] = await Promise.all([getProductMedia(product.id), getProductTagIds(product.id)])
-        const ctx = buildCardContext(product, media, tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(product.id) ?? null, cardExtras.get(product.id))
+        const ctx = buildCardContext(product, media, tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(product.id) ?? null, cardExtras.get(product.id), tagsById)
         // Facts (e.g. the variation swatch row) survive a still card - they are
         // plain server-rendered markup, unlike the carousel and its overlays.
         return { product, ctx: still ? { ...ctx, images: ctx.images.slice(0, 1), overlays: [] } : ctx }

@@ -3,7 +3,7 @@ import { listProducts, getProductMedia, getProductTagIds, type ProductSort } fro
 import { listTags, resolveCategoryProductFilter } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
-import { resolveCardTemplate, buildCardContext, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
+import { resolveCardTemplate, buildCardContext, buildTagMaps, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
 import { resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
@@ -43,7 +43,7 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
     resolveCardTemplate(props.layoutRef),
   ])
   const { products } = listed
-  const tagById = new Map(tags.map((t) => [t.id, t.slug]))
+  const { tagById, tagsById } = buildTagMaps(tags)
 
   if (products.length === 0) {
     return <p style={{ color: 'var(--color-text-muted)' }}>{props.emptyText || 'No products to show yet.'}</p>
@@ -67,7 +67,7 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
   const items: CardItem[] = await Promise.all(
     products.map(async (product) => {
       const [media, tagIds] = await Promise.all([getProductMedia(product.id), getProductTagIds(product.id)])
-      return { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(product.id) ?? null, cardExtras.get(product.id)) }
+      return { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(product.id) ?? null, cardExtras.get(product.id), tagsById) }
     }),
   )
 
