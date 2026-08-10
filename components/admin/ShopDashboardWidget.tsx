@@ -36,9 +36,9 @@ export async function shopDashboardWidget() {
     <div className="card" style={{ padding: '1.25rem' }}>
       <h2 className="card-title" style={{ margin: '0 0 0.75rem' }}>Shop</h2>
       <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
-        <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{config.currencySymbol}{revenue.toFixed(2)}</div><div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Revenue (30d)</div></div>
-        <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{orderCount}</div><div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Orders (30d)</div></div>
-        <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{config.currencySymbol}{aov.toFixed(2)}</div><div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Avg order value</div></div>
+        <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{config.currencySymbol}{revenue.toFixed(2)}</div><div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>Revenue (30d)</div></div>
+        <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{orderCount}</div><div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>Orders (30d)</div></div>
+        <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{config.currencySymbol}{aov.toFixed(2)}</div><div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>Avg order value</div></div>
       </div>
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
         {lowStockCount > 0 && (

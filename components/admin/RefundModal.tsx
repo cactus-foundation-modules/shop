@@ -53,14 +53,14 @@ export function RefundModal({ orderId, items, paymentMethod, onClose, onDone }: 
       <div style={{ background: 'var(--color-surface)', borderRadius: 8, width: '90vw', maxWidth: 560, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,.25)' }}>
         <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Refund order</h3>
-          <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-muted)' }}>×</button>
+          <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-secondary)' }}>×</button>
         </div>
         <div style={{ padding: '1.25rem', overflowY: 'auto', display: 'grid', gap: '0.75rem' }}>
           {MANUAL_METHOD_COPY[paymentMethod] && (
             <p style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>{MANUAL_METHOD_COPY[paymentMethod]}</p>
           )}
           {!MANUAL_METHOD_COPY[paymentMethod] && (
-            <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>This will be refunded automatically via {paymentMethod === 'STRIPE' ? 'Stripe' : 'PayPal'}.</p>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>This will be refunded automatically via {paymentMethod === 'STRIPE' ? 'Stripe' : 'PayPal'}.</p>
           )}
           {error && <p style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}>{error}</p>}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>

@@ -17,7 +17,7 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 25px 50px -12px rgba(0,0,0,.25)', display: 'grid', gap: '1rem', padding: '1.25rem',
 }
 const titleStyle: React.CSSProperties = { margin: 0, fontSize: '1rem', fontWeight: 600 }
-const messageStyle: React.CSSProperties = { margin: 0, fontSize: '0.875rem', color: 'var(--color-text-muted)' }
+const messageStyle: React.CSSProperties = { margin: 0, fontSize: '0.875rem', color: 'var(--color-text-secondary)' }
 const actionsStyle: React.CSSProperties = { display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)',

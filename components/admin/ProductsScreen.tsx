@@ -452,7 +452,7 @@ export function ProductsScreen({ toolbarExtras, productsTabs = [], initialTab }:
           <h3 style={{ fontSize: '0.9375rem' }}>Recent imports</h3>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {importJobs.map((job) => (
-              <li key={job.id} style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
+              <li key={job.id} style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
                 {job.status} - {job.createdCount} created, {job.updatedCount} updated, {job.skippedCount} skipped
               </li>
             ))}

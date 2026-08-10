@@ -122,7 +122,7 @@ const CREDENTIAL_METHODS = ['STRIPE', 'PAYPAL'] as const
 
 const hr: CSSProperties = { border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.5rem 0' }
 const sectionHeading: CSSProperties = { margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 600 }
-const mutedText: CSSProperties = { color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', margin: 0 }
+const mutedText: CSSProperties = { color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', margin: 0 }
 
 const chipStyle = (active: boolean): CSSProperties => ({
   display: 'inline-flex',
@@ -520,7 +520,7 @@ function MethodList({
               data-drag-handle
               aria-hidden
               title="Drag to reorder"
-              style={{ cursor: 'grab', color: 'var(--color-text-muted)', fontSize: '1rem', lineHeight: 1, userSelect: 'none' }}
+              style={{ cursor: 'grab', color: 'var(--color-text-secondary)', fontSize: '1rem', lineHeight: 1, userSelect: 'none' }}
             >
               ⠿
             </span>

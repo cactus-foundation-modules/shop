@@ -40,7 +40,7 @@ export function DigitalPanel({ state, setField, errors }: PanelProps) {
         blurb="What the buyer downloads once they have paid. Replacing it here changes it for everyone, including past buyers whose links still work."
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.875rem', color: f.digitalFileId ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
+          <span style={{ fontSize: '0.875rem', color: f.digitalFileId ? 'var(--color-text)' : 'var(--color-text-secondary)' }}>
             {uploadedName ?? (f.digitalFileId ? 'A file is attached.' : 'Nothing uploaded yet.')}
           </span>
           <label className="btn btn-secondary btn-sm" style={{ cursor: uploading ? 'wait' : 'pointer' }}>

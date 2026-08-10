@@ -343,7 +343,7 @@ export function CategoriesScreen() {
       <div className="page-header">
         <div>
           <h1 className="page-title" style={{ marginBottom: '0.25rem' }}>Categories</h1>
-          <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+          <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
             {categories.length === 0
               ? 'Group your products so shoppers can browse them.'
               : `${categories.length} categor${categories.length === 1 ? 'y' : 'ies'} · ${totalTop} at the top level`}
@@ -375,13 +375,13 @@ export function CategoriesScreen() {
       )}
 
       {categories.length === 0 && (
-        <p style={{ color: 'var(--color-text-muted)' }}>No categories yet. Add one to start grouping your products.</p>
+        <p style={{ color: 'var(--color-text-secondary)' }}>No categories yet. Add one to start grouping your products.</p>
       )}
       {categories.length > 0 && rows.length === 0 && (
-        <p style={{ color: 'var(--color-text-muted)' }}>No categories match &ldquo;{search.trim()}&rdquo;.</p>
+        <p style={{ color: 'var(--color-text-secondary)' }}>No categories match &ldquo;{search.trim()}&rdquo;.</p>
       )}
       {categories.length > 0 && rows.length > 0 && !query && (
-        <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', margin: '0 0 0.5rem' }}>
+        <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', margin: '0 0 0.5rem' }}>
           Drag the handle to reorder, or drop a category onto another to file it inside. The arrows nudge one step; Edit lets you pick a parent from a list.
         </p>
       )}
@@ -431,7 +431,7 @@ export function CategoriesScreen() {
                       aria-label={`Drag to reorder or nest ${cat.name}`}
                       title="Drag to reorder or nest"
                       style={{
-                        cursor: 'grab', color: 'var(--color-text-muted)', flexShrink: 0,
+                        cursor: 'grab', color: 'var(--color-text-secondary)', flexShrink: 0,
                         lineHeight: 1, padding: '0 0.125rem', userSelect: 'none', fontSize: '0.875rem',
                       }}
                     >
@@ -448,7 +448,7 @@ export function CategoriesScreen() {
                       title={isCollapsed ? 'Expand' : 'Collapse'}
                       style={{
                         background: 'none', border: 'none', cursor: query ? 'default' : 'pointer',
-                        color: 'var(--color-text-muted)', padding: 0, width: '1rem', flexShrink: 0,
+                        color: 'var(--color-text-secondary)', padding: 0, width: '1rem', flexShrink: 0,
                         fontSize: '0.75rem', lineHeight: 1,
                         transform: isCollapsed ? 'none' : 'rotate(90deg)', transition: 'transform 0.12s',
                       }}
@@ -456,7 +456,7 @@ export function CategoriesScreen() {
                       ▶
                     </button>
                   ) : (
-                    <span aria-hidden style={{ width: '1rem', flexShrink: 0, color: 'var(--color-text-muted)', textAlign: 'center' }}>
+                    <span aria-hidden style={{ width: '1rem', flexShrink: 0, color: 'var(--color-text-secondary)', textAlign: 'center' }}>
                       {depth > 0 ? '·' : ''}
                     </span>
                   )}
@@ -484,7 +484,7 @@ export function CategoriesScreen() {
                     {count}
                   </span>
                   {parentOfSomething && isCollapsed && (
-                    <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)' }}>
+                    <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-secondary)' }}>
                       {childrenOf(cat.id).length} sub
                     </span>
                   )}
@@ -509,7 +509,7 @@ export function CategoriesScreen() {
               {isEditing && (
                 <div style={{ display: 'grid', gap: '0.75rem', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-border)' }}>
                   <label style={{ display: 'grid', gap: '0.25rem' }}>
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Name</span>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>Name</span>
                     <input
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
@@ -520,7 +520,7 @@ export function CategoriesScreen() {
                     />
                   </label>
                   <label style={{ display: 'grid', gap: '0.25rem' }}>
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Sits under</span>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>Sits under</span>
                     <select value={editParentId} onChange={(e) => setEditParentId(e.target.value)} style={inputStyle}>
                       <option value="">Top level (no parent)</option>
                       {categories.filter((c) => !blocked.has(c.id)).map((c) => (
@@ -529,7 +529,7 @@ export function CategoriesScreen() {
                     </select>
                   </label>
                   <label style={{ display: 'grid', gap: '0.25rem' }}>
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Products shown on this category&apos;s page</span>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>Products shown on this category&apos;s page</span>
                     <select value={editMode} onChange={(e) => setEditMode(e.target.value as DisplayModeChoice)} style={inputStyle}>
                       <option value="">Use the shop default</option>
                       <option value="rollup">This category and all its sub-categories</option>
@@ -541,7 +541,7 @@ export function CategoriesScreen() {
                       listed on the parent category's page, so it wants a picture
                       and a line of copy - the same two things a product card has. */}
                   <label style={{ display: 'grid', gap: '0.25rem' }}>
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Short description (shown on this category&apos;s card)</span>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>Short description (shown on this category&apos;s card)</span>
                     <input
                       value={editShortDescription}
                       onChange={(e) => setEditShortDescription(e.target.value)}
@@ -551,7 +551,7 @@ export function CategoriesScreen() {
                   </label>
 
                   <div style={{ display: 'grid', gap: '0.25rem' }}>
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Picture (shown on this category&apos;s card)</span>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>Picture (shown on this category&apos;s card)</span>
                     <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                       {editImageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -573,7 +573,7 @@ export function CategoriesScreen() {
                   </div>
 
                   <label style={{ display: 'grid', gap: '0.25rem' }}>
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Full description (shown on this category&apos;s own page)</span>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>Full description (shown on this category&apos;s own page)</span>
                     <textarea
                       value={editDescription}
                       onChange={(e) => setEditDescription(e.target.value)}
@@ -589,7 +589,7 @@ export function CategoriesScreen() {
                       does - so the plain text stays the easy option and this is
                       the opt-in. */}
                   <div style={{ display: 'grid', gap: '0.25rem' }}>
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Designed description</span>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>Designed description</span>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                       <a
                         href={`/${adminPath}/m/shop/categories/${cat.id}/description`}
@@ -599,7 +599,7 @@ export function CategoriesScreen() {
                       >
                         {cat.hasDesignedDescription ? 'Edit the design' : 'Design this description'}
                       </a>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
                         {cat.hasDesignedDescription
                           ? 'Opens in a new tab. The designed version is what shoppers see.'
                           : 'Opens the page builder in a new tab. Anything you build there replaces the plain text above.'}

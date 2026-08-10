@@ -64,10 +64,10 @@ export function DispatchModal({ orderId, lines, onClose, onDone }: {
       <div style={{ background: 'var(--color-surface)', borderRadius: 8, width: '90vw', maxWidth: 560, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,.25)' }}>
         <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Dispatch items</h3>
-          <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-muted)' }}>×</button>
+          <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-secondary)' }}>×</button>
         </div>
         <div style={{ padding: '1.25rem', overflowY: 'auto', display: 'grid', gap: '0.75rem' }}>
-          <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+          <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
             Record what has actually gone out. You can send the rest later - the order keeps track of what is still owed.
           </p>
           {nothingOutstanding && (
@@ -86,7 +86,7 @@ export function DispatchModal({ orderId, lines, onClose, onDone }: {
               {lines.map((line) => {
                 const outstanding = line.outstandingQty
                 return (
-                  <tr key={line.orderItemId} style={{ borderBottom: '1px solid var(--color-border)', color: outstanding === 0 ? 'var(--color-text-muted)' : undefined }}>
+                  <tr key={line.orderItemId} style={{ borderBottom: '1px solid var(--color-border)', color: outstanding === 0 ? 'var(--color-text-secondary)' : undefined }}>
                     <td style={{ padding: '0.375rem' }}>{line.productName}</td>
                     <td>{line.quantity}</td>
                     <td>{line.dispatchedQty}</td>

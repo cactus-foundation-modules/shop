@@ -76,7 +76,7 @@ export function ProductPicker({
         />
         {(searching || results.length > 0) && query && (
           <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 6, marginTop: '0.25rem', maxHeight: 200, overflowY: 'auto' }}>
-            {searching && <div style={{ padding: '0.5rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Searching…</div>}
+            {searching && <div style={{ padding: '0.5rem', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>Searching…</div>}
             {!searching && results.map((p) => (
               <button key={p.id} type="button" onClick={() => add(p)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.5rem 0.625rem', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem' }}>
                 {p.name}

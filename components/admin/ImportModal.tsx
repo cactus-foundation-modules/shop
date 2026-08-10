@@ -64,21 +64,21 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
       <div style={{ background: 'var(--color-surface)', borderRadius: 8, width: '90vw', maxWidth: 600, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,.25)' }}>
         <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Import products from CSV</h3>
-          {step !== 'progress' && <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-muted)' }}>×</button>}
+          {step !== 'progress' && <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-secondary)' }}>×</button>}
         </div>
         <div style={{ padding: '1.25rem', overflowY: 'auto' }}>
           {error && <p style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}>{error}</p>}
 
           {step === 'upload' && (
             <div style={{ display: 'grid', gap: '0.75rem' }}>
-              <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>Choose a CSV file exported from Cactus, or your own using the same columns as the import template.</p>
+              <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>Choose a CSV file exported from Cactus, or your own using the same columns as the import template.</p>
               <input type="file" accept=".csv,text/csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f) }} />
             </div>
           )}
 
           {step === 'mapping' && (
             <div style={{ display: 'grid', gap: '0.75rem' }}>
-              <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
+              <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
                 This file&apos;s column headers don&apos;t match the expected format. Match each of your columns to a field below, or leave as &quot;Ignore&quot;.
               </p>
               <div style={{ display: 'grid', gap: '0.5rem' }}>
@@ -106,7 +106,7 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
             <div style={{ display: 'grid', gap: '0.5rem' }}>
               <p style={{ fontSize: '0.875rem' }}>Status: {progress?.status ?? 'PROCESSING'}</p>
               {progress && (
-                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
                   {progress.createdCount} created, {progress.updatedCount} updated, {progress.skippedCount} skipped
                   {progress.totalRows ? ` of ${progress.totalRows} rows` : ''}
                 </p>

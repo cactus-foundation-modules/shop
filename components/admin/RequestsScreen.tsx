@@ -150,10 +150,10 @@ export function RequestsScreen() {
         </div>
       )}
 
-      {loading && <p style={{ color: 'var(--color-text-muted)' }}>Loading…</p>}
+      {loading && <p style={{ color: 'var(--color-text-secondary)' }}>Loading…</p>}
 
       {rows !== null && rows.length === 0 && (
-        <p style={{ color: 'var(--color-text-muted)' }}>
+        <p style={{ color: 'var(--color-text-secondary)' }}>
           {filter === 'PENDING' ? 'Nothing waiting. Enjoy it while it lasts.' : 'Nothing here.'}
         </p>
       )}
@@ -168,16 +168,16 @@ export function RequestsScreen() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
                   <strong>{REQUEST_TYPE_LABEL[row.type]}</strong>
                   <span className={badgeClass(state.tone)}>{state.label}</span>
-                  <span style={{ color: 'var(--color-text-muted)' }}>
+                  <span style={{ color: 'var(--color-text-secondary)' }}>
                     {row.orderNumber} · {row.customerName} ({row.customerEmail})
                   </span>
                 </div>
-                <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+                <span style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
                   asked {new Date(row.createdAt).toLocaleDateString('en-GB')}
                 </span>
               </div>
 
-              <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+              <div style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
                 {reasonLabel(row.type, row.reason)}
                 {row.items.length > 0 && ` · ${row.items.reduce((sum, item) => sum + item.quantity, 0)} item(s) to come back`}
                 {` · order total ${formatMoney(row.orderTotal, currencySymbol)}`}
@@ -188,7 +188,7 @@ export function RequestsScreen() {
               )}
 
               {row.adminNote && row.status !== 'PENDING' && (
-                <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+                <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
                   You replied: {row.adminNote}
                 </p>
               )}

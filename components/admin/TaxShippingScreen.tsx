@@ -9,7 +9,7 @@ import { useConfirm } from '@/modules/shop/components/admin/dialogs'
 const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.25rem 0' }
 const sectionHeading: React.CSSProperties = { margin: '0 0 0.5rem', fontSize: '0.9375rem', fontWeight: 600 }
 const detailsStyle: React.CSSProperties = { marginBottom: '0.75rem' }
-const summaryStyle: React.CSSProperties = { cursor: 'pointer', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }
+const summaryStyle: React.CSSProperties = { cursor: 'pointer', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }
 const panelStyle: React.CSSProperties = { border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.75rem', marginTop: '0.75rem' }
 
 const RATE_TYPE_LABELS: Record<ShpShippingRateType, string> = { FLAT: 'Flat rate', WEIGHT_BASED: 'Weight-based', FREE: 'Free shipping' }
@@ -463,7 +463,7 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
           </p>
         </details>
 
-        {zones.length === 0 && <p style={{ color: 'var(--color-text-muted)' }}>No zones yet. Create one to set tax and shipping rates.</p>}
+        {zones.length === 0 && <p style={{ color: 'var(--color-text-secondary)' }}>No zones yet. Create one to set tax and shipping rates.</p>}
 
         {zones.map((z) => (
           <div key={z.id} style={{ border: '1px solid var(--color-border)', borderRadius: 8, marginBottom: '0.5rem', overflow: 'hidden' }}>
@@ -476,7 +476,7 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
                 <strong>{z.name}</strong>
                 <span className="field-hint" style={{ display: 'block', fontSize: '0.75rem' }}>{zoneSummary(z)}</span>
               </span>
-              <span aria-hidden="true" style={{ color: 'var(--color-text-muted)', transform: openZoneId === z.id ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>&#9656;</span>
+              <span aria-hidden="true" style={{ color: 'var(--color-text-secondary)', transform: openZoneId === z.id ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>&#9656;</span>
             </button>
 
             {openZoneId === z.id && (

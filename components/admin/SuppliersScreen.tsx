@@ -148,7 +148,7 @@ export function SuppliersScreen({ label, enabled }: { label: string; enabled: bo
       )}
 
       {loaded && suppliers.length === 0 && !form && (
-        <p style={{ color: 'var(--color-text-muted)' }}>
+        <p style={{ color: 'var(--color-text-secondary)' }}>
           Nobody in the list yet. Add one and it becomes pickable on every product and variation.
         </p>
       )}
@@ -177,8 +177,8 @@ export function SuppliersScreen({ label, enabled }: { label: string; enabled: bo
                   <td style={cell}>{s.discountPercent == null ? '—' : `${s.discountPercent}%`}</td>
                   <td style={cell}>
                     {s.contactName ?? '—'}
-                    {s.email && <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>{s.email}</div>}
-                    {s.phone && <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>{s.phone}</div>}
+                    {s.email && <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>{s.email}</div>}
+                    {s.phone && <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>{s.phone}</div>}
                   </td>
                   <td style={cell}>
                     {s.catalogues.length === 0 ? '—' : s.catalogues.map((c) => (

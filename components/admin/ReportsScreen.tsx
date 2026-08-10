@@ -36,8 +36,8 @@ export function ReportsScreen() {
       {tab === 'revenue' && (
         <div>
           <div style={{ display: 'flex', gap: '2rem', marginBottom: '1rem' }}>
-            <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{formatMoney(totalRevenue, currencySymbol)}</div><div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Revenue (90d)</div></div>
-            <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{totalOrders}</div><div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>Orders (90d)</div></div>
+            <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{formatMoney(totalRevenue, currencySymbol)}</div><div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>Revenue (90d)</div></div>
+            <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{totalOrders}</div><div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>Orders (90d)</div></div>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}><th style={{ padding: '0.5rem' }}>Day</th><th>Revenue</th><th>Orders</th></tr></thead>

@@ -560,7 +560,7 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
           <p className="field-hint" style={{ marginBottom: '0.75rem' }}>Choose which steps appear at checkout, and which ones can&apos;t be skipped.</p>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr auto auto', border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 'var(--form-gap)' }}>
             {(() => {
-              const headerCellStyle: React.CSSProperties = { padding: '0.5rem 0.75rem', fontSize: '0.75rem', fontWeight: 500, color: 'var(--color-text-muted)', background: 'var(--color-bg-subtle)', borderBottom: '1px solid var(--color-border)' }
+              const headerCellStyle: React.CSSProperties = { padding: '0.5rem 0.75rem', fontSize: '0.75rem', fontWeight: 500, color: 'var(--color-text-secondary)', background: 'var(--color-bg-subtle)', borderBottom: '1px solid var(--color-border)' }
               return (
                 <>
                   <div style={headerCellStyle}>Step</div>
@@ -619,7 +619,7 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
 
       {subTab === 'notifications' && (
         <div>
-          <p style={{ margin: '0 0 var(--space-4)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+          <p style={{ margin: '0 0 var(--space-4)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
             Who gets told, and when. What the emails actually say - and the design wrapped around them -
             lives with every other email on the site, under Settings, on the Emails tab.
           </p>

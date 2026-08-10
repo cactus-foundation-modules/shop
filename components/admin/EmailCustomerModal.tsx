@@ -52,7 +52,7 @@ export function EmailCustomerModal({ orderId, orderNumber, customerEmail, custom
           <button type="button" aria-label="Close" onClick={onClose} style={closeButton}>×</button>
         </div>
         <div style={{ padding: '1.25rem', overflowY: 'auto', display: 'grid', gap: '0.75rem' }}>
-          <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+          <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
             Goes to {customerName} at {customerEmail}, from your shop&apos;s usual sending address. It is added to this order&apos;s history.
           </p>
           {error && <p style={{ margin: 0, color: 'var(--color-error)', fontSize: '0.875rem' }}>{error}</p>}
@@ -86,6 +86,6 @@ const overlay: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 1000
 const card: React.CSSProperties = { background: 'var(--color-surface)', borderRadius: 8, width: '90vw', maxWidth: 560, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0,0,0,.25)' }
 const head: React.CSSProperties = { padding: '1rem 1.25rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
 const foot: React.CSSProperties = { padding: '0.75rem 1.25rem', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }
-const closeButton: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-muted)' }
+const closeButton: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-secondary)' }
 const label: React.CSSProperties = { display: 'grid', gap: '0.25rem', fontSize: '0.875rem' }
 const field: React.CSSProperties = { width: '100%', padding: '0.5rem 0.625rem', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.875rem' }

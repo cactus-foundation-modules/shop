@@ -18,8 +18,8 @@ export const DESCRIPTION_BUILDER_CHROME_OFF_CSS = `
 .spe-desc-standalone-bar{display:flex;align-items:center;gap:var(--space-4);padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--color-border);background:var(--color-surface);flex-shrink:0}
 .spe-desc-standalone-title{display:flex;flex-direction:column;line-height:1.2;min-width:0}
 .spe-desc-standalone-title strong{color:var(--color-text);font-size:0.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.spe-desc-standalone-eyebrow{color:var(--color-text-muted);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em}
-.spe-desc-standalone-status{margin-left:auto;color:var(--color-text-muted);font-size:0.85rem;text-align:right}
+.spe-desc-standalone-eyebrow{color:var(--color-text-secondary);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em}
+.spe-desc-standalone-status{margin-left:auto;color:var(--color-text-secondary);font-size:0.85rem;text-align:right}
 .spe-desc-standalone-status--error{color:var(--color-danger)}
 .spe-desc-standalone-canvas{flex:1;min-height:0;overflow:hidden;position:relative}
 .spe-desc-standalone-canvas .Puck{height:100%}

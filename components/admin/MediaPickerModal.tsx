@@ -238,11 +238,11 @@ export function MediaPickerModal({ onAdd, onClose, resolveFolderId, resolveIniti
           </select>
           <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f) }} />
           <button type="button" className="btn btn-secondary btn-sm" disabled={uploading} onClick={() => fileInputRef.current?.click()}>{uploading ? 'Uploading…' : 'Upload new'}</button>
-          <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-muted)', lineHeight: 1, flexShrink: 0 }}>×</button>
+          <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-secondary)', lineHeight: 1, flexShrink: 0 }}>×</button>
         </div>
         {uploadError && <p style={{ color: 'var(--color-danger)', margin: '0.5rem 1.25rem 0', fontSize: '0.8125rem' }}>{uploadError}</p>}
         {!trimmed && folderId !== undefined && (
-          <div style={{ padding: '0.5rem 1.25rem 0', display: 'flex', gap: '0.375rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+          <div style={{ padding: '0.5rem 1.25rem 0', display: 'flex', gap: '0.375rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
             {breadcrumb.length === 0
               ? <span>All folders</span>
               : <button type="button" style={crumbStyle} onClick={() => setFolderId(null)}>All folders</button>}
@@ -276,9 +276,9 @@ export function MediaPickerModal({ onAdd, onClose, resolveFolderId, resolveIniti
               ))}
             </div>
           )}
-          {(loading || folderId === undefined) && <p style={{ color: 'var(--color-text-muted)', textAlign: 'center' }}>Loading…</p>}
+          {(loading || folderId === undefined) && <p style={{ color: 'var(--color-text-secondary)', textAlign: 'center' }}>Loading…</p>}
           {!loading && folderId !== undefined && items.filter((i) => i.mimeType.startsWith('image/')).length === 0 && subfolders.length === 0 && (
-            <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '1rem', fontSize: '0.875rem' }}>
+            <p style={{ color: 'var(--color-text-secondary)', textAlign: 'center', padding: '1rem', fontSize: '0.875rem' }}>
               {trimmed ? 'No images match that search.' : 'No images in this folder yet.'}
             </p>
           )}

@@ -436,7 +436,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                   {order.agreements.map((agreement) => (
                     <li key={agreement.id}>
                       <div className="sox-list-main" style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline' }}>
-                        <span aria-hidden="true" style={{ color: agreement.accepted ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
+                        <span aria-hidden="true" style={{ color: agreement.accepted ? 'var(--color-success)' : 'var(--color-text-secondary)' }}>
                           {agreement.accepted ? '✓' : '✗'}
                         </span>
                         <span>
