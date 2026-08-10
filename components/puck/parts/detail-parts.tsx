@@ -515,15 +515,18 @@ type SkuProps = { _ctx?: DetailPartContext; prefix?: string; align?: string; aud
 // long-standing "SKU"; an explicitly emptied box means "just the code".
 const skuPrefix = (value: unknown): string => (typeof value === 'string' ? value.trim() : 'SKU')
 
-// Who the product's own code is written for. Everyone by default, because that
-// is what this part has always done and a shop quoting SKUs to its customers
-// would lose them overnight otherwise; 'staff' turns it into a buying reference
-// for the owner alone. The sale SKU below is never on this switch - a supplier's
+// Who the product's own code is written for. Staff by default - a SKU is a
+// buying reference, and a shop that wants its customers quoting codes at it can
+// say so explicitly. Which is why the default is read off the ABSENCE of
+// 'everyone' rather than the presence of 'staff': a block saved before this
+// field existed carries no value at all, and those are exactly the pages this
+// was asked for. The sale SKU below is never on this switch - a supplier's
 // clearance code is staff-only whatever the author picks.
 const skuAudienceOptions = [
-  { label: 'Everyone', value: 'everyone' },
   { label: 'Staff only', value: 'staff' },
+  { label: 'Everyone', value: 'everyone' },
 ]
+const skuIsPublic = (value: unknown): boolean => value === 'everyone'
 
 export function ShopDetailSku(props: SkuProps) {
   return (
@@ -547,16 +550,17 @@ export function ShopDetailSkuRsc(props: SkuProps) {
   const _ctx = props._ctx
   if (!_ctx) return null
   const { product, showAdminCodes } = _ctx
-  // The product's own code, held back from shoppers when the author has set the
-  // part to staff. Staff see it either way - the switch decides who ELSE does.
-  const sku = product.sku && (props.audience !== 'staff' || showAdminCodes) ? product.sku : null
+  // The product's own code, staff-only unless the author has published it.
+  // Staff see it either way - the switch decides who ELSE does.
+  const isPublic = skuIsPublic(props.audience)
+  const sku = product.sku && (isPublic || showAdminCodes) ? product.sku : null
   // The supplier's clearance code, for staff alone. Written out whenever the
   // product carries one, on sale or not: the owner reading their own page needs
   // to know which code this stock is currently ordered under.
   const saleSku = showAdminCodes ? product.saleSku : null
   if (!sku && !saleSku) return null
   const prefix = skuPrefix(props.prefix)
-  const staffSku = Boolean(sku) && props.audience === 'staff'
+  const staffSku = Boolean(sku) && !isPublic
   return (
     <>
       <Style css={skuCss} />
@@ -588,7 +592,7 @@ export const shopDetailSkuPuckComponent = {
     audience: { type: 'select' as const, label: 'Show the code to', options: skuAudienceOptions },
     align: { type: 'select' as const, label: 'Alignment', options: alignOptions },
   },
-  defaultProps: { prefix: 'SKU', audience: 'everyone', align: 'left' },
+  defaultProps: { prefix: 'SKU', audience: 'staff', align: 'left' },
   render: ShopDetailSku,
 }
 export const shopDetailSkuPuckRscComponent = { ...shopDetailSkuPuckComponent, render: ShopDetailSkuRsc }
