@@ -31,7 +31,14 @@ const BARE_CSS = `
 body > :not(main) { display: none !important; }
 main { padding: 0 !important; }
 .spd-bare { max-width: 860px; margin: 0 auto; padding: 1.25rem 1.25rem 2rem; }
-.spd-bare-imgs { display: flex; gap: 0.625rem; overflow-x: auto; margin: 0 0 1rem; }
+/* Centred, because this view is read in a modal a good deal wider than one
+   picture and a lone photograph hard against the left edge reads as a layout
+   that has come apart. "safe" is doing real work: plain "center" on a scrolling
+   flex row puts overflow on BOTH sides and the browser cannot scroll back to
+   the first item, so a product with eight pictures would lose the first of them
+   outright. safe centre falls back to start alignment the moment the row
+   overflows, which is exactly when centring stops being wanted anyway. */
+.spd-bare-imgs { display: flex; justify-content: safe center; gap: 0.625rem; overflow-x: auto; margin: 0 0 1rem; }
 .spd-bare-imgs img { width: 132px; height: 132px; object-fit: cover; border-radius: 10px; flex-shrink: 0; }
 .spd-bare h1 { font-size: 1.5rem; margin: 0 0 0.5rem; }
 .spd-bare-blurb { color: var(--color-text-muted); margin: 0 0 1.25rem; }
