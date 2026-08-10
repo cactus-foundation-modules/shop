@@ -10,7 +10,7 @@ import { formatMoney } from '@/modules/shop/lib/money'
 // builder's client bundle, and the resolver reaches prisma.
 import { commerceModeButtonLabel } from '@/modules/shop/lib/commerce-mode-shared'
 import type { ShpProduct } from '@/modules/shop/lib/types'
-import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
+import type { CardBadge, DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { SiteColourField } from '@/lib/puck/SiteColourField'
 import { ClearableNumberField } from '@/lib/puck/ClearableNumberField'
 import { splitLightDark, composeLightDark } from '@/lib/puck/lightDark'
@@ -318,17 +318,44 @@ const badgesCss = `
 .spd-badge-low{background:var(--color-warning-subtle);color:var(--color-warning);border:1px solid var(--color-warning-border)}
 .spd-badge-out{background:var(--color-surface);color:var(--color-text-muted);border:1px solid var(--color-border)}
 .spd-badge-staff{background:var(--color-surface);color:var(--color-text-muted);border:1px dashed var(--color-border);font-variant-numeric:tabular-nums}
+/* Owner-defined badge, set on a tag under Shop > Tags. Its colours are per tag
+   rather than per site, so there is no token to name here: the part sets
+   --spd-tag-* inline on each one and this reads them, falling back to the muted
+   look where a colour was left blank. Dark mode is settled in CSS rather than by
+   picking a side at render time, because the page is server-rendered once for
+   both themes - the same two selectors the design tokens use. Mirrors
+   .shop-card-badge-tag in card-parts.tsx; the two must keep agreeing. */
+.spd-badge-tag{background:var(--spd-tag-bg,var(--color-surface));color:var(--spd-tag-fg,var(--color-text-muted))}
+[data-theme="dark"] .spd-badge-tag{background:var(--spd-tag-bg-dark,var(--spd-tag-bg,var(--color-surface)));color:var(--spd-tag-fg-dark,var(--spd-tag-fg,var(--color-text-muted)))}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .spd-badge-tag{background:var(--spd-tag-bg-dark,var(--spd-tag-bg,var(--color-surface)));color:var(--spd-tag-fg-dark,var(--spd-tag-fg,var(--color-text-muted)))}}
 `
 
 type PartProps = { _ctx?: DetailPartContext }
 
-type BadgesProps = { _ctx?: DetailPartContext; showNew?: string; showTrade?: string; showStock?: string }
+type BadgesProps = { _ctx?: DetailPartContext; showNew?: string; showTrade?: string; showStock?: string; showTag?: string }
+
+// A tag badge's colours ride in as custom properties rather than as background
+// and colour directly, so the stylesheet above can pick the light or dark one
+// per theme. Already sanitised upstream (cssValue, in lib/tag-badges); an unset
+// colour is left off, dropping that side through to the fallback. Same shape as
+// tagColourVars in card-parts.tsx.
+function tagColourVars(badge: CardBadge): React.CSSProperties | undefined {
+  if (!badge.colours) return undefined
+  const { bg, bgDark, text, textDark } = badge.colours
+  return {
+    ...(bg ? { '--spd-tag-bg': bg } : {}),
+    ...(bgDark ? { '--spd-tag-bg-dark': bgDark } : {}),
+    ...(text ? { '--spd-tag-fg': text } : {}),
+    ...(textDark ? { '--spd-tag-fg-dark': textDark } : {}),
+  } as React.CSSProperties
+}
 
 export function ShopDetailBadges(props: BadgesProps) {
   return (
     <>
       <Style css={badgesCss} />
       <div className="spd-badges" style={{ opacity: 0.6 }}>
+        {props.showTag !== 'no' && <span className="spd-badge spd-badge-tag" style={{ '--spd-tag-bg': 'var(--color-primary)', '--spd-tag-fg': 'var(--color-on-primary)' } as React.CSSProperties}>Sale</span>}
         {props.showNew !== 'no' && <span className="spd-badge spd-badge-new">New</span>}
         {props.showStock !== 'no' && <span className="spd-badge spd-badge-stock">In stock</span>}
       </div>
@@ -339,10 +366,18 @@ export function ShopDetailBadges(props: BadgesProps) {
 export function ShopDetailBadgesRsc(props: BadgesProps) {
   const _ctx = props._ctx
   if (!_ctx) return null
-  const { tagSlugs, outOfStock, lowStock, product } = _ctx
+  const { tagSlugs, tagBadges, outOfStock, lowStock, product } = _ctx
   const showNew = props.showNew !== 'no'
   const showTrade = props.showTrade !== 'no'
   const showStock = props.showStock !== 'no'
+  const showTag = props.showTag !== 'no'
+  // The owner's own badges lead, in the order their tags are listed in the
+  // admin. Unlike the card, which has room for one, the page prints every badge
+  // the product earned - "Sale" and "Ex-display" are both worth saying here.
+  // A tag whose slug is 'new' or 'trade' and which carries its own badge would
+  // otherwise print twice, once in the owner's colours and once in the built-in
+  // ones; the two hardcoded badges below stand down where that has happened.
+  const ownedSlugs = new Set(tagBadges.map((b) => b.slug))
   // The figure behind "In stock", for staff only. Not tied to the author's stock
   // badge switch: that switch decides what SHOPPERS are told, and an owner
   // checking the shelf needs the number on a layout that keeps its stock quiet
@@ -355,8 +390,11 @@ export function ShopDetailBadgesRsc(props: BadgesProps) {
     <>
       <Style css={badgesCss} />
       <div className="spd-badges">
-        {showNew && tagSlugs.includes('new') && <span className="spd-badge spd-badge-new">New</span>}
-        {showTrade && tagSlugs.includes('trade') && <span className="spd-badge spd-badge-trade">Trade price</span>}
+        {showTag && tagBadges.map((badge) => (
+          <span key={badge.slug ?? badge.label} className="spd-badge spd-badge-tag" style={tagColourVars(badge)}>{badge.label}</span>
+        ))}
+        {showNew && !ownedSlugs.has('new') && tagSlugs.includes('new') && <span className="spd-badge spd-badge-new">New</span>}
+        {showTrade && !ownedSlugs.has('trade') && tagSlugs.includes('trade') && <span className="spd-badge spd-badge-trade">Trade price</span>}
         {showStock && (
           outOfStock ? (
             <span className="spd-badge spd-badge-out">Out of stock</span>
@@ -386,9 +424,10 @@ export const shopDetailBadgesPuckComponent = {
   fields: {
     showNew: { type: 'select' as const, label: 'Show "New" badge', options: yesNo },
     showTrade: { type: 'select' as const, label: 'Show "Trade price" badge', options: yesNo },
+    showTag: { type: 'select' as const, label: 'Show your own tag badges', options: yesNo },
     showStock: { type: 'select' as const, label: 'Show stock status badge', options: yesNo },
   },
-  defaultProps: { showNew: 'yes', showTrade: 'yes', showStock: 'yes' },
+  defaultProps: { showNew: 'yes', showTrade: 'yes', showTag: 'yes', showStock: 'yes' },
   render: ShopDetailBadges,
 }
 export const shopDetailBadgesPuckRscComponent = { ...shopDetailBadgesPuckComponent, render: ShopDetailBadgesRsc }

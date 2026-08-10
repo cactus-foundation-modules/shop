@@ -40,6 +40,11 @@ export type CardBadge = {
   label: string
   variant: 'new' | 'low' | 'trade' | 'muted' | 'tag'
   colours?: CardBadgeColours
+  // Which tag this came from, on a 'tag' badge only. Not for display: it is how
+  // the product page knows that the built-in "New"/"Trade price" badges would be
+  // saying the same thing twice, once in the owner's colours and once in the
+  // hardcoded ones.
+  slug?: string
 }
 
 // Injected onto every Product Detail part-block before the detail template
@@ -50,6 +55,13 @@ export type DetailPartContext = {
   images: PartImage[]
   currencySymbol: string
   tagSlugs: string[]
+  // The owner-defined badges this product has earned, highest-priority first -
+  // the same list the card gets, resolved by lib/tag-badges.ts, except the page
+  // has room to print all of them rather than only the first. Includes the
+  // automatic "On Sale" one when the product is actually reduced. Empty on a
+  // shop whose tags carry no badges, which is every shop until somebody switches
+  // one on.
+  tagBadges: CardBadge[]
   digitalFile: { filename: string; size: number } | null
   bp: Breakpoints
   outOfStock: boolean

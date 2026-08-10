@@ -8,7 +8,9 @@ import { getProductBySlug, getProductMedia, getProductTagIds, getDigitalFileById
 import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached, resolveSupplierLabel } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
-import { priceView } from '@/modules/shop/lib/pricing'
+import { isOnSale, priceView } from '@/modules/shop/lib/pricing'
+import { resolveTagBadges } from '@/modules/shop/lib/tag-badges'
+import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
 import { makeDisplayAdjuster, resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { injectShopProductDetailEmbed } from '@/modules/shop/lib/inject-part-context'
 import { resolveShopDetailProvider, narrowShopDetailSlot, collectLayoutBlockTypes } from '@/modules/shop/lib/detail-slot'
@@ -76,6 +78,23 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   ])
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
   const tagSlugs = tagIds.map((id) => tagById.get(id)).filter((s): s is string => Boolean(s))
+
+  // Owner-defined tag badges, resolved exactly as the card resolves them so the
+  // grid and the page it leads to never disagree about what this product is
+  // labelled. The automatic "On Sale" one needs to know whether the product is
+  // actually reduced: its own sale price answers that for a plain product, and
+  // for a listing with variations the money is on the hidden children, so the
+  // same seam the cards use is asked about this one product (one small query on
+  // a shop with variations, none at all without).
+  const variantPricing = (await resolveCardFromPrices([product.id])).get(product.id) ?? null
+  const reduced = isOnSale(product, config.enabledPriceTypes) || variantPricing?.onSale === true
+  const productTags = tagIds.map((id) => tags.find((t) => t.id === id)).filter((t) => Boolean(t)) as typeof tags
+  const tagBadges = resolveTagBadges(productTags, tags, reduced)
+  if (reduced) {
+    for (const tag of tags) {
+      if (tag.autoRule === 'sale' && !tagSlugs.includes(tag.slug)) tagSlugs.push(tag.slug)
+    }
+  }
 
   const digitalFile =
     product.type === 'DIGITAL' && product.digitalFileId ? await getDigitalFileById(product.digitalFileId) : null
@@ -154,6 +173,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     currencySymbol: config.currencySymbol,
     commerce,
     tagSlugs,
+    tagBadges,
     digitalFile: digitalFile ? { filename: digitalFile.filename, size: digitalFile.size } : null,
     bp,
     outOfStock,

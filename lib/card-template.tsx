@@ -3,11 +3,11 @@ import type { Data } from '@puckeditor/core'
 import { prisma } from '@/lib/db/prisma'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import type { LayoutRef } from '@/lib/puck/LayoutPickerField'
-import { cssValue } from '@/lib/design/tokens'
 import type { PuckData, ShpProduct, ShpProductMedia, ShpTag, ShpTagBadge } from '@/modules/shop/lib/types'
 import { injectShopProductCardEmbed } from '@/modules/shop/lib/inject-part-context'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { isOnSale, priceView } from '@/modules/shop/lib/pricing'
+import { resolveTagBadges } from '@/modules/shop/lib/tag-badges'
 import { makeDisplayAdjuster, NO_TAX_DISPLAY, type TaxDisplay } from '@/modules/shop/lib/tax-display'
 import { SHOP_DEFAULT_COMMERCE_MODE, type ResolvedShopCommerceMode } from '@/modules/shop/lib/commerce-mode-shared'
 import type { CardPartContext, CardBadge, PartImage } from '@/modules/shop/components/puck/parts/part-context'
@@ -59,42 +59,20 @@ export function buildTagMaps(tags: ShpTag[]): { tagById: Map<string, string>; ta
   }
 }
 
-// A tag whose row switched its badge on, turned into the badge the card prints.
-// Colours go through cssValue() - they are owner-typed strings from the database
-// heading for an inline style, and that helper is where the site already strips
-// url()/expression() out of exactly this kind of value.
-function tagBadge(tag: ShpTagBadge): CardBadge {
-  return {
-    label: (tag.badgeLabel || '').trim() || tag.name,
-    variant: 'tag',
-    colours: {
-      bg: cssValue(tag.badgeBg ?? undefined) || undefined,
-      bgDark: cssValue(tag.badgeBgDark ?? undefined) || undefined,
-      text: cssValue(tag.badgeText ?? undefined) || undefined,
-      textDark: cssValue(tag.badgeTextDark ?? undefined) || undefined,
-    },
-  }
-}
-
 // One badge per card, so this is a precedence list, not a set. Stock and
 // pre-order facts outrank anything an owner labelled a product with - a shopper
 // needs "Out of stock" more than "Bestseller".
 //
-// `tags` is what the tag rows say; when a surface has not passed them (a
-// companion module's grid built before this existed) it is empty, and the two
-// historical hardcoded slugs below carry on as they always did. A tag row with a
-// badge always wins over those, so an owner who defines their own "New" tag
-// badge gets their colours rather than the built-in blue.
-function badgeFor(product: ShpProduct, tagSlugs: string[], outOfStock: boolean, tags: ShpTagBadge[]): CardBadge | null {
+// `owned` is the owner-defined badges this product earned, highest first (see
+// lib/tag-badges.ts, shared with the product page). Empty where a surface has
+// not passed its tag rows - a companion module's grid built before this existed -
+// and the two historical hardcoded slugs below then carry on exactly as they
+// always did. An owner's own badge outranks them, so a shop that defines its own
+// "New" tag gets its own colours rather than the built-in blue.
+function badgeFor(product: ShpProduct, tagSlugs: string[], outOfStock: boolean, owned: CardBadge[]): CardBadge | null {
   if (outOfStock) return { label: 'Out of stock', variant: 'muted' }
   if (product.isPreOrder) return { label: 'Pre-order', variant: 'new' }
-  // Lowest position wins, matching the order the admin's Tags list is dragged
-  // into; name breaks a tie so the choice is stable rather than row-order luck.
-  const owned = tags
-    // A tag kept off the storefront is filing, not content - it cannot badge.
-    .filter((t) => t.badgeEnabled && t.storefrontVisible)
-    .sort((a, b) => (a.position - b.position) || a.name.localeCompare(b.name))[0]
-  if (owned) return tagBadge(owned)
+  if (owned[0]) return owned[0]
   if (tagSlugs.includes('new')) return { label: 'New', variant: 'new' }
   const lowStock =
     !!product.trackInventory &&
@@ -168,14 +146,13 @@ export function buildCardContext(
   // reduced, or while a companion module says one of its variations is (a
   // variations listing's own price columns are not the ones that get discounted).
   const reduced = isOnSale(product, pricing?.enabledPriceTypes) || fromPrice?.onSale === true
-  if (reduced && tagsById) {
-    for (const tag of tagsById.values()) {
-      if (tag.autoRule === 'sale' && !productTags.includes(tag)) {
-        productTags.push(tag)
-        tagSlugs.push(tag.slug)
-      }
+  const allTags = tagsById ? [...tagsById.values()] : []
+  if (reduced) {
+    for (const tag of allTags) {
+      if (tag.autoRule === 'sale' && !tagSlugs.includes(tag.slug)) tagSlugs.push(tag.slug)
     }
   }
+  const ownedBadges = resolveTagBadges(productTags, allTags, reduced)
   const taxDisplay = pricing?.taxDisplay ?? NO_TAX_DISPLAY
   const adjust = makeDisplayAdjuster(taxDisplay, product.taxClassId)
   return {
@@ -189,7 +166,7 @@ export function buildCardContext(
     prices: priceView(product, pricing?.enabledPriceTypes, adjust),
     priceSuffix: taxDisplay.display.suffix,
     showRetailPrice: pricing?.showRetailPrice ?? false,
-    badge: badgeFor(product, tagSlugs, isOutOfStock(product), productTags),
+    badge: badgeFor(product, tagSlugs, isOutOfStock(product), ownedBadges),
     fromPrice: fromPrice ? (adjust ? adjust(Number(fromPrice.price)).toFixed(2) : fromPrice.price) : null,
     fromPriceVaries: fromPrice?.varies ?? false,
   }
