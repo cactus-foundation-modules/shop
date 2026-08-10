@@ -18,6 +18,10 @@ export const CSV_COLUMNS = [
   'is_pre_order', 'pre_order_dispatch_date', 'pre_order_note', 'pre_order_max_quantity',
   'related_mode', 'related_limit', 'upsell_mode', 'upsell_limit',
   'categories', 'tags', 'collections', 'meta_title', 'meta_description', 'image_urls', 'image_alt', 'barcode', 'supplier',
+  // The code the supplier wants while the line is on offer. Appended rather than
+  // sat next to `sku` so every sheet written before it existed keeps its column
+  // order (the Google-Sheet mirror aligns by header, but a hand-kept CSV does not).
+  'sale_sku',
 ] as const
 
 export type CsvColumn = (typeof CSV_COLUMNS)[number]
@@ -38,7 +42,7 @@ const OPTIONAL_CSV_COLUMNS: readonly CsvColumn[] = [
   'download_limit', 'download_expiry',
   'is_pre_order', 'pre_order_dispatch_date', 'pre_order_note', 'pre_order_max_quantity',
   'related_mode', 'related_limit', 'upsell_mode', 'upsell_limit',
-  'supplier',
+  'supplier', 'sale_sku',
 ]
 
 // Columns whose values are numbers, not text. The CSV writer does not care (every

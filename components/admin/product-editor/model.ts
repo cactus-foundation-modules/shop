@@ -25,6 +25,9 @@ export type ProductForm = {
   description: string
   shortDescription: string
   sku: string
+  /** The code the supplier wants on an order while this one is on offer. Lives
+   * on the Pricing tab beside the sale price, since that is when it applies. */
+  saleSku: string
   barcode: string
   supplier: string
   price: string
@@ -131,6 +134,7 @@ export function toEditorState(payload: ProductPayload): EditorState {
       description: str(p.description),
       shortDescription: str(p.shortDescription),
       sku: str(p.sku),
+      saleSku: str(p.saleSku),
       barcode: str(p.barcode),
       supplier: str(p.supplier),
       price: str(p.price),
@@ -201,6 +205,7 @@ export function toProductBody(s: EditorState): Record<string, unknown> {
     descriptionPuck: s.descriptionPuck,
     shortDescription: nullable(f.shortDescription),
     sku: nullable(f.sku),
+    saleSku: nullable(f.saleSku),
     barcode: nullable(f.barcode),
     supplier: nullable(f.supplier),
     price: num(f.price) ?? 0,
@@ -258,7 +263,7 @@ export type ShopTabId = keyof typeof SHOP_TAB_ORDER
 const TAB_FIELDS: Record<ShopTabId, ReadonlyArray<keyof ProductForm>> = {
   details: ['name', 'regenerateSlug', 'status', 'sku', 'barcode', 'supplier', 'shortDescription', 'description'],
   media: [],
-  pricing: ['price', 'salePrice', 'retailPrice', 'tradePrice', 'costPrice', 'taxClassId'],
+  pricing: ['price', 'salePrice', 'saleSku', 'retailPrice', 'tradePrice', 'costPrice', 'taxClassId'],
   stock: [
     'trackInventory', 'stockCount', 'lowStockThreshold', 'outOfStockBehaviour',
     'isPreOrder', 'preOrderDispatchDate', 'preOrderNote', 'preOrderMaxQuantity',

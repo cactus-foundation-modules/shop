@@ -1,0 +1,23 @@
+-- A second code, for while a product is on offer.
+--
+-- Suppliers who put a line into clearance often issue a separate code for the
+-- discounted stock: order under that code, get the lower price. What they do
+-- not do is change the code on their stock list, which still speaks the
+-- original. Overwriting "sku" with the clearance code therefore breaks the
+-- stock feed to save the ordering, and leaving it alone breaks the ordering to
+-- save the stock feed - so both codes are held at once.
+--
+--   sku      - the shop's own identity for the line. UNIQUE, unchanged, and
+--              what stock imports and every other catalogue match on.
+--   sale_sku - what the supplier wants on the order while the offer runs.
+--              Nullable, and NOT unique: it is the supplier's code rather than
+--              the shop's, and one clearance code can cover several lines.
+--
+-- Shown to nobody but the owner. It carries no price of its own - the figure
+-- charged is still sale_price - and it is only offered in the admin where the
+-- shop has switched the sale price type on.
+--
+-- Variations need nothing of their own: a variation IS an shp_products row
+-- (a hidden child), so this column lands on both at once.
+
+ALTER TABLE "shp_products" ADD COLUMN IF NOT EXISTS "sale_sku" TEXT;

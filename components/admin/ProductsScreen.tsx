@@ -15,7 +15,7 @@ type ProductRow = {
   id: string; name: string; slug: string; type: string; status: string
   price: string; salePrice: string | null
   stockCount: number | null; trackInventory: boolean; lowStockThreshold: number | null
-  sku: string | null; isPreOrder: boolean
+  sku: string | null; saleSku: string | null; isPreOrder: boolean
 }
 
 const PER_PAGE = 20
@@ -377,7 +377,14 @@ export function ProductsScreen({ toolbarExtras, productsTabs = [], initialTab }:
                       {p.isPreOrder && <span className="badge badge-info" style={{ marginLeft: '0.5rem' }}>Pre-order</span>}
                       <div className="sps-slug">/{p.slug}</div>
                     </td>
-                    <td className="sps-muted">{p.sku || '—'}</td>
+                    <td className="sps-muted">
+                      {p.sku || '—'}
+                      {/* The code to order under while the offer runs. Only worth
+                          showing when there is an offer to run: a sale code left
+                          on a product that has come off sale is history, not an
+                          instruction. */}
+                      {p.saleSku && onSale(p) && <div className="sps-slug">on offer: {p.saleSku}</div>}
+                    </td>
                     <td>{tb ? <span className={`badge ${tb.cls}`}>{tb.label}</span> : p.type}</td>
                     <td>{stb ? <span className={`badge ${stb.cls}`}>{stb.label}</span> : p.status}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>

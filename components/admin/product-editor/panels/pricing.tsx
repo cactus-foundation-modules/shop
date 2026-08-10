@@ -98,6 +98,29 @@ export function PricingPanel({ state, setField, errors, currency, enabledPriceTy
             On offer: shoppers pay {currency}{charged.toFixed(2)}, with {currency}{price.toFixed(2)} shown struck through beside it.
           </p>
         )}
+
+        {/* Some suppliers issue a second code for discounted stock: order under
+            that one, get the lower price. Their stock lists still speak the
+            original, so it sits here beside the sale price rather than
+            replacing the SKU over on Details. */}
+        {on('sale') && (
+          <Grid cols={2}>
+            <Field
+              label="Sale SKU"
+              optional
+              hint="The code to order this under while it is on offer, if your supplier issues one. Your own SKU stays exactly as it is."
+            >
+              {(p) => (
+                <Control
+                  {...p}
+                  value={f.saleSku}
+                  onChange={(e) => setField('saleSku', e.target.value)}
+                  placeholder="e.g. PR1291"
+                />
+              )}
+            </Field>
+          </Grid>
+        )}
       </Section>
 
       {internal.length > 0 && (

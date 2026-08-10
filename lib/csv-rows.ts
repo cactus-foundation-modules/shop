@@ -65,6 +65,7 @@ export async function buildProductCsvRows(opts?: { status?: ShpProductStatus; ca
       meta_title: p.metaTitle ?? '', meta_description: p.metaDescription ?? '',
       image_urls: imageUrls, image_alt: imageAlt, barcode: p.barcode ?? '',
       supplier: p.supplier ?? '',
+      sale_sku: p.saleSku ?? '',
     })
   }
   return rows

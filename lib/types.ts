@@ -60,6 +60,10 @@ export type ShpProduct = {
   descriptionPuck: PuckData | null
   shortDescription: string | null
   sku: string | null
+  // The code the supplier wants on an order while this one is on offer, where
+  // they issue a separate one for discounted stock. Never replaces `sku`, which
+  // their stock lists still speak; owner-facing only, and never charged against.
+  saleSku: string | null
   barcode: string | null
   // Who the shop got it from. Always carried on the row; whether it is offered
   // in the editor or shown to shoppers is a settings question, not a data one.

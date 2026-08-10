@@ -96,6 +96,13 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
     "description_puck" JSONB,
     "short_description" TEXT,
     "sku" TEXT,
+    -- The code this one is ordered under while it is on offer. A supplier that
+    -- discounts a line often issues a second code for it, while their stock
+    -- lists still speak the original - so the two have to live side by side.
+    -- See 018_sale_sku.sql. Deliberately not UNIQUE: unlike "sku" this is a
+    -- supplier's code, not the shop's own identity, and a supplier is free to
+    -- put one clearance code across several lines.
+    "sale_sku" TEXT,
     "barcode" TEXT,
 
     -- Pricing. Only "price" is mandatory; the rest are optional price types the

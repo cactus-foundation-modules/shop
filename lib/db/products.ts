@@ -14,6 +14,7 @@ function mapProduct(r: Record<string, unknown>): ShpProduct {
     descriptionPuck: (r.description_puck as PuckData | null) ?? null,
     shortDescription: (r.short_description as string | null) ?? null,
     sku: (r.sku as string | null) ?? null,
+    saleSku: (r.sale_sku as string | null) ?? null,
     barcode: (r.barcode as string | null) ?? null,
     supplier: (r.supplier as string | null) ?? null,
     price: (r.price as { toString(): string }).toString(),
@@ -339,6 +340,7 @@ export type CreateProductInput = {
   description?: string | null
   shortDescription?: string | null
   sku?: string | null
+  saleSku?: string | null
   barcode?: string | null
   supplier?: string | null
   price: number
@@ -380,7 +382,7 @@ export type CreateProductInput = {
 export async function createProduct(data: CreateProductInput): Promise<{ id: string }> {
   const rows = await prisma.$queryRaw<[{ id: string }]>`
     INSERT INTO "shp_products" (
-      "name", "slug", "type", "status", "description", "short_description", "sku", "barcode", "supplier",
+      "name", "slug", "type", "status", "description", "short_description", "sku", "sale_sku", "barcode", "supplier",
       "price", "sale_price", "retail_price", "trade_price", "cost_price", "tax_class_id",
       "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
@@ -388,7 +390,7 @@ export async function createProduct(data: CreateProductInput): Promise<{ id: str
       "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity",
       "related_mode", "upsell_mode", "related_limit", "upsell_limit", "catalogue_hidden"
     ) VALUES (
-      ${data.name}, ${data.slug}, ${data.type}, ${data.status ?? 'DRAFT'}, ${data.description ?? null}, ${data.shortDescription ?? null}, ${data.sku ?? null}, ${data.barcode ?? null}, ${data.supplier ?? null},
+      ${data.name}, ${data.slug}, ${data.type}, ${data.status ?? 'DRAFT'}, ${data.description ?? null}, ${data.shortDescription ?? null}, ${data.sku ?? null}, ${data.saleSku ?? null}, ${data.barcode ?? null}, ${data.supplier ?? null},
       ${data.price}, ${data.salePrice ?? null}, ${data.retailPrice ?? null}, ${data.tradePrice ?? null}, ${data.costPrice ?? null}, ${data.taxClassId ?? null},
       ${data.trackInventory ?? false}, ${data.stockCount ?? null}, ${data.lowStockThreshold ?? null}, ${data.outOfStockBehaviour ?? 'BLOCK'},
       ${data.weight ?? null}, ${data.weightUnit ?? null}, ${data.dimensionL ?? null}, ${data.dimensionW ?? null}, ${data.dimensionH ?? null}, ${data.dimensionUnit ?? null},
@@ -412,6 +414,7 @@ export type UpdateProductInput = Partial<{
   descriptionPuck: PuckData | null
   shortDescription: string | null
   sku: string | null
+  saleSku: string | null
   barcode: string | null
   supplier: string | null
   price: number
@@ -452,7 +455,7 @@ export type UpdateProductInput = Partial<{
 // dedicated fragment in updateProduct rather than the generic assignment below.
 const COLUMN_MAP: Record<Exclude<keyof UpdateProductInput, 'descriptionPuck'>, string> = {
   name: 'name', slug: 'slug', status: 'status', description: 'description', shortDescription: 'short_description',
-  sku: 'sku', barcode: 'barcode', supplier: 'supplier', price: 'price', salePrice: 'sale_price', retailPrice: 'retail_price', tradePrice: 'trade_price', costPrice: 'cost_price',
+  sku: 'sku', saleSku: 'sale_sku', barcode: 'barcode', supplier: 'supplier', price: 'price', salePrice: 'sale_price', retailPrice: 'retail_price', tradePrice: 'trade_price', costPrice: 'cost_price',
   taxClassId: 'tax_class_id', trackInventory: 'track_inventory', stockCount: 'stock_count',
   lowStockThreshold: 'low_stock_threshold', outOfStockBehaviour: 'out_of_stock_behaviour',
   weight: 'weight', weightUnit: 'weight_unit', dimensionL: 'dimension_l', dimensionW: 'dimension_w',
@@ -618,14 +621,16 @@ export async function getPrimaryProductImages(productIds: string[]): Promise<Rec
 }
 
 // Clone a product into a fresh DRAFT with a new name/slug and no SKU (SKUs are
-// unique). Copies media, category/tag/collection membership and the manual
+// unique). The sale SKU does come across, along with the sale price it belongs
+// with - it is the supplier's code, not the shop's identity, and is not unique.
+// Copies media, category/tag/collection membership and the manual
 // recommendation lists. catalogue_hidden is omitted from the INSERT so the copy
 // defaults to visible - a duplicate is a real product, never a variant child.
 // Returns the new id, or null if the source is gone.
 export async function duplicateProduct(sourceId: string, next: { name: string; slug: string }): Promise<{ id: string } | null> {
   const created = await prisma.$queryRaw<{ id: string }[]>`
     INSERT INTO "shp_products" (
-      "name", "slug", "type", "status", "description", "short_description", "sku", "barcode", "supplier",
+      "name", "slug", "type", "status", "description", "short_description", "sku", "sale_sku", "barcode", "supplier",
       "price", "sale_price", "retail_price", "trade_price", "cost_price", "tax_class_id",
       "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
@@ -635,7 +640,7 @@ export async function duplicateProduct(sourceId: string, next: { name: string; s
       "related_mode", "upsell_mode", "related_limit", "upsell_limit"
     )
     SELECT
-      ${next.name}, ${next.slug}, "type", 'DRAFT', "description", "short_description", NULL, "barcode", "supplier",
+      ${next.name}, ${next.slug}, "type", 'DRAFT', "description", "short_description", NULL, "sale_sku", "barcode", "supplier",
       "price", "sale_price", "retail_price", "trade_price", "cost_price", "tax_class_id",
       "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
