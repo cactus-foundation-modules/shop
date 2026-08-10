@@ -1,7 +1,10 @@
 import { getSessionFromCookie } from '@/lib/auth/session'
 import { hasPermission } from '@/lib/permissions/check'
 import { hasShopPermission } from '@/modules/shop/lib/access'
-import { ProductsScreen, type ProductsTab } from '@/modules/shop/components/admin/ProductsScreen'
+import { ProductsScreen } from '@/modules/shop/components/admin/ProductsScreen'
+import { ShopSectionNav } from '@/modules/shop/components/admin/ShopSectionNav'
+import { resolveCatalogueNavTabs } from '@/modules/shop/lib/admin-nav'
+import { resolveExtensionTabs } from '@/lib/modules/extension-tabs'
 import { prisma } from '@/lib/db/prisma'
 import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
@@ -31,36 +34,11 @@ async function resolveToolbarExtras(user: Awaited<ReturnType<typeof getSessionFr
   return nodes.length ? <>{nodes}</> : null
 }
 
-// A tab's manifest `label` is stripped by the install-time schema until the next
-// deploy restores it (see product-editor-sections), so fall back to a tidy label
-// derived from the entry id in the meantime.
-function fallbackTabLabel(id: string): string {
-  const words = id.replace(/-/g, ' ').trim()
-  return words.charAt(0).toUpperCase() + words.slice(1)
-}
-
-// Whole-page tabs other modules hang beside the Products list through the
-// `shop.products-tabs` point (e.g. shop-variations' cross-product Variations
-// browser). Resolved here because only a server context can read the manifests
-// and check permissions; each tab's panel is rendered and handed to the client
-// screen, which owns the tab strip and only mounts the panel while it is active.
-async function resolveProductsTabs(user: Awaited<ReturnType<typeof getSessionFromCookie>>): Promise<ProductsTab[]> {
-  if (!user) return []
-  const components = moduleExtensionPointComponents['shop.products-tabs'] ?? {}
-  const modules = await prisma.module.findMany({ where: { ...INSTALLED_MODULE_WHERE }, select: { manifest: true } })
-  const tabs: ProductsTab[] = []
-  for (const mod of modules) {
-    const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null
-    for (const entry of manifest?.extensionPoints ?? []) {
-      if (entry.point !== 'shop.products-tabs') continue
-      if (entry.permission && !(await hasPermission(user, entry.permission))) continue
-      const Component = components[entry.id]
-      if (Component) tabs.push({ id: entry.id, label: entry.label ?? fallbackTabLabel(entry.id), order: entry.order ?? 999, node: <Component /> })
-    }
-  }
-  return tabs
-}
-
+// This page is the front of the Catalogue section: the products list itself, the
+// tab strip that carries Categories and Collections, and the home for whatever a
+// companion module publishes into `shop.products-tabs` (variations, attributes,
+// add-ons, filters, reviews). A contributed tab is opened with ?tab=<id> so the
+// strip can be plain links shared with the other pages in the section.
 export default async function ShopProductsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const user = await getSessionFromCookie()
   if (!user) return null
@@ -68,6 +46,20 @@ export default async function ShopProductsPage({ searchParams }: { searchParams:
   if (!canAccess) return <div className="alert alert-danger">You do not have permission to view Shop products.</div>
 
   const { tab } = await searchParams
-  const [toolbarExtras, productsTabs] = await Promise.all([resolveToolbarExtras(user), resolveProductsTabs(user)])
-  return <ProductsScreen toolbarExtras={toolbarExtras} productsTabs={productsTabs} initialTab={tab} />
+  const [navTabs, contributed, toolbarExtras] = await Promise.all([
+    resolveCatalogueNavTabs(user),
+    resolveExtensionTabs('shop.products-tabs', user),
+    resolveToolbarExtras(user),
+  ])
+
+  // An unknown ?tab= (a stale link, a module since removed) falls back to the
+  // products list rather than an empty page.
+  const active = contributed.find((t) => t.id === tab) ?? null
+
+  return (
+    <div>
+      <ShopSectionNav tabs={navTabs} active={active?.id ?? 'products'} />
+      {active ? <active.Component /> : <ProductsScreen toolbarExtras={toolbarExtras} />}
+    </div>
+  )
 }

@@ -1,6 +1,8 @@
 import { getSessionFromCookie } from '@/lib/auth/session'
 import { hasShopPermission } from '@/modules/shop/lib/access'
 import { DiscountsScreen } from '@/modules/shop/components/admin/DiscountsScreen'
+import { ShopSectionNav } from '@/modules/shop/components/admin/ShopSectionNav'
+import { resolveSalesNavTabs } from '@/modules/shop/lib/admin-nav'
 
 export const metadata = { title: 'Shop Discounts — Admin' }
 
@@ -9,5 +11,11 @@ export default async function ShopDiscountsPage() {
   if (!user) return null
   const canAccess = await hasShopPermission(user, 'shop.discounts', { allowAccess: true })
   if (!canAccess) return <div className="alert alert-danger">You do not have permission to view Shop discounts.</div>
-  return <DiscountsScreen />
+  const navTabs = await resolveSalesNavTabs(user)
+  return (
+    <div>
+      <ShopSectionNav tabs={navTabs} active="discounts" />
+      <DiscountsScreen />
+    </div>
+  )
 }

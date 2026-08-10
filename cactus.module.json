@@ -1,9 +1,9 @@
 {
   "name": "shop",
-  "version": "0.1.207",
+  "version": "0.1.209",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
-  "requiresCoreVersion": "0.5.896",
+  "requiresCoreVersion": "0.5.1026",
   "publicBasePath": "shop",
   "permissions": [
     "shop.access",
@@ -17,58 +17,16 @@
   "navGroupLabel": "Shop",
   "navEntries": [
     {
-      "label": "Products",
+      "label": "Catalogue",
       "path": "/m/shop/products",
       "icon": "<path d=\"M20 7 12 3 4 7v10l8 4 8-4Z\"/><path d=\"M4 7l8 4 8-4M12 11v10\"/>",
       "permission": "shop.access"
     },
     {
-      "label": "Categories",
-      "path": "/m/shop/categories",
-      "icon": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/>",
-      "permission": "shop.access"
-    },
-    {
-      "label": "Collections",
-      "path": "/m/shop/collections",
-      "icon": "<path d=\"M4 6h16M4 12h16M4 18h10\"/>",
-      "permission": "shop.access"
-    },
-    {
-      "label": "Orders",
+      "label": "Sales",
       "path": "/m/shop/orders",
       "icon": "<path d=\"M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z\"/><path d=\"M3 6h18M16 10a4 4 0 0 1-8 0\"/>",
       "permission": "shop.access"
-    },
-    {
-      "label": "Cancellations & returns",
-      "path": "/m/shop/requests",
-      "icon": "<path d=\"M3 7v6h6\"/><path d=\"M3.5 13a9 9 0 1 0 2.1-5.6L3 10\"/>",
-      "permission": "shop.access"
-    },
-    {
-      "label": "Customers",
-      "path": "/m/shop/customers",
-      "icon": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21a8 8 0 0 1 16 0\"/>",
-      "permission": "shop.access"
-    },
-    {
-      "label": "Discounts",
-      "path": "/m/shop/discounts",
-      "icon": "<circle cx=\"7\" cy=\"7\" r=\"2\"/><circle cx=\"17\" cy=\"17\" r=\"2\"/><path d=\"M17 7 7 17\"/>",
-      "permission": "shop.access"
-    },
-    {
-      "label": "Tax & shipping",
-      "path": "/m/shop/tax-shipping",
-      "icon": "<rect x=\"1\" y=\"3\" width=\"15\" height=\"13\"/><path d=\"M16 8h4l3 3v5h-7V8Z\"/><circle cx=\"5.5\" cy=\"18.5\" r=\"2.5\"/><circle cx=\"18.5\" cy=\"18.5\" r=\"2.5\"/>",
-      "permission": "shop.access"
-    },
-    {
-      "label": "Reports",
-      "path": "/m/shop/reports",
-      "icon": "<path d=\"M3 3v18h18\"/><path d=\"M7 15l4-6 4 3 5-8\"/>",
-      "permission": "shop.reports"
     }
   ],
   "requiredEnvVars": [],

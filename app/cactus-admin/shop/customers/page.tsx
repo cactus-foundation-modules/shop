@@ -1,6 +1,8 @@
 import { getSessionFromCookie } from '@/lib/auth/session'
 import { hasShopPermission } from '@/modules/shop/lib/access'
 import { CustomersScreen } from '@/modules/shop/components/admin/CustomersScreen'
+import { ShopSectionNav } from '@/modules/shop/components/admin/ShopSectionNav'
+import { resolveSalesNavTabs } from '@/modules/shop/lib/admin-nav'
 
 export const metadata = { title: 'Shop Customers — Admin' }
 
@@ -9,5 +11,11 @@ export default async function ShopCustomersPage() {
   if (!user) return null
   const canAccess = await hasShopPermission(user, 'shop.customers', { allowAccess: true })
   if (!canAccess) return <div className="alert alert-danger">You do not have permission to view Shop customers.</div>
-  return <CustomersScreen />
+  const navTabs = await resolveSalesNavTabs(user)
+  return (
+    <div>
+      <ShopSectionNav tabs={navTabs} active="customers" />
+      <CustomersScreen />
+    </div>
+  )
 }
