@@ -196,6 +196,47 @@ export function shopCollectionStarters() {
 }
 
 // ---------------------------------------------------------------------------
+// Tag templates (2) - shopTag
+//
+// One layout serves every tag: the page fills in which tag each block is looking
+// at (lib/inject-tag-context.ts), so no starter carries a slug. Two rather than
+// three - a tag page is a heading and a list of things, and a tag has no
+// sub-tags to lead with the way a category has sub-categories.
+// ---------------------------------------------------------------------------
+
+export function shopTagStarters() {
+  return [
+    {
+      id: 'starter-shop-tag-grid',
+      name: 'Header and Grid',
+      description: 'The tag\'s name and description, then everything carrying it in a three-across grid.',
+      data: {
+        content: [
+          block('ShopTagHeader', 'header-1'),
+          block('ShopProductGrid', 'grid-1', { columns: 3, limit: 24, showFilters: 'no' }),
+        ],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+    {
+      id: 'starter-shop-tag-banner',
+      name: 'With a Banner',
+      description: 'Header, a full-width panel for whatever the offer is, then the products - built for a sale or a seasonal push.',
+      data: {
+        content: [
+          block('ShopTagHeader', 'header-1'),
+          block('ShopPromoBanner', 'banner-1', { heading: 'While it lasts', body: '', ctaLabel: '', ctaHref: '/shop', backgroundColour: 'surface-muted' }),
+          block('ShopProductGrid', 'grid-1', { columns: 3, limit: 24, showFilters: 'no' }),
+        ],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+  ]
+}
+
+// ---------------------------------------------------------------------------
 // Product templates (3) - shopProduct
 // ---------------------------------------------------------------------------
 

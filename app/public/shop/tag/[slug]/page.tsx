@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { Render } from '@puckeditor/core/rsc'
 import { getTagBySlug, listTags } from '@/modules/shop/lib/db/catalogue'
 import { listProducts, getProductMediaForProducts, getProductTagIds } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
@@ -12,16 +13,20 @@ import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { resolveCardTemplate, buildCardContext, buildTagMaps, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
+import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
+import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
+import { injectTagContext } from '@/modules/shop/lib/inject-tag-context'
+import type { PuckData } from '@/modules/shop/lib/types'
 
 // A tag's own page. Categories are the shelves and collections are the hand-
 // picked groupings; a tag is the loose label that cuts across both, and until
 // now it had nowhere to point at. Same card path as every other product surface,
 // so the shop's one Product Card layout dresses these too.
 //
-// There is no `shopTag` theme layout: unlike the category page this has no
-// builder-designed variant yet, so the page below is what renders. Adding one
-// later means registering the layout type on the blocks that should be offered
-// in it, which is a change of its own.
+// A published `shopTag` layout wins, exactly as on the category and collection
+// pages: the blocks in it carry no tag of their own, so the current tag's slug
+// is injected into them first (lib/inject-tag-context.ts). What follows below is
+// the fallback for a shop that has published none.
 
 async function visibleTag(slug: string) {
   const tag = await getTagBySlug(slug)
@@ -47,6 +52,17 @@ export default async function ShopTagPage({ params }: { params: Promise<{ slug: 
 
   const tag = await visibleTag(slug)
   if (!tag) notFound()
+
+  const layout = await resolveThemeLayout('shopTag', { moduleName: 'shop', slug: tag.slug })
+  if (layout?.builderData) {
+    const data = injectTagContext(layout.builderData as PuckData, { tagSlug: tag.slug })
+    return (
+      <>
+        {gate.staffPreview && <ShopStaffPreviewBanner />}
+        <Render config={getModuleLayoutPuckRscConfig('shopTag') as any} data={data as any} />
+      </>
+    )
+  }
 
   const config = await getShopConfigCached()
   const [{ products }, bp, tags, template] = await Promise.all([

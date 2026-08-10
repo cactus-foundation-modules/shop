@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.212",
+  "version": "0.1.213",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1026",
@@ -90,7 +90,8 @@
       "layoutTypes": [
         "shopIndex",
         "shopCategory",
-        "shopCollection"
+        "shopCollection",
+        "shopTag"
       ]
     },
     {
@@ -102,7 +103,8 @@
       "layoutTypes": [
         "shopIndex",
         "shopCategory",
-        "shopCollection"
+        "shopCollection",
+        "shopTag"
       ]
     },
     {
@@ -112,7 +114,8 @@
       "rscComponent": "shopFeaturedCollectionPuckRscComponent",
       "rscImport": "./components/puck/ShopFeaturedCollection.rsc",
       "layoutTypes": [
-        "shopIndex"
+        "shopIndex",
+        "shopTag"
       ]
     },
     {
@@ -132,7 +135,8 @@
       "component": "shopPromoBannerPuckComponent",
       "rscComponent": "shopPromoBannerPuckRscComponent",
       "layoutTypes": [
-        "shopIndex"
+        "shopIndex",
+        "shopTag"
       ]
     },
     {
@@ -295,6 +299,16 @@
       "rscImport": "./components/puck/ShopCollectionHeader.rsc",
       "layoutTypes": [
         "shopCollection"
+      ]
+    },
+    {
+      "type": "ShopTagHeader",
+      "import": "./components/puck/ShopTagHeader",
+      "component": "shopTagHeaderPuckComponent",
+      "rscComponent": "shopTagHeaderPuckRscComponent",
+      "rscImport": "./components/puck/ShopTagHeader.rsc",
+      "layoutTypes": [
+        "shopTag"
       ]
     },
     {
@@ -511,6 +525,12 @@
         "label": "Collection",
         "starterImport": "./lib/starterLayouts",
         "starterExport": "shopCollectionStarters"
+      },
+      {
+        "key": "shopTag",
+        "label": "Tag",
+        "starterImport": "./lib/starterLayouts",
+        "starterExport": "shopTagStarters"
       },
       {
         "key": "shopProduct",
