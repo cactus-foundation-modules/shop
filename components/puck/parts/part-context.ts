@@ -108,6 +108,12 @@ export type DetailPartContext = {
   // number is never rendered into a public page. The Badges part reads it and
   // takes the figure itself off `product`; nothing else is fetched for it.
   showAdminStock: boolean
+  // Whether the person looking may be shown the shop's buying codes - the sale
+  // SKU, and (through the variations module's own picker) the chosen
+  // combination's SKU. See lib/admin-codes.ts. False for every shopper, so a
+  // clearance code is never rendered into a public page. The SKU part reads it
+  // and takes the codes themselves off `product`.
+  showAdminCodes: boolean
 }
 
 // Injected onto every Product Card part-block, once per product, when a card

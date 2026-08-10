@@ -505,13 +505,25 @@ export const shopDetailTitlePuckRscComponent = { ...shopDetailTitlePuckComponent
 // SKU
 // ---------------------------------------------------------------------------
 
-const skuCss = `.spd-sku{font-size:13px;color:var(--color-text-muted)}`
+const skuCss = `.spd-sku{font-size:13px;color:var(--color-text-muted)}
+.spd-sku-staff{display:inline-flex;align-items:baseline;gap:8px;margin-top:5px;padding:3px 9px;border:1px dashed var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-text-muted);font-size:12px;line-height:1.35;font-variant-numeric:tabular-nums}
+.spd-sku-staff strong{font-weight:700}`
 
-type SkuProps = { _ctx?: DetailPartContext; prefix?: string; align?: string }
+type SkuProps = { _ctx?: DetailPartContext; prefix?: string; align?: string; audience?: string }
 
 // undefined (an old block saved before the field existed) keeps the
 // long-standing "SKU"; an explicitly emptied box means "just the code".
 const skuPrefix = (value: unknown): string => (typeof value === 'string' ? value.trim() : 'SKU')
+
+// Who the product's own code is written for. Everyone by default, because that
+// is what this part has always done and a shop quoting SKUs to its customers
+// would lose them overnight otherwise; 'staff' turns it into a buying reference
+// for the owner alone. The sale SKU below is never on this switch - a supplier's
+// clearance code is staff-only whatever the author picks.
+const skuAudienceOptions = [
+  { label: 'Everyone', value: 'everyone' },
+  { label: 'Staff only', value: 'staff' },
+]
 
 export function ShopDetailSku(props: SkuProps) {
   return (
@@ -533,12 +545,38 @@ export function ShopDetailSku(props: SkuProps) {
 
 export function ShopDetailSkuRsc(props: SkuProps) {
   const _ctx = props._ctx
-  if (!_ctx || !_ctx.product.sku) return null
+  if (!_ctx) return null
+  const { product, showAdminCodes } = _ctx
+  // The product's own code, held back from shoppers when the author has set the
+  // part to staff. Staff see it either way - the switch decides who ELSE does.
+  const sku = product.sku && (props.audience !== 'staff' || showAdminCodes) ? product.sku : null
+  // The supplier's clearance code, for staff alone. Written out whenever the
+  // product carries one, on sale or not: the owner reading their own page needs
+  // to know which code this stock is currently ordered under.
+  const saleSku = showAdminCodes ? product.saleSku : null
+  if (!sku && !saleSku) return null
   const prefix = skuPrefix(props.prefix)
+  const staffSku = Boolean(sku) && props.audience === 'staff'
   return (
     <>
       <Style css={skuCss} />
-      <div className="spd-sku" style={textAlignStyle(props.align)}>{prefix ? `${prefix} ${_ctx.product.sku}` : _ctx.product.sku}</div>
+      <div style={textAlignStyle(props.align)}>
+        {sku && (
+          <div className="spd-sku" title={staffSku ? 'Only staff signed in to this site can see this' : undefined}>
+            {prefix ? `${prefix} ${sku}` : sku}
+            {staffSku && ' · staff only'}
+          </div>
+        )}
+        {saleSku && (
+          // Labelled "staff only" on its face, because it sits in the middle of
+          // a public page and an owner showing a customer their screen must not
+          // have to wonder whether the customer can see it too.
+          <div className="spd-sku-staff" title="Only staff signed in to this site can see this">
+            <strong>Sale SKU: {saleSku}</strong>
+            <span>staff only</span>
+          </div>
+        )}
+      </div>
     </>
   )
 }
@@ -547,9 +585,10 @@ export const shopDetailSkuPuckComponent = {
   label: 'Product: SKU',
   fields: {
     prefix: { type: 'text' as const, label: 'Label before the code' },
+    audience: { type: 'select' as const, label: 'Show the code to', options: skuAudienceOptions },
     align: { type: 'select' as const, label: 'Alignment', options: alignOptions },
   },
-  defaultProps: { prefix: 'SKU', align: 'left' },
+  defaultProps: { prefix: 'SKU', audience: 'everyone', align: 'left' },
   render: ShopDetailSku,
 }
 export const shopDetailSkuPuckRscComponent = { ...shopDetailSkuPuckComponent, render: ShopDetailSkuRsc }
