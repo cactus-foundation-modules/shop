@@ -99,7 +99,7 @@ export const cartEmptyFields = {
   continueLabel: { type: 'text' as const, label: 'Continue-shopping label' },
   continueHref: { type: 'text' as const, label: 'Continue-shopping link' },
 }
-export const cartEmptyDefaults = { emptyText: 'Your cart is empty.', continueLabel: 'Continue shopping', continueHref: '/shop' }
+export const cartEmptyDefaults = { emptyText: 'Your basket is empty.', continueLabel: 'Continue shopping', continueHref: '/shop' }
 
 // The price accent is read by both split blocks (line prices in one, the Total
 // in the other); the panel background and radius only dress the item list.

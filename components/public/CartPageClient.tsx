@@ -125,7 +125,7 @@ export function CartPageClient() {
   // resolvers and can take a moment).
   if (!hasLoaded) {
     return (
-      <div style={{ display: 'grid', gap: '1rem', maxWidth: 640 }} aria-busy="true" aria-label="Loading your cart">
+      <div style={{ display: 'grid', gap: '1rem', maxWidth: 640 }} aria-busy="true" aria-label="Loading your basket">
         {[0, 1].map((i) => (
           <div key={i} style={{ display: 'flex', gap: '1rem', alignItems: 'center', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
             <div className="skeleton" style={{ width: 64, height: 64, borderRadius: 6, flexShrink: 0 }} />
@@ -145,7 +145,7 @@ export function CartPageClient() {
     return (
       <div style={{ color: 'var(--color-text-muted)' }}>
         <style dangerouslySetInnerHTML={{ __html: CART_LINE_CSS }} />
-        <p style={{ margin: 0 }}>Your cart is empty. <Link href="/shop">Continue shopping</Link>.</p>
+        <p style={{ margin: 0 }}>Your basket is empty. <Link href="/shop">Continue shopping</Link>.</p>
         {toast && <CartUndoToast message={toast.message} leaving={toast.leaving} bottom={28} onUndo={undo} />}
       </div>
     )

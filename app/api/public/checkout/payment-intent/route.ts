@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
 
   const resolvedLines = await resolveCartLines(data.lines)
   if (resolvedLines.some((l) => !l.available) || resolvedLines.length === 0) {
-    return NextResponse.json({ error: 'Some items in your cart are no longer available.' }, { status: 409 })
+    return NextResponse.json({ error: 'Some items in your basket are no longer available.' }, { status: 409 })
   }
 
   const zone = await findShippingZoneForPostcode(data.shippingAddress.postcode)

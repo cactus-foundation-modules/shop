@@ -31,9 +31,9 @@ export async function POST(request: NextRequest) {
   const resolvedLines = await resolveCartLines(rawLines)
   const unavailable = resolvedLines.filter((l) => !l.available)
   if (unavailable.length > 0) {
-    return NextResponse.json({ error: 'Some items in your cart are no longer available', unavailable: unavailable.map((l) => l.product.slug) }, { status: 409 })
+    return NextResponse.json({ error: 'Some items in your basket are no longer available', unavailable: unavailable.map((l) => l.product.slug) }, { status: 409 })
   }
-  if (resolvedLines.length === 0) return NextResponse.json({ error: 'Your cart is empty' }, { status: 400 })
+  if (resolvedLines.length === 0) return NextResponse.json({ error: 'Your basket is empty' }, { status: 400 })
 
   const zone = postcode ? await findShippingZoneForPostcode(postcode) : null
   const shippingRates = zone ? await listShippingRatesForZone(zone.id) : []

@@ -389,7 +389,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   // load. Live path only; the editor preview seeds hasLoaded=true.
   if (!hasLoaded) {
     return (
-      <div style={{ display: 'grid', gap: density.gap, maxWidth, width: '100%' }} aria-busy="true" aria-label="Loading your cart">
+      <div style={{ display: 'grid', gap: density.gap, maxWidth, width: '100%' }} aria-busy="true" aria-label="Loading your basket">
         {withItems && [0, 1].map((i) => (
           <div key={i} style={{ display: 'flex', gap: '1rem', alignItems: 'center', paddingBottom: density.padY, borderBottom: '1px solid var(--color-border)' }}>
             {showImage && <div className="skeleton" style={{ width: imageSize, height: imageSize, borderRadius: imageRadius, flexShrink: 0 }} />}
@@ -418,7 +418,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
       <div style={{ maxWidth, color: 'var(--color-text-muted)' }}>
         <style dangerouslySetInnerHTML={{ __html: CART_LINE_CSS }} />
         <p style={{ margin: 0 }}>
-          {props.emptyText || 'Your cart is empty.'}{' '}
+          {props.emptyText || 'Your basket is empty.'}{' '}
           <Link href={props.continueHref || '/shop'}>{props.continueLabel || 'Continue shopping'}</Link>.
         </p>
         {toast && <CartUndoToast message={toast.message} leaving={toast.leaving} bottom={28} onUndo={undo} />}
@@ -943,7 +943,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
       )}
 
       {withFooter && showItemCount && (
-        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{itemCount} item{itemCount === 1 ? '' : 's'} in your cart</p>
+        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{itemCount} item{itemCount === 1 ? '' : 's'} in your basket</p>
       )}
 
       {/* The totals and the checkout button together: once this block leaves the

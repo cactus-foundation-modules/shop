@@ -8,7 +8,7 @@ import { CartPageClient } from '@/modules/shop/components/public/CartPageClient'
 import { ShopUpsellProducts } from '@/modules/shop/components/puck/ShopUpsellProducts'
 import { getShopCartHeaderActions } from '@/modules/shop/lib/cart-header-actions'
 
-export const metadata = { title: 'Your cart' }
+export const metadata = { title: 'Your basket' }
 
 // The cart page is designable via the shopCart layout type (Appearance >
 // Layouts > Shop > Cart). A published starter renders the Puck layout (the Cart
@@ -32,7 +32,7 @@ export default async function ShopCartPage() {
           row holds the heading alone and reads exactly as it always has; the
           wrap keeps a long title and a control off each other on a phone. */}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
-        <h1 style={{ fontSize: '1.75rem', margin: 0 }}>Your cart</h1>
+        <h1 style={{ fontSize: '1.75rem', margin: 0 }}>Your basket</h1>
         {headerActions.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem' }}>
             {headerActions.map(({ id, Component }) => <Component key={id} />)}

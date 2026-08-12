@@ -330,7 +330,7 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
   return (
     <>
       {triggerCss}
-      <Link href="/shop/cart" aria-label="View cart" className="shop-cart-trigger" style={boxStyle}>
+      <Link href="/shop/cart" aria-label="View basket" className="shop-cart-trigger" style={boxStyle}>
         {inner}
         {!o.label && <span className="shop-cart-tip" aria-hidden="true">Basket</span>}
       </Link>

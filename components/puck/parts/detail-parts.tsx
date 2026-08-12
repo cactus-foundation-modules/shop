@@ -1374,7 +1374,7 @@ export function ShopDetailTabs(props: TabsProps) {
                 for a product with options); a static label here so the author sees
                 it in the layout. No jump tab is pre-highlighted - the storefront
                 opens on the action, not the first section. */}
-            <span className="spd-tab-btn spd-tab-action">Add to cart</span>
+            <span className="spd-tab-btn spd-tab-action">Add to basket</span>
             {labels.map((t) => (
               <span key={t} className="spd-tab-btn">{t}</span>
             ))}
@@ -1405,7 +1405,7 @@ export function ShopDetailTabsRsc(props: TabsProps) {
     ? { kind: 'configure', anchor: 'spd-buy', label: 'Configure' }
     : ctx.outOfStock
       ? undefined
-      : { kind: 'add', productId: ctx.product.id, label: 'Add to cart' }
+      : { kind: 'add', productId: ctx.product.id, label: 'Add to basket' }
   return (
     <>
       <Style css={tabsCss(ctx.bp)} />
