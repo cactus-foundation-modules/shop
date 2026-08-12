@@ -20,10 +20,12 @@ type ExtensionPointEntry = {
 }
 
 // Other modules (e.g. shop-variations, product-attributes-for-shop) hang a tab on
-// the product editor via the `shop.product-editor-sections` point. Their panels
-// are server components, rendered here and handed to the client shell, which owns
-// the tab strip and the single Save button they register against.
-async function resolveProductEditorTabs(user: Awaited<ReturnType<typeof getSessionFromCookie>>) {
+// the product editor via the `shop.product-editor-sections` point, or a strip of
+// extra controls at the foot of the Images tab via
+// `shop.product-editor-media-sections`. Their panels are server components,
+// rendered here and handed to the client shell, which owns the tab strip and the
+// single Save button they register against.
+async function resolveEditorEntries(point: string, user: Awaited<ReturnType<typeof getSessionFromCookie>>) {
   if (!user) return []
   const modules = await prisma.module.findMany({ where: { ...INSTALLED_MODULE_WHERE }, select: { manifest: true } })
   const entries: ExtensionPointEntry[] = []
@@ -31,7 +33,7 @@ async function resolveProductEditorTabs(user: Awaited<ReturnType<typeof getSessi
     const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null
     if (!manifest?.extensionPoints) continue
     for (const entry of manifest.extensionPoints) {
-      if (entry.point !== 'shop.product-editor-sections') continue
+      if (entry.point !== point) continue
       if (!entry.permission || (await hasPermission(user, entry.permission))) entries.push(entry)
     }
   }
@@ -65,8 +67,14 @@ export default async function ShopProductEditPage({ params, searchParams }: {
 
   // Only a saved product can carry variations or attributes; the tabs stay hidden
   // while creating.
-  const entries = id === 'new' ? [] : await resolveProductEditorTabs(user)
+  const [entries, mediaEntries] = id === 'new'
+    ? [[], []]
+    : await Promise.all([
+        resolveEditorEntries('shop.product-editor-sections', user),
+        resolveEditorEntries('shop.product-editor-media-sections', user),
+      ])
   const components = moduleExtensionPointComponents['shop.product-editor-sections'] ?? {}
+  const mediaComponents = moduleExtensionPointComponents['shop.product-editor-media-sections'] ?? {}
 
   const extraTabs: ExtraTab[] = entries.flatMap((entry) => {
     const Section = components[entry.id]
@@ -79,12 +87,22 @@ export default async function ShopProductEditPage({ params, searchParams }: {
     }]
   })
 
+  // Contributions to the Images tab itself, under the grid. No tab of their own,
+  // so no label: they are extra controls over the pictures already on screen, and
+  // whatever they hold is saved by the editor's own Save button like any other.
+  const mediaSections = mediaEntries
+    .sort((a, b) => (a.order ?? 999) - (b.order ?? 999))
+    .flatMap((entry) => {
+      const Section = mediaComponents[entry.id]
+      return Section ? [<Section key={entry.id} productId={id} />] : []
+    })
+
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">{product?.name || 'Edit product'}</h1>
       </div>
-      <ProductEditor productId={id} extraTabs={extraTabs} initialTab={tab} />
+      <ProductEditor productId={id} extraTabs={extraTabs} mediaSections={mediaSections} initialTab={tab} />
     </div>
   )
 }

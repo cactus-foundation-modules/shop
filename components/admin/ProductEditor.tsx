@@ -34,9 +34,11 @@ type Tab = { id: string; label: string; order: number; render: () => ReactNode }
 
 const STATUS_LABEL: Record<string, string> = { DRAFT: 'Draft', ACTIVE: 'Active', ARCHIVED: 'Archived' }
 
-export function ProductEditor({ productId, extraTabs = [], initialTab }: {
+export function ProductEditor({ productId, extraTabs = [], mediaSections = [], initialTab }: {
   productId: string
   extraTabs?: ExtraTab[]
+  /** Panels contributed to the foot of the Images tab through `shop.product-editor-media-sections`. */
+  mediaSections?: ReactNode[]
   initialTab?: string
 }) {
   const adminPath = useAdminPath()
@@ -401,7 +403,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
     const panelProps: PanelProps = { state, setField, patch, errors: visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier }
     const own: Tab[] = [
       { id: 'details', label: 'Details', order: SHOP_TAB_ORDER.details, render: () => <DetailsPanel {...panelProps} productId={productId} onOpenDescriptionEditor={openDescriptionEditor} /> },
-      { id: 'media', label: 'Images', order: SHOP_TAB_ORDER.media, render: () => <MediaPanel {...panelProps} productId={productId} /> },
+      { id: 'media', label: 'Images', order: SHOP_TAB_ORDER.media, render: () => <MediaPanel {...panelProps} productId={productId} sections={mediaSections} /> },
       { id: 'pricing', label: 'Pricing', order: SHOP_TAB_ORDER.pricing, render: () => <PricingPanel {...panelProps} taxClasses={taxClasses} /> },
       { id: 'stock', label: 'Stock & delivery', order: SHOP_TAB_ORDER.stock, render: () => <StockPanel {...panelProps} /> },
       { id: 'organisation', label: 'Organisation', order: SHOP_TAB_ORDER.organisation, render: () => <OrganisationPanel {...panelProps} categories={categories} tags={tags} collections={collections} createTag={createTag} /> },
@@ -418,7 +420,7 @@ export function ProductEditor({ productId, extraTabs = [], initialTab }: {
       render: () => t.node,
     }))
     return [...own, ...contributed].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
-  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier, taxClasses, categories, tags, collections, createTag, productId, siteUrl, extraTabs, openDescriptionEditor])
+  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier, taxClasses, categories, tags, collections, createTag, productId, siteUrl, extraTabs, mediaSections, openDescriptionEditor])
 
   // Derived, not stored: a tab that vanishes (the product stopped being digital)
   // or a ?tab= naming a module that isn't installed falls back to the first tab

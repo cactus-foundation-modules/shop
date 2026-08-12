@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 import { MediaPickerModal } from '@/modules/shop/components/admin/MediaPickerModal'
 import { EmptyNote, Section } from '@/modules/shop/components/admin/product-editor/fields'
 import type { MediaItem, PanelProps } from '@/modules/shop/components/admin/product-editor/model'
@@ -8,7 +8,7 @@ import type { MediaItem, PanelProps } from '@/modules/shop/components/admin/prod
 /** Images in shopper-facing order. The first one is the cover, so reordering is
  * the same gesture as choosing the cover; drag to reorder, or use the arrows,
  * which are also the keyboard route. */
-export function MediaPanel({ state, patch, productId }: PanelProps & { productId: string }) {
+export function MediaPanel({ state, patch, productId, sections = [] }: PanelProps & { productId: string, sections?: ReactNode[] }) {
   const [picking, setPicking] = useState(false)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
@@ -136,6 +136,12 @@ export function MediaPanel({ state, patch, productId }: PanelProps & { productId
           />
         )}
       </Section>
+
+      {/* Anything another module has to say about this product's pictures - where
+          they sit in the gallery, say - sits under the grid rather than in a tab
+          of its own, because it is about the images already on this screen. Shop
+          knows nothing of what they are; see shop.product-editor-media-sections. */}
+      {sections}
     </div>
   )
 }
