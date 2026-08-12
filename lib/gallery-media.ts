@@ -37,20 +37,34 @@ export type ShopGalleryExtraThumbsProps = {
   // a variant-aware gallery passes the chosen child. A provider uses it to show
   // only the items belonging to the current choice.
   activeProductId: string | null
-  // Other products whose media should be shown as well, while the shopper has
-  // chosen nothing. A variant-aware gallery passes the variant children its owner
-  // has specifically marked as worth leading with here - shop-variations offers
-  // its own image promotion separately, so what lands in this list is only the
-  // ones flagged for THIS kind of contributed media (a 3D model, say) - so a
-  // range's best models are on the page before anyone touches an option; shop's
-  // own gallery passes none, having no notion of a related product. Always empty
-  // once a choice has been made -
-  // `activeProductId` alone governs from then on - so a provider needs no rule of
-  // its own for "the shopper has started choosing".
+  // Other products whose media should be shown as well. A variant-aware gallery
+  // passes the variant children its owner has specifically marked as worth
+  // leading with here - shop-variations offers its own image promotion
+  // separately, so what lands in this list is only the ones flagged for THIS kind
+  // of contributed media (a 3D model, say) - so a range's best models are on the
+  // page before anyone touches an option; shop's own gallery passes none, having
+  // no notion of a related product.
+  //
+  // Narrowed as the shopper chooses: a promoted product their picks have ruled
+  // out drops off the list, and once a whole combination resolves
+  // `activeProductId` governs anyway. So a provider still needs no rule of its own
+  // for "the shopper has started choosing" - what arrives is always what is still
+  // on offer.
   //
   // Optional: a gallery written before this existed passes nothing, which reads
   // as "no others", exactly what it meant.
   featuredProductIds?: string[]
+  // The same idea one rung down: products whose media MAY be shown, none of them
+  // promoted, for a provider that would otherwise have an empty strip. A
+  // variant-aware gallery passes the variant children still consistent with the
+  // shopper's part-made choice; only the provider knows whether it holds anything
+  // for the product itself, so only the provider can decide whether it needs
+  // these. Empty while the shopper has chosen nothing, so the opening view is
+  // never a pile of every variation at once.
+  //
+  // Optional, and ignorable: a provider with media of its own for the product has
+  // no use for it.
+  candidateProductIds?: string[]
   // Which contributed item the host currently has on the stage, by the provider's
   // own key, or null when a plain image is showing.
   activeKey: string | null
