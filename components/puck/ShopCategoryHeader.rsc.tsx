@@ -53,9 +53,11 @@ export async function ShopCategoryHeaderRsc(props: ShopCategoryHeaderProps) {
       {/* The header takes the short blurb, leaving the long description to the
           Category Description block (or the fallback page's own render of it).
           Falling back to `description` keeps every category that was written up
-          before short descriptions existed looking exactly as it did. */}
+          before short descriptions existed looking exactly as it did. No width
+          cap: the blurb is the page's opening line and stretches the full band,
+          sitting above the description's columns. */}
       {props.showBlurb !== 'no' && (category.shortDescription || category.description) && (
-        <p style={{ margin: '0.75rem 0 0', fontSize: '1.0625rem', maxWidth: '60ch', color: 'var(--color-text-muted)' }}>
+        <p style={{ margin: '0.75rem 0 0', fontSize: '1.0625rem', color: 'var(--color-text-muted)' }}>
           {category.shortDescription || category.description}
         </p>
       )}
