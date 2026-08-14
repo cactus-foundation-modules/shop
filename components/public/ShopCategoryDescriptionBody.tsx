@@ -45,11 +45,10 @@ export async function ShopCategoryDescriptionBody({ category, className, style }
 
   if (!category.description) return null
 
-  // A plain-text description is written as a couple of paragraphs, and printing
-  // them as one column capped at a readable measure left the right-hand half of
-  // every category page empty. Splitting on blank lines and flowing the
-  // paragraphs into as many columns as the band will take fills that space
-  // without letting a single line run past a comfortable measure.
+  // A plain-text description is written as a few paragraphs. The first is the
+  // lead, so it stretches the full width of the band; the rest flow into as
+  // many columns as the band will take, which fills the space without letting
+  // a supporting paragraph run past a comfortable measure.
   // `min(26rem, 100%)` is what keeps a phone to one column instead of forcing a
   // track wider than the screen, and the paragraph's own 40rem cap holds the
   // measure at the in-between widths where only one column fits. Between them no
@@ -57,15 +56,6 @@ export async function ShopCategoryDescriptionBody({ category, className, style }
   // definite track maximum is what auto-fit counts columns with, so 40rem there
   // would buy one fat column where two slim ones fit.)
   const paragraphs = category.description.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
-
-  // One paragraph has nothing to sit beside it, so it keeps its own measure.
-  if (paragraphs.length < 2) {
-    return (
-      <div className={className} style={{ marginTop: '1.25rem', ...style }}>
-        <p style={{ ...PARAGRAPH, maxWidth: '70ch' }}>{paragraphs[0] ?? category.description}</p>
-      </div>
-    )
-  }
 
   return (
     <div
@@ -80,7 +70,7 @@ export async function ShopCategoryDescriptionBody({ category, className, style }
       }}
     >
       {paragraphs.map((p, i) => (
-        <p key={i} style={{ ...PARAGRAPH, maxWidth: '40rem' }}>{p}</p>
+        <p key={i} style={i === 0 ? { ...PARAGRAPH, gridColumn: '1 / -1' } : { ...PARAGRAPH, maxWidth: '40rem' }}>{p}</p>
       ))}
     </div>
   )
