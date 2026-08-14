@@ -1110,6 +1110,13 @@ const tabsCss = ({ mobileBp }: Breakpoints) => `
 .spd-acc-body{padding:0 0 16px}
 .spd-tabs h3{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:24px;margin:0 0 14px;color:var(--color-fg)}
 .spd-tabs p{color:var(--color-text-muted);margin:0 0 14px;white-space:pre-wrap}
+/* ...but only for the bodies shop itself writes. A designed (Puck) description
+   renders inside the same panel and brings its own typography, and the rule
+   above outranks the shared .puck-richtext one on cascade order alone (equal
+   specificity, later sheet) - which greyed out every rich-text paragraph and
+   turned bullet text a shade lighter than the paragraphs beside it. Hand the
+   rich text its own values back wherever it lands in a tab body. */
+.spd-tabs .puck-richtext p{color:var(--color-fg-secondary);margin:0 0 1em;white-space:normal}
 /* Standalone "Section links" block: the same nav strip, on its own, so it can
    sit above the image while the sections stay below. Links jump to the section
    anchors the Sections block renders in stacked/accordion mode. */

@@ -369,11 +369,12 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
       {action?.kind === 'configure' && (
         <a
           href={`#${action.anchor}`}
-          // Configure is a jump to the buy area, not a fire-once button: light it
-          // like a section tab (solid) only while that area is the active scroll
-          // target, so it dims once the shopper reads on into Description etc.
-          // instead of staying permanently filled beside the real active tab.
-          className={`spd-tab-btn${active === leadAnchor ? ' on' : ''}`}
+          // The CTA that leads the strip stays filled the whole way down the page,
+          // exactly as "Add to basket" does on a product with no options - it is
+          // the one action in a row of jump-links, so it reads as an action
+          // wherever the shopper has scrolled to. aria-current still tracks the
+          // scroll position even though the fill no longer moves with it.
+          className={`spd-tab-btn spd-tab-action${active === leadAnchor ? ' on' : ''}`}
           aria-current={active === leadAnchor ? 'true' : undefined}
           data-spd-anchor={leadAnchor}
           onClick={(e: ReactMouseEvent<HTMLAnchorElement>) => {
