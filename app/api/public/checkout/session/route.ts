@@ -64,7 +64,10 @@ export async function POST(request: NextRequest) {
     storedIncludesTax: config.taxMode === 'INCLUSIVE',
     suffix: config.priceDisplayTaxSuffix.trim(),
   }
-  const shownTotals = displayOrderTotals(totals, display)
+  // The GOODS' tax, not the order's: this converts the subtotal rows between net
+  // and gross, and the delivery charge sits below them rather than inside them.
+  // See OrderTotals.goodsTaxAmount.
+  const shownTotals = displayOrderTotals({ ...totals, taxAmount: totals.goodsTaxAmount }, display)
 
   return NextResponse.json({
     subtotal: shownTotals.subtotal,

@@ -4,6 +4,7 @@ import { getProductMediaForProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getPaymentProvider, getPaymentMethodLabels } from '@/modules/shop/lib/payments/registry'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
+import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 import { getMembersConfig, type MembersConfig } from '@/lib/members/config'
 import { getMemberAreaPath } from '@/lib/members/paths'
 import { prisma } from '@/lib/db/prisma'
@@ -18,6 +19,16 @@ const BUILT_IN_METHOD_LABELS: Record<string, string> = {
 export async function GET(request: NextRequest) {
   const closed = await shopClosedResponse()
   if (closed) return closed
+
+  // Order numbers are a prefix and a sequence (DW000123 - see lib/order-number),
+  // so half the pair is not a secret at all and the email is the whole lock.
+  // Unthrottled, that lock can be picked at whatever rate the network allows,
+  // and what falls out is the customer's name, full delivery address and order
+  // total. Every other public route here is limited; this one was the gap.
+  const ip = getClientIpFromRequest(request)
+  if (!checkInMemoryRateLimit(`order-status:${ip}`, 20, 15 * 60 * 1000)) {
+    return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
+  }
 
   const orderNumber = request.nextUrl.searchParams.get('orderNumber')
   const email = request.nextUrl.searchParams.get('email')

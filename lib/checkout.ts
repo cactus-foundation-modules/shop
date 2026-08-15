@@ -14,7 +14,7 @@ import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 // Money is held as floating-point pounds throughout; round every figure that
 // gets persisted or charged to 2dp so the stored/charged total can't drift a
 // rounding penny from the amounts shown to the shopper.
-function round2(n: number): number {
+export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100
 }
 
@@ -245,10 +245,36 @@ export async function resolveShipping(zoneId: string, rateId: string | null, tot
   else if (rate.type === 'FLAT') amount = Number(rate.flatRate ?? 0)
   else if (rate.type === 'WEIGHT_BASED') amount = resolveWeightBasedRate(rate, totalWeightKg) ?? 0
 
-  if (rate.freeThreshold != null) {
-    // caller passes the post-discount subtotal comparison in resolveOrderTotals
-  }
+  // The free-delivery threshold is applied by resolveOrderTotals, which is the
+  // only caller that knows the post-discount subtotal to compare it against.
   return { rateId: rate.id, rateName: rate.name, amount }
+}
+
+/** The rate a delivery charge is taxed at: the value-weighted average of the
+ *  rates on the goods it is delivering. `taxableTotal` is the post-discount
+ *  value of the lines and `weightedRate` the sum of each line's value times its
+ *  own rate, both accumulated as the lines are folded. Zero when there is
+ *  nothing rated to average, which is what keeps a zero-rated or tax-free shop
+ *  exactly where it was. Exported for the tests. */
+export function shippingTaxRate(taxableTotal: number, weightedRate: number): number {
+  return taxableTotal > 0 ? weightedRate / taxableTotal : 0
+}
+
+/** Tax on the delivery charge. INCLUSIVE extracts the slice already inside the
+ *  figure (the total does not move, the VAT line gets more honest); EXCLUSIVE
+ *  adds it on top (the shop stops under-collecting). Zero delivery, free
+ *  delivery and an unrated basket all return 0. Exported for the tests. */
+export function shippingTaxAmount(
+  shippingAmount: number,
+  taxableTotal: number,
+  weightedRate: number,
+  taxMode: 'INCLUSIVE' | 'EXCLUSIVE',
+): number {
+  const rate = shippingTaxRate(taxableTotal, weightedRate)
+  if (!(shippingAmount > 0) || !(rate > 0)) return 0
+  return taxMode === 'INCLUSIVE'
+    ? shippingAmount - shippingAmount / (1 + rate)
+    : shippingAmount * rate
 }
 
 export type OrderTotals = {
@@ -256,6 +282,14 @@ export type OrderTotals = {
   discountAmount: number
   shippingAmount: number
   taxAmount: number
+  // The goods' share of `taxAmount`, with the delivery charge's share left out.
+  //
+  // Needed because displayOrderTotals converts the SUBTOTAL between net and
+  // gross using the tax on it, and delivery is not in the subtotal - handing it
+  // the combined figure would push the displayed subtotal out by the delivery's
+  // VAT. Every consumer that prints a single "VAT" row wants `taxAmount`; only
+  // the subtotal conversion wants this one.
+  goodsTaxAmount: number
   total: number
   taxMode: 'INCLUSIVE' | 'EXCLUSIVE'
   couponId: string | null
@@ -288,6 +322,10 @@ export async function resolveOrderTotals(params: {
 
   let taxAmount = 0
   const lineItems: OrderTotals['lineItems'] = []
+  // Running weights for the delivery rate below: what the goods are worth after
+  // discount, and what that value is rated at.
+  let taxableTotal = 0
+  let weightedRate = 0
   for (const line of params.lines) {
     const taxRate = params.zoneId ? await getTaxRateForZoneAndClass(params.zoneId, line.product.taxClassId) : 0
     const taxableBase = line.lineSubtotal * (1 - discountRatio)
@@ -295,6 +333,8 @@ export async function resolveOrderTotals(params: {
       ? taxableBase - taxableBase / (1 + taxRate)
       : taxableBase * taxRate
     taxAmount += lineTax
+    taxableTotal += taxableBase
+    weightedRate += taxableBase * taxRate
     lineItems.push({ ...line, taxRate, taxAmount: lineTax, lineTotal: line.lineSubtotal })
   }
 
@@ -313,6 +353,23 @@ export async function resolveOrderTotals(params: {
     const postDiscountSubtotal = subtotal - discounts.discountAmount
     if (rate?.freeThreshold != null && postDiscountSubtotal >= Number(rate.freeThreshold)) shippingAmount = 0
   }
+
+  // Delivery carries tax too, and it never used to. Nothing here taxed
+  // `shippingAmount` at all, so an EXCLUSIVE shop added the delivery charge net
+  // and under-collected the VAT on it, and an INCLUSIVE one reported a VAT
+  // figure that left the delivery's share out of the invoice.
+  //
+  // A shipping rate has no tax class of its own to read, and in the UK delivery
+  // is rated as the goods it delivers are - so the rate is apportioned by value
+  // across the taxable lines, which is the standard method and is exactly the
+  // goods' own rate on the ordinary single-rate shop. A basket of zero-rated
+  // goods lands on 0 by construction, so the books-and-childrenswear case needs
+  // no special pleading.
+  //
+  // Free delivery, no delivery, or a shop with no tax rates at all all leave
+  // this at zero, which is why switching it on moves no existing order.
+  const goodsTaxAmount = taxAmount
+  taxAmount += shippingTaxAmount(shippingAmount, taxableTotal, weightedRate, config.taxMode)
 
   const total = config.taxMode === 'INCLUSIVE'
     ? subtotal - discounts.discountAmount + shippingAmount
@@ -335,6 +392,7 @@ export async function resolveOrderTotals(params: {
     discountAmount: round2(discounts.discountAmount),
     shippingAmount: round2(shippingAmount),
     taxAmount: round2(taxAmount),
+    goodsTaxAmount: round2(goodsTaxAmount),
     total: round2(Math.max(total, 0)),
     taxMode: config.taxMode,
     couponId: discounts.couponId,

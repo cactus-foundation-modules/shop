@@ -649,7 +649,7 @@ const priceCss = `
 .spd-price-taxnote{font-size:13px;color:var(--color-text-muted)}
 `
 
-type PriceProps = { _ctx?: DetailPartContext; showCompare?: string; showSave?: string; showRrp?: string; size?: number }
+type PriceProps = { _ctx?: DetailPartContext; showCompare?: string; showSave?: string; showRrp?: string; size?: number; align?: string }
 
 // Same clearable-field contract as the title: blank falls back to the
 // long-standing 34px, and the var is set on a wrapper so a slot provider's own
@@ -664,7 +664,7 @@ export function ShopDetailPrice(props: PriceProps) {
   return (
     <>
       <Style css={priceCss} />
-      <div className="spd-price-block" style={{ opacity: 0.6, ...priceSizeVars(props.size) }}>
+      <div className="spd-price-block" style={{ opacity: 0.6, ...priceSizeVars(props.size), ...textAlignStyle(props.align) }}>
         <div style={{ height: titleSizePx(props.size) ?? 30, width: 110, background: 'var(--color-border)', borderRadius: 6 }} />
       </div>
     </>
@@ -693,7 +693,7 @@ export function ShopDetailPriceRsc(props: PriceProps) {
     return (
       <>
         <Style css={priceCss} />
-        <div style={priceSizeVars(props.size)}>
+        <div style={{ ...priceSizeVars(props.size), ...textAlignStyle(props.align) }}>
         <SlotPrice
           slug={product.slug}
           productId={product.id}
@@ -714,7 +714,7 @@ export function ShopDetailPriceRsc(props: PriceProps) {
   return (
     <>
       <Style css={priceCss} />
-      <div className="spd-price-block" style={priceSizeVars(props.size)}>
+      <div className="spd-price-block" style={{ ...priceSizeVars(props.size), ...textAlignStyle(props.align) }}>
         {/* A shop quoting by hand withholds the figures: its stand-in wording
             goes in place of the price, and the was/save/RRP/tax-note trimmings
             all stand down with it - there is nothing left for them to describe. */}
@@ -743,8 +743,12 @@ export const shopDetailPricePuckComponent = {
     showSave: { type: 'select' as const, label: 'Show "Save X%" badge', options: yesNo },
     showRrp: { type: 'select' as const, label: 'Show RRP', options: yesNo },
     size: { type: 'custom' as const, label: 'Price size (px)', render: ClearableNumberField },
+    // Title, SKU and the short description all offered alignment; the price did
+    // not, so a centred product layout had one stubbornly left-aligned row in
+    // the middle of it. 'left' is what it always rendered as.
+    align: { type: 'select' as const, label: 'Alignment', options: alignOptions },
   },
-  defaultProps: { showCompare: 'yes', showSave: 'yes', showRrp: 'yes', size: PRICE_SIZE_DEFAULT },
+  defaultProps: { showCompare: 'yes', showSave: 'yes', showRrp: 'yes', size: PRICE_SIZE_DEFAULT, align: 'left' },
   render: ShopDetailPrice,
 }
 export const shopDetailPricePuckRscComponent = { ...shopDetailPricePuckComponent, render: ShopDetailPriceRsc }
@@ -808,7 +812,11 @@ export const shopDetailBlurbPuckComponent = {
     },
     size: { type: 'custom' as const, label: 'Text size (px)', render: ClearableNumberField },
   },
-  defaultProps: { width: 'full' },
+  // `size` is declared above and was missing here, so a freshly dropped block
+  // had no value for it while every other part carried one. Left undefined
+  // rather than given a number: the render already falls back to the inherited
+  // body size, and inventing a pixel value here would restyle existing blocks.
+  defaultProps: { width: 'full', size: undefined },
   render: ShopDetailBlurb,
 }
 export const shopDetailBlurbPuckRscComponent = { ...shopDetailBlurbPuckComponent, render: ShopDetailBlurbRsc }

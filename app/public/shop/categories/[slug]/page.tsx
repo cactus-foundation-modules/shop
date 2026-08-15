@@ -2,7 +2,13 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Render } from '@puckeditor/core/rsc'
 import { getCategoryBySlug, getCategoryAncestorPath, listCategories, resolveCategoryProductFilter, listTags } from '@/modules/shop/lib/db/catalogue'
-import { listProducts, getProductMediaForProducts, getProductTagIds } from '@/modules/shop/lib/db/products'
+import { listProducts, getProductMediaForProducts, getProductTagIds, HARD_MAX_PER_PAGE } from '@/modules/shop/lib/db/products'
+import { ShopGridPager } from '@/modules/shop/components/public/ShopGridPager'
+
+// What the un-designed category page shows at once. 60 is what it used to cap
+// the whole list at, so a category that used to fit still looks untouched - it
+// simply gains pages when it would previously have lost products.
+const CATEGORY_PAGE_SIZE = 60
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { getShopGate } from '@/modules/shop/lib/access'
@@ -56,7 +62,11 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
   const [{ products }, ancestors, allCategories, bp, tags, template] = await Promise.all([
     listProducts({
       status: 'ACTIVE',
-      perPage: 60,
+      // The whole category, not the first 60 of it. This page had no pager, so
+      // the old cap was a silent truncation: a rolled-up parent category with
+      // 217 products showed 60 and offered no route to the rest. Paged below.
+      perPage: HARD_MAX_PER_PAGE,
+      maxPerPage: HARD_MAX_PER_PAGE,
       excludeHidden: true,
       storefront: true,
       ...(await resolveCategoryProductFilter(slug, config.categoryProductDisplayMode)),
@@ -135,9 +145,14 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
       />
 
       <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
-      <div className="shop-grid" style={{ ['--shop-cols' as string]: '3', marginTop: '1.5rem' } as React.CSSProperties}>
-        {cards}
-      </div>
+      <ShopGridPager
+        cards={cards}
+        perPage={CATEGORY_PAGE_SIZE}
+        mode="pages"
+        gridClassName="shop-grid"
+        gridStyle={{ ['--shop-cols' as string]: '3', marginTop: '1.5rem' } as React.CSSProperties}
+        countTemplate="Showing {shown} of {total}"
+      />
       {products.length === 0 && (
         <p style={{ color: 'var(--color-text-muted)', marginTop: '1.5rem' }}>
           {children.length > 0 ? 'Pick a sub-category above to see its products.' : 'No products in this category yet.'}

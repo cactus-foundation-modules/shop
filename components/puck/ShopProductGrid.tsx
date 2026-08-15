@@ -20,6 +20,17 @@ export type ShopProductGridProps = {
   subheading?: string
   emptyText?: string
   layoutRef?: LayoutRef | null
+  // Paging. 'none' is what the grid did before this existed and stays the
+  // default, so a layout saved earlier renders the same cards in the same order
+  // with nothing added underneath them.
+  //
+  // Switched on, `limit` stops meaning "the most this grid will ever show" and
+  // starts meaning "how many are on screen at once", with `total` fetched up to
+  // maxPerPage. That re-reading only happens when the owner asks for it.
+  paginate?: string
+  pageSize?: number
+  moreLabel?: string
+  countTemplate?: string
 }
 
 // Section heading above the grid - shared by both halves so the editor canvas
@@ -93,10 +104,25 @@ export const shopProductGridPuckComponent = {
       { value: 'name-asc', label: 'Name - A to Z' },
       { value: 'name-desc', label: 'Name - Z to A' },
     ] },
-    showFilters: { type: 'select' as const, label: 'Show filters', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
+    // Kept because saved layouts carry it - removing a prop name blanks every
+    // page using it - but relabelled to stop it promising something this block
+    // has never done. Nothing in the RSC half has ever read it: filtering is the
+    // Shop: Filters & Product Grid block's job, in filters-for-shop. The label
+    // is not the prop, so renaming it moves no saved data.
+    showFilters: { type: 'select' as const, label: 'Show filters (not used - swap in the Filters & Product Grid block instead)', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
+    // Off by default. On, "Number of products" above becomes the page size and
+    // the grid reaches for the whole list behind it - see ShopProductGrid.rsc.
+    paginate: { type: 'select' as const, label: 'When there are more products than fit', options: [
+      { value: 'none', label: 'Show only the first page (no paging)' },
+      { value: 'more', label: 'A "Show more" button' },
+      { value: 'pages', label: 'Numbered pages' },
+    ] },
+    pageSize: { type: 'number' as const, label: 'Products per page (blank uses the number above)', min: 1, max: 100 },
+    moreLabel: { type: 'text' as const, label: '"Show more" button label' },
+    countTemplate: { type: 'text' as const, label: 'Count wording ({shown} and {total}, blank for none)' },
     emptyText: { type: 'text' as const, label: 'Wording when there are no products' },
     layoutRef: layoutField,
   },
-  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', emptyText: 'No products to show yet.', layoutRef: null },
+  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', emptyText: 'No products to show yet.', layoutRef: null },
   render: ShopProductGrid,
 }

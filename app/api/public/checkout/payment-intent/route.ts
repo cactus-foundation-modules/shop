@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkout'
+import { resolveCartLines, resolveOrderTotals, round2 } from '@/modules/shop/lib/checkout'
 import { findShippingZoneForPostcode, getShippingRateById } from '@/modules/shop/lib/db/tax-shipping'
 import { createPendingOrder } from '@/modules/shop/lib/db/orders'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
@@ -185,10 +185,14 @@ export async function POST(request: NextRequest) {
       productSku: l.product.sku,
       productType: l.product.type,
       quantity: l.quantity,
-      unitPrice: l.unitPrice,
+      // Rounded here rather than left to the column. These are floats until they
+      // hit NUMERIC(10,2), and letting Postgres round each one independently let
+      // the item rows add up to a penny either side of the order's own subtotal -
+      // which is the sort of thing that turns up on a customer's receipt.
+      unitPrice: round2(l.unitPrice),
       taxRate: l.taxRate,
-      taxAmount: l.taxAmount,
-      total: l.lineTotal,
+      taxAmount: round2(l.taxAmount),
+      total: round2(l.lineTotal),
       isPreOrder: l.isPreOrder,
       preOrderDispatchDate: l.product.preOrderDispatchDate,
       lineMeta: l.lineMeta,

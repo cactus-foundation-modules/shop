@@ -193,7 +193,11 @@ export type CardItem = { product: ShpProduct; ctx: CardPartContext }
 
 // Stamps the template for each product and returns the card anchors. The
 // surface supplies the `.shop-grid` wrapper and emits shopCardCss once.
-export async function renderCards(template: PuckData, items: CardItem[]): Promise<React.ReactNode> {
+// Returns the cards as an ARRAY rather than a bare ReactNode. It always did -
+// the body is one items.map - but the looser type meant a caller wanting to
+// slice the list (the pager) could not, and every caller that just drops it into
+// JSX is unaffected either way.
+export async function renderCards(template: PuckData, items: CardItem[]): Promise<React.ReactNode[]> {
   const { getModuleLayoutPuckRscConfig } = await import('@/lib/puck/config.rsc')
   const config = getModuleLayoutPuckRscConfig('shopProductCard')
   // Every block registered for this layout type, shop's own parts and any a

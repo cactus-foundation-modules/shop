@@ -47,8 +47,25 @@ function newLineId(): string {
   return `l_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
 }
 
+// The basket held in memory, used only when localStorage cannot be written.
+//
+// localStorage.setItem THROWS in Safari's private browsing and when a device's
+// quota is full, and the throw came straight back out of addToCart - so the Add
+// to basket button did nothing, said nothing and left no trace, for a shopper
+// whose only mistake was opening a private window.
+//
+// Swallowing the throw is not enough on its own: every cart surface re-reads
+// through getCart when the change event fires, so a basket that failed to store
+// would read back as the previous one and the button would still look broken.
+// So the lines are kept here as well, and getCart prefers them once the store
+// has proved unwritable. The basket then works normally for the visit and is
+// simply gone on reload, which is the most a browser refusing to store anything
+// will allow - and is a great deal better than a button that does nothing.
+let memoryCart: CartLine[] | null = null
+
 export function getCart(): CartLine[] {
   if (typeof window === 'undefined') return []
+  if (memoryCart) return memoryCart
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return []
@@ -60,7 +77,13 @@ export function getCart(): CartLine[] {
 }
 
 function persist(lines: CartLine[]): void {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(lines))
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(lines))
+    // A store that started working again (quota freed) hands the basket back.
+    memoryCart = null
+  } catch {
+    memoryCart = lines
+  }
   window.dispatchEvent(new CustomEvent(CART_EVENT))
 }
 

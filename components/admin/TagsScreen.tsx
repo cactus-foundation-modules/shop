@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import { ColourPickerRow } from '@/components/admin/ColourPickerRow'
 import type { GlobalColour } from '@/lib/design/tokens'
 import { useAlert, useConfirm, usePrompt } from '@/modules/shop/components/admin/dialogs'
+import { AA_NORMAL_TEXT, contrastRatio, formatRatio } from '@/modules/shop/lib/contrast'
 
 // Shop > Catalogue > Tags. Until this screen existed a tag could only be made by
 // the CSV importer or by hand in the database, while the product editor cheerily
@@ -96,6 +97,15 @@ function orNull(value: string): string | null {
 // the two previews sit side by side so an owner can see both at once, which is
 // the only way to catch a dark-mode label that has gone invisible.
 function BadgePreview({ label, bg, text, caption }: { label: string; bg: string; text: string; caption: string }) {
+  // Whether these two can actually be read against each other. Only measurable
+  // when both are hex - a picker set to a site colour resolves to a CSS variable
+  // this cannot see, and an unmeasurable pair says nothing rather than guessing.
+  //
+  // Worth having because a badge is 12px, which is exactly the size that needs
+  // the full 4.5:1, and because the dark-mode pair is the one nobody looks at:
+  // this shop's own "New" badge shipped at 2.22:1 and stayed there.
+  const ratio = contrastRatio(text, bg)
+  const fails = ratio != null && ratio < AA_NORMAL_TEXT
   return (
     <div style={{ display: 'grid', gap: '0.25rem', justifyItems: 'start' }}>
       <span style={{
@@ -104,6 +114,17 @@ function BadgePreview({ label, bg, text, caption }: { label: string; bg: string;
         border: bg ? 'none' : '1px solid var(--color-border)',
       }}>{label || 'Badge'}</span>
       <span style={{ fontSize: '0.6875rem', color: 'var(--color-text-secondary)' }}>{caption}</span>
+      {fails && (
+        <span
+          style={{ fontSize: '0.6875rem', color: 'var(--color-warning)', maxWidth: 200 }}
+          // A note beside the preview, not an error on the form: the owner can
+          // still save it. role=note keeps it out of the error announcements.
+          role="note"
+        >
+          Hard to read ({formatRatio(ratio)}). Aim for {formatRatio(AA_NORMAL_TEXT)} or more - try a darker wording colour on a light
+          background, or a lighter one on a dark background.
+        </span>
+      )}
     </div>
   )
 }

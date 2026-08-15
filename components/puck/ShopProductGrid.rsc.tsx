@@ -1,5 +1,6 @@
 import { connection } from 'next/server'
-import { listProducts, getProductMedia, getProductTagIds, type ProductSort } from '@/modules/shop/lib/db'
+import { listProducts, getProductMedia, getProductTagIds, HARD_MAX_PER_PAGE, type ProductSort } from '@/modules/shop/lib/db'
+import { ShopGridPager } from '@/modules/shop/components/public/ShopGridPager'
 import { listTags, resolveCategoryProductFilter } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
@@ -19,6 +20,14 @@ import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 export async function ShopProductGridRsc(props: ShopProductGridProps) {
   await connection()
   const columns = props.columns ?? 3
+  // Paging off is the old grid exactly: fetch `limit`, render `limit`, no pager
+  // and no raised ceiling. Every branch below collapses to what it did before.
+  const paginate = props.paginate === 'more' || props.paginate === 'pages' ? props.paginate : null
+  const limit = props.limit ?? 12
+  const pageSize = paginate ? Math.max(1, Math.floor(Number(props.pageSize)) || limit) : limit
+  // Only a paging grid asks for more than the default ceiling, and only because
+  // it has somewhere to put the extra rows. See listProducts' maxPerPage.
+  const fetchCount = paginate ? HARD_MAX_PER_PAGE : limit
   // Resolve the category filter first - a category page's grid rolls up over the
   // sub-tree (or not) per the category's own mode / the shop default.
   const config = await getShopConfigCached()
@@ -33,7 +42,8 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
       ...categoryFilter,
       collectionSlug: props.collectionSlug || undefined,
       tagSlug: props.tagSlug || undefined,
-      perPage: props.limit ?? 12,
+      perPage: fetchCount,
+      maxPerPage: fetchCount,
       // listProducts whitelists the sort key itself (unknown values fall back
       // to newest), so the block prop can pass straight through.
       sort: (props.sort || 'newest') as ProductSort,
@@ -73,13 +83,30 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
 
   const cards = template ? await renderCards(template, items) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)
 
+  // Same div, same class, same custom property either way - the pager renders
+  // the grid wrapper itself so a paged grid and an unpaged one are the same
+  // markup with a different number of children.
+  const gridStyle = { ['--shop-cols' as string]: String(columns) } as React.CSSProperties
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
       <GridSectionHead heading={props.heading} subheading={props.subheading} />
-      <div className="shop-grid" style={{ ['--shop-cols' as string]: String(columns) } as React.CSSProperties}>
-        {cards}
-      </div>
+      {paginate ? (
+        <ShopGridPager
+          cards={cards}
+          perPage={pageSize}
+          mode={paginate}
+          gridClassName="shop-grid"
+          gridStyle={gridStyle}
+          moreLabel={props.moreLabel}
+          countTemplate={props.countTemplate}
+        />
+      ) : (
+        <div className="shop-grid" style={gridStyle}>
+          {cards}
+        </div>
+      )}
     </>
   )
 }

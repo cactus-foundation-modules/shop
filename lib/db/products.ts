@@ -229,6 +229,16 @@ export function searchTerms(raw: string): string[] {
   return raw.trim().split(/\s+/).filter(Boolean).slice(0, 8)
 }
 
+// What `perPage` is clamped to when the caller does not say otherwise - the
+// figure every caller got before maxPerPage existed, kept so adding the option
+// moves nothing.
+export const DEFAULT_MAX_PER_PAGE = 100
+// The ceiling on the ceiling. A storefront grid may ask for a whole category,
+// which on a real catalogue runs to a few hundred; it may not ask for the whole
+// shop. Deskwell's largest rolled-up category is 217, so this leaves room
+// without ever letting one page render twenty thousand cards.
+export const HARD_MAX_PER_PAGE = 500
+
 export type ListProductsFilter = {
   page?: number
   perPage?: number
@@ -248,6 +258,20 @@ export type ListProductsFilter = {
   // grid, search and admin product list pass true; variations' own queries
   // pass false to reach the children.
   excludeHidden?: boolean
+  // The ceiling `perPage` is clamped to. Defaults to DEFAULT_MAX_PER_PAGE, which
+  // is what every caller got before this existed, so nothing moves by adding it.
+  //
+  // It exists because the 100 ceiling is doing two different jobs badly. Against
+  // the unauthenticated public list it is a DoS guard, and must stay. Against a
+  // storefront grid it is a silent truncation: a shop owner sets a category grid
+  // to 300, the query quietly returns 100, and the other 200 products cannot be
+  // reached from anywhere on the site. The difference is where `perPage` came
+  // from - an untrusted query string, or a layout the owner authored - and only
+  // the caller knows which. So the caller says.
+  //
+  // Still clamped, at HARD_MAX_PER_PAGE: "trusted" means the number came from
+  // the shop's own settings, not that it should be allowed to be a million.
+  maxPerPage?: number
   // This list is being shown to a visitor, so the shop's out-of-stock hiding
   // applies to it (lib/stock-visibility.ts). Every storefront list passes true;
   // the admin product list and the CSV export never do, because the screen you
@@ -259,8 +283,13 @@ export type ListProductsFilter = {
 export async function listProducts(filter: ListProductsFilter): Promise<{ products: ShpProduct[]; total: number }> {
   // Clamp pagination centrally: guards against NaN/negative/huge perPage from
   // the unauthenticated public list (LIMIT NaN 500s; perPage=1e9 is a DoS).
+  // See `maxPerPage` above for why the ceiling is a parameter rather than 100.
+  const ceiling = Math.min(
+    HARD_MAX_PER_PAGE,
+    Math.max(1, Math.floor(Number(filter.maxPerPage)) || DEFAULT_MAX_PER_PAGE),
+  )
   const page = Math.max(1, Math.floor(Number(filter.page)) || 1)
-  const perPage = Math.min(100, Math.max(1, Math.floor(Number(filter.perPage)) || 24))
+  const perPage = Math.min(ceiling, Math.max(1, Math.floor(Number(filter.perPage)) || 24))
   const offset = (page - 1) * perPage
 
   const conditions: Prisma.Sql[] = []

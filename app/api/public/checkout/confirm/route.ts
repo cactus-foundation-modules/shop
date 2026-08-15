@@ -4,12 +4,23 @@ import { getOrderById, markOrderPaid, markOrderPaymentFailed, markOrderAwaitingC
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { fulfillPaidOrder } from '@/modules/shop/lib/order-fulfillment'
 import { rememberOrderAddress } from '@/modules/shop/lib/order-address-book'
+import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 
 const Body = z.object({ orderId: z.string(), payload: z.unknown() })
 
 // PROTECTED - confirms payment server-side via the provider, never trusting
 // the client's own claim that payment succeeded (spec 7).
 export async function POST(request: NextRequest) {
+  // Unauthenticated by necessity - a guest finishing a checkout has no session -
+  // so the only thing standing between an order id and a stranger is this. The
+  // provider decides whether money moved, so nobody can fake a payment here; what
+  // they COULD do unthrottled is walk order ids and drive other people's pending
+  // orders to PAYMENT_FAILED, one call each.
+  const ip = getClientIpFromRequest(request)
+  if (!checkInMemoryRateLimit(`checkout-confirm:${ip}`, 20, 15 * 60 * 1000)) {
+    return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
+  }
+
   const parsed = Body.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
 
