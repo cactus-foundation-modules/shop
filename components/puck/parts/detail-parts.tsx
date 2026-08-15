@@ -251,8 +251,8 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
   const ctx = props._ctx
   if (!ctx) return null
   // The layout already carries the provider's own gallery block, so that one
-  // owns the job and this part steps aside entirely - see `covered`.
-  if (ctx.slot?.covered.includes('Gallery')) return null
+  // owns the job and this part steps aside entirely - see `coveredParts`.
+  if (ctx.coveredParts.includes('Gallery')) return null
   // A claimed product's image follows the shopper's chosen combination, so the
   // provider's gallery replaces ours - styled with our classes so it still looks
   // like this layout's gallery.
@@ -681,8 +681,11 @@ export function ShopDetailPriceRsc(props: PriceProps) {
   const rrp = ctx.showRetailPrice && showRrp ? prices.rrp : null
   // The layout already carries the provider's own price block. Rendering our
   // static parent price beside it would put two different figures for the one
-  // product on the page, so this part steps aside - see `covered`.
-  if (ctx.slot?.covered.includes('Price')) return null
+  // product on the page - which is exactly what an ordinary product with
+  // nothing to choose used to show, one line above the other - so this part
+  // steps aside whether or not the module claimed the product. See
+  // `coveredParts`.
+  if (ctx.coveredParts.includes('Price')) return null
   // A claimed product is priced by the chosen combination, so our static price
   // would be wrong the moment the shopper picks an option.
   const SlotPrice = ctx.slot?.Price
@@ -902,8 +905,8 @@ export function ShopDetailAddToCartRsc(props: AddProps) {
     ? 'Pre-order now'
     : override || commerceModeButtonLabel(ctx.commerce.addLabel, null, 'Add to basket')
   // The layout already carries the provider's own buy block, so that one owns
-  // the purchase and this part steps aside - see `covered`.
-  if (ctx.slot?.covered.includes('PurchaseArea')) return null
+  // the purchase and this part steps aside - see `coveredParts`.
+  if (ctx.coveredParts.includes('PurchaseArea')) return null
   // A claimed product is bought as a chosen combination, and its availability
   // lives on that combination rather than on the parent row - so the provider
   // owns this whole area, our out-of-stock gate included. Gating on the parent

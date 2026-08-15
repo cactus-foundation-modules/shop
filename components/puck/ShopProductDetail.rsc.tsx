@@ -13,7 +13,7 @@ import { resolveTagBadges } from '@/modules/shop/lib/tag-badges'
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
 import { makeDisplayAdjuster, resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { injectShopProductDetailEmbed } from '@/modules/shop/lib/inject-part-context'
-import { resolveShopDetailProvider, narrowShopDetailSlot, collectLayoutBlockTypes } from '@/modules/shop/lib/detail-slot'
+import { resolveShopDetailProvider, narrowShopDetailSlot, coveredByLayoutBlocks, collectLayoutBlockTypes } from '@/modules/shop/lib/detail-slot'
 import { resolveShopDetailTabs } from '@/modules/shop/lib/detail-tabs'
 import { resolveShopDetailSpec } from '@/modules/shop/lib/detail-spec'
 import { resolveShopGalleryExtras } from '@/modules/shop/lib/gallery-media'
@@ -152,6 +152,11 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
 
   const blockTypes = collectLayoutBlockTypes(template)
   const slot = narrowShopDetailSlot(provider, blockTypes)
+  // Which of our parts the layout already prints with a module's own blocks.
+  // Asked of an unclaimed provider too: its block sits in the layout regardless
+  // of whether it claimed this particular product, so a product with nothing to
+  // choose would otherwise get the price printed twice.
+  const coveredParts = coveredByLayoutBlocks(provider, blockTypes)
 
   // config.rsc pulls in next/headers via other modules' RSC blocks, so it stays a
   // dynamic import kept off the client editor bundle. Loaded once here and reused
@@ -183,6 +188,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     showRetailPrice: config.showRetailPrice,
     supplierLabel: config.supplierFieldEnabled && config.supplierShowOnFrontend ? resolveSupplierLabel(config) : null,
     slot,
+    coveredParts,
     layoutBlockTypes: [...blockTypes],
     galleryExtras,
     detailTabs,

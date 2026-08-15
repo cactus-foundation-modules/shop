@@ -177,12 +177,14 @@ const POINT = 'shop.product-detail-parts'
 // product) can still run alongside the template fetch, while this - pure and
 // synchronous - runs once the template is in hand and its blocks are known.
 export function narrowShopDetailSlot(
-  provider: ShopDetailPartsProvider | null,
+  match: ShopDetailProviderMatch | null,
   blockTypes: Set<string>,
 ): ShopDetailSlot | null {
-  if (!provider) return null
-  const { Gallery, Price, PurchaseArea, SupplierValue } = provider
-  return { Gallery, Price, PurchaseArea, SupplierValue, covered: provider.coveredSlots?.(blockTypes) ?? [] }
+  // An unclaimed provider owns none of this product's parts - it is carried only
+  // for the layout-coverage question above, which is asked separately.
+  if (!match?.claimed) return null
+  const { Gallery, Price, PurchaseArea, SupplierValue } = match.provider
+  return { Gallery, Price, PurchaseArea, SupplierValue, covered: coveredByLayoutBlocks(match, blockTypes) }
 }
 
 // Every block type in a saved layout, zones included, so a provider can see what
@@ -209,10 +211,23 @@ export function collectLayoutBlockTypes(data: PuckData): Set<string> {
   return types
 }
 
+// What the resolver found: a provider, and whether it actually claimed this
+// product. An unclaimed provider is still worth carrying, because `coveredSlots`
+// answers a question that has nothing to do with claiming - which of shop's
+// parts the LAYOUT already does with blocks of the provider's own. A layout
+// holding the provider's price block prints one price on every product it is
+// used for, claimed or not, so shop's own price part has to stand down on both
+// or an ordinary product shows the figure twice.
+export type ShopDetailProviderMatch = {
+  provider: ShopDetailPartsProvider
+  claimed: boolean
+}
+
 // First claiming provider wins. Two modules both claiming one product would mean
 // two answers to "what does this cost", so the order of the active-modules query
-// decides rather than merging them.
-export async function resolveShopDetailProvider(product: ShpProduct): Promise<ShopDetailPartsProvider | null> {
+// decides rather than merging them. Where none claims, the first provider found
+// comes back unclaimed, for its `coveredSlots` alone.
+export async function resolveShopDetailProvider(product: ShpProduct): Promise<ShopDetailProviderMatch | null> {
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return null
 
@@ -221,6 +236,7 @@ export async function resolveShopDetailProvider(product: ShpProduct): Promise<Sh
     select: { manifest: true },
   })
 
+  let unclaimed: ShopDetailPartsProvider | null = null
   for (const mod of modules) {
     const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null
     if (!manifest?.extensionPoints) continue
@@ -228,8 +244,20 @@ export async function resolveShopDetailProvider(product: ShpProduct): Promise<Sh
       if (entry.point !== POINT) continue
       const provider = providers[entry.id] as ShopDetailPartsProvider | undefined
       if (!provider) continue
-      if (await provider.claimsProduct(product)) return provider
+      if (await provider.claimsProduct(product)) return { provider, claimed: true }
+      unclaimed ??= provider
     }
   }
-  return null
+  return unclaimed ? { provider: unclaimed, claimed: false } : null
+}
+
+// Which of shop's parts the layout already answers with a provider's own blocks.
+// Read straight off the block types, so it holds for a product no provider
+// claimed - see ShopDetailProviderMatch. Shop renders nothing for these,
+// exactly as it does for a claimed product's covered slots.
+export function coveredByLayoutBlocks(
+  match: ShopDetailProviderMatch | null,
+  blockTypes: Set<string>,
+): ShopDetailSlotName[] {
+  return match?.provider.coveredSlots?.(blockTypes) ?? []
 }

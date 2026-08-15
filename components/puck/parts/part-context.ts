@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { Breakpoints } from '@/modules/shop/lib/breakpoints'
-import type { ShopDetailSlot } from '@/modules/shop/lib/detail-slot'
+import type { ShopDetailSlot, ShopDetailSlotName } from '@/modules/shop/lib/detail-slot'
 import type { ShopDetailSpecExtra } from '@/modules/shop/lib/detail-spec'
 import type { ShopDetailTabExtra } from '@/modules/shop/lib/detail-tabs'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
@@ -92,6 +92,14 @@ export type DetailPartContext = {
   // shop-only site and for every unclaimed product, where the parts below render
   // shop's own markup unchanged. Resolved once per page, not once per part.
   slot: ShopDetailSlot | null
+  // The parts the layout already answers with a companion module's own blocks -
+  // a price block dropped in beside shop's Price part, say. Unlike `slot.covered`
+  // this holds whether or not the module claimed the product, because a block in
+  // the layout prints on every product the layout is used for: without it, a
+  // product with nothing to choose showed its price twice, shop's part and the
+  // module's block one above the other. Shop renders nothing for a part named
+  // here. Empty on a shop-only site.
+  coveredParts: ShopDetailSlotName[]
   // Every block type in the layout being rendered, passed through to any slot
   // component so a provider can stand down a piece the author has already placed
   // as a block of its own. See SlotBase in lib/detail-slot.ts.
