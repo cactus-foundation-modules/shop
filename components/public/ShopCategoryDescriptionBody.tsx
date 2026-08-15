@@ -50,12 +50,10 @@ export async function ShopCategoryDescriptionBody({ category, className, style }
   // every category page empty. Splitting on blank lines and flowing the
   // paragraphs into as many columns as the band will take fills that space
   // without letting a single line run past a comfortable measure.
-  // `min(26rem, 100%)` is what keeps a phone to one column instead of forcing a
-  // track wider than the screen, and the paragraph's own 40rem cap holds the
-  // measure at the in-between widths where only one column fits. Between them no
-  // media query is needed. (The cap belongs on the paragraph, not the track: a
-  // definite track maximum is what auto-fit counts columns with, so 40rem there
-  // would buy one fat column where two slim ones fit.)
+  // `26rem` is the narrowest column worth having, so a phone gets one column
+  // rather than a track wider than the screen, and the paragraph's own 40rem cap
+  // holds the measure at the in-between widths where only one column fits.
+  // Between them no media query is needed.
   const paragraphs = category.description.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
 
   // One paragraph has nothing to sit beside it, so it keeps its own measure.
@@ -67,20 +65,28 @@ export async function ShopCategoryDescriptionBody({ category, className, style }
     )
   }
 
+  // Columns, not a grid. A grid gives every cell in a row the height of the
+  // tallest one, so a short opening paragraph sitting beside a long second one
+  // left a hole under it the height of the difference, and the third paragraph
+  // began a fresh row below the hole. Multi-column text has no rows to line up,
+  // so the paragraphs simply carry on down one column and into the next, and the
+  // browser balances the columns for us. `break-inside: avoid` keeps a paragraph
+  // whole rather than tearing it across the gap mid-sentence.
   return (
     <div
       className={className}
       style={{
         marginTop: '1.25rem',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(min(26rem, 100%), 1fr))',
+        columnWidth: '26rem',
         columnGap: '3rem',
-        rowGap: '1.25rem',
         ...style,
       }}
     >
       {paragraphs.map((p, i) => (
-        <p key={i} style={{ ...PARAGRAPH, maxWidth: '40rem' }}>{p}</p>
+        // The gap goes below each paragraph rather than above: a margin on the
+        // paragraph that happens to land at the top of the second column would
+        // push that column out of line with the first.
+        <p key={i} style={{ ...PARAGRAPH, maxWidth: '40rem', marginBottom: '1.25rem', breakInside: 'avoid' }}>{p}</p>
       ))}
     </div>
   )
