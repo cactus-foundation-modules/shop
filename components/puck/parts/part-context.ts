@@ -176,6 +176,14 @@ export type CardPartContext = {
   // `fromPrice` already carry the converted figures.
   priceSuffix: string
   showRetailPrice: boolean
+  // Every badge this product has earned, in print order: stock and pre-order
+  // facts first, then the owner's own tag badges (lib/tag-badges.ts, the same
+  // list the product page gets), then the built-in "New"/"Low stock"/"Trade
+  // price" ones. The Badge part prints the lot, stacked down the corner of the
+  // picture, each kind still subject to its own switch on the part.
+  badges: CardBadge[]
+  // The first of them. Kept only so a card surface built before the card
+  // printed more than one badge keeps compiling; nothing in shop reads it.
   badge: CardBadge | null
   // Set when a companion module prices this product itself (shop-variations,
   // through `shop.product-card-prices`): the cheapest figure, as a decimal-pound

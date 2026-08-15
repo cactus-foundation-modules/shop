@@ -75,10 +75,13 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
 ${shopCardMediaCss}
 .shop-card:hover .shop-card-nav-btn{opacity:1}
 /* !important: the editor sets position:relative inline on every part root (see
-   dragRefOf). The badge and the fill image are the two that must position
+   dragRefOf). The badge stack and the fill image are the two that must position
    against the card instead, so they have to outrank it. No-op on the live page,
-   where nothing sets an inline position. */
-.shop-card-badge{position:absolute !important;top:10px;left:10px;z-index:3;font-size:12px;font-weight:600;line-height:1;padding:5px 9px;border-radius:6px;pointer-events:none}
+   where nothing sets an inline position. A product can earn several badges, so
+   the stack is the positioned thing and the badges themselves sit in normal
+   flow down the corner of the picture, widest-to-content each. */
+.shop-card-badges{position:absolute !important;top:10px;left:10px;z-index:3;display:flex;flex-direction:column;align-items:flex-start;gap:4px;pointer-events:none;max-width:calc(100% - 20px)}
+.shop-card-badge{display:inline-block;font-size:12px;font-weight:600;line-height:1;padding:5px 9px;border-radius:6px;pointer-events:none}
 .shop-card-badge-new{background:var(--color-primary);color:var(--color-on-primary)}
 .shop-card-badge-low{background:var(--color-warning-subtle);color:var(--color-warning);border:1px solid var(--color-warning-border)}
 .shop-card-badge-trade{background:var(--color-fg);color:var(--color-bg)}
@@ -266,15 +269,22 @@ function tagColourVars(badge: CardBadge): React.CSSProperties | undefined {
 
 export function ShopCardBadge(props: BadgeProps) {
   const _ctx = props._ctx
-  const badge = _ctx?.badge
+  // Every badge the product earned, not just the first: a product that is both
+  // on sale and ex-display says both, as its own page already does. Order comes
+  // from lib/card-template.tsx; each kind still answers to its own switch here.
+  const earned = (_ctx?.badges ?? (_ctx?.badge ? [_ctx.badge] : [])).filter((b) => badgeShown(props, b.variant))
   // In the editor (no ctx) show a sample so the part is visible; live shows the
-  // real badge, or nothing when the product has none (or its kind is off).
-  if (_ctx && (!badge || !badgeShown(props, badge.variant))) return null
-  const shown: CardBadge = badge ?? { label: 'New', variant: 'new' }
+  // real badges, or nothing when the product has none (or their kinds are off).
+  if (_ctx && earned.length === 0) return null
+  const shown: CardBadge[] = _ctx ? earned : [{ label: 'New', variant: 'new' }]
   return (
     <>
       <EditorStyle ctx={_ctx} />
-      <span className={`shop-card-badge shop-card-badge-${shown.variant}`} style={tagColourVars(shown)} ref={dragRefOf(props)}>{shown.label}</span>
+      <span className="shop-card-badges" ref={dragRefOf(props)}>
+        {shown.map((badge, i) => (
+          <span key={badge.slug ?? `${badge.variant}-${i}`} className={`shop-card-badge shop-card-badge-${badge.variant}`} style={tagColourVars(badge)}>{badge.label}</span>
+        ))}
+      </span>
     </>
   )
 }

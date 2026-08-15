@@ -59,30 +59,35 @@ export function buildTagMaps(tags: ShpTag[]): { tagById: Map<string, string>; ta
   }
 }
 
-// One badge per card, so this is a precedence list, not a set. Stock and
-// pre-order facts outrank anything an owner labelled a product with - a shopper
-// needs "Out of stock" more than "Bestseller".
+// Every badge a card has earned, in the order they are printed. Stock and
+// pre-order facts lead, ahead of anything an owner labelled a product with - a
+// shopper needs "Out of stock" before "Bestseller" - then the owner's own
+// badges, then the historical built-in ones.
 //
 // `owned` is the owner-defined badges this product earned, highest first (see
 // lib/tag-badges.ts, shared with the product page). Empty where a surface has
 // not passed its tag rows - a companion module's grid built before this existed -
 // and the two historical hardcoded slugs below then carry on exactly as they
-// always did. An owner's own badge outranks them, so a shop that defines its own
-// "New" tag gets its own colours rather than the built-in blue.
-function badgeFor(product: ShpProduct, tagSlugs: string[], outOfStock: boolean, owned: CardBadge[]): CardBadge | null {
-  if (outOfStock) return { label: 'Out of stock', variant: 'muted' }
-  if (product.isPreOrder) return { label: 'Pre-order', variant: 'new' }
-  if (owned[0]) return owned[0]
-  if (tagSlugs.includes('new')) return { label: 'New', variant: 'new' }
+// always did. A tag whose slug is 'new' or 'trade' and which carries its own
+// badge would otherwise print twice, once in the owner's colours and once in the
+// built-in ones, so the hardcoded pair stand down where that has happened - the
+// same rule the product page applies (ShopDetailBadgesRsc).
+function badgesFor(product: ShpProduct, tagSlugs: string[], outOfStock: boolean, owned: CardBadge[]): CardBadge[] {
+  const badges: CardBadge[] = []
+  if (outOfStock) badges.push({ label: 'Out of stock', variant: 'muted' })
+  else if (product.isPreOrder) badges.push({ label: 'Pre-order', variant: 'new' })
+  badges.push(...owned)
+  const ownedSlugs = new Set(owned.map((b) => b.slug))
+  if (!ownedSlugs.has('new') && tagSlugs.includes('new')) badges.push({ label: 'New', variant: 'new' })
   const lowStock =
     !!product.trackInventory &&
     product.stockCount != null &&
     product.stockCount > 0 &&
     product.lowStockThreshold != null &&
     product.stockCount <= product.lowStockThreshold
-  if (lowStock) return { label: 'Low stock', variant: 'low' }
-  if (tagSlugs.includes('trade')) return { label: 'Trade price', variant: 'trade' }
-  return null
+  if (lowStock) badges.push({ label: 'Low stock', variant: 'low' })
+  if (!ownedSlugs.has('trade') && tagSlugs.includes('trade')) badges.push({ label: 'Trade price', variant: 'trade' })
+  return badges
 }
 
 // Builds the per-product context from data the surface already loaded - no
@@ -161,6 +166,7 @@ export function buildCardContext(
     }
   }
   const ownedBadges = resolveTagBadges(productTags, allTags, reduced)
+  const badges = badgesFor(product, tagSlugs, isOutOfStock(product), ownedBadges)
   const taxDisplay = pricing?.taxDisplay ?? NO_TAX_DISPLAY
   const adjust = makeDisplayAdjuster(taxDisplay, product.taxClassId)
   return {
@@ -174,7 +180,10 @@ export function buildCardContext(
     prices: priceView(product, pricing?.enabledPriceTypes, adjust),
     priceSuffix: taxDisplay.display.suffix,
     showRetailPrice: pricing?.showRetailPrice ?? false,
-    badge: badgeFor(product, tagSlugs, isOutOfStock(product), ownedBadges),
+    badges,
+    // The first of them, kept so a card surface built before the card printed
+    // more than one still compiles and still shows the top badge.
+    badge: badges[0] ?? null,
     fromPrice: fromPrice ? (adjust ? adjust(Number(fromPrice.price)).toFixed(2) : fromPrice.price) : null,
     fromPriceVaries: fromPrice?.varies ?? false,
   }
