@@ -22,7 +22,7 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
   const columns = props.columns ?? 3
   // Paging off is the old grid exactly: fetch `limit`, render `limit`, no pager
   // and no raised ceiling. Every branch below collapses to what it did before.
-  const paginate = props.paginate === 'more' || props.paginate === 'pages' ? props.paginate : null
+  const paginate = props.paginate === 'more' || props.paginate === 'pages' || props.paginate === 'scroll' ? props.paginate : null
   const limit = props.limit ?? 12
   const pageSize = paginate ? Math.max(1, Math.floor(Number(props.pageSize)) || limit) : limit
   // Only a paging grid asks for more than the default ceiling, and only because

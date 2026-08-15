@@ -25,6 +25,32 @@ describe('visibleRange - "show more"', () => {
   })
 })
 
+describe('visibleRange - infinite scroll', () => {
+  // Scroll and "show more" share one window; only the thing that grows it
+  // differs. So every guarantee proved for 'more' has to hold here too.
+  it('opens on one page, exactly as "show more" does', () => {
+    expect(visibleRange('scroll', { shown: 24, page: 1, size: 24, total: 217 }))
+      .toEqual(visibleRange('more', { shown: 24, page: 1, size: 24, total: 217 }))
+  })
+
+  it('grows from the top as the shopper scrolls', () => {
+    expect(visibleRange('scroll', { shown: 96, page: 1, size: 24, total: 217 })).toEqual([0, 96])
+  })
+
+  it('stops at the last product rather than running past it', () => {
+    expect(visibleRange('scroll', { shown: 400, page: 1, size: 24, total: 217 })).toEqual([0, 217])
+  })
+
+  it('reaches every product eventually', () => {
+    const [, to] = visibleRange('scroll', { shown: 217, page: 1, size: 24, total: 217 })
+    expect(to).toBe(217)
+  })
+
+  it('never shows fewer than one page, whatever state arrives', () => {
+    expect(visibleRange('scroll', { shown: 0, page: 1, size: 24, total: 217 })).toEqual([0, 24])
+  })
+})
+
 describe('visibleRange - numbered pages', () => {
   it('moves a fixed window', () => {
     expect(visibleRange('pages', { shown: 0, page: 1, size: 24, total: 217 })).toEqual([0, 24])

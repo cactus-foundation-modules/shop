@@ -114,6 +114,7 @@ export const shopProductGridPuckComponent = {
     // the grid reaches for the whole list behind it - see ShopProductGrid.rsc.
     paginate: { type: 'select' as const, label: 'When there are more products than fit', options: [
       { value: 'none', label: 'Show only the first page (no paging)' },
+      { value: 'scroll', label: 'Load more as the shopper scrolls' },
       { value: 'more', label: 'A "Show more" button' },
       { value: 'pages', label: 'Numbered pages' },
     ] },

@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 
 // Paging for the shop's product grids.
 //
@@ -21,7 +21,17 @@ import { useId, useMemo, useState, type ReactNode } from 'react'
 // for this when the shop owner asks - see the `paginate` prop. A catalogue that
 // outgrows that wants a server-paged grid, and that is a different block.
 
-export type ShopGridPagerMode = 'more' | 'pages'
+// 'scroll' is 'more' that presses its own button: the same window, grown by the
+// same handler, triggered by a sentinel coming into view instead of a click.
+//
+// The button is NOT removed in scroll mode, and that is the whole design. An
+// observer that fires on scroll cannot be reached by a keyboard, is invisible to
+// a screen reader, and does nothing at all if the browser has no
+// IntersectionObserver or the page never scrolls (a short viewport, a zoomed-in
+// shopper, a filtered list of nine). So the control stays and stays focusable,
+// and the auto-load is a convenience layered on top of something that already
+// works without it.
+export type ShopGridPagerMode = 'more' | 'pages' | 'scroll'
 
 export type ShopGridPagerProps = {
   // Every card, in order. A prop rather than `children` on purpose: JSX treats a
@@ -47,7 +57,8 @@ export function visibleRange(
   state: { shown: number; page: number; size: number; total: number },
 ): [number, number] {
   const size = Math.max(1, Math.floor(state.size) || 1)
-  if (mode === 'more') return [0, Math.min(Math.max(size, state.shown), state.total)]
+  // 'scroll' and 'more' share one window - they differ only in what grows it.
+  if (mode === 'more' || mode === 'scroll') return [0, Math.min(Math.max(size, state.shown), state.total)]
   const last = Math.max(1, Math.ceil(state.total / size))
   const page = Math.min(Math.max(1, state.page), last)
   const start = (page - 1) * size
@@ -106,6 +117,32 @@ export function ShopGridPager({
   )
   const visible = useMemo(() => cards.slice(from, to), [cards, from, to])
 
+  // One way to grow the window, whether a thumb or an observer asked for it.
+  const growing = mode === 'more' || mode === 'scroll'
+  const showMore = useCallback(() => {
+    setShown((n) => Math.min(n + size, total))
+  }, [size, total])
+
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const moreToShow = growing && shown < total
+  useEffect(() => {
+    if (mode !== 'scroll' || !moreToShow) return
+    const node = sentinelRef.current
+    // No sentinel, or a browser without the observer, leaves the button doing
+    // the whole job - which it can, because it never went away.
+    if (!node || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) showMore()
+      },
+      // Start loading before the shopper actually reaches the end, so the next
+      // row is usually there by the time they get to where it goes.
+      { rootMargin: '400px 0px' },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [mode, moreToShow, showMore])
+
   const upTo = to
   const countText = countTemplate
     ? countTemplate.replace('{shown}', String(upTo)).replace('{total}', String(total))
@@ -126,16 +163,21 @@ export function ShopGridPager({
               {countText}
             </p>
           )}
-          {mode === 'more' ? (
-            shown < total && (
-              <button
-                type="button"
-                className="shop-pager-more"
-                onClick={() => setShown((n) => Math.min(n + size, total))}
-                aria-describedby={countText ? countId : undefined}
-              >
-                {moreLabel || 'Show more'}
-              </button>
+          {growing ? (
+            moreToShow && (
+              <>
+                <button
+                  type="button"
+                  className="shop-pager-more"
+                  onClick={showMore}
+                  aria-describedby={countText ? countId : undefined}
+                >
+                  {moreLabel || 'Show more'}
+                </button>
+                {/* What the observer watches. Empty, unfocusable and invisible
+                    to assistive tech - it is a scroll position, not content. */}
+                {mode === 'scroll' && <div ref={sentinelRef} aria-hidden="true" style={{ width: '100%', height: 1 }} />}
+              </>
             )
           ) : (
             <ul className="shop-pager-pages">
