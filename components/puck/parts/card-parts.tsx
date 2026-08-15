@@ -78,9 +78,10 @@ ${shopCardMediaCss}
    dragRefOf). The badge stack and the fill image are the two that must position
    against the card instead, so they have to outrank it. No-op on the live page,
    where nothing sets an inline position. A product can earn several badges, so
-   the stack is the positioned thing and the badges themselves sit in normal
-   flow down the corner of the picture, widest-to-content each. */
-.shop-card-badges{position:absolute !important;top:10px;left:10px;z-index:3;display:flex;flex-direction:column;align-items:flex-start;gap:4px;pointer-events:none;max-width:calc(100% - 20px)}
+   the row is the positioned thing and the badges themselves sit in normal flow
+   across the top of the picture, wrapping onto a second line rather than
+   running out of the card on a narrow column. */
+.shop-card-badges{position:absolute !important;top:10px;left:10px;z-index:3;display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px;pointer-events:none;max-width:calc(100% - 20px)}
 .shop-card-badge{display:inline-block;font-size:12px;font-weight:600;line-height:1;padding:5px 9px;border-radius:6px;pointer-events:none}
 .shop-card-badge-new{background:var(--color-primary);color:var(--color-on-primary)}
 .shop-card-badge-low{background:var(--color-warning-subtle);color:var(--color-warning);border:1px solid var(--color-warning-border)}
