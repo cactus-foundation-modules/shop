@@ -48,6 +48,15 @@ export type CardOverlayProps = { payload: unknown; productId: string; activeSour
 // is simply absent from the map, which is the common case and costs no markup.
 export type ShopCardMediaPayload = {
   images?: PartImage[]
+  // Images that go in FRONT of the product's own photographs rather than after
+  // them, so the first one is the picture the grid leads with. The one place a
+  // provider gets to touch what the card shows before the shopper has done
+  // anything, and it is still additive: nothing of the product's own is dropped,
+  // it simply follows. shop-variations uses it where the owner has said a
+  // promoted variation's photo is the handsome one and the parent's is a line
+  // drawing. Several providers leading at once is merely first-registered-first,
+  // which is the same rule the appended images already follow.
+  leadImages?: PartImage[]
   overlay?: unknown
   // An opaque blob for the provider's own card part-block to render. Unlike
   // `overlay` it needs no component here: the block is registered against the
@@ -80,6 +89,7 @@ export type CardFact = { id: string; payload: unknown }
 // Everything the providers contributed for one product, merged.
 export type ShopCardExtra = {
   images: PartImage[]
+  leadImages: PartImage[]
   overlays: CardOverlay[]
   facts: CardFact[]
 }
@@ -117,8 +127,9 @@ export async function resolveShopCardExtras(productIds: string[]): Promise<Map<s
         const loaded = await provider.load(productIds)
         for (const [productId, payload] of loaded) {
           if (!payload) continue
-          const extra = out.get(productId) ?? { images: [], overlays: [], facts: [] }
+          const extra = out.get(productId) ?? { images: [], leadImages: [], overlays: [], facts: [] }
           if (payload.images?.length) extra.images.push(...payload.images)
+          if (payload.leadImages?.length) extra.leadImages.push(...payload.leadImages)
           if (payload.facts != null) extra.facts.push({ id: entry.id, payload: payload.facts })
           // An overlay needs both a payload to render and a client component to
           // render it in - a provider that returned an overlay payload but shipped

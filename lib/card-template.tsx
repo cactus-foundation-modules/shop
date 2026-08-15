@@ -130,13 +130,21 @@ export function buildCardContext(
   const ownImages: PartImage[] = ordered.map((m) => ({ url: m.url, alt: m.altText ?? product.name }))
   // Own images first, then any a companion module folded in, deduped by url so a
   // variation whose photo is also the parent's primary does not appear twice.
+  // Ahead of both sit any a module asked to LEAD with (`leadImages`), which is how
+  // a product whose own shots are line drawings can put a variation's photograph
+  // on the grid - the product's own pictures still follow, nothing is dropped.
   const images: PartImage[] = []
   const seenUrls = new Set<string>()
-  for (const im of [...ownImages, ...(extra?.images ?? [])]) {
+  for (const im of [...(extra?.leadImages ?? []), ...ownImages, ...(extra?.images ?? [])]) {
     if (seenUrls.has(im.url)) continue
     seenUrls.add(im.url)
     images.push(im)
   }
+  // A contributed image carries no alt of its own where the media row had none -
+  // fine for a supplementary picture behind the arrows, not fine for the one the
+  // card leads with, which is all a screen reader meets before the name. Only the
+  // first, and only when it is blank.
+  if (images[0] && !images[0].alt) images[0] = { ...images[0], alt: product.name }
   const tagSlugs = tagIds.map((id) => tagById.get(id)).filter((s): s is string => Boolean(s))
   const productTags = tagsById
     ? tagIds.map((id) => tagsById.get(id)).filter((t): t is ShpTagBadge => Boolean(t))
