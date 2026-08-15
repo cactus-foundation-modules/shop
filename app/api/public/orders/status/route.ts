@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getOrderByNumberAndEmail, getOrderItems } from '@/modules/shop/lib/db/orders'
+import { getOrderByNumber, getOrderByNumberAndEmail, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { getProductMediaForProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getPaymentProvider, getPaymentMethodLabels } from '@/modules/shop/lib/payments/registry'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { verifyOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
 import { getMembersConfig, type MembersConfig } from '@/lib/members/config'
 import { getMemberAreaPath } from '@/lib/members/paths'
 import { prisma } from '@/lib/db/prisma'
@@ -32,9 +33,21 @@ export async function GET(request: NextRequest) {
 
   const orderNumber = request.nextUrl.searchParams.get('orderNumber')
   const email = request.nextUrl.searchParams.get('email')
-  if (!orderNumber || !email) return NextResponse.json({ error: 'orderNumber and email are required' }, { status: 400 })
+  // Two ways to prove which order may be shown, and they are for two different
+  // callers. `email` is the guest order-LOOKUP form, where the shopper types
+  // both halves - untouched. `t` is the signed token on the confirmation link
+  // the shop hands out itself, which used to carry the customer's email in the
+  // query string instead. See lib/order-receipt-token.
+  const token = request.nextUrl.searchParams.get('t')
+  if (!orderNumber || (!email && !token)) {
+    return NextResponse.json({ error: 'orderNumber and email are required' }, { status: 400 })
+  }
 
-  const order = await getOrderByNumberAndEmail(orderNumber, email)
+  const order = verifyOrderReceiptToken(orderNumber, token)
+    ? await getOrderByNumber(orderNumber)
+    : email
+      ? await getOrderByNumberAndEmail(orderNumber, email)
+      : null
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
   const items = await getOrderItems(order.id)

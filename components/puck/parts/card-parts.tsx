@@ -66,8 +66,8 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
    in a clipped box, so a non-square original crops to fit rather than distorting.
    Overlay (fill-mode) is exempt below - the image being the whole card is the
    design, not a shape. */
-.shop-card-img{position:relative;aspect-ratio:1/1;background:var(--color-bg-subtle);overflow:hidden}
-.shop-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s ease}
+.shop-card-img{position:relative;aspect-ratio:var(--shop-card-ratio,1/1);background:var(--color-bg-subtle);overflow:hidden}
+.shop-card-img img{width:100%;height:100%;object-fit:var(--shop-card-fit,cover);display:block;transition:transform .4s ease}
 .shop-card:hover .shop-card-img img{transform:scale(1.03)}
 /* Carousel arrows + overlay slot (the ShopCardMedia island). Shared rules live in
    shopCardMediaCss; the arrows stay hidden until the card is hovered (the same hover
@@ -102,6 +102,7 @@ ${shopCardMediaCss}
 .shop-card-price{font-size:1em;font-weight:600;color:var(--color-primary)}
 .shop-card-compare{font-size:.8125em;color:var(--color-text-muted);text-decoration:line-through}
 .shop-card-rrp{font-size:.75em;color:var(--color-text-muted)}
+.shop-card-save{font-size:.75em;font-weight:600;color:var(--color-success)}
 .shop-card-taxnote{font-size:.6875em;color:var(--color-text-muted)}
 .shop-card-blurb{margin:.667em 0 0;padding:0 1.111em;font-size:.9em;color:var(--color-text-muted);line-height:1.4}
 /* Blurb in "fill the spare space" mode. The wrapper is the flex item that soaks
@@ -192,7 +193,25 @@ const yesNo = [
 // Image (carries the card's overall layout via its display mode)
 // ---------------------------------------------------------------------------
 
-type ImageProps = PuckPart & { _ctx?: CardPartContext; display?: string }
+const cardRatioOptions = [
+  { value: '', label: 'Square (1:1)' },
+  { value: '4/3', label: 'Landscape (4:3)' },
+  { value: '3/4', label: 'Portrait (3:4)' },
+  { value: '16/9', label: 'Wide (16:9)' },
+  { value: '3/2', label: 'Photo (3:2)' },
+]
+const cardFitOptions = [
+  { value: '', label: 'Fill the frame, cropping if it must' },
+  { value: 'contain', label: 'Fit the whole picture in, letterboxed' },
+]
+function imageShapeStyle(props: { ratio?: string; fit?: string }): React.CSSProperties | undefined {
+  const style: Record<string, string> = {}
+  if (props.ratio) style['--shop-card-ratio'] = props.ratio
+  if (props.fit) style['--shop-card-fit'] = props.fit
+  return Object.keys(style).length ? (style as React.CSSProperties) : undefined
+}
+
+type ImageProps = PuckPart & { _ctx?: CardPartContext; display?: string; ratio?: string; fit?: string }
 
 function imgClass({ display }: ImageProps): string {
   const mode = display === 'beside' ? ' beside-mode' : display === 'fill' ? ' fill-mode' : ''
@@ -210,7 +229,12 @@ export function ShopCardImage(props: ImageProps) {
   return (
     <>
       <EditorStyle ctx={ctx} />
-      <div className={imgClass(props)} ref={dragRefOf(props)}>
+      {/* Both are CSS custom properties on the wrapper rather than inline rules
+          on the <img>, because the picture may be the carousel island's rather
+          than ours - the stylesheet above reads the properties and both paths
+          pick them up. Unset on either leaves the sheet's own 1/1 and cover, so
+          a card saved before these existed keeps exactly the shape it had. */}
+      <div className={imgClass(props)} style={imageShapeStyle(props)} ref={dragRefOf(props)}>
         {interactive ? (
           <ShopCardMedia images={ctx.images} overlays={ctx.overlays} productId={ctx.product.id} />
         ) : (
@@ -230,8 +254,12 @@ export const shopCardImagePuckComponent = {
   inline: true,
   fields: {
     display: { type: 'select' as const, label: 'Card layout', options: [{ value: 'standard', label: 'Image on top' }, { value: 'beside', label: 'Image beside text' }, { value: 'fill', label: 'Image fills card (overlay)' }] },
+    // Blank on either keeps the stylesheet's own square-and-cropped, which is
+    // what every card has always drawn.
+    ratio: { type: 'select' as const, label: 'Picture shape', options: cardRatioOptions },
+    fit: { type: 'select' as const, label: 'How the picture fills it', options: cardFitOptions },
   },
-  defaultProps: { display: 'standard' },
+  defaultProps: { display: 'standard', ratio: '', fit: '' },
   render: ShopCardImage,
 }
 export const shopCardImagePuckRscComponent = { ...shopCardImagePuckComponent, render: ShopCardImage }
@@ -319,6 +347,28 @@ const clampOptions = [
   { value: '3', label: '3 lines' },
 ]
 
+// Shared with the detail parts' own alignment: undefined for the default, so
+// React emits no style attribute at all and a card saved before these settings
+// existed renders byte-identical markup.
+const cardAlignOptions = [
+  { value: 'left', label: 'Left' },
+  { value: 'center', label: 'Centre' },
+  { value: 'right', label: 'Right' },
+]
+function cardAlignStyle(align?: string): React.CSSProperties | undefined {
+  return align === 'center' || align === 'right' ? { textAlign: align } : undefined
+}
+function cardSizeStyle(size?: number): React.CSSProperties | undefined {
+  const n = Number(size)
+  return Number.isFinite(n) && n > 0 ? { fontSize: n } : undefined
+}
+/** Merge two optional style objects without inventing an empty one - two
+ *  undefineds stay undefined, and the element keeps no style attribute. */
+function mergeStyle(a?: React.CSSProperties, b?: React.CSSProperties): React.CSSProperties | undefined {
+  if (!a && !b) return undefined
+  return { ...a, ...b }
+}
+
 function clampStyle(lines?: string): React.CSSProperties | undefined {
   if (!lines || lines === 'none') return undefined
   const n = Number(lines)
@@ -326,13 +376,17 @@ function clampStyle(lines?: string): React.CSSProperties | undefined {
   return { display: '-webkit-box', WebkitLineClamp: n, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' }
 }
 
-type NameProps = CardPartProps & { lines?: string }
+type NameProps = CardPartProps & { lines?: string; size?: number; align?: string }
 
 export function ShopCardName(props: NameProps) {
   return (
     <>
       <EditorStyle ctx={props._ctx} />
-      <h3 className="shop-card-name" style={clampStyle(props.lines)} ref={dragRefOf(props)}>{props._ctx?.product.name ?? 'Product name'}</h3>
+      <h3
+        className="shop-card-name"
+        style={mergeStyle(clampStyle(props.lines), mergeStyle(cardSizeStyle(props.size), cardAlignStyle(props.align)))}
+        ref={dragRefOf(props)}
+      >{props._ctx?.product.name ?? 'Product name'}</h3>
     </>
   )
 }
@@ -342,8 +396,12 @@ export const shopCardNamePuckComponent = {
   inline: true,
   fields: {
     lines: { type: 'select' as const, label: 'Longest a name may run', options: clampOptions },
+    // The detail block's title has had both of these all along; the card's name
+    // had neither, so a centred card design had one stubbornly left-aligned row.
+    size: { type: 'number' as const, label: 'Text size (px, blank inherits)', min: 8, max: 48 },
+    align: { type: 'select' as const, label: 'Alignment', options: cardAlignOptions },
   },
-  defaultProps: { lines: 'none' },
+  defaultProps: { lines: 'none', size: undefined, align: 'left' },
   render: ShopCardName,
 }
 export const shopCardNamePuckRscComponent = { ...shopCardNamePuckComponent, render: ShopCardName }
@@ -352,12 +410,15 @@ export const shopCardNamePuckRscComponent = { ...shopCardNamePuckComponent, rend
 // Price (price + compare-at)
 // ---------------------------------------------------------------------------
 
-type CardPriceProps = PuckPart & { _ctx?: CardPartContext; showCompare?: string; showRrp?: string }
+type CardPriceProps = PuckPart & { _ctx?: CardPartContext; showCompare?: string; showRrp?: string; showSave?: string; size?: number; align?: string }
 
 export function ShopCardPrice(props: CardPriceProps) {
   const ctx = props._ctx
   const showCompare = props.showCompare !== 'no'
   const showRrp = props.showRrp !== 'no'
+  // Defaults to OFF, unlike the detail block's own Save badge which defaults on.
+  // A card that has never had one must not grow one on upgrade.
+  const showSave = props.showSave === 'yes'
   const symbol = ctx?.currencySymbol ?? '£'
   // The editor canvas has no product, so fall back to a plausible figure rather
   // than rendering an empty row the author cannot see or style.
@@ -374,7 +435,11 @@ export function ShopCardPrice(props: CardPriceProps) {
   return (
     <>
       <EditorStyle ctx={ctx} />
-      <div className="shop-card-pricerow" ref={dragRefOf(props)}>
+      <div
+        className="shop-card-pricerow"
+        style={mergeStyle(cardSizeStyle(props.size), cardAlignStyle(props.align))}
+        ref={dragRefOf(props)}
+      >
         {/* A shop quoting by hand withholds every figure. Its stand-in wording
             goes in once, in place of the whole row of them - three "POA"s where
             a price, a struck-through was and an RRP would have been reads as a
@@ -388,6 +453,9 @@ export function ShopCardPrice(props: CardPriceProps) {
             <span className="shop-card-price">{formatMoney(now, symbol)}</span>
             {showCompare && was && (
               <span className="shop-card-compare">{formatMoney(was, symbol)}</span>
+            )}
+            {showSave && ctx?.prices.savePct != null && (
+              <span className="shop-card-save">Save {ctx.prices.savePct}%</span>
             )}
             {showRrp && rrp && (
               <span className="shop-card-rrp">RRP {formatMoney(rrp, symbol)}</span>
@@ -408,9 +476,14 @@ export const shopCardPricePuckComponent = {
   inline: true,
   fields: {
     showCompare: { type: 'select' as const, label: 'Show "was" price', options: yesNo },
+    // Defaults to 'no', unlike the detail block's own Save badge which defaults
+    // on. A card that has never carried one must not grow one on upgrade.
+    showSave: { type: 'select' as const, label: 'Show "Save X%"', options: yesNo },
     showRrp: { type: 'select' as const, label: 'Show RRP', options: yesNo },
+    size: { type: 'number' as const, label: 'Price size (px, blank inherits)', min: 8, max: 48 },
+    align: { type: 'select' as const, label: 'Alignment', options: cardAlignOptions },
   },
-  defaultProps: { showCompare: 'yes', showRrp: 'yes' },
+  defaultProps: { showCompare: 'yes', showSave: 'no', showRrp: 'yes', size: undefined, align: 'left' },
   render: ShopCardPrice,
 }
 export const shopCardPricePuckRscComponent = { ...shopCardPricePuckComponent, render: ShopCardPrice }

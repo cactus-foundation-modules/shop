@@ -35,6 +35,7 @@ type PreparedPayment = {
   method: string
   orderId: string
   orderNumber: string
+  receiptToken: string
   approvalUrl?: string
   providerOrderId?: string
 }
@@ -130,6 +131,7 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
         method: next,
         orderId: data.orderId,
         orderNumber: data.orderNumber,
+        receiptToken: data.receiptToken,
         approvalUrl: data.approvalUrl,
         providerOrderId: data.providerOrderId,
       }
@@ -329,7 +331,10 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
         // clearPlacedOrderState), which is already how a shopper coming back
         // from PayPal or their bank gets emptied, and it has the better
         // instinct besides: a payment that comes back failed keeps its basket.
-        window.location.href = `/shop/checkout/confirmation?orderNumber=${encodeURIComponent(prepared.orderNumber)}&email=${encodeURIComponent(customerEmail)}`
+        // The signed token, never the customer's email: a URL ends up in access
+        // logs, browser history and the Referer sent to every third party this
+        // page loads. See lib/order-receipt-token.
+        window.location.href = `/shop/checkout/confirmation?orderNumber=${encodeURIComponent(prepared.orderNumber)}&t=${encodeURIComponent(prepared.receiptToken)}`
       } catch (err) {
         window.dispatchEvent(new CustomEvent('cactus-shop-order-error', { detail: err instanceof Error ? err.message : 'Payment failed' }))
       }

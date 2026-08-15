@@ -9,6 +9,7 @@ import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
+import { signOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 import type { ShpAddress } from '@/modules/shop/lib/types'
@@ -213,5 +214,8 @@ export async function POST(request: NextRequest) {
     customerEmail: data.customerEmail, customerName: data.customerName,
   })
 
-  return NextResponse.json({ orderId, orderNumber, ...intent, notes })
+  // The confirmation link's proof, issued here so the browser never has to put
+  // the customer's email in a URL to get back to their own receipt. See
+  // lib/order-receipt-token.
+  return NextResponse.json({ orderId, orderNumber, receiptToken: signOrderReceiptToken(orderNumber), ...intent, notes })
 }

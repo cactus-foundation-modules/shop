@@ -836,24 +836,39 @@ export function ShopDetailPreorder(_props: PartProps) {
   )
 }
 
-export function ShopDetailPreorderRsc({ _ctx }: PartProps) {
+type PreorderProps = PartProps & { label?: string; showDispatchDate?: string; showNote?: string; align?: string }
+
+export function ShopDetailPreorderRsc({ _ctx, label, showDispatchDate, showNote, align }: PreorderProps) {
   if (!_ctx || !_ctx.product.isPreOrder) return null
   const { product } = _ctx
+  // Every default below is what the line always printed: the word "Pre-order",
+  // then the date, then the product's own note.
+  const wording = label?.trim() || 'Pre-order'
   return (
     <>
       <Style css={preorderCss} />
-      <p className="spd-preorder">
-        Pre-order
-        {product.preOrderDispatchDate
+      <p className="spd-preorder" style={textAlignStyle(align)}>
+        {wording}
+        {showDispatchDate !== 'no' && product.preOrderDispatchDate
           ? ` - expected dispatch ${new Date(product.preOrderDispatchDate).toLocaleDateString('en-GB')}`
           : ''}
-        {product.preOrderNote ? `. ${product.preOrderNote}` : ''}
+        {showNote !== 'no' && product.preOrderNote ? `. ${product.preOrderNote}` : ''}
       </p>
     </>
   )
 }
 
-export const shopDetailPreorderPuckComponent = { label: 'Product: Pre-order notice', fields: {}, defaultProps: {}, render: ShopDetailPreorder }
+export const shopDetailPreorderPuckComponent = {
+  label: 'Product: Pre-order notice',
+  fields: {
+    label: { type: 'text' as const, label: 'Opening word (blank says "Pre-order")' },
+    showDispatchDate: { type: 'select' as const, label: 'Show the expected dispatch date', options: yesNo },
+    showNote: { type: 'select' as const, label: "Show the product's own pre-order note", options: yesNo },
+    align: { type: 'select' as const, label: 'Alignment', options: alignOptions },
+  },
+  defaultProps: { label: '', showDispatchDate: 'yes', showNote: 'yes', align: 'left' },
+  render: ShopDetailPreorder,
+}
 export const shopDetailPreorderPuckRscComponent = { ...shopDetailPreorderPuckComponent, render: ShopDetailPreorderRsc }
 
 // ---------------------------------------------------------------------------

@@ -179,8 +179,13 @@ export function OrderConfirmationClient() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const orderNumber = params.get('orderNumber')
+    // `t` is the signed receipt token the checkout now hands over; `email` is
+    // the older shape, still read so a link somebody bookmarked or had emailed
+    // to them before this change keeps working. Neither is invented here - the
+    // server decides which one it will accept.
+    const token = params.get('t')
     const email = params.get('email')
-    if (!orderNumber || !email) {
+    if (!orderNumber || (!token && !email)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- guard clause on URL params read at mount, no async boundary applies
       setError('Missing order details')
       return
@@ -189,7 +194,9 @@ export function OrderConfirmationClient() {
     // Narrowed once here: the guard above doesn't reach inside the hoisted
     // helpers below, and an assertion at each use is a worse way to say it.
     const placedOrderNumber: string = orderNumber
-    const url = `/api/m/shop/public/orders/status?orderNumber=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(email)}`
+    const url = token
+      ? `/api/m/shop/public/orders/status?orderNumber=${encodeURIComponent(orderNumber)}&t=${encodeURIComponent(token)}`
+      : `/api/m/shop/public/orders/status?orderNumber=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(email!)}`
     const startedAt = Date.now()
     let cancelled = false
     let loaded = false
