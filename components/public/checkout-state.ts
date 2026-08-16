@@ -179,7 +179,11 @@ export function isContactAndShippingComplete(
 // own <label> uses, so a shopper reads back exactly what they are looking at
 // rather than a field name out of the code. `key` is the input's
 // `data-shop-field`, which is what lets the review step send them to it.
-export type MissingCheckoutField = { key: string; label: string; reason: 'empty' | 'invalid' }
+//
+// `hint` says what is wrong with something that was filled in, and travels with
+// the row rather than being decided where the list is drawn: a phone number told
+// it does not look like an email address is how that goes wrong.
+export type MissingCheckoutField = { key: string; label: string; reason: 'empty' | 'invalid'; hint?: string }
 
 export type CheckoutFieldRules = {
   businessNameRequired?: boolean
@@ -200,13 +204,15 @@ export function missingCheckoutFields(
 ): MissingCheckoutField[] {
   const a = state.shippingAddress
   const missing: MissingCheckoutField[] = []
-  const add = (key: string, label: string, reason: 'empty' | 'invalid' = 'empty') =>
-    missing.push({ key, label, reason })
+  const add = (key: string, label: string, reason: 'empty' | 'invalid' = 'empty', hint?: string) =>
+    missing.push({ key, label, reason, ...(hint ? { hint } : {}) })
 
   // Typed-but-wrong is worth telling apart from blank: "fill in your email" is
   // no help at all to somebody who thinks they already have.
   if (state.customerEmail.trim().length === 0) add('customerEmail', 'Email')
-  else if (!/\S+@\S+\.\S+/.test(state.customerEmail)) add('customerEmail', 'Email', 'invalid')
+  else if (!/\S+@\S+\.\S+/.test(state.customerEmail)) {
+    add('customerEmail', 'Email', 'invalid', 'that does not look like an email address.')
+  }
 
   if (state.customerName.trim().length === 0) add('customerName', 'Full name')
   // The contact step's number, not the address's: that is the one the contact
@@ -216,7 +222,9 @@ export function missingCheckoutFields(
   // step saying everything is fine before that happens is no help to anybody.
   const phone = state.customerPhone.trim()
   if (opts?.phoneRequired && phone.length === 0) add('customerPhone', 'Phone')
-  else if (phone.length > 0 && !isValidUkPhone(phone)) add('customerPhone', 'Phone', 'invalid')
+  else if (phone.length > 0 && !isValidUkPhone(phone)) {
+    add('customerPhone', 'Phone', 'invalid', 'that does not look like a UK phone number.')
+  }
 
   if (a.firstName.trim().length === 0) add('firstName', 'First name')
   if (a.lastName.trim().length === 0) add('lastName', 'Last name')

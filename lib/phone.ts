@@ -30,8 +30,10 @@ const LENGTHS_BY_PREFIX: Record<string, number[]> = {
 }
 
 // What a shopper reads when the box is wrong. Shown by the contact step and
-// returned by the order-creating route, so both say the same thing.
-export const UK_PHONE_MESSAGE = 'Enter a UK phone number, like 07445 163570 or 020 8138 0512.'
+// returned by the order-creating route, so both say the same thing. No worked
+// example: a box showing somebody a number to copy is a box that gets somebody
+// else's number typed into it.
+export const UK_PHONE_MESSAGE = 'Enter a UK phone number.'
 
 // The number in national form - leading 0, digits only - or null if it is not a
 // UK number at all. Accepts the ways a person actually writes one: 07445163570,

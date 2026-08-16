@@ -83,7 +83,6 @@ export function CheckoutContactClient({ preview = false, heading }: { preview?: 
           aria-invalid={phoneError ? true : undefined}
           style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: `1px solid ${phoneError ? 'var(--color-danger)' : 'var(--color-border)'}` }} />
         {phoneError && <span role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{phoneError}</span>}
-        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>Only used if there is a problem with your delivery.</span>
       </label>
     </section>
   )

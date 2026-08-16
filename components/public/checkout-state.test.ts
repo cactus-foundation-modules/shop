@@ -63,7 +63,7 @@ describe('missingCheckoutFields', () => {
 
   it('tells a typed-but-wrong email apart from a blank one', () => {
     expect(missingCheckoutFields({ ...FILLED, customerEmail: 'shopper@example' })).toEqual([
-      { key: 'customerEmail', label: 'Email', reason: 'invalid' },
+      { key: 'customerEmail', label: 'Email', reason: 'invalid', hint: 'that does not look like an email address.' },
     ])
     expect(missingCheckoutFields({ ...FILLED, customerEmail: '' })).toEqual([
       { key: 'customerEmail', label: 'Email', reason: 'empty' },
@@ -71,8 +71,11 @@ describe('missingCheckoutFields', () => {
   })
 
   it('tells a typed-but-wrong phone number apart from a blank one', () => {
+    // The hint travels with the row: a phone number must never be told it does
+    // not look like an email address, which is what a fixed sentence at the
+    // drawing end had it doing.
     expect(missingCheckoutFields({ ...FILLED, customerPhone: '0744 5163' }, { phoneRequired: true })).toEqual([
-      { key: 'customerPhone', label: 'Phone', reason: 'invalid' },
+      { key: 'customerPhone', label: 'Phone', reason: 'invalid', hint: 'that does not look like a UK phone number.' },
     ])
     expect(missingCheckoutFields({ ...FILLED, customerPhone: '' }, { phoneRequired: true })).toEqual([
       { key: 'customerPhone', label: 'Phone', reason: 'empty' },

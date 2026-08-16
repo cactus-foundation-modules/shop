@@ -197,8 +197,11 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
                   >
                     {field.label}
                   </button>
-                  {field.reason === 'invalid' && (
-                    <span style={{ color: 'var(--color-text-secondary)' }}> - that does not look like an email address.</span>
+                  {/* The wording comes with the row, from whoever decided the
+                      box was wrong. Naming a specific field here is what had a
+                      phone number told it did not look like an email address. */}
+                  {field.reason === 'invalid' && field.hint && (
+                    <span style={{ color: 'var(--color-text-secondary)' }}> - {field.hint}</span>
                   )}
                 </li>
               ))}
