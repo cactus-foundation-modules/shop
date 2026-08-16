@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { getCheckoutState, updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
+import { formatUkPhone, isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
 // Client island for the checkout contact step. Registered Puck block wrapper
@@ -36,11 +37,17 @@ export function CheckoutContactClient({ preview = false, heading }: { preview?: 
   // place.
   if (!populated) return null
 
-  // Blur-time and specific, like the address fields: never a bare "required",
-  // and never before the shopper has left the box.
-  const phoneError = phoneRequired && phoneTouched && phone.trim().length === 0
-    ? 'Enter a phone number.'
-    : null
+  // Specific, like the address fields: never a bare "required". Unlike them it
+  // is checked as the shopper types rather than only when they leave the box - a
+  // number is long enough to get wrong halfway through, and finding out on the
+  // way past is a lot less annoying than finding out at the end. "Touched" still
+  // gates it, so an untouched box is never told off.
+  const typed = phone.trim()
+  const phoneError = !phoneTouched
+    ? null
+    : typed.length === 0
+      ? (phoneRequired ? 'Enter a phone number.' : null)
+      : isValidUkPhone(typed) ? null : UK_PHONE_MESSAGE
 
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
@@ -61,8 +68,18 @@ export function CheckoutContactClient({ preview = false, heading }: { preview?: 
       <label style={{ display: 'grid', gap: '0.25rem' }}>
         <span>{phoneRequired ? 'Phone' : 'Phone (optional)'}</span>
         <input type="tel" required={phoneRequired} autoComplete="tel" inputMode="tel" data-shop-field="customerPhone" value={phone}
-          onChange={(e) => { setPhone(e.target.value); updateCheckoutState({ customerPhone: e.target.value }) }}
-          onBlur={() => setPhoneTouched(true)}
+          // Marked touched by typing, not only by leaving: that is what lets the
+          // message appear (and go again) while the number is being written.
+          onChange={(e) => { setPhone(e.target.value); setPhoneTouched(true); updateCheckoutState({ customerPhone: e.target.value }) }}
+          // Tidied to canonical form on the way out, so what the shopper reads
+          // back is what the order will carry. Left exactly as typed when it is
+          // not a number we can read - rewriting a wrong number would hide the
+          // very thing the message underneath is complaining about.
+          onBlur={() => {
+            setPhoneTouched(true)
+            const tidied = formatUkPhone(phone)
+            if (tidied && tidied !== phone) { setPhone(tidied); updateCheckoutState({ customerPhone: tidied }) }
+          }}
           aria-invalid={phoneError ? true : undefined}
           style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: `1px solid ${phoneError ? 'var(--color-danger)' : 'var(--color-border)'}` }} />
         {phoneError && <span role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{phoneError}</span>}

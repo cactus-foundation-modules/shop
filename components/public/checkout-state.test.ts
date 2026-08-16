@@ -70,6 +70,29 @@ describe('missingCheckoutFields', () => {
     ])
   })
 
+  it('tells a typed-but-wrong phone number apart from a blank one', () => {
+    expect(missingCheckoutFields({ ...FILLED, customerPhone: '0744 5163' }, { phoneRequired: true })).toEqual([
+      { key: 'customerPhone', label: 'Phone', reason: 'invalid' },
+    ])
+    expect(missingCheckoutFields({ ...FILLED, customerPhone: '' }, { phoneRequired: true })).toEqual([
+      { key: 'customerPhone', label: 'Phone', reason: 'empty' },
+    ])
+  })
+
+  it('holds an unreadable phone number against a shopper even when the shop asks for none', () => {
+    // Nobody has to give a number here, but a number that cannot be rung is
+    // still going to be refused where the order is made - so the review step
+    // says so now rather than letting the button fail later.
+    expect(labels({ ...FILLED, customerPhone: '+33 6 12 34 56 78' })).toEqual(['Phone'])
+    expect(labels({ ...FILLED, customerPhone: '' })).toEqual([])
+  })
+
+  it('takes a phone number written any of the usual ways', () => {
+    for (const written of ['07445163570', '07445 163570', '+44 7445 163570', '+4407445163570', '020 8138 0512']) {
+      expect(labels({ ...FILLED, customerPhone: written }, { phoneRequired: true }), written).toEqual([])
+    }
+  })
+
   it('treats a box holding nothing but spaces as empty', () => {
     expect(labels({ ...FILLED, shippingAddress: { ...FILLED.shippingAddress, postcode: '   ' } })).toEqual(['Postcode'])
   })

@@ -7,6 +7,7 @@ import {
   rememberPlacedOrder,
   type CheckoutState,
 } from '@/modules/shop/components/public/checkout-state'
+import { formatUkPhone } from '@/modules/shop/lib/phone'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
 type ShopClientConfig = {
@@ -116,7 +117,11 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
       const res = await fetch('/api/m/shop/public/checkout/payment-intent', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          lines, customerEmail: state.customerEmail, customerName: state.customerName, customerPhone: state.customerPhone || undefined,
+          // Canonical form, not as typed: the number may have been written into
+          // storage by an older visit that never went through the contact box's
+          // own tidy-up. The route normalises it again regardless.
+          lines, customerEmail: state.customerEmail, customerName: state.customerName,
+          customerPhone: (formatUkPhone(state.customerPhone) ?? state.customerPhone) || undefined,
           shippingAddress: state.shippingAddress, shippingRateId: state.shippingRateId, couponCode: state.couponCode, paymentMethod: next,
           // Which tickboxes the shopper ticked on the review step. Sent as ids,
           // never as statements: the wording the order records has to be the

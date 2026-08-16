@@ -52,6 +52,32 @@ function savedSummary(a: SavedAddress): string {
   return [a.address.line1, a.address.city, a.address.postcode].filter(Boolean).join(', ')
 }
 
+// Which of the two things the shopper has said. `null` is the third state and a
+// real one: the address book has arrived but nothing has been picked out of it
+// yet, which is neither "this saved one" nor "a different one" and must not be
+// drawn as either.
+type AddressChoice = { kind: 'saved'; id: string } | { kind: 'new' }
+
+// Same address, allowing for the ways the same address gets typed. Used to work
+// out which radio to tick when a shopper comes back to this step with an address
+// already in their checkout - without it, an address picked out of the book two
+// steps ago comes back looking like something they typed themselves.
+function sameAddress(a: ShpAddressForm, b: ShpAddressForm): boolean {
+  const tidy = (v: string) => v.trim().replace(/\s+/g, ' ').toLowerCase()
+  return (Object.keys(EMPTY_ADDRESS) as Array<keyof ShpAddressForm>)
+    .every((k) => tidy(a[k]) === tidy(b[k]))
+}
+
+// The boxes this shop cannot take an order without. A saved address is only
+// allowed to stand in for the form when it actually answers all of them - the
+// account page asks for fewer fields than checkout does, so an address saved
+// there can be perfectly good and still be short of a postcode.
+function missingFromSaved(a: ShpAddressForm, businessNameRequired: boolean): boolean {
+  const required: Array<keyof ShpAddressForm> = ['firstName', 'lastName', 'line1', 'city', 'postcode']
+  if (businessNameRequired) required.push('company')
+  return required.some((k) => a[k].trim().length === 0)
+}
+
 const OPTION_STYLE: CSSProperties = {
   display: 'flex', gap: '0.5rem', alignItems: 'flex-start',
   border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 0.75rem',
@@ -82,7 +108,7 @@ export function CheckoutShippingClient({
   // 401 and an empty list, which draws nothing - the form below is unchanged
   // for them.
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
-  const [selectedSavedId, setSelectedSavedId] = useState<string | null>(null)
+  const [choice, setChoice] = useState<AddressChoice | null>(null)
 
   useEffect(() => {
     // No fetch in the editor preview: nobody drawing this block in Puck is a
@@ -97,13 +123,20 @@ export function CheckoutShippingClient({
         setSavedAddresses(list)
         // Only fill the form from the book when there is nothing in it to lose.
         // A shopper who has already typed an address, or who has stepped back to
-        // this block mid-checkout, keeps what they have.
-        if (getCheckoutState().shippingAddress.line1.trim().length > 0) return
+        // this block mid-checkout, keeps what they have - and the radio is set to
+        // whichever of the two that address actually is, so the picker and the
+        // fields below can never contradict each other on arrival.
+        const stored = getCheckoutState().shippingAddress
+        if (stored.line1.trim().length > 0) {
+          const match = list.find((a) => sameAddress(toAddressForm(a.address), stored))
+          setChoice(match ? { kind: 'saved', id: match.id } : { kind: 'new' })
+          return
+        }
         const preferred = list.find((a) => a.isDefault) ?? list[0]
         if (!preferred) return
         const form = toAddressForm(preferred.address)
         setAddress(form)
-        setSelectedSavedId(preferred.id)
+        setChoice({ kind: 'saved', id: preferred.id })
         updateCheckoutState({ shippingAddress: form })
       })
       .catch(() => {})
@@ -123,17 +156,21 @@ export function CheckoutShippingClient({
     const next = { ...address, [key]: value }
     setAddress(next)
     updateCheckoutState({ shippingAddress: next })
-    // Typing over a picked address means this is no longer that address. The
-    // radio moves to "a different address" rather than leaving a saved entry
-    // ticked next to fields that no longer match it - and the shopper's edits
-    // stay put, since nothing in their address book is being changed here.
-    setSelectedSavedId(null)
+    // Typing over an address out of the book means this is no longer that
+    // address. Only reachable while the fields are on screen - which is to say
+    // while "a different address" is already the answer, or while a picked
+    // address turned out to be short of something - and the edits stay put
+    // either way, since nothing in the address book is being changed here.
+    if (choice?.kind !== 'saved') setChoice({ kind: 'new' })
   }
 
   function chooseSaved(saved: SavedAddress) {
     const form = toAddressForm(saved.address)
+    // A whole-form replacement, never a merge: anything the shopper typed before
+    // changing their mind is gone rather than left hiding behind a collapsed
+    // form, waiting to go on the order in a field this saved address left blank.
     setAddress(form)
-    setSelectedSavedId(saved.id)
+    setChoice({ kind: 'saved', id: saved.id })
     updateCheckoutState({ shippingAddress: form })
     // Errors raised against the address being replaced are not errors in this
     // one, so the blur-time messages start again from clean.
@@ -141,8 +178,11 @@ export function CheckoutShippingClient({
   }
 
   function chooseNew() {
+    // Blank, not "the saved address, to edit". Asked for a different address and
+    // handed somebody else's half of one is how a delivery ends up at the old
+    // office with the new postcode on it.
     setAddress(EMPTY_ADDRESS)
-    setSelectedSavedId(null)
+    setChoice({ kind: 'new' })
     updateCheckoutState({ shippingAddress: EMPTY_ADDRESS })
     setTouched({})
   }
@@ -195,7 +235,7 @@ export function CheckoutShippingClient({
     const next = { ...address, line1: picked.line1, line2: picked.line2, city: picked.city, county: picked.county, postcode: picked.postcode }
     setAddress(next)
     updateCheckoutState({ shippingAddress: next })
-    setSelectedSavedId(null)
+    if (choice?.kind !== 'saved') setChoice({ kind: 'new' })
   }
 
   // Real <label>s, not placeholder-as-label: a placeholder vanishes the moment
@@ -231,6 +271,25 @@ export function CheckoutShippingClient({
 
   const AddressLookup = addressLookup
 
+  // An address out of the book that checkout cannot actually deliver to. The
+  // form comes back out for it: the alternative is a shopper being told on the
+  // review step that their postcode is missing, with nowhere on the page to put
+  // one. Judged on the book's own copy rather than on what is in the form, so
+  // that typing the missing postcode in does not pull the form out from under
+  // the shopper mid-word.
+  const chosenSaved = choice?.kind === 'saved'
+    ? savedAddresses.find((a) => a.id === choice.id) ?? null
+    : null
+  const savedIsShort = chosenSaved != null
+    && missingFromSaved(toAddressForm(chosenSaved.address), businessName?.enabled === true && businessName.required)
+
+  // The form is the "different address" form, so it is only on screen when that
+  // is what the shopper has asked for. A picked saved address collapses it
+  // rather than disabling it - a disabled copy of an address is still a set of
+  // boxes to read past, and still somewhere for a half-typed one to hide.
+  // Nothing to pick from means there was never a choice to make, so it stays.
+  const showFields = savedAddresses.length === 0 || choice?.kind === 'new' || savedIsShort
+
   // Empty basket: no order to deliver, so no address to ask for - the
   // order-summary block carries the empty message.
   if (!populated) return null
@@ -240,8 +299,9 @@ export function CheckoutShippingClient({
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Delivery address'}</h2>
 
       {/* Only drawn for a signed-in shopper who has an address book with
-          something in it. The fields below stay visible either way, so a picked
-          address can still be corrected before the order goes in. */}
+          something in it. Picking one of them is the whole answer to this step,
+          so the form below goes away while one is picked; "Use a different
+          address" brings it back, empty. */}
       {savedAddresses.length > 0 && (
         <fieldset style={{ display: 'grid', gap: '0.5rem', border: 0, margin: 0, padding: 0 }}>
           <legend style={{ fontSize: '0.9375rem', fontWeight: 'var(--font-medium)', padding: 0, marginBottom: '0.25rem' }}>Deliver to</legend>
@@ -250,7 +310,7 @@ export function CheckoutShippingClient({
               <input
                 type="radio"
                 name="savedAddress"
-                checked={selectedSavedId === saved.id}
+                checked={choice?.kind === 'saved' && choice.id === saved.id}
                 onChange={() => chooseSaved(saved)}
                 style={{ marginTop: '0.2rem' }}
               />
@@ -264,7 +324,10 @@ export function CheckoutShippingClient({
             <input
               type="radio"
               name="savedAddress"
-              checked={selectedSavedId === null}
+              // Deliberately not "nothing picked": a shopper who has not answered
+              // yet has this unticked too, and ticking it for them would put an
+              // empty form on screen as though they had asked for one.
+              checked={choice?.kind === 'new'}
               onChange={chooseNew}
               style={{ marginTop: '0.2rem' }}
             />
@@ -273,34 +336,44 @@ export function CheckoutShippingClient({
         </fieldset>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-        {field('firstName', 'First name', 'given-name', true)}
-        {field('lastName', 'Last name', 'family-name', true)}
-      </div>
-      {/* Above line 1, which is where a business address puts it and where the
-          browser's own autofill expects to find it. Optional by default, so the
-          label says so out loud rather than leaving a shopper wondering whether
-          a blank box will stop them. */}
-      {businessName?.enabled && field(
-        'company',
-        businessName.required ? businessName.label : `${businessName.label} (optional)`,
-        'organization',
-        businessName.required,
+      {savedIsShort && (
+        <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+          This saved address is missing something we need for delivery. Finish it below and the order will use what you fill in here.
+        </p>
       )}
-      {AddressLookup ? (
-        <AddressLookup
-          value={address.line1}
-          onSelect={applyLookup}
-          renderInput={(inputProps) => field('line1', 'Address line 1', 'address-line1', true, inputProps)}
-        />
-      ) : (
-        field('line1', 'Address line 1', 'address-line1', true)
+
+      {showFields && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+            {field('firstName', 'First name', 'given-name', true)}
+            {field('lastName', 'Last name', 'family-name', true)}
+          </div>
+          {/* Above line 1, which is where a business address puts it and where the
+              browser's own autofill expects to find it. Optional by default, so the
+              label says so out loud rather than leaving a shopper wondering whether
+              a blank box will stop them. */}
+          {businessName?.enabled && field(
+            'company',
+            businessName.required ? businessName.label : `${businessName.label} (optional)`,
+            'organization',
+            businessName.required,
+          )}
+          {AddressLookup ? (
+            <AddressLookup
+              value={address.line1}
+              onSelect={applyLookup}
+              renderInput={(inputProps) => field('line1', 'Address line 1', 'address-line1', true, inputProps)}
+            />
+          ) : (
+            field('line1', 'Address line 1', 'address-line1', true)
+          )}
+          {field('line2', 'Address line 2 (optional)', 'address-line2', false)}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+            {field('city', 'Town or city', 'address-level2', true)}
+            {field('postcode', 'Postcode', 'postal-code', true)}
+          </div>
+        </>
       )}
-      {field('line2', 'Address line 2 (optional)', 'address-line2', false)}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-        {field('city', 'Town or city', 'address-level2', true)}
-        {field('postcode', 'Postcode', 'postal-code', true)}
-      </div>
 
       {rates.length > 0 && (
         <div style={{ display: 'grid', gap: '0.5rem' }}>

@@ -1,5 +1,7 @@
 'use client'
 
+import { isValidUkPhone } from '@/modules/shop/lib/phone'
+
 // Shared client-side checkout state, written by each checkout step block and
 // read by the review/payment steps. sessionStorage (not localStorage) - a
 // half-finished checkout shouldn't survive across browser sessions the way
@@ -208,8 +210,13 @@ export function missingCheckoutFields(
 
   if (state.customerName.trim().length === 0) add('customerName', 'Full name')
   // The contact step's number, not the address's: that is the one the contact
-  // block writes and the one the order carries as customerPhone.
-  if (opts?.phoneRequired && state.customerPhone.trim().length === 0) add('customerPhone', 'Phone')
+  // block writes and the one the order carries as customerPhone. A number that
+  // is there but unreadable counts as outstanding whether the shop insists on
+  // one or not - the order-creating route turns it away either way, and a review
+  // step saying everything is fine before that happens is no help to anybody.
+  const phone = state.customerPhone.trim()
+  if (opts?.phoneRequired && phone.length === 0) add('customerPhone', 'Phone')
+  else if (phone.length > 0 && !isValidUkPhone(phone)) add('customerPhone', 'Phone', 'invalid')
 
   if (a.firstName.trim().length === 0) add('firstName', 'First name')
   if (a.lastName.trim().length === 0) add('lastName', 'Last name')

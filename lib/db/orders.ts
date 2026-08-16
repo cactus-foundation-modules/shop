@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import { decrementPreOrderCount, getProductById } from '@/modules/shop/lib/db/products'
+import { normaliseStoredPhone } from '@/modules/shop/lib/phone'
 import type { LineMeta, ShpAddress, ShpOrder, ShpOrderAgreement, ShpOrderItem, ShpOrderStatus, ShpPaymentMethod, ShpPaymentStatus } from '@/modules/shop/lib/types'
 
 function mapOrder(r: Record<string, unknown>): ShpOrder {
@@ -136,6 +137,11 @@ export type CreateOrderInput = {
 // Creates the PENDING order row + item snapshot in one transaction (Q8 - the
 // order exists before the payment intent, so a webhook/confirm can always
 // find something to update, even if the shopper abandons checkout).
+//
+// The phone number is put into canonical form here rather than at each caller:
+// this is the one place an order row is ever born, so a number typed on the
+// checkout, on the admin's manual order screen or by a module calling in is
+// stored the same way and can be searched for as one thing. See lib/phone.ts.
 export async function createPendingOrder(data: CreateOrderInput): Promise<{ id: string; orderNumber: string }> {
   return prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<[{ id: string }]>`
@@ -145,7 +151,7 @@ export async function createPendingOrder(data: CreateOrderInput): Promise<{ id: 
         "tax_amount", "total", "tax_mode", "currency", "coupon_id", "coupon_code",
         "payment_method", "shipping_rate_id", "shipping_rate_name", "agreements"
       ) VALUES (
-        ${data.orderNumber}, ${data.memberId ?? null}, ${data.customerEmail}, ${data.customerName}, ${data.customerPhone ?? null},
+        ${data.orderNumber}, ${data.memberId ?? null}, ${data.customerEmail}, ${data.customerName}, ${normaliseStoredPhone(data.customerPhone)},
         ${JSON.stringify(data.shippingAddress)}::jsonb, ${data.billingAddress ? JSON.stringify(data.billingAddress) : null}::jsonb,
         ${data.subtotal}, ${data.discountAmount}, ${data.shippingAmount}, ${data.taxAmount}, ${data.total},
         ${data.taxMode}, ${data.currency}, ${data.couponId ?? null}, ${data.couponCode ?? null},

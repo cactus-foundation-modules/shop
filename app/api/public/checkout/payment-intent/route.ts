@@ -12,6 +12,7 @@ import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
 import { signOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
 import type { ShpAddress } from '@/modules/shop/lib/types'
 
 const AddressSchema = z.object({
@@ -81,8 +82,15 @@ export async function POST(request: NextRequest) {
   // And the phone number, for the same reason: the contact step marks the box
   // compulsory when the owner has asked for one, but the rule only actually
   // holds where the order is made. Trimmed, so a space is not a phone number.
-  if (config.requirePhone && !data.customerPhone?.trim()) {
+  const typedPhone = data.customerPhone?.trim() ?? ''
+  if (config.requirePhone && typedPhone.length === 0) {
     return NextResponse.json({ error: 'A phone number is required.' }, { status: 400 })
+  }
+  // A number that was given has to be one somebody can actually ring, whether or
+  // not the shop insists on having one. Checked here as well as in the box so an
+  // order placed by any other route stores the same thing the checkout would.
+  if (typedPhone.length > 0 && !isValidUkPhone(typedPhone)) {
+    return NextResponse.json({ error: UK_PHONE_MESSAGE }, { status: 400 })
   }
 
   // Same reasoning for the tickboxes, and rather more at stake: an order placed
