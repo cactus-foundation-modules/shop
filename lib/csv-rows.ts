@@ -1,4 +1,7 @@
-import { listProducts, getProductMedia, getProductCategoryIds, getProductTagIds, getProductCollectionIds } from '@/modules/shop/lib/db'
+import {
+  listProducts, getProductMediaForProducts,
+  getProductCategoryIdsForProducts, getProductTagIdsForProducts, getProductCollectionIdsForProducts,
+} from '@/modules/shop/lib/db'
 import { listCategories, listTags, listCollections } from '@/modules/shop/lib/db/catalogue'
 import { getTaxClassCodesByIds } from '@/modules/shop/lib/db/tax-shipping'
 import { collectPaged, serializeMedia, type CsvColumn } from '@/modules/shop/lib/csv'
@@ -39,11 +42,26 @@ export async function buildProductCsvRows(opts?: { status?: ShpProductStatus; ca
   const collectionById = new Map(collections.map((c) => [c.id, c.slug]))
   const taxCodeById = await getTaxClassCodesByIds(products.map((p) => p.taxClassId).filter((id): id is string => !!id))
 
+  // Media, categories, tags and collections for the WHOLE catalogue in four
+  // queries, not four per product. This loop used to make those four calls per
+  // row: on a 445-product catalogue that measured at 129 seconds, which is most
+  // of a CSV export and - since the Google Sheet mirror builds its Products grid
+  // from this same function - was enough on its own to stop a sheet check ever
+  // reaching the rows it was supposed to be comparing.
+  const productIds = products.map((p) => p.id)
+  const [mediaByProduct, categoriesByProduct, tagsByProduct, collectionsByProduct] = await Promise.all([
+    getProductMediaForProducts(productIds),
+    getProductCategoryIdsForProducts(productIds),
+    getProductTagIdsForProducts(productIds),
+    getProductCollectionIdsForProducts(productIds),
+  ])
+
   const rows: ProductCsvRow[] = []
   for (const p of products) {
-    const [media, categoryIds, tagIds, collectionIds] = await Promise.all([
-      getProductMedia(p.id), getProductCategoryIds(p.id), getProductTagIds(p.id), getProductCollectionIds(p.id),
-    ])
+    const media = mediaByProduct.get(p.id) ?? []
+    const categoryIds = categoriesByProduct.get(p.id) ?? []
+    const tagIds = tagsByProduct.get(p.id) ?? []
+    const collectionIds = collectionsByProduct.get(p.id) ?? []
     const { imageUrls, imageAlt } = serializeMedia(media)
     rows.push({
       sku: p.sku ?? '', slug: p.slug, name: p.name, type: p.type, status: p.status, description: p.description ?? '',
