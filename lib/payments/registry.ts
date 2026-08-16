@@ -3,7 +3,7 @@ import { paypalProvider } from '@/modules/shop/lib/payments/paypal'
 import { bankTransferProvider } from '@/modules/shop/lib/payments/bank-transfer'
 import { cashProvider } from '@/modules/shop/lib/payments/cash'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
-import type { ShpPaymentProvider } from '@/modules/shop/lib/payments/provider'
+import type { ShpPaymentLogo, ShpPaymentProvider } from '@/modules/shop/lib/payments/provider'
 
 // Providers that ship with shop. Additional providers (e.g. an open-banking
 // method) register themselves through the generic `shop.payment-providers`
@@ -64,6 +64,17 @@ export async function resolveProviderLabel(provider: ShpPaymentProvider): Promis
     console.error(`[shop] payment provider "${provider.id}" failed to resolve its label:`, error)
     return provider.label
   }
+}
+
+// id -> brand mark, for the providers that ship one. A method with no mark is
+// left out entirely rather than given a placeholder: its name carries the row,
+// exactly as it did before any method had a logo.
+export function getPaymentMethodLogos(): Record<string, ShpPaymentLogo> {
+  const logos: Record<string, ShpPaymentLogo> = {}
+  for (const provider of getAllPaymentProviders()) {
+    if (provider.logo) logos[provider.id] = provider.logo
+  }
+  return logos
 }
 
 // id -> human label for every registered provider, for the checkout UI.

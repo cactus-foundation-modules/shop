@@ -19,6 +19,10 @@ export interface ShpPaymentProvider {
   // for a provider that does not offer one, or whose owner left it blank -
   // never leaving the method nameless.
   getLabel?(): Promise<string>
+  // Optional: the provider's own brand mark, shown beside its name at checkout.
+  // A provider that ships none simply gets a name, which is what every method
+  // had before this existed.
+  logo?: ShpPaymentLogo
   // 'manual' providers (bank transfer, cash) have no automated confirmation -
   // the confirm route parks the order at AWAITING_CONFIRMATION for an admin to
   // clear, rather than calling confirmPayment. Defaults to 'auto' when unset.
@@ -38,6 +42,25 @@ export interface ShpPaymentProvider {
   // provider that cannot answer simply omits it, and its stale rows are reported
   // to the owner instead of being resolved automatically.
   getRefundStatus?(refundRowId: string, providerReference: string | null): Promise<ShpRefundStatusLookup>
+}
+
+// A payment provider's brand mark. The images are self-contained (a data: URI
+// holding the mark itself) rather than URLs: a module has nowhere of its own to
+// serve a static file from, and a checkout should not wait on a second request
+// to show who is taking the money. `width`/`height` are the mark's own
+// proportions - checkout renders it at a fixed height and works the rest out.
+// A mark that reads on either background gives only `light`; one that needs a
+// different colourway in the dark theme gives `dark` as well, and core's
+// logo-swap CSS shows the right one before paint.
+export type ShpPaymentLogo = {
+  light: string
+  dark?: string
+  // Left off by providers whose mark sits beside their name anyway - the name
+  // is already the accessible label, and a screen reader reading "Square
+  // Square" helps nobody.
+  alt?: string
+  width: number
+  height: number
 }
 
 // Deliberately three-valued. 'unknown' is not a failure - it means do not touch

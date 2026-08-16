@@ -9,10 +9,14 @@ import {
 } from '@/modules/shop/components/public/checkout-state'
 import { formatUkPhone } from '@/modules/shop/lib/phone'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
+import type { ShpPaymentLogo } from '@/modules/shop/lib/payments/provider'
 
 type ShopClientConfig = {
   enabledPaymentMethods: string[]
   paymentMethodLabels?: Record<string, string>
+  // Optional so a response from an older cached bundle still works: a checkout
+  // with no logos in it is what every shop had until now.
+  paymentMethodLogos?: Record<string, ShpPaymentLogo>
   stripePublishableKey: string | null
   currencySymbol: string
   // Optional so a response from an older cached bundle still works - the
@@ -64,6 +68,32 @@ function loadStripeJs(): Promise<void> {
     script.onerror = () => reject(new Error('Failed to load Stripe.js'))
     document.head.appendChild(script)
   })
+}
+
+// The height every brand mark is drawn at, whatever shape it is. Marks come in
+// all proportions, so matching their heights is the only thing that makes a
+// column of them look deliberate.
+const LOGO_HEIGHT = 20
+
+// A payment provider's brand mark, beside the method's name. Where the provider
+// gives a dark-theme colourway, both images are rendered and core's logo-swap
+// CSS hides the wrong one before paint - which is also why `display` is left out
+// of the inline style here: setting it would beat that stylesheet rule and show
+// both at once.
+function PaymentMethodLogo({ logo }: { logo: ShpPaymentLogo }) {
+  const width = logo.height > 0 ? Math.round((logo.width / logo.height) * LOGO_HEIGHT) : LOGO_HEIGHT
+  const style = { height: LOGO_HEIGHT, width: 'auto', flex: '0 0 auto' } as const
+  const alt = logo.alt ?? ''
+  return (
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element -- data: URI shipped by the payment module itself, nothing for the image optimiser to fetch */}
+      <img src={logo.light} alt={alt} width={width} height={LOGO_HEIGHT} style={style} data-logo-variant={logo.dark ? 'light' : undefined} />
+      {logo.dark && (
+        // eslint-disable-next-line @next/next/no-img-element -- as above
+        <img src={logo.dark} alt={alt} width={width} height={LOGO_HEIGHT} style={style} data-logo-variant="dark" />
+      )}
+    </>
+  )
 }
 
 // Client island for the checkout payment step (holds the mounted Stripe Elements
@@ -358,12 +388,16 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Payment method'}</h2>
       {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
       <div style={{ display: 'grid', gap: '0.5rem' }}>
-        {(config?.enabledPaymentMethods ?? []).map((m) => (
-          <label key={m} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
-            <input type="radio" name="paymentMethod" checked={method === m} onChange={() => chooseMethod(m)} disabled={loading} />
-            <span>{BUILT_IN_METHOD_LABELS[m] ?? config?.paymentMethodLabels?.[m] ?? m}</span>
-          </label>
-        ))}
+        {(config?.enabledPaymentMethods ?? []).map((m) => {
+          const logo = config?.paymentMethodLogos?.[m]
+          return (
+            <label key={m} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
+              <input type="radio" name="paymentMethod" checked={method === m} onChange={() => chooseMethod(m)} disabled={loading} />
+              {logo && <PaymentMethodLogo logo={logo} />}
+              <span>{BUILT_IN_METHOD_LABELS[m] ?? config?.paymentMethodLabels?.[m] ?? m}</span>
+            </label>
+          )
+        })}
       </div>
       {/* What this method means for the order, from whichever module knows -
           above the pay-here fields, because it is a consequence of the choice

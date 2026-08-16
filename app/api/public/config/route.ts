@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getShopConfigCached, getAvailablePaymentMethods, resolveSupplierLabel, resolveCheckoutAgreements } from '@/modules/shop/lib/config'
-import { getPaymentMethodLabels } from '@/modules/shop/lib/payments/registry'
+import { getPaymentMethodLabels, getPaymentMethodLogos } from '@/modules/shop/lib/payments/registry'
 import { displayTaxMode } from '@/modules/shop/lib/tax-display-shared'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 
@@ -70,6 +70,9 @@ export async function GET() {
     checkoutSteps: config.checkoutSteps,
     enabledPaymentMethods,
     paymentMethodLabels: await getPaymentMethodLabels(),
+    // Brand marks for the methods whose providers ship one, so checkout can put
+    // a recognisable logo beside the name. Only the ones that have one appear.
+    paymentMethodLogos: getPaymentMethodLogos(),
     stripePublishableKey: publishableKey,
     // How this shop is transacted with at all: shop's own basket-and-checkout,
     // or an add-on's quote flow, in which case the buttons say something else,
