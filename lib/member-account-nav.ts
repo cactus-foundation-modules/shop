@@ -24,6 +24,9 @@ export async function shopMemberAccountNav(
 
   return [
     { key: 'orders', label: 'Orders', href: '/shop/account/orders', badge: openRequests },
-    { key: 'addresses', label: 'Addresses', href: '/shop/account/addresses' },
+    // Named for both things it holds: each address keeps its own phone number,
+    // since a number is how a courier reaches whoever is at that particular
+    // door rather than a detail of the account.
+    { key: 'addresses', label: 'Addresses & Phone Numbers', href: '/shop/account/addresses' },
   ]
 }

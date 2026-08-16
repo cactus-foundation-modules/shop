@@ -105,9 +105,17 @@ describe('missingCheckoutFields', () => {
     // still reads correctly but clicking a row stops taking anyone anywhere.
     expect(missingCheckoutFields(EMPTY_CHECKOUT_STATE, { phoneRequired: true, businessNameRequired: true })
       .map((f) => f.key)).toEqual([
-      'customerEmail', 'customerName', 'customerPhone',
-      'firstName', 'lastName', 'company', 'line1', 'city', 'postcode',
+      'customerEmail', 'customerName',
+      'firstName', 'lastName', 'customerPhone', 'company', 'line1', 'city', 'postcode',
     ])
+  })
+
+  it('puts the phone number where the form puts it, under the names', () => {
+    // It moved off the contact step and onto the delivery one, since the number
+    // belongs to the address a parcel is going to rather than to the account.
+    const asked = labels(EMPTY_CHECKOUT_STATE, { phoneRequired: true, businessNameRequired: true })
+    expect(asked.indexOf('Phone')).toBeGreaterThan(asked.indexOf('Last name'))
+    expect(asked.indexOf('Phone')).toBeLessThan(asked.indexOf('Business name'))
   })
 })
 

@@ -215,19 +215,23 @@ export function missingCheckoutFields(
   }
 
   if (state.customerName.trim().length === 0) add('customerName', 'Full name')
-  // The contact step's number, not the address's: that is the one the contact
-  // block writes and the one the order carries as customerPhone. A number that
-  // is there but unreadable counts as outstanding whether the shop insists on
-  // one or not - the order-creating route turns it away either way, and a review
-  // step saying everything is fine before that happens is no help to anybody.
+
+  if (a.firstName.trim().length === 0) add('firstName', 'First name')
+  if (a.lastName.trim().length === 0) add('lastName', 'Last name')
+  // Listed here because that is where the box now sits: under the names on the
+  // delivery step, since the number belongs to the address rather than to the
+  // account. Still read from customerPhone - the shipping block writes both that
+  // and the address's own copy - because customerPhone is what the order carries
+  // and what the order-creating route enforces. A number that is there but
+  // unreadable counts as outstanding whether the shop insists on one or not: the
+  // route turns it away either way, and a review step saying everything is fine
+  // before that happens is no help to anybody.
   const phone = state.customerPhone.trim()
   if (opts?.phoneRequired && phone.length === 0) add('customerPhone', 'Phone')
   else if (phone.length > 0 && !isValidUkPhone(phone)) {
     add('customerPhone', 'Phone', 'invalid', 'that does not look like a UK phone number.')
   }
 
-  if (a.firstName.trim().length === 0) add('firstName', 'First name')
-  if (a.lastName.trim().length === 0) add('lastName', 'Last name')
   if (opts?.businessNameRequired && a.company.trim().length === 0) {
     add('company', opts.businessNameLabel?.trim() || 'Business name')
   }

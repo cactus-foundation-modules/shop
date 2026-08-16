@@ -4,6 +4,7 @@ import { useEffect, useState, type ComponentType, type CSSProperties, type Input
 import { getCart } from '@/modules/shop/components/public/cart'
 import { EMPTY_ADDRESS, getCheckoutState, updateCheckoutState, type ShpAddressForm } from '@/modules/shop/components/public/checkout-state'
 import type { ShopCheckoutAddressLookupProps, ShpLookupAddress } from '@/modules/shop/components/public/checkout-address-lookup'
+import { formatUkPhone, isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
 type ShippingRateOption = { id: string; name: string; estimatedDays: string | null }
@@ -72,9 +73,13 @@ function sameAddress(a: ShpAddressForm, b: ShpAddressForm): boolean {
 // allowed to stand in for the form when it actually answers all of them - the
 // account page asks for fewer fields than checkout does, so an address saved
 // there can be perfectly good and still be short of a postcode.
-function missingFromSaved(a: ShpAddressForm, businessNameRequired: boolean): boolean {
+function missingFromSaved(a: ShpAddressForm, opts: { businessNameRequired: boolean; phoneRequired: boolean }): boolean {
   const required: Array<keyof ShpAddressForm> = ['firstName', 'lastName', 'line1', 'city', 'postcode']
-  if (businessNameRequired) required.push('company')
+  if (opts.businessNameRequired) required.push('company')
+  // A shop that insists on a number counts an address saved without one as
+  // short: otherwise picking it hides the only box the shopper could put one in,
+  // and the order is refused two steps later with nowhere to go and fix it.
+  if (opts.phoneRequired) required.push('phone')
   return required.some((k) => a[k].trim().length === 0)
 }
 
@@ -104,6 +109,12 @@ export function CheckoutShippingClient({
   const [selectedRateId, setSelectedRateId] = useState<string | null>(initial.shippingRateId)
   const [touched, setTouched] = useState<Partial<Record<keyof ShpAddressForm, boolean>>>({})
   const [businessName, setBusinessName] = useState<BusinessNameConfig | null>(null)
+  // Whether the owner has made a phone number compulsory, from shop settings.
+  // Assumed optional until the answer arrives: labelling a field compulsory and
+  // then relenting is the worse of the two wrong guesses, and the completeness
+  // check the payment and review steps run reads the same setting for itself.
+  const [phoneRequired, setPhoneRequired] = useState(false)
+  const [phoneTouched, setPhoneTouched] = useState(false)
   // Addresses this shopper has ordered to before. A signed-out shopper gets a
   // 401 and an empty list, which draws nothing - the form below is unchanged
   // for them.
@@ -137,7 +148,7 @@ export function CheckoutShippingClient({
         const form = toAddressForm(preferred.address)
         setAddress(form)
         setChoice({ kind: 'saved', id: preferred.id })
-        updateCheckoutState({ shippingAddress: form })
+        updateCheckoutState({ shippingAddress: form, customerPhone: form.phone })
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -147,7 +158,11 @@ export function CheckoutShippingClient({
     let cancelled = false
     fetch('/api/m/shop/public/config')
       .then((r) => r.json())
-      .then((d: { businessName?: BusinessNameConfig }) => { if (!cancelled && d.businessName) setBusinessName(d.businessName) })
+      .then((d: { businessName?: BusinessNameConfig; requirePhone?: boolean }) => {
+        if (cancelled) return
+        if (d.businessName) setBusinessName(d.businessName)
+        setPhoneRequired(d.requirePhone === true)
+      })
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
@@ -155,7 +170,12 @@ export function CheckoutShippingClient({
   function set<K extends keyof ShpAddressForm>(key: K, value: ShpAddressForm[K]) {
     const next = { ...address, [key]: value }
     setAddress(next)
-    updateCheckoutState({ shippingAddress: next })
+    // The number the order actually carries is customerPhone - that is what the
+    // review step checks, what the order-creating route enforces and what the
+    // admin screens show. The address keeps its own copy so the number is filed
+    // with the door it belongs to, and the two are always written together so
+    // they cannot drift apart.
+    updateCheckoutState(key === 'phone' ? { shippingAddress: next, customerPhone: next.phone } : { shippingAddress: next })
     // Typing over an address out of the book means this is no longer that
     // address. Only reachable while the fields are on screen - which is to say
     // while "a different address" is already the answer, or while a picked
@@ -171,10 +191,13 @@ export function CheckoutShippingClient({
     // form, waiting to go on the order in a field this saved address left blank.
     setAddress(form)
     setChoice({ kind: 'saved', id: saved.id })
-    updateCheckoutState({ shippingAddress: form })
+    // The saved address brings its phone number with it - that is the point of
+    // keeping one per address - so the order's number changes with the door.
+    updateCheckoutState({ shippingAddress: form, customerPhone: form.phone })
     // Errors raised against the address being replaced are not errors in this
     // one, so the blur-time messages start again from clean.
     setTouched({})
+    setPhoneTouched(false)
   }
 
   function chooseNew() {
@@ -183,8 +206,9 @@ export function CheckoutShippingClient({
     // office with the new postcode on it.
     setAddress(EMPTY_ADDRESS)
     setChoice({ kind: 'new' })
-    updateCheckoutState({ shippingAddress: EMPTY_ADDRESS })
+    updateCheckoutState({ shippingAddress: EMPTY_ADDRESS, customerPhone: '' })
     setTouched({})
+    setPhoneTouched(false)
   }
 
   function fieldError(key: keyof ShpAddressForm): string | null {
@@ -281,7 +305,10 @@ export function CheckoutShippingClient({
     ? savedAddresses.find((a) => a.id === choice.id) ?? null
     : null
   const savedIsShort = chosenSaved != null
-    && missingFromSaved(toAddressForm(chosenSaved.address), businessName?.enabled === true && businessName.required)
+    && missingFromSaved(toAddressForm(chosenSaved.address), {
+      businessNameRequired: businessName?.enabled === true && businessName.required,
+      phoneRequired,
+    })
 
   // The form is the "different address" form, so it is only on screen when that
   // is what the shopper has asked for. A picked saved address collapses it
@@ -289,6 +316,16 @@ export function CheckoutShippingClient({
   // boxes to read past, and still somewhere for a half-typed one to hide.
   // Nothing to pick from means there was never a choice to make, so it stays.
   const showFields = savedAddresses.length === 0 || choice?.kind === 'new' || savedIsShort
+
+  // Specific, like the address fields: never a bare "required". An unreadable
+  // number is held against the shopper whether or not the shop insists on one,
+  // because the order-creating route refuses it either way.
+  const typedPhone = address.phone.trim()
+  const phoneError = !phoneTouched
+    ? null
+    : typedPhone.length === 0
+      ? (phoneRequired ? 'Enter a phone number.' : null)
+      : isValidUkPhone(typedPhone) ? null : UK_PHONE_MESSAGE
 
   // Empty basket: no order to deliver, so no address to ask for - the
   // order-summary block carries the empty message.
@@ -348,6 +385,41 @@ export function CheckoutShippingClient({
             {field('firstName', 'First name', 'given-name', true)}
             {field('lastName', 'Last name', 'family-name', true)}
           </div>
+          {/* Under the names, above the business name: the number belongs to
+              whoever is at this door rather than to the account, which is why it
+              is kept with the address and not on the member's own details.
+              Checked as the shopper types rather than only when they leave the
+              box - a number is long enough to get wrong halfway through, and
+              finding out on the way past is less annoying than finding out at
+              the end. "Touched" still gates it, so an untouched box is never
+              told off. */}
+          <label style={{ display: 'grid', gap: '0.25rem' }}>
+            <span>{phoneRequired ? 'Phone' : 'Phone (optional)'}</span>
+            <input
+              type="tel"
+              required={phoneRequired}
+              autoComplete="tel"
+              inputMode="tel"
+              data-shop-field="customerPhone"
+              value={address.phone}
+              onChange={(e) => { setPhoneTouched(true); set('phone', e.target.value) }}
+              // Tidied to canonical form on the way out, so what the shopper
+              // reads back is what the order will carry. Left exactly as typed
+              // when it is not a number we can read - rewriting a wrong number
+              // would hide the very thing the message underneath complains of.
+              onBlur={() => {
+                setPhoneTouched(true)
+                const tidied = formatUkPhone(address.phone)
+                if (tidied && tidied !== address.phone) set('phone', tidied)
+              }}
+              aria-invalid={phoneError ? true : undefined}
+              style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: `1px solid ${phoneError ? 'var(--color-danger)' : 'var(--color-border)'}` }}
+            />
+            {phoneError && <span role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{phoneError}</span>}
+            <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>
+              Only ever used about this delivery - a slot, or a question on the day.
+            </span>
+          </label>
           {/* Above line 1, which is where a business address puts it and where the
               browser's own autofill expects to find it. Optional by default, so the
               label says so out loud rather than leaving a shopper wondering whether

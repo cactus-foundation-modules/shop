@@ -2,52 +2,49 @@
 
 import { useEffect, useState } from 'react'
 import { getCheckoutState, updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
-import { formatUkPhone, isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
 // Client island for the checkout contact step. Registered Puck block wrapper
 // (ShopCheckoutContact) is a server component that renders this, so Puck's RSC
 // <Render> never serialises its renderDropZone function bag into the client.
+//
+// Email and name only. The phone number moved to the delivery step, under the
+// names it belongs with: a number is how a courier reaches whoever is at that
+// door, which is not always the person paying, so it travels with the address
+// rather than with the account.
 export function CheckoutContactClient({ preview = false, heading }: { preview?: boolean; heading?: string }) {
   const populated = useCartPopulated(preview)
   const initial = getCheckoutState()
   const [email, setEmail] = useState(initial.customerEmail)
   const [name, setName] = useState(initial.customerName)
-  const [phone, setPhone] = useState(initial.customerPhone)
-  // Whether the owner has made a phone number compulsory, from shop settings.
-  // Fetched here rather than passed down from the RSC wrapper so the editor
-  // preview draws the same form the storefront does. Assumed optional until the
-  // answer arrives: labelling a field compulsory and then relenting is the
-  // worse of the two wrong guesses, and the completeness check the payment and
-  // review steps run reads the same setting for itself.
-  const [phoneRequired, setPhoneRequired] = useState(false)
-  const [phoneTouched, setPhoneTouched] = useState(false)
 
+  // The name the shopper keeps on their account, if they are signed in and have
+  // filled it in. A signed-out shopper gets a 401 and nothing changes.
+  //
+  // Only ever fills a box that is empty: somebody who has typed a different name
+  // for this one order, or who has stepped back to this block mid-checkout,
+  // keeps what they typed. Nothing is written back to the account from here -
+  // ordering something in a colleague's name is not a change of account details.
   useEffect(() => {
+    // Nobody drawing this block in the Puck editor is a signed-in shopper.
+    if (preview) return
     let cancelled = false
-    fetch('/api/m/shop/public/config')
-      .then((r) => r.json())
-      .then((d: { requirePhone?: boolean }) => { if (!cancelled) setPhoneRequired(d.requirePhone === true) })
+    fetch('/api/members/contact')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { fullName?: string | null } | null) => {
+        if (cancelled || !d?.fullName) return
+        if (getCheckoutState().customerName.trim().length > 0) return
+        setName(d.fullName)
+        updateCheckoutState({ customerName: d.fullName })
+      })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [])
+  }, [preview])
 
   // Empty basket: the order-summary block owns the "your basket is empty"
   // message; a contact form under it would suggest there is still an order to
   // place.
   if (!populated) return null
-
-  // Specific, like the address fields: never a bare "required". Unlike them it
-  // is checked as the shopper types rather than only when they leave the box - a
-  // number is long enough to get wrong halfway through, and finding out on the
-  // way past is a lot less annoying than finding out at the end. "Touched" still
-  // gates it, so an untouched box is never told off.
-  const typed = phone.trim()
-  const phoneError = !phoneTouched
-    ? null
-    : typed.length === 0
-      ? (phoneRequired ? 'Enter a phone number.' : null)
-      : isValidUkPhone(typed) ? null : UK_PHONE_MESSAGE
 
   return (
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
@@ -64,25 +61,6 @@ export function CheckoutContactClient({ preview = false, heading }: { preview?: 
         <span>Full name</span>
         <input type="text" required autoComplete="name" data-shop-field="customerName" value={name} onChange={(e) => { setName(e.target.value); updateCheckoutState({ customerName: e.target.value }) }}
           style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
-      </label>
-      <label style={{ display: 'grid', gap: '0.25rem' }}>
-        <span>{phoneRequired ? 'Phone' : 'Phone (optional)'}</span>
-        <input type="tel" required={phoneRequired} autoComplete="tel" inputMode="tel" data-shop-field="customerPhone" value={phone}
-          // Marked touched by typing, not only by leaving: that is what lets the
-          // message appear (and go again) while the number is being written.
-          onChange={(e) => { setPhone(e.target.value); setPhoneTouched(true); updateCheckoutState({ customerPhone: e.target.value }) }}
-          // Tidied to canonical form on the way out, so what the shopper reads
-          // back is what the order will carry. Left exactly as typed when it is
-          // not a number we can read - rewriting a wrong number would hide the
-          // very thing the message underneath is complaining about.
-          onBlur={() => {
-            setPhoneTouched(true)
-            const tidied = formatUkPhone(phone)
-            if (tidied && tidied !== phone) { setPhone(tidied); updateCheckoutState({ customerPhone: tidied }) }
-          }}
-          aria-invalid={phoneError ? true : undefined}
-          style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: `1px solid ${phoneError ? 'var(--color-danger)' : 'var(--color-border)'}` }} />
-        {phoneError && <span role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{phoneError}</span>}
       </label>
     </section>
   )

@@ -7,7 +7,7 @@ import { AddressesClient } from '@/modules/shop/components/public/AddressesClien
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 
-export const metadata = { title: 'Saved addresses' }
+export const metadata = { title: 'Addresses & Phone Numbers' }
 export const dynamic = 'force-dynamic'
 
 export default async function ShopAccountAddressesPage() {
@@ -24,10 +24,11 @@ export default async function ShopAccountAddressesPage() {
     <MemberAccountShell member={member} maxWidth={880}>
       {gate.staffPreview && <ShopStaffPreviewBanner />}
       <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-semibold)', margin: '0 0 var(--space-2)', color: 'var(--color-text)' }}>
-        Saved addresses
+        Addresses &amp; Phone Numbers
       </h1>
       <p style={{ color: 'var(--color-text-muted)', margin: '0 0 var(--space-4)' }}>
-        Every address you order to is kept here, and offered back at checkout, so you only type one once.
+        Every address you order to is kept here with its own phone number, and offered back at checkout, so you only
+        type one once.
       </p>
       <AddressesClient />
     </MemberAccountShell>
