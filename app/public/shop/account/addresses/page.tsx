@@ -4,6 +4,7 @@ import { getMembersConfig } from '@/lib/members/config'
 import { getMemberAreaPath } from '@/lib/members/paths'
 import MemberAccountShell from '@/components/members/account/MemberAccountShell'
 import { AddressesClient } from '@/modules/shop/components/public/AddressesClient'
+import { resolveCheckoutAddressLookup } from '@/modules/shop/lib/checkout-address-lookup'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 
@@ -30,7 +31,10 @@ export default async function ShopAccountAddressesPage() {
         Every address you order to is kept here with its own phone number, and offered back at checkout, so you only
         type one once.
       </p>
-      <AddressesClient />
+      {/* Resolved here rather than in the client island for the same reason
+          checkout does it: the extension registry statically imports
+          Prisma-touching code and must never reach a client bundle. */}
+      <AddressesClient addressLookup={resolveCheckoutAddressLookup()} />
     </MemberAccountShell>
   )
 }
