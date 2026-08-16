@@ -382,6 +382,12 @@ export type ShpOrder = {
   // NULL on an order placed while the shop had no tickboxes switched on -
   // "nobody was asked" rather than "asked and ticked nothing".
   agreements: ShpOrderAgreement[] | null
+  // How the customer asked to be kept posted. See lib/order-notify.ts, which is
+  // the only thing that should be reading these three: a member's account
+  // preference outranks them, and the number has to be a mobile to count.
+  notifyEmail: boolean
+  notifySms: boolean
+  notifyPhone: string | null
   createdAt: Date
   updatedAt: Date
 }

@@ -151,7 +151,11 @@ function prospectiveOrder(paymentMethod: string): ShpOrder {
     // makes a pay-later method worth saying anything about at all.
     paymentStatus: 'PENDING',
     paymentReference: null, paidAt: null, shippingRateId: null, shippingRateName: null,
-    agreements: null, createdAt: now, updatedAt: now,
+    agreements: null,
+    // Nobody has been asked how they want to hear about an order that does not
+    // exist, so this is the default an order is born with.
+    notifyEmail: true, notifySms: false, notifyPhone: null,
+    createdAt: now, updatedAt: now,
   }
 }
 

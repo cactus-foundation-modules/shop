@@ -33,6 +33,12 @@ function mapOrder(r: Record<string, unknown>): ShpOrder {
     // jsonb comes back already parsed; NULL on an order placed before the shop
     // asked anything.
     agreements: (r.agreements as ShpOrderAgreement[] | null) ?? null,
+    // Columns added by migration 020. Defaulted here as well as in the DDL so a
+    // row read through an older cached query shape still answers "email only"
+    // rather than undefined.
+    notifyEmail: (r.notify_email as boolean | null) ?? true,
+    notifySms: (r.notify_sms as boolean | null) ?? false,
+    notifyPhone: (r.notify_phone as string | null) ?? null,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
   }

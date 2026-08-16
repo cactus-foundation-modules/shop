@@ -2,7 +2,7 @@ import { getSiteUrl } from '@/lib/config/env'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { getOrderDispatchSummary, getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
-import { sendShopEmail } from '@/modules/shop/lib/email'
+import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 
 // Item lists go into the template as ONE plain-text variable, because
 // lib/email.ts HTML-escapes every {{variable}} on the way into the body - any
@@ -63,7 +63,7 @@ export async function sendShipmentDispatchedEmail(params: { orderId: string; shi
   const trackingNumber = shipment.trackingNumber?.trim() ?? ''
   const carrier = shipment.carrier?.trim() ?? ''
 
-  await sendShopEmail('PARTIAL_SHIPPED', order.customerEmail, {
+  await notifyOrderCustomer('PARTIAL_SHIPPED', order, {
     orderNumber: order.orderNumber,
     customerName: order.customerName,
     customerEmail: order.customerEmail,
@@ -79,5 +79,5 @@ export async function sendShipmentDispatchedEmail(params: { orderId: string; shi
     carrier,
     shopName: config.shopTitle || 'Shop',
     shopUrl: `${siteUrl}/shop`,
-  }, { orderId: order.id })
+  })
 }

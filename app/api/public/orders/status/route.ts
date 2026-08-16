@@ -6,6 +6,8 @@ import { getPaymentProvider, getPaymentMethodLabels } from '@/modules/shop/lib/p
 import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 import { verifyOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
+import { getOrderNotifyChannels } from '@/modules/shop/lib/order-notify'
+import { isSmsAvailable } from '@/lib/sms/send'
 import { getMembersConfig, type MembersConfig } from '@/lib/members/config'
 import { getMemberAreaPath } from '@/lib/members/paths'
 import { prisma } from '@/lib/db/prisma'
@@ -150,6 +152,14 @@ export async function GET(request: NextRequest) {
   // is resolved rather than read off a fixed map.
   const moduleMethodLabels = await getPaymentMethodLabels()
 
+  // How this order's updates are being sent, so the confirmation page can offer
+  // the choice with the current answer already in it. `smsAvailable` is false on
+  // any site with no SMS provider set up, which is what hides the whole thing.
+  const [notifyChannels, smsAvailable] = await Promise.all([
+    getOrderNotifyChannels(order),
+    isSmsAvailable(),
+  ])
+
   // Deliberately NOT the whole order row. This used to spread `SELECT *` out to
   // anyone holding an order number and an email address, which handed over the
   // internal row id and the payment provider's own reference - neither of which
@@ -187,6 +197,15 @@ export async function GET(request: NextRequest) {
     instructions,
     manualPayment,
     accountPrompt,
+    notifications: {
+      smsAvailable,
+      email: notifyChannels.email,
+      sms: notifyChannels.sms,
+      // The number as typed, not the resolved one: a landline typed for the
+      // delivery driver should show in the box so it can be corrected, rather
+      // than vanishing because it cannot receive a text.
+      phone: order.notifyPhone ?? order.customerPhone ?? '',
+    },
     currencySymbol: config.currencySymbol,
   })
 }

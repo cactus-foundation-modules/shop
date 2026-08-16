@@ -5,6 +5,7 @@ import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { sendShopEmail } from '@/modules/shop/lib/email'
+import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { reasonLabel } from '@/modules/shop/lib/order-requests'
 import type { ShpOrder, ShpOrderItem, ShpOrderRequestWithItems } from '@/modules/shop/lib/types'
@@ -58,7 +59,7 @@ export async function submitOrderRequest(input: CreateOrderRequestInput): Promis
 
   await sendQuietly(
     () =>
-      sendShopEmail('REQUEST_RECEIVED', order.customerEmail, {
+      notifyOrderCustomer('REQUEST_RECEIVED', order, {
         customerName: order.customerName,
         orderNumber: order.orderNumber,
         requestType: typeWord,
@@ -66,7 +67,7 @@ export async function submitOrderRequest(input: CreateOrderRequestInput): Promis
         requestItems: summary,
         hasItems: request.items.length > 0 ? 'true' : 'false',
         shopName,
-      }, { orderId: order.id }),
+      }),
     'request received',
   )
 
@@ -227,7 +228,7 @@ export async function approveOrderRequest(input: ApproveInput): Promise<DecideRe
 
   await sendQuietly(
     () =>
-      sendShopEmail('REQUEST_APPROVED', order.customerEmail, {
+      notifyOrderCustomer('REQUEST_APPROVED', order, {
         customerName: order.customerName,
         orderNumber: order.orderNumber,
         requestType: TYPE_WORD[request.type],
@@ -236,7 +237,7 @@ export async function approveOrderRequest(input: ApproveInput): Promise<DecideRe
         refundAmount: refundedAmount != null ? formatMoney(refundedAmount, config.currencySymbol) : '',
         hasRefund: refundedAmount != null ? 'true' : 'false',
         shopName: config.shopTitle || 'Shop',
-      }, { orderId: order.id }),
+      }),
     'request approved',
   )
 
@@ -261,14 +262,14 @@ export async function declineOrderRequest(input: {
 
   await sendQuietly(
     () =>
-      sendShopEmail('REQUEST_DECLINED', order.customerEmail, {
+      notifyOrderCustomer('REQUEST_DECLINED', order, {
         customerName: order.customerName,
         orderNumber: order.orderNumber,
         requestType: TYPE_WORD[request.type],
         adminNote: request.adminNote ?? '',
         hasAdminNote: request.adminNote ? 'true' : 'false',
         shopName: config.shopTitle || 'Shop',
-      }, { orderId: order.id }),
+      }),
     'request declined',
   )
 

@@ -7,7 +7,7 @@ import {
 } from '@/modules/shop/lib/db/orders'
 import { createShipment, getOrderDispatchSummary } from '@/modules/shop/lib/db/shipments'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { sendShopEmail } from '@/modules/shop/lib/email'
+import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import type { ShpEmailTemplateTrigger, ShpOrderItem, ShpOrderStatus } from '@/modules/shop/lib/types'
 
 // Everything that happens when an order's status changes, in one place.
@@ -115,11 +115,11 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail }: {
   if (sendEmail) {
     const trigger = STATUS_EMAIL_TRIGGER[status]
     if (trigger) {
-      await sendShopEmail(trigger, order.customerEmail, {
+      await notifyOrderCustomer(trigger, order, {
         orderNumber: order.orderNumber,
         customerName: order.customerName,
         shopName: config.shopTitle || 'Shop',
-      }, { orderId })
+      })
     }
   }
 

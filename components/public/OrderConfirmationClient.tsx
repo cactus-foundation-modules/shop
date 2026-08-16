@@ -41,6 +41,15 @@ type OrderStatusResponse = {
     } | null
     imageUrl?: string | null
   }>
+  // How this order's updates are being sent, and whether a text is even an
+  // option here. Optional so a response from an older cached bundle simply
+  // shows no chooser rather than throwing.
+  notifications?: {
+    smsAvailable: boolean
+    email: boolean
+    sms: boolean
+    phone: string
+  }
   instructions: string | null
   // Whether the method has no automated confirmation (bank transfer, cash), from
   // the provider's own confirmMode. Optional so a response from an older cached
@@ -155,6 +164,122 @@ function addressLines(address: ShpAddress): string[] {
     address.postcode,
     address.country && address.country !== 'GB' ? address.country : '',
   ].map((line) => (line ?? '').trim()).filter((line) => line.length > 0)
+}
+
+// "How would you like updates about this order?" - shown only where the shop
+// can actually send a text, since otherwise it is a box offering one choice.
+//
+// The order is the thing being decided about, so the answer is saved against
+// it. For a signed-in shopper the same call also updates the preference on
+// their account, which is what their notifications page edits - so the two can
+// never end up disagreeing about the same order.
+//
+// At least one channel has to stay on. The server enforces it (it is the only
+// side that can be trusted to), and the button is disabled with both unticked
+// so nobody has to be told off to find that out.
+function UpdateChannelsCard({
+  orderNumber,
+  notifications,
+}: {
+  orderNumber: string
+  notifications: NonNullable<OrderStatusResponse['notifications']>
+}) {
+  // Held as one draft rather than synced back out of the polling response: the
+  // page refetches the order every few seconds while a payment settles, and a
+  // half-typed phone number must not be overwritten mid-keystroke.
+  const [draft, setDraft] = useState({
+    email: notifications.email,
+    sms: notifications.sms,
+    phone: notifications.phone,
+  })
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
+
+  async function save() {
+    setSaving(true)
+    setSaved(false)
+    setError('')
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const res = await fetch('/api/m/shop/public/orders/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderNumber,
+          token: params.get('t') ?? undefined,
+          email: params.get('email') ?? undefined,
+          channels: { email: draft.email, sms: draft.sms },
+          phone: draft.phone,
+        }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error ?? 'We could not save that.')
+      setDraft((prev) => ({ ...prev, phone: body.phone ?? prev.phone }))
+      setSaved(true)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'We could not save that.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="soc-notify">
+      <h2>How shall we keep you posted?</h2>
+      <p>
+        We&apos;ll let you know when this order is being processed and when it&apos;s on its way. Pick at
+        least one - we can&apos;t leave you in the dark about an order.
+      </p>
+
+      <div className="soc-notify-choices">
+        <label className="soc-notify-choice">
+          <input
+            type="checkbox"
+            checked={draft.email}
+            onChange={(e) => { setDraft((d) => ({ ...d, email: e.target.checked })); setSaved(false) }}
+          />
+          Email
+        </label>
+        <label className="soc-notify-choice">
+          <input
+            type="checkbox"
+            checked={draft.sms}
+            onChange={(e) => { setDraft((d) => ({ ...d, sms: e.target.checked })); setSaved(false) }}
+          />
+          Text message
+        </label>
+      </div>
+
+      {draft.sms && (
+        <div className="soc-notify-phone">
+          <label htmlFor="soc-notify-phone-input">Mobile number for texts</label>
+          <input
+            id="soc-notify-phone-input"
+            type="tel"
+            autoComplete="tel"
+            value={draft.phone}
+            placeholder="07700 900123"
+            onChange={(e) => { setDraft((d) => ({ ...d, phone: e.target.value })); setSaved(false) }}
+          />
+        </div>
+      )}
+
+      {error && <p className="soc-notify-err" role="alert">{error}</p>}
+      {saved && <p className="soc-notify-msg">Saved - that&apos;s how we&apos;ll be in touch.</p>}
+
+      <div className="soc-actions">
+        <button
+          type="button"
+          className="soc-btn soc-btn-ghost"
+          disabled={saving || (!draft.email && !draft.sms)}
+          onClick={save}
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function formatOrderDate(iso: string): string {
@@ -401,6 +526,15 @@ export function OrderConfirmationClient() {
             instructions are a job to go and do, and once the shop has marked the
             money as arrived the job is done. Leaving the bank details up reads as
             a second demand for a bill already paid. */}
+
+        {/* Above the account offer and below anything the shopper still has to
+            do about money: this one is about the order they have just placed,
+            and it is the moment they are most likely to hand over a mobile
+            number. Nothing to decide on a failed payment - there is no order to
+            be kept posted about. */}
+        {data.notifications?.smsAvailable && !failed && (
+          <UpdateChannelsCard orderNumber={order.orderNumber} notifications={data.notifications} />
+        )}
 
         {/* Guest orders only, and only where the site actually takes
             registrations - the server has already made that call. Sits below the

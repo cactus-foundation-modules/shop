@@ -457,6 +457,13 @@ CREATE TABLE IF NOT EXISTS "shp_orders" (
     -- any tickboxes, and on shops that have never switched one on.
     "agreements" JSONB,
 
+    -- How the customer asked to be kept posted (see migration 020). Email is on
+    -- by default and texting is opt-in; notify_phone is the number chosen for
+    -- updates, which is not necessarily the delivery number in customer_phone.
+    "notify_email" BOOLEAN NOT NULL DEFAULT true,
+    "notify_sms" BOOLEAN NOT NULL DEFAULT false,
+    "notify_phone" TEXT,
+
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

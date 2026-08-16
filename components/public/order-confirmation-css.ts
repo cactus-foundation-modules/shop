@@ -126,6 +126,22 @@ export const ORDER_CONFIRMATION_CSS = `
 .soc-account form{margin:0}
 .soc-account form p.field-hint{color:var(--color-text-muted)}
 
+/* --- How updates are sent ---------------------------------------------- */
+/* Only rendered where the shop can actually send a text, so it never appears
+   as a box offering one choice. */
+.soc-notify{border:1px solid var(--color-border);background:var(--color-surface);
+  border-radius:var(--radius-lg);padding:1.125rem 1.25rem;display:grid;gap:0.75rem}
+.soc-notify h2{margin:0;font-size:1.0625rem;font-weight:650}
+.soc-notify p{margin:0;color:var(--color-text-secondary)}
+.soc-notify-choices{display:flex;flex-wrap:wrap;gap:0.75rem 1.5rem}
+.soc-notify-choice{display:flex;align-items:center;gap:0.5rem;cursor:pointer;color:var(--color-text)}
+.soc-notify-phone{display:grid;gap:0.375rem;max-width:18rem}
+.soc-notify-phone input{padding:0.5rem 0.625rem;border-radius:var(--radius-md);
+  border:1px solid var(--color-border-strong);background:var(--color-bg);color:var(--color-text);font:inherit}
+.soc-notify-phone input:focus-visible{outline:2px solid var(--color-border-focus);outline-offset:1px}
+.soc-notify-msg{color:var(--color-success)}
+.soc-notify-err{color:var(--color-danger)}
+
 /* --- Buttons ----------------------------------------------------------- */
 .soc-actions{display:flex;flex-wrap:wrap;gap:0.625rem}
 .soc-btn{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;

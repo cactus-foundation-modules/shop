@@ -7,6 +7,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
 import { rememberOrderAddress } from '@/modules/shop/lib/order-address-book'
 import { sendShopEmail } from '@/modules/shop/lib/email'
+import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { formatMoney } from '@/modules/shop/lib/money'
 
 function formatAddress(address: { line1: string; line2?: string; city: string; postcode: string; country: string }): string {
@@ -68,7 +69,10 @@ export async function fulfillPaidOrder(orderId: string): Promise<void> {
     return base + extras
   }).join('\n')
 
-  await sendShopEmail('ORDER_CONFIRMED', order.customerEmail, {
+  // Email, text, or both - whichever the customer asked for. Everything below
+  // this line that is addressed to the OWNER stays on plain email: an admin
+  // alert is not something anybody asked to be texted about.
+  await notifyOrderCustomer('ORDER_CONFIRMED', order, {
     orderNumber: order.orderNumber,
     customerName: order.customerName,
     customerEmail: order.customerEmail,
@@ -82,7 +86,7 @@ export async function fulfillPaidOrder(orderId: string): Promise<void> {
     preOrderDispatchDate: preOrderItem?.preOrderDispatchDate?.toLocaleDateString('en-GB') ?? '',
     shopName: config.shopTitle || 'Shop',
     shopUrl: `${siteUrl}/shop`,
-  }, { orderId: order.id })
+  })
 
   const adminAlertEmail = config.adminOrderAlertEmail || config.storeEmail
   if (adminAlertEmail) {
