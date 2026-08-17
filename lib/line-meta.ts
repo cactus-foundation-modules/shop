@@ -10,7 +10,7 @@
 import { prisma } from '@/lib/db/prisma'
 import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
-import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
+import type { LineMeta, LineMetaBatch, ShpProduct } from '@/modules/shop/lib/types'
 
 // A declarative per-line picker a resolver can offer for display in the cart.
 // Shop renders it generically - a labelled <select> by default, a radio group
@@ -249,6 +249,10 @@ export async function resolveLineMeta(
   let control: CartLineControl | null = null
   let displayTitle: CartLineTitle | null = null
   let group: CartLineGroup | null = null
+  // Likewise one bucket per line: the first resolver to claim one keeps it (see
+  // LineMetaBatch). Two modules bucketing the same line differently is a
+  // question shop cannot answer, so it does not try.
+  let batch: LineMetaBatch | null = null
   const fields = []
   // Every resolver's opaque state shares one bag on the line (see LineMeta.data),
   // so keys are the writing module's to namespace. First writer keeps the key: a
@@ -280,6 +284,7 @@ export async function resolveLineMeta(
     if (!displayTitle && res.displayTitle) displayTitle = res.displayTitle
     // And the first group - a line belongs to at most one set at a time.
     if (!group && res.group) group = res.group
+    if (!batch && res.persistMeta?.batch) batch = res.persistMeta.batch
     // A charge only ever names money already counted in priceAdjust, so a
     // negative one would be money invented. Those are dropped rather than
     // trusted; the caller clamps the total against the line price (see
@@ -297,8 +302,8 @@ export async function resolveLineMeta(
     // and it rides on the meta rather than in a module's namespaced bag because
     // it is SHOP's contract: the confirmation page and the emails read it
     // without knowing which module grouped the lines.
-    persistMeta: fields.length || data || group
-      ? { fields, ...(data ? { data } : {}), ...(group ? { group } : {}) }
+    persistMeta: fields.length || data || group || batch
+      ? { fields, ...(data ? { data } : {}), ...(group ? { group } : {}), ...(batch ? { batch } : {}) }
       : null,
     reason,
     control,

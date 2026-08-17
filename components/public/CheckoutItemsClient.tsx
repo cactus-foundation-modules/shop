@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import { postCartValidate } from '@/modules/shop/components/public/validated-cache'
-import { sortLinesByGroup } from '@/modules/shop/lib/cart-group'
+import { batchLines } from '@/modules/shop/lib/cart-group'
 import type { LineMeta } from '@/modules/shop/lib/types'
 
 type ValidatedLine = {
@@ -30,13 +30,25 @@ const SAMPLE_LINES: ValidatedLine[] = [
   {
     productId: 'sample-1', lineId: 'sample-1', name: 'Walnut Desk', slug: '#', quantity: 1,
     unitPrice: 349, lineSubtotal: 349, available: true, availabilityReason: null, imageUrl: null,
-    lineMeta: { fields: [{ label: 'Delivery', value: 'Express Delivery - by Mon 11 Aug' }] },
+    lineMeta: {
+      fields: [{ label: 'Delivery', value: 'Express Delivery - by Mon 11 Aug' }],
+      batch: {
+        id: '2026-08-11', sort: '2026-08-11', heading: 'Arrives by Mon 11 Aug',
+        uniformHeading: 'Express Delivery - by Mon 11 Aug', detail: 'Express Delivery', fieldLabel: 'Delivery',
+      },
+    },
     displayTitle: null,
   },
   {
     productId: 'sample-2', lineId: 'sample-2', name: 'Operator Chair', slug: '#', quantity: 2,
     unitPrice: 129, lineSubtotal: 258, available: true, availabilityReason: null, imageUrl: null,
-    lineMeta: { fields: [{ label: 'Delivery', value: 'Standard Delivery - by Thu 14 Aug' }] },
+    lineMeta: {
+      fields: [{ label: 'Delivery', value: 'Standard Delivery - by Thu 14 Aug' }],
+      batch: {
+        id: '2026-08-14', sort: '2026-08-14', heading: 'Arrives by Thu 14 Aug',
+        uniformHeading: 'Standard Delivery - by Thu 14 Aug', detail: 'Standard Delivery', fieldLabel: 'Delivery',
+      },
+    },
     displayTitle: { name: 'Operator Chair', secondary: 'Black Fabric · Fixed Arms' },
   },
 ]
@@ -160,6 +172,7 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
 
   const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0)
   const goodsTotal = lines.reduce((sum, line) => sum + line.lineSubtotal, 0)
+  const batches = batchLines(lines.map((l) => ({ ...l, group: l.lineMeta?.group ?? null, batch: l.lineMeta?.batch ?? null })))
 
   return (
     // No max-width of its own: the block fills whatever column its layout gives
@@ -183,47 +196,74 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
       <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', margin: 0 }}>
         {itemCount} {itemCount === 1 ? 'item' : 'items'} · {money(goodsTotal)}
       </p>
-      <div className="sci-body" style={{ display: 'grid', gap: '0.75rem' }}>
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.75rem' }}>
-          {/* Grouped lines (a product and its accessories) in the same order the
-              basket showed them - via the persisted meta's group, so this list
-              and the basket never disagree about who belongs with whom. */}
-          {sortLinesByGroup(lines.map((l) => ({ ...l, group: l.lineMeta?.group ?? null }))).map((line) => {
-            const title = line.displayTitle?.name ?? line.name
-            const caption = line.group?.role === 'attachment' ? line.group.caption : undefined
-            return (
-              <li key={line.lineId ?? line.productId} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '0.75rem', alignItems: 'start', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
-                {line.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- module-supplied absolute media URL, not a build-time asset
-                  <img src={line.imageUrl} alt="" width={56} height={56} style={{ borderRadius: 6, objectFit: 'cover', background: 'var(--color-bg-subtle)' }} />
-                ) : (
-                  <span aria-hidden style={{ width: 56, height: 56, borderRadius: 6, background: 'var(--color-bg-subtle)', display: 'block' }} />
-                )}
-                <div style={{ display: 'grid', gap: '0.125rem', minWidth: 0 }}>
-                  {caption && (
-                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}><span aria-hidden="true">↳ </span>{caption}</span>
-                  )}
-                  <span style={{ fontWeight: 600 }}>{title}</span>
-                  {line.displayTitle?.secondary && (
-                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>{line.displayTitle.secondary}</span>
-                  )}
-                  <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>Qty {line.quantity}</span>
-                  {/* Per-line choices a resolver persisted - the delivery service
-                      and its promised date land here, one row per field. */}
-                  {(line.lineMeta?.fields ?? []).map((field) => (
-                    <span key={`${field.label}:${field.value}`} style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>
-                      {field.label}: {field.value}
-                    </span>
-                  ))}
-                  {!line.available && (
-                    <span style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{line.availabilityReason ?? 'No longer available'}</span>
-                  )}
-                </div>
-                <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{money(line.lineSubtotal)}</span>
-              </li>
-            )
-          })}
-        </ul>
+      <div className="sci-body" style={{ display: 'grid', gap: '1rem' }}>
+        {/* One list per arrival, soonest first, with everything that lands
+            together under its own heading - via the persisted meta's batch, so
+            shop states what it was handed and never dates anything itself.
+            Inside a batch, grouped lines (a product and its accessories) keep
+            the order the basket showed them in. */}
+        {batches.map((batch) => (
+          <div key={batch.id || '_unbatched'} style={{ display: 'grid', gap: '0.5rem' }}>
+            {batch.heading && (
+              <h3 className="sci-batch" style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-primary)' }}>
+                {batch.heading}
+              </h3>
+            )}
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.75rem' }}>
+              {batch.lines.map((line) => {
+                const title = line.displayTitle?.name ?? line.name
+                const caption = line.group?.role === 'attachment' ? line.group.caption : undefined
+                // A line sitting in its own batch has already been spoken for by
+                // the heading above (and, in a mixed batch, by its own detail
+                // beneath), so the field that says the same thing is dropped -
+                // the resolver names that field itself, so shop is never guessing
+                // which row to drop. A line carried in behind its main keeps
+                // every field it has: nothing up there was said about it.
+                const own = line.batch?.id === batch.id ? line.batch : null
+                const fields = (line.lineMeta?.fields ?? []).filter((f) => !own || !batch.fieldLabel || f.label !== batch.fieldLabel)
+                const detail = !batch.uniform ? own?.detail : undefined
+                return (
+                  <li key={line.lineId ?? line.productId} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '0.75rem', alignItems: 'start', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
+                    {line.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- module-supplied absolute media URL, not a build-time asset
+                      <img src={line.imageUrl} alt="" width={56} height={56} style={{ borderRadius: 6, objectFit: 'cover', background: 'var(--color-bg-subtle)' }} />
+                    ) : (
+                      <span aria-hidden style={{ width: 56, height: 56, borderRadius: 6, background: 'var(--color-bg-subtle)', display: 'block' }} />
+                    )}
+                    <div style={{ display: 'grid', gap: '0.125rem', minWidth: 0 }}>
+                      {caption && (
+                        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}><span aria-hidden="true">↳ </span>{caption}</span>
+                      )}
+                      <span style={{ fontWeight: 600 }}>{title}</span>
+                      {line.displayTitle?.secondary && (
+                        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>{line.displayTitle.secondary}</span>
+                      )}
+                      <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>Qty {line.quantity}</span>
+                      {/* One date, more than one service: the heading can only
+                          state the date, so each line says which service it is
+                          on. In a batch where they all agree, the heading has
+                          said it once and this is absent. */}
+                      {detail && (
+                        <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>{detail}</span>
+                      )}
+                      {/* Per-line choices a resolver persisted, minus the one the
+                          heading above already carries. */}
+                      {fields.map((field) => (
+                        <span key={`${field.label}:${field.value}`} style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>
+                          {field.label}: {field.value}
+                        </span>
+                      ))}
+                      {!line.available && (
+                        <span style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{line.availabilityReason ?? 'No longer available'}</span>
+                      )}
+                    </div>
+                    <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{money(line.lineSubtotal)}</span>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        ))}
         {notes.map((note) => (
           <p key={note.id} style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', margin: 0 }}>{note.text}</p>
         ))}

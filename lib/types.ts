@@ -23,10 +23,43 @@ export type LineMetaField = { label: string; value: string; href?: string }
 // page, an order email, a quote's document - render long after the resolvers
 // ran. Shape kept structural here rather than imported so this file stays free
 // of lib/line-meta's server imports for client consumers.
+// A cross-line bucket a resolver declares: every line carrying the same `id` is
+// listed together under a heading, and the buckets themselves run in ascending
+// `sort` order (an ISO date sorts soonest first, which is the point of it). Shop
+// never invents a batch and never reads inside one - it compares ids, sorts the
+// keys and prints the wording it was handed, exactly as it prints a field.
+//
+// A bucket can hold lines that agree on the bucket (they arrive on one date) but
+// differ in the detail beneath it (one flat-packed, one built), so the wording
+// comes in both forms and shop picks by comparing, never by composing:
+// - `heading` is what the bucket says when its lines' `detail` differ.
+// - `uniformHeading` is what it says when every line in it shares one `detail` -
+//   the fuller sentence, since there is one promise to make. Absent falls back
+//   to `heading`.
+// - `detail` is THIS line's own qualifier, printed under the product only in a
+//   mixed bucket (in a uniform one the heading has already said it).
+// `fieldLabel` names the line field this all restates: shop hides that field on
+// every line whose own batch is the bucket it is sitting in, since a delivery
+// promise printed once over the group is the same sentence typed out once per
+// product otherwise. A line carried into another bucket (an accessory following
+// its desk) keeps its field, so nothing is ever said on its behalf.
+export type LineMetaBatch = {
+  id: string
+  sort: string
+  heading: string
+  uniformHeading?: string
+  detail?: string
+  fieldLabel?: string
+}
+
 export type LineMeta = {
   fields: LineMetaField[]
   data?: Record<string, unknown>
   group?: { key: string; role: 'main' | 'attachment'; caption?: string; depth?: number; order?: number; collectiveLabel?: string } | null
+  // Display bucketing for the surfaces that list a whole order at once - see
+  // LineMetaBatch. Persisted for the same reason `group` is: it is shop's own
+  // contract, and the surfaces that use it render long after the resolvers ran.
+  batch?: LineMetaBatch | null
 }
 
 export type ShpAddress = {
