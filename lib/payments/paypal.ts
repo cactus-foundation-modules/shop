@@ -5,6 +5,7 @@ import { getOrderById } from '@/modules/shop/lib/db/orders'
 import type {
   ShpOrderDraft, ShpPaymentIntent, ShpPaymentProvider, ShpPaymentResult, ShpRefundRequest, ShpRefundResult, ShpWebhookResult,
 } from '@/modules/shop/lib/payments/provider'
+import { paypalLogo } from '@/modules/shop/lib/payments/logos'
 
 let cachedToken: { token: string; expiresAt: number } | null = null
 
@@ -179,6 +180,8 @@ async function handleWebhook(req: Request): Promise<ShpWebhookResult> {
 export const paypalProvider: ShpPaymentProvider = {
   id: 'PAYPAL',
   label: 'PayPal',
+  description: 'Pay with your PayPal balance, bank account or card - PayPal handles the payment securely.',
+  logo: paypalLogo,
   createIntent,
   confirmPayment,
   refundOrder,

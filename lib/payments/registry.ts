@@ -66,6 +66,34 @@ export async function resolveProviderLabel(provider: ShpPaymentProvider): Promis
   }
 }
 
+// id -> the line under the method's name at checkout. The owner's own wording
+// where they have written one on the Payments tab, the provider's where they
+// have not, and no entry at all where there is neither - a method with nothing
+// worth saying gets a name and nothing else, as it always did. Takes the
+// overrides rather than reading config, so this stays a pure function the
+// checkout and the settings screen can both reason about.
+export function resolvePaymentMethodDescriptions(overrides: Record<string, string>): Record<string, string> {
+  const descriptions: Record<string, string> = {}
+  for (const provider of getAllPaymentProviders()) {
+    const own = (overrides[provider.id] ?? '').trim()
+    const line = own || (provider.description ?? '').trim()
+    if (line) descriptions[provider.id] = line
+  }
+  return descriptions
+}
+
+// id -> the wording each provider ships with, for the settings screen to show
+// as the placeholder in an empty box: "leave this alone and this is what your
+// shoppers read".
+export function getProviderDescriptionDefaults(): Record<string, string> {
+  const defaults: Record<string, string> = {}
+  for (const provider of getAllPaymentProviders()) {
+    const own = (provider.description ?? '').trim()
+    if (own) defaults[provider.id] = own
+  }
+  return defaults
+}
+
 // id -> brand mark, for the providers that ship one. A method with no mark is
 // left out entirely rather than given a placeholder: its name carries the row,
 // exactly as it did before any method had a logo.

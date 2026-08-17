@@ -130,6 +130,13 @@ export const ShpConfigSchema = z.object({
   // the owner first arranges them, and until then the old order stands: whatever
   // sequence enabledPaymentMethods happens to be in, then the rest.
   paymentMethodOrder: z.array(z.string()).default([]),
+  // The line printed under each method's name at checkout, keyed by method id.
+  // Only the owner's own wording lives here: a method left out of this map falls
+  // back to whatever line its provider ships with, so a shop that has never
+  // opened the box still says something sensible. Free-form keys for the same
+  // reason as the arrays above - a method from a module installed later must be
+  // nameable here without shop knowing about it.
+  paymentMethodDescriptions: z.record(z.string(), z.string()).default({}),
   bankTransferInstructions: z.string().default(''),
   cashInstructions: z.string().default(''),
   // Whether those same words also appear on the checkout page the moment the

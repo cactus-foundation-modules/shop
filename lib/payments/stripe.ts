@@ -5,6 +5,7 @@ import type {
   ShpOrderDraft, ShpPaymentIntent, ShpPaymentProvider, ShpPaymentResult, ShpRefundRequest, ShpRefundResult, ShpRefundStatusLookup, ShpWebhookResult,
 } from '@/modules/shop/lib/payments/provider'
 import { getOrderByPaymentReference } from '@/modules/shop/lib/db/orders'
+import { stripeLogo } from '@/modules/shop/lib/payments/logos'
 
 let stripeClient: import('stripe').default | null = null
 
@@ -153,6 +154,8 @@ async function handleWebhook(req: Request): Promise<ShpWebhookResult> {
 export const stripeProvider: ShpPaymentProvider = {
   id: 'STRIPE',
   label: 'Stripe',
+  description: 'Credit and debit card payments are securely handled by our payment partner Stripe.',
+  logo: stripeLogo,
   createIntent,
   confirmPayment,
   refundOrder,

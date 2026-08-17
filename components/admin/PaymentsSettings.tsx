@@ -292,6 +292,17 @@ export function PaymentsSettings({ config, set, methods, hostedPanels, activeTab
     writeOrder(ordered.map((m) => m.id))
   }
 
+  // The owner's own wording for the line under a method's name at checkout. An
+  // emptied box is removed from the map rather than stored blank, so the method
+  // goes back to the wording it arrived with instead of being left silent by a
+  // box someone cleared to see what would happen.
+  function setMethodDescription(id: string, text: string) {
+    const next = { ...config.paymentMethodDescriptions }
+    if (text.trim()) next[id] = text
+    else delete next[id]
+    set('paymentMethodDescriptions', next)
+  }
+
   function move(from: number, to: number) {
     if (to < 0 || to >= ordered.length || from === to) return
     const moved = ordered[from]
@@ -402,6 +413,7 @@ export function PaymentsSettings({ config, set, methods, hostedPanels, activeTab
           onMove={moveByButton}
           onToggle={setMethodOn}
           onOpen={onTabChange}
+          onDescriptionChange={setMethodDescription}
         />
       )}
 
@@ -453,7 +465,7 @@ export function PaymentsSettings({ config, set, methods, hostedPanels, activeTab
 
 function MethodList({
   config, ordered, loading, liveMethods, methodTabs,
-  dragFrom, dragOver, onDragStart, onDragOver, onDragEnd, onDrop, onMove, onToggle, onOpen,
+  dragFrom, dragOver, onDragStart, onDragOver, onDragEnd, onDrop, onMove, onToggle, onOpen, onDescriptionChange,
 }: {
   config: ShpConfig
   ordered: ShpAdminPaymentMethod[]
@@ -469,6 +481,7 @@ function MethodList({
   onMove: (from: number, to: number) => void
   onToggle: (method: ShpAdminPaymentMethod, on: boolean) => void
   onOpen: (tab: string) => void
+  onDescriptionChange: (id: string, text: string) => void
 }) {
   const tabForMethod = new Map(methodTabs.filter((t) => t.method).map((t) => [t.method!.id, t.key]))
 
@@ -568,6 +581,25 @@ function MethodList({
           </div>
         )
       })}
+
+      <hr style={hr} />
+      <h3 style={sectionHeading}>The line under each method</h3>
+      <p className="field-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
+        A sentence beneath the name at checkout, saying who handles the money. Every method arrives with wording of its own -
+        write over it here if you would rather say it differently, or empty the box to have the original back.
+      </p>
+      {ordered.map((method) => (
+        <div key={method.id} className="field" style={{ marginBottom: '0.875rem' }}>
+          <label className="field-label" htmlFor={`shp-method-blurb-${method.id}`}>{method.label}</label>
+          <input
+            id={`shp-method-blurb-${method.id}`}
+            type="text"
+            value={config.paymentMethodDescriptions[method.id] ?? ''}
+            placeholder={method.defaultDescription || 'Nothing is shown under this one.'}
+            onChange={(e) => onDescriptionChange(method.id, e.target.value)}
+          />
+        </div>
+      ))}
 
       <hr style={hr} />
       <h3 style={sectionHeading}>What a shopper will see</h3>

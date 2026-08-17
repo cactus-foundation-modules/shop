@@ -17,6 +17,10 @@ type ShopClientConfig = {
   // Optional so a response from an older cached bundle still works: a checkout
   // with no logos in it is what every shop had until now.
   paymentMethodLogos?: Record<string, ShpPaymentLogo>
+  // Same again for the line under each method's name. Already resolved by the
+  // config route - the owner's wording where they wrote one, the provider's
+  // where they did not - so there is nothing to work out here.
+  paymentMethodDescriptions?: Record<string, string>
   stripePublishableKey: string | null
   currencySymbol: string
   // Optional so a response from an older cached bundle still works - the
@@ -390,11 +394,20 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
       <div style={{ display: 'grid', gap: '0.5rem' }}>
         {(config?.enabledPaymentMethods ?? []).map((m) => {
           const logo = config?.paymentMethodLogos?.[m]
+          const description = config?.paymentMethodDescriptions?.[m]
           return (
-            <label key={m} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
-              <input type="radio" name="paymentMethod" checked={method === m} onChange={() => chooseMethod(m)} disabled={loading} />
+            // Aligned to the top rather than the middle: with a second line
+            // under the name, centring floats the radio button and the logo
+            // into the gap between the two lines.
+            <label key={m} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
+              <input type="radio" name="paymentMethod" checked={method === m} onChange={() => chooseMethod(m)} disabled={loading} style={{ marginTop: '0.2rem' }} />
               {logo && <PaymentMethodLogo logo={logo} />}
-              <span>{BUILT_IN_METHOD_LABELS[m] ?? config?.paymentMethodLabels?.[m] ?? m}</span>
+              <span style={{ display: 'grid', gap: '0.125rem', minWidth: 0 }}>
+                <span>{BUILT_IN_METHOD_LABELS[m] ?? config?.paymentMethodLabels?.[m] ?? m}</span>
+                {description && (
+                  <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem', lineHeight: 1.35 }}>{description}</span>
+                )}
+              </span>
             </label>
           )
         })}

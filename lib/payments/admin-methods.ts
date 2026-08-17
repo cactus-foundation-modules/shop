@@ -6,6 +6,13 @@ export type ShpAdminPaymentMethod = {
   id: string
   /** What the method is called on screen, straight from its provider. */
   label: string
+  /**
+   * The line the provider ships to go under that name at checkout, before the
+   * owner has written anything of their own. Empty for a method that offers
+   * none. Shown on the Payments tab as the placeholder in an empty box, so the
+   * owner can see what their shoppers are reading without typing it out again.
+   */
+  defaultDescription: string
   /** One of shop's own four, as against a method a module contributed. */
   builtIn: boolean
   /**

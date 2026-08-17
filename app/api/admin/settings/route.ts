@@ -60,6 +60,7 @@ async function listPaymentMethodsForAdmin(): Promise<ShpAdminPaymentMethod[]> {
     return {
       id: provider.id,
       label: await resolveProviderLabel(provider),
+      defaultDescription: (provider.description ?? '').trim(),
       builtIn,
       ready,
       panelId: builtIn ? null : (panelIds[provider.id] ?? null),

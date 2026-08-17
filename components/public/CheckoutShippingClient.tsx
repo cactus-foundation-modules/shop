@@ -416,9 +416,6 @@ export function CheckoutShippingClient({
               style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: `1px solid ${phoneError ? 'var(--color-danger)' : 'var(--color-border)'}` }}
             />
             {phoneError && <span role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{phoneError}</span>}
-            <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>
-              Only ever used about this delivery - a slot, or a question on the day.
-            </span>
           </label>
           {/* Above line 1, which is where a business address puts it and where the
               browser's own autofill expects to find it. Optional by default, so the

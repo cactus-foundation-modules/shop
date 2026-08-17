@@ -19,6 +19,11 @@ export interface ShpPaymentProvider {
   // for a provider that does not offer one, or whose owner left it blank -
   // never leaving the method nameless.
   getLabel?(): Promise<string>
+  // Optional: the line printed under the method's name at checkout, saying who
+  // handles the money. The provider's own wording, and only a default - the shop
+  // owner can write their own over the top of it on the Payments tab, and a
+  // method that offers none simply gets no line unless they write one.
+  description?: string
   // Optional: the provider's own brand mark, shown beside its name at checkout.
   // A provider that ships none simply gets a name, which is what every method
   // had before this existed.
