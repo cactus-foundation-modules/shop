@@ -65,6 +65,16 @@ export type CheckoutItemsOptions = {
   // CSS length the sticky summary keeps clear of the top - set it to the site
   // header's height plus breathing room when the header is sticky too.
   stickyOffset?: string
+  // Whether a long order scrolls inside the block instead of running down the
+  // page. 'auto' (the default) means it does exactly when the block is sticky:
+  // a stuck block taller than the window has its own foot below the fold and no
+  // way to reach it, since the page scroll is moving the fields, not the block.
+  // A block that is not sticky scrolls with the page as it always has, and
+  // capping it there would only put a second scrollbar inside the first.
+  scroll?: 'auto' | 'on' | 'off'
+  // CSS length capping the scrolling list; empty means as tall as the window
+  // allows under the sticky offset. Only read when the list actually scrolls.
+  scrollHeight?: string
   // Wording overrides; absent = the historical strings.
   heading?: string
   editLabel?: string
@@ -76,10 +86,18 @@ export type CheckoutItemsOptions = {
 // so the shopper lands on the fields, with the order one tap away (the count
 // and total stay visible in the heading either way). Injected <style> string,
 // never a core globals.css edit, matching the cart's convention.
+// The scroll cap is desktop-only for the same reason the stickiness is: below
+// the breakpoint the page itself scrolls the summary, and a box scrolling inside
+// a scrolling page is a trap for a thumb. Its default height leaves room for the
+// heading, the item count and a little air beneath - the owner can name an exact
+// height instead when their own header maths says otherwise.
 const SCI_CSS = `
 .sci-toggle{display:none;border:none;background:none;color:var(--color-primary);font-size:0.875rem;cursor:pointer;padding:0}
 @media (min-width: 641px){
   .sci-sticky{position:sticky;top:var(--sci-top,1rem);align-self:flex-start}
+  .sci-scrolls .sci-body{max-height:var(--sci-max,calc(100vh - var(--sci-top,1rem) - 6rem));overflow-y:auto;overscroll-behavior:contain;padding-right:0.5rem;scrollbar-width:thin;scrollbar-color:var(--color-border) transparent}
+  .sci-scrolls .sci-body::-webkit-scrollbar{width:8px}
+  .sci-scrolls .sci-body::-webkit-scrollbar-thumb{background:var(--color-border);border-radius:4px}
 }
 @media (max-width: 640px){
   .sci-toggle{display:inline-block}
@@ -97,8 +115,9 @@ const SCI_CSS = `
 // Registered Puck block wrapper (ShopCheckoutItems) is a server component that
 // renders this, so Puck's RSC <Render> never serialises its renderDropZone
 // function bag into the client.
-export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOffset = '1rem', heading, editLabel }: CheckoutItemsOptions) {
+export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOffset = '1rem', scroll = 'auto', scrollHeight, heading, editLabel }: CheckoutItemsOptions) {
   const headingText = heading || 'Your order'
+  const scrolls = scroll === 'on' || (scroll !== 'off' && sticky === 'on')
   const [lines, setLines] = useState<ValidatedLine[] | null>(null)
   const [notes, setNotes] = useState<Note[]>([])
   const [symbol, setSymbol] = useState('£')
@@ -178,8 +197,13 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
     // No max-width of its own: the block fills whatever column its layout gives
     // it - a sidebar, a split's left half, or a narrow section.
     <section
-      className={`${sticky === 'on' ? 'sci-sticky' : ''}${collapsed ? ' sci-collapsed' : ''}`}
-      style={{ display: 'grid', gap: '0.75rem', '--sci-top': stickyOffset } as React.CSSProperties}
+      className={`${sticky === 'on' ? 'sci-sticky' : ''}${scrolls ? ' sci-scrolls' : ''}${collapsed ? ' sci-collapsed' : ''}`}
+      style={{
+        display: 'grid',
+        gap: '0.75rem',
+        '--sci-top': stickyOffset,
+        ...(scrollHeight ? { '--sci-max': scrollHeight } : {}),
+      } as React.CSSProperties}
     >
       <style>{SCI_CSS}</style>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '1rem' }}>
