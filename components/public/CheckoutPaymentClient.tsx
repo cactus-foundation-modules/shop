@@ -388,7 +388,9 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
   if (!populated) return null
 
   return (
-    <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
+    // The top margin is the gap to the step above: these are separate blocks in
+    // one Puck zone, so nothing else puts air between the checkout steps.
+    <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480, marginTop: '2rem' }}>
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Payment method'}</h2>
       {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
       <div style={{ display: 'grid', gap: '0.5rem' }}>

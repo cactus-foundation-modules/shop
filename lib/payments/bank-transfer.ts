@@ -1,4 +1,5 @@
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { bankTransferLogo } from '@/modules/shop/lib/payments/logos'
 import type { ShpOrderDraft, ShpPaymentIntent, ShpPaymentProvider, ShpPaymentResult, ShpRefundRequest, ShpRefundResult } from '@/modules/shop/lib/payments/provider'
 
 async function createIntent(_order: ShpOrderDraft): Promise<ShpPaymentIntent> {
@@ -27,6 +28,8 @@ async function refundOrder(_refund: ShpRefundRequest): Promise<ShpRefundResult> 
 export const bankTransferProvider: ShpPaymentProvider = {
   id: 'BANK_TRANSFER',
   label: 'Bank transfer',
+  description: 'Pay straight from your bank account. We send the account details with your order.',
+  logo: bankTransferLogo,
   confirmMode: 'manual',
   createIntent,
   confirmPayment,

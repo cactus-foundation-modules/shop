@@ -172,7 +172,9 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
 
   if (incomplete) {
     return (
-      <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
+      // The top margin is the gap to the step above: these are separate blocks
+      // in one Puck zone, so nothing else puts air between the checkout steps.
+      <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480, marginTop: '2rem' }}>
         <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Order review'}</h2>
         {missing.length === 0 ? (
           <p style={{ color: 'var(--color-text-muted)' }}>Fill in your contact and shipping details above to see your order total.</p>
@@ -217,7 +219,9 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
   const blocked = blockedReason()
 
   return (
-    <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
+    // Same top margin as the incomplete state above, so the step does not jump
+    // up the page the moment the total can be worked out.
+    <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480, marginTop: '2rem' }}>
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Order review'}</h2>
       {summary.hasPreOrderItems && (
         <p style={{ background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem', fontSize: '0.875rem' }}>

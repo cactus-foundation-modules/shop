@@ -137,6 +137,11 @@ export const ShpConfigSchema = z.object({
   // reason as the arrays above - a method from a module installed later must be
   // nameable here without shop knowing about it.
   paymentMethodDescriptions: z.record(z.string(), z.string()).default({}),
+  // Method ids whose brand mark is kept off the checkout. Held the way round
+  // that leaves an empty list meaning "show them all", so no shop loses the
+  // marks it already has, and a method whose provider ships no mark at all is
+  // simply unaffected by being named here.
+  hiddenPaymentMethodLogos: z.array(z.string()).default([]),
   bankTransferInstructions: z.string().default(''),
   cashInstructions: z.string().default(''),
   // Whether those same words also appear on the checkout page the moment the

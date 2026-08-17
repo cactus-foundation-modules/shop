@@ -336,7 +336,9 @@ export function CheckoutShippingClient({
   if (!populated) return null
 
   return (
-    <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
+    // The top margin is the gap to the step above: these are separate blocks in
+    // one Puck zone, so nothing else puts air between the checkout steps.
+    <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480, marginTop: '2rem' }}>
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Delivery address'}</h2>
 
       {/* Only drawn for a signed-in shopper who has an address book with

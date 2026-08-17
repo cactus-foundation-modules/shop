@@ -22,6 +22,7 @@ import {
   sortPaymentMethods,
   type ShpAdminPaymentMethod,
 } from '@/modules/shop/lib/payments/admin-methods'
+import type { ShpPaymentLogo } from '@/modules/shop/lib/payments/provider'
 
 export const PAYMENT_METHODS_TAB = 'methods'
 
@@ -204,6 +205,28 @@ function Switch({ checked, onChange, label }: { checked: boolean; onChange: (nex
   )
 }
 
+// The method's mark at the size the checkout draws it, so the switch beside it
+// is showing the owner the actual thing rather than a description of it. Both
+// colourways are rendered where the provider ships two and core's logo-swap CSS
+// hides the wrong one - which is why `display` is left out of the style here,
+// exactly as at checkout.
+const ADMIN_LOGO_HEIGHT = 20
+
+function MethodLogo({ logo }: { logo: ShpPaymentLogo }) {
+  const width = logo.height > 0 ? Math.round((logo.width / logo.height) * ADMIN_LOGO_HEIGHT) : ADMIN_LOGO_HEIGHT
+  const style = { height: ADMIN_LOGO_HEIGHT, width: 'auto', flex: '0 0 auto' } as const
+  return (
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element -- data: URI shipped by the payment provider itself, nothing for the image optimiser to fetch */}
+      <img src={logo.light} alt="" width={width} height={ADMIN_LOGO_HEIGHT} style={style} data-logo-variant={logo.dark ? 'light' : undefined} />
+      {logo.dark && (
+        // eslint-disable-next-line @next/next/no-img-element -- as above
+        <img src={logo.dark} alt="" width={width} height={ADMIN_LOGO_HEIGHT} style={style} data-logo-variant="dark" />
+      )}
+    </>
+  )
+}
+
 /** A read-only address for pasting into somebody else's dashboard. */
 function WebhookAddress({ path, hint }: { path: string; hint: string }) {
   const [url, setUrl] = useState(path)
@@ -301,6 +324,16 @@ export function PaymentsSettings({ config, set, methods, hostedPanels, activeTab
     if (text.trim()) next[id] = text
     else delete next[id]
     set('paymentMethodDescriptions', next)
+  }
+
+  // Whether the method's brand mark appears beside its name at checkout. Stored
+  // as the list of the ones that do not, so a method nobody has an opinion about
+  // keeps showing its mark - including one arriving with a module installed
+  // later, which nothing here could have listed in advance.
+  function setMethodLogoShown(id: string, shown: boolean) {
+    const hidden = config.hiddenPaymentMethodLogos.filter((m) => m !== id)
+    if (!shown) hidden.push(id)
+    set('hiddenPaymentMethodLogos', hidden)
   }
 
   function move(from: number, to: number) {
@@ -414,6 +447,7 @@ export function PaymentsSettings({ config, set, methods, hostedPanels, activeTab
           onToggle={setMethodOn}
           onOpen={onTabChange}
           onDescriptionChange={setMethodDescription}
+          onLogoShownChange={setMethodLogoShown}
         />
       )}
 
@@ -465,7 +499,7 @@ export function PaymentsSettings({ config, set, methods, hostedPanels, activeTab
 
 function MethodList({
   config, ordered, loading, liveMethods, methodTabs,
-  dragFrom, dragOver, onDragStart, onDragOver, onDragEnd, onDrop, onMove, onToggle, onOpen, onDescriptionChange,
+  dragFrom, dragOver, onDragStart, onDragOver, onDragEnd, onDrop, onMove, onToggle, onOpen, onDescriptionChange, onLogoShownChange,
 }: {
   config: ShpConfig
   ordered: ShpAdminPaymentMethod[]
@@ -482,6 +516,7 @@ function MethodList({
   onToggle: (method: ShpAdminPaymentMethod, on: boolean) => void
   onOpen: (tab: string) => void
   onDescriptionChange: (id: string, text: string) => void
+  onLogoShownChange: (id: string, shown: boolean) => void
 }) {
   const tabForMethod = new Map(methodTabs.filter((t) => t.method).map((t) => [t.method!.id, t.key]))
 
@@ -583,21 +618,44 @@ function MethodList({
       })}
 
       <hr style={hr} />
-      <h3 style={sectionHeading}>The line under each method</h3>
+      <h3 style={sectionHeading}>How each method reads at checkout</h3>
       <p className="field-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
-        A sentence beneath the name at checkout, saying who handles the money. Every method arrives with wording of its own -
-        write over it here if you would rather say it differently, or empty the box to have the original back.
+        The sentence beneath the name, saying who handles the money, and whether the method&apos;s logo sits beside it. Every
+        method arrives with wording of its own - write over it here if you would rather say it differently, or empty the box to
+        have the original back. Methods that brought no logo have nothing to switch.
       </p>
       {ordered.map((method) => (
-        <div key={method.id} className="field" style={{ marginBottom: '0.875rem' }}>
-          <label className="field-label" htmlFor={`shp-method-blurb-${method.id}`}>{method.label}</label>
-          <input
-            id={`shp-method-blurb-${method.id}`}
-            type="text"
-            value={config.paymentMethodDescriptions[method.id] ?? ''}
-            placeholder={method.defaultDescription || 'Nothing is shown under this one.'}
-            onChange={(e) => onDescriptionChange(method.id, e.target.value)}
-          />
+        <div
+          key={method.id}
+          style={{
+            padding: '0.875rem 1rem',
+            marginBottom: '0.625rem',
+            borderRadius: 10,
+            border: '1px solid var(--color-border)',
+            background: 'var(--color-surface)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.625rem' }}>
+            {method.logo && <MethodLogo logo={method.logo} />}
+            <strong style={{ fontSize: 'var(--text-base)', flex: '1 1 8rem' }}>{method.label}</strong>
+            {method.logo && (
+              <Switch
+                checked={!config.hiddenPaymentMethodLogos.includes(method.id)}
+                onChange={(next) => onLogoShownChange(method.id, next)}
+                label={`Show the ${method.label} logo at checkout`}
+              />
+            )}
+          </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label className="field-label" htmlFor={`shp-method-blurb-${method.id}`}>The line underneath</label>
+            <input
+              id={`shp-method-blurb-${method.id}`}
+              type="text"
+              value={config.paymentMethodDescriptions[method.id] ?? ''}
+              placeholder={method.defaultDescription || 'Nothing is shown under this one.'}
+              onChange={(e) => onDescriptionChange(method.id, e.target.value)}
+            />
+          </div>
         </div>
       ))}
 

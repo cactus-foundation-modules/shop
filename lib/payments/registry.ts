@@ -97,10 +97,14 @@ export function getProviderDescriptionDefaults(): Record<string, string> {
 // id -> brand mark, for the providers that ship one. A method with no mark is
 // left out entirely rather than given a placeholder: its name carries the row,
 // exactly as it did before any method had a logo.
-export function getPaymentMethodLogos(): Record<string, ShpPaymentLogo> {
+//
+// `hidden` is the owner's own list from the Payments tab. A mark they have
+// switched off is dropped here rather than in the checkout, so the image never
+// reaches the browser at all.
+export function getPaymentMethodLogos(hidden: readonly string[] = []): Record<string, ShpPaymentLogo> {
   const logos: Record<string, ShpPaymentLogo> = {}
   for (const provider of getAllPaymentProviders()) {
-    if (provider.logo) logos[provider.id] = provider.logo
+    if (provider.logo && !hidden.includes(provider.id)) logos[provider.id] = provider.logo
   }
   return logos
 }

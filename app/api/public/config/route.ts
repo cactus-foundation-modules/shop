@@ -71,8 +71,9 @@ export async function GET() {
     enabledPaymentMethods,
     paymentMethodLabels: await getPaymentMethodLabels(),
     // Brand marks for the methods whose providers ship one, so checkout can put
-    // a recognisable logo beside the name. Only the ones that have one appear.
-    paymentMethodLogos: getPaymentMethodLogos(),
+    // a recognisable logo beside the name. Only the ones that have one appear,
+    // less any the owner has switched off on the Payments tab.
+    paymentMethodLogos: getPaymentMethodLogos(config.hiddenPaymentMethodLogos),
     // The line under each method's name: the owner's wording where they have
     // written one, the provider's where they have not.
     paymentMethodDescriptions: resolvePaymentMethodDescriptions(config.paymentMethodDescriptions),

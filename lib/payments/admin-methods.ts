@@ -1,6 +1,8 @@
 // One payment method as the admin Payments tab needs to know it. Deliberately
 // free of anything server-only (no provider functions, no credentials) so the
-// settings screen can take it straight off the settings response.
+// settings screen can take it straight off the settings response. The one import
+// is a type, so nothing of the provider module travels with it.
+import type { ShpPaymentLogo } from '@/modules/shop/lib/payments/provider'
 export type ShpAdminPaymentMethod = {
   /** Payment-method id as recorded on an order, e.g. "STRIPE", "GOCARDLESS_IBP". */
   id: string
@@ -13,6 +15,13 @@ export type ShpAdminPaymentMethod = {
    * owner can see what their shoppers are reading without typing it out again.
    */
   defaultDescription: string
+  /**
+   * The brand mark this method ships, or null where it ships none. Sent so the
+   * Payments tab can show the owner what they are switching on or off rather
+   * than describing it, and so a method with no mark can skip the switch
+   * entirely instead of offering one that does nothing.
+   */
+  logo: ShpPaymentLogo | null
   /** One of shop's own four, as against a method a module contributed. */
   builtIn: boolean
   /**

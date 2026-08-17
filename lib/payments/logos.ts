@@ -2,8 +2,11 @@
 //
 // Held as markup rather than as files under `public/`: the same rule the
 // contributed providers follow (see ShpPaymentLogo), and it keeps the checkout
-// from waiting on a second request to show who is taking the money. Only the two
-// card-and-wallet methods have a mark - bank transfer and cash are not brands.
+// from waiting on a second request to show who is taking the money. Stripe and
+// PayPal bring their own brands; bank transfer is nobody's brand, so it gets a
+// plain bank building instead - a mark an owner can switch off on the Payments
+// tab if they would rather the name stood on its own. Cash has none: a shopper
+// paying in cash knows what cash is.
 import type { ShpPaymentLogo } from '@/modules/shop/lib/payments/provider'
 
 function dataUri(svg: string): string {
@@ -29,6 +32,20 @@ export const stripeLogo: ShpPaymentLogo = {
 export const paypalLogo: ShpPaymentLogo = {
   light: dataUri(paypalMark('#003087')),
   dark: dataUri(paypalMark('#FFFFFF')),
+  width: 24,
+  height: 24,
+}
+
+// A bank building, for bank transfer. Drawn in ink rather than a brand colour
+// because there is no brand to be true to, which also means it needs the pale
+// colourway in the dark theme like PayPal's does.
+function bankMark(colour: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="${colour}"><path d="M12 1.5 1.5 7.25V9.5h21V7.25L12 1.5Z"/><path d="M4 11.25h2.75v7H4v-7Zm6.625 0h2.75v7h-2.75v-7Zm6.625 0H20v7h-2.75v-7Z"/><path d="M1.5 20h21v2.5h-21V20Z"/></svg>`
+}
+
+export const bankTransferLogo: ShpPaymentLogo = {
+  light: dataUri(bankMark('#1F2937')),
+  dark: dataUri(bankMark('#FFFFFF')),
   width: 24,
   height: 24,
 }
