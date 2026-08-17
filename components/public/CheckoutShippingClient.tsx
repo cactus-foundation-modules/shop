@@ -270,7 +270,11 @@ export function CheckoutShippingClient({
   function field(key: keyof ShpAddressForm, label: string, autoComplete: string, required: boolean, extra?: InputHTMLAttributes<HTMLInputElement>) {
     const error = fieldError(key)
     return (
-      <label style={{ display: 'grid', gap: '0.25rem' }}>
+      // alignContent start, not the default stretch: two of these sit side by
+      // side in a 1fr 1fr row, and a message under one of them makes that row
+      // taller. Stretched auto rows would spend the extra height on the other
+      // box, so the pair drift out of line the moment one is told off.
+      <label style={{ display: 'grid', gap: '0.25rem', alignContent: 'start' }}>
         <span>{label}</span>
         <input
           {...extra}
