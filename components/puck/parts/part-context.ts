@@ -24,7 +24,14 @@ import type { ShpProduct } from '@/modules/shop/lib/types'
 // island hands the current image's sourceId to the overlay controls, so the 3D
 // overlay can show the model for the variation currently on screen. Absent on the
 // product's own photos.
-export type PartImage = { url: string; alt: string; sourceId?: string }
+//
+// `promoted` says the contributing module counts this picture as belonging WITH the
+// product's own rather than being a supplementary colour behind the arrows -
+// shop-variations sets it on a variation ticked "Image up front", the same ones it
+// puts in the product page's gallery. Shop only uses it to decide the card's
+// hover-swap target: a promoted picture is a fair thing to reveal on hover, an
+// arbitrary colour is not. Absent means supplementary, which is the default.
+export type PartImage = { url: string; alt: string; sourceId?: string; promoted?: boolean }
 
 // The four original variants each map to a `.shop-card-badge-*` class of fixed
 // token colours. 'tag' is the owner-defined one: a tag row switched its badge on

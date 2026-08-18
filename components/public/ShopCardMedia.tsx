@@ -6,11 +6,13 @@
 // overlay slot where those modules mount a control - today the product-3d-views
 // "view in 3D" icon.
 //
-// On a pointer device, hovering the card reveals the product's genuine SECOND OWN photo
-// (the classic storefront hover-swap), snapping back to the main on leave. Only an own
-// photo is ever the hover target: a product whose only extra pictures are variation
-// colours keeps its main shot on hover rather than flicking to a colour - the arrows
-// still reach those. The hover listener rides the `.shop-card` ancestor, not this
+// On a pointer device, hovering the card reveals the second picture (the classic
+// storefront hover-swap), snapping back to the main on leave - but only where that
+// second picture is either the product's own or one a module marked `promoted`, i.e.
+// already sitting with the product's own on its page. A product whose only extra
+// pictures are plain variation colours keeps its main shot on hover rather than
+// flicking to an arbitrary colour - the arrows still reach those. The hover listener
+// rides the `.shop-card` ancestor, not this
 // island, because the stretched link covers the picture (see below), so a mouseenter
 // bound here would never fire over the image the link sits on top of.
 //
@@ -100,13 +102,17 @@ export function ShopCardMedia({
   // photo), handed to the overlays so the 3D control follows the shopper's flicking.
   const activeSourceId = current?.sourceId
 
-  // Whether the product has a genuine second OWN photo to reveal on hover. Own photos
-  // (no sourceId) come first, then contributed variation photos, so images[1] is the
-  // second own photo exactly when it carries no sourceId; a variation there means the
-  // product has only the one own photo, and hover leaves the main in place. While a
-  // filter constrains the carousel the hover-swap is off entirely - the first allowed
-  // picture IS the point, and hover must not flick away from the chosen colour.
-  const hasOwnSecond = !constrained && count > 1 && !shown[1]?.sourceId
+  // Whether the second picture is a fair thing to reveal on hover. Two kinds
+  // qualify: the product's genuine second OWN photo (no sourceId), and a contributed
+  // photo the module marked `promoted` - shop-variations marks the variations ticked
+  // "Image up front", the ones already sitting in the product page's gallery, so the
+  // card behaves the way the gallery does. A plain contributed colour does not
+  // qualify: a product whose only extra pictures are variation colours keeps its main
+  // shot on hover, and the arrows still reach them. While a filter constrains the
+  // carousel the hover-swap is off entirely - the first allowed picture IS the point,
+  // and hover must not flick away from the chosen colour.
+  const second = shown[1]
+  const hasHoverSecond = !constrained && count > 1 && (!second?.sourceId || second.promoted === true)
 
   const step = (delta: number) => (e: React.MouseEvent) => {
     e.preventDefault()
@@ -125,7 +131,7 @@ export function ShopCardMedia({
   useEffect(() => {
     const card = rootRef.current?.closest('.shop-card')
     if (!card) return
-    const onEnter = () => { if (hasOwnSecond) setIndex(1) }
+    const onEnter = () => { if (hasHoverSecond) setIndex(1) }
     const onLeave = () => setIndex(0)
     card.addEventListener('mouseenter', onEnter)
     card.addEventListener('mouseleave', onLeave)
@@ -133,7 +139,7 @@ export function ShopCardMedia({
       card.removeEventListener('mouseenter', onEnter)
       card.removeEventListener('mouseleave', onLeave)
     }
-  }, [hasOwnSecond])
+  }, [hasHoverSecond])
 
   return (
     <div className="shop-card-media" ref={rootRef}>
