@@ -73,6 +73,11 @@ export function CategoriesScreen() {
   const [confirm, confirmNode] = useConfirm()
   const [promptText, promptNode] = usePrompt()
   const [showAlert, alertNode] = useAlert()
+  // Filing drift: files still sitting under a category's old name after a
+  // rename. Reported by the save, put right on request - never as a side effect
+  // of the rename itself, because each product is real copying in storage.
+  const [drift, setDrift] = useState<{ products: number; files: number } | null>(null)
+  const [tidying, setTidying] = useState<{ done: number; total: number } | null>(null)
 
   function refresh() {
     fetch('/api/m/shop/admin/categories').then(async (r) => {
@@ -193,8 +198,38 @@ export function CategoriesScreen() {
       }),
     })
     if (!res.ok) { await showAlert((await res.json()).error ?? 'Could not save this category.', 'Save failed'); return }
+    const saved = await res.json().catch(() => ({}))
+    setDrift(saved?.mediaDrift ?? null)
     setEditingId(null)
     refresh()
+  }
+
+  // Walk the drifted listings ten at a time. Small batches on purpose: a product
+  // can carry hundreds of files, and a single request for the lot would run past
+  // the function's ceiling with no way of telling what had been done. Each round
+  // trip is a checkpoint, and the count on screen is what has actually finished.
+  async function tidyFiling() {
+    const res = await fetch('/api/m/shop/admin/products/media-drift')
+    if (!res.ok) { await showAlert('Could not work out what needs re-filing.', 'Tidy up failed'); return }
+    const { drifted } = await res.json() as { drifted: { productId: string }[] }
+    const ids = drifted.map((d) => d.productId)
+    setTidying({ done: 0, total: ids.length })
+    for (let i = 0; i < ids.length; i += 10) {
+      const batch = ids.slice(i, i + 10)
+      const run = await fetch('/api/m/shop/admin/products/media-drift', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds: batch }),
+      })
+      if (!run.ok) {
+        setTidying(null)
+        await showAlert('Some files could not be moved. Nothing was lost - try again in a moment.', 'Tidy up stopped')
+        return
+      }
+      setTidying({ done: Math.min(i + batch.length, ids.length), total: ids.length })
+    }
+    setTidying(null)
+    setDrift(null)
+    await showAlert('Everything is filed under its current category again.', 'Tidied up')
   }
 
   // Where a category's picture is filed: its own Shop / <category trail> folder.
@@ -384,6 +419,34 @@ export function CategoriesScreen() {
         <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', margin: '0 0 0.5rem' }}>
           Drag the handle to reorder, or drop a category onto another to file it inside. The arrows nudge one step; Edit lets you pick a parent from a list.
         </p>
+      )}
+
+      {drift && (
+        <div style={{
+          border: '1px solid var(--color-warning-border)', background: 'var(--color-warning-bg)',
+          borderRadius: 8, padding: '0.625rem 0.75rem', margin: '0 0 0.75rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem',
+          flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: '0.8125rem' }}>
+            {drift.files} file{drift.files === 1 ? '' : 's'} across {drift.products} product
+            {drift.products === 1 ? ' is' : 's are'} still filed under an old category name. Nothing is
+            broken - the shop shows them all - but the media library will list them twice until they move.
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {tidying && (
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                {tidying.done} of {tidying.total} done
+              </span>
+            )}
+            <button type="button" onClick={() => void tidyFiling()} disabled={tidying !== null} className="btn btn-secondary btn-sm">
+              {tidying ? 'Tidying up...' : 'Tidy up filing'}
+            </button>
+            <button type="button" onClick={() => setDrift(null)} disabled={tidying !== null} className="btn btn-ghost btn-sm">
+              Later
+            </button>
+          </span>
+        </div>
       )}
 
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.375rem' }}>

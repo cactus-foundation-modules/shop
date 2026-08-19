@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.251",
+  "version": "0.1.253",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1123",
@@ -654,7 +654,10 @@
       {
         "category": "shop:order-updates",
         "label": "Order updates",
-        "channels": ["EMAIL", "SMS"],
+        "channels": [
+          "EMAIL",
+          "SMS"
+        ],
         "required": true
       }
     ],
