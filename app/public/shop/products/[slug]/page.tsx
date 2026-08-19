@@ -4,6 +4,7 @@ import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
+import { getSiteUrlOrNull } from '@/lib/config/env'
 import { getProductBySlug } from '@/modules/shop/lib/db/products'
 import { resolveAliasedProduct } from '@/modules/shop/lib/product-page-resolver'
 import { getShopGate } from '@/modules/shop/lib/access'
@@ -28,11 +29,16 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   // metadata once the page calls notFound(), but only while no
   // global-not-found convention exists - adding one flips metadata resolution
   // back to the page and would publish a hidden product's name.
+  const siteUrl = getSiteUrlOrNull()
   if (found && found.status === 'ACTIVE' && !found.catalogueHidden) {
     if ((await getProductPageStockGate(found.id)).notFound) return {}
     return {
       title: found.metaTitle || found.name,
       description: found.metaDescription || found.shortDescription || undefined,
+      // Self-canonical: this URL is the product's one true address, so shared
+      // links carrying option choices in the query string never register with
+      // search engines as duplicate pages.
+      ...(siteUrl ? { alternates: { canonical: `${siteUrl}/shop/products/${found.slug}` } } : {}),
     }
   }
   // A slug shop won't show on its own may still be a variant's deep link. If a
@@ -45,6 +51,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return {
     title: found?.name || parent.metaTitle || parent.name,
     description: parent.metaDescription || parent.shortDescription || undefined,
+    // A variation's own link renders the parent's page, so the parent's URL is
+    // the canonical one. Without this, every variation deep link (the cart's,
+    // and the Google Shopping feed's) reads to a crawler as a duplicate of the
+    // parent page under a different address.
+    ...(siteUrl ? { alternates: { canonical: `${siteUrl}/shop/products/${parent.slug}` } } : {}),
   }
 }
 

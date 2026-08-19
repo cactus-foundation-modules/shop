@@ -118,7 +118,24 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   // whichever side of tax the shop prints on (lib/tax-display.ts) here rather
   // than per part, so the JSON-LD below quotes the figure on screen - a search
   // result showing the net price of a shop that quotes gross is a mis-price.
-  const prices = priceView(product, config.enabledPriceTypes, makeDisplayAdjuster(taxDisplay, product.taxClassId))
+  const displayAdjust = makeDisplayAdjuster(taxDisplay, product.taxClassId)
+  const prices = priceView(product, config.enabledPriceTypes, displayAdjust)
+
+  const offerAvailability = product.isPreOrder
+    ? 'https://schema.org/PreOrder'
+    : outOfStock
+      ? 'https://schema.org/OutOfStock'
+      : 'https://schema.org/InStock'
+
+  // A variations product has no one price: the shopper picks a combination and
+  // the figure moves. Structured data says so with an AggregateOffer quoting the
+  // cheapest choice - the same "from" figure the product cards print, converted
+  // to the displayed side of tax like every figure on the page. A single Offer
+  // claiming the parent's own price invites a Merchant Center mismatch the
+  // moment Google compares this page against a variation's feed price.
+  const fromPrice = variantPricing
+    ? (displayAdjust ? displayAdjust(Number(variantPricing.price)) : Number(variantPricing.price)).toFixed(2)
+    : null
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -127,16 +144,19 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     description: stripHtmlToPlainText(product.shortDescription ?? product.description ?? '') || undefined,
     image: media.map((m) => m.url),
     sku: product.sku ?? undefined,
-    offers: {
-      '@type': 'Offer',
-      price: prices.now,
-      priceCurrency: config.currency,
-      availability: product.isPreOrder
-        ? 'https://schema.org/PreOrder'
-        : outOfStock
-          ? 'https://schema.org/OutOfStock'
-          : 'https://schema.org/InStock',
-    },
+    offers: fromPrice
+      ? {
+          '@type': 'AggregateOffer',
+          lowPrice: fromPrice,
+          priceCurrency: config.currency,
+          availability: offerAvailability,
+        }
+      : {
+          '@type': 'Offer',
+          price: prices.now,
+          priceCurrency: config.currency,
+          availability: offerAvailability,
+        },
   }
 
   if (!template) return null
@@ -147,6 +167,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   const commerce = await resolveShopCommerceMode()
   if (commerce.hidePrices) {
     delete (jsonLd.offers as Record<string, unknown>).price
+    delete (jsonLd.offers as Record<string, unknown>).lowPrice
     delete (jsonLd.offers as Record<string, unknown>).priceCurrency
   }
 
