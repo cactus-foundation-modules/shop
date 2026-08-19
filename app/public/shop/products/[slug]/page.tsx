@@ -11,6 +11,7 @@ import { getProductMedia } from '@/modules/shop/lib/db'
 import { resolveAliasedProduct } from '@/modules/shop/lib/product-page-resolver'
 import { resolveProductSocialImage } from '@/modules/shop/lib/product-social-image'
 import { rememberProductPageSearchParams, type ProductPageSearchParams } from '@/modules/shop/lib/product-page-params'
+import { getProductUrlStyle, productUrl } from '@/modules/shop/lib/product-url'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner, ShopStockHiddenBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { getProductPageStockGate } from '@/modules/shop/lib/stock-visibility'
@@ -50,7 +51,7 @@ async function socialMetadata(product: ShpProduct, title: string, description: s
     else if (Array.isArray(value)) for (const v of value) query.append(key, v)
   }
   const qs = query.toString()
-  const pageUrl = siteUrl ? `${siteUrl}/shop/products/${encodeURIComponent(requestSlug)}${qs ? `?${qs}` : ''}` : undefined
+  const pageUrl = siteUrl ? `${productUrl(siteUrl, requestSlug, await getProductUrlStyle())}${qs ? `?${qs}` : ''}` : undefined
   return {
     openGraph: {
       title,
@@ -85,10 +86,13 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     return {
       title,
       description,
-      // Self-canonical: this URL is the product's one true address, so shared
-      // links carrying option choices in the query string never register with
-      // search engines as duplicate pages.
-      ...(siteUrl ? { alternates: { canonical: `${siteUrl}/shop/products/${found.slug}` } } : {}),
+      // Self-canonical in the shop's chosen URL style: that address is the
+      // product's one true one, so shared links carrying option choices in the
+      // query string never register with search engines as duplicate pages -
+      // and on the ROOT style, this same tag (emitted by both routes) is what
+      // folds the still-serving /shop/products/ address into the root one
+      // without a redirect.
+      ...(siteUrl ? { alternates: { canonical: productUrl(siteUrl, found.slug, await getProductUrlStyle()) } } : {}),
       ...(await socialMetadata(found, title, description, slug, sp)),
     }
   }
@@ -109,7 +113,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     // the canonical one. Without this, every variation deep link (the cart's,
     // and the Google Shopping feed's) reads to a crawler as a duplicate of the
     // parent page under a different address.
-    ...(siteUrl ? { alternates: { canonical: `${siteUrl}/shop/products/${parent.slug}` } } : {}),
+    ...(siteUrl ? { alternates: { canonical: productUrl(siteUrl, parent.slug, await getProductUrlStyle()) } } : {}),
     // The social image resolves against the parent - the page that renders -
     // with the deep link's combination already recorded by the resolver above,
     // so the preview shows the variation the link names.

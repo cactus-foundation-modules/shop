@@ -210,4 +210,9 @@ export type CardPartContext = {
   // costs the same, in which case the price part drops the "From £…" prefix:
   // there is nothing to count up from.
   fromPriceVaries: boolean
+  // Where the card links to, in the shop's chosen product URL style
+  // (lib/product-url.ts): '/shop/products/<slug>' or, on the ROOT style,
+  // '/<slug>'. Resolved by buildCardContext so every card surface - shop's own
+  // grids and companion modules' - agrees without each one reading the config.
+  productHref: string
 }

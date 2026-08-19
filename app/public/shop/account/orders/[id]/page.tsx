@@ -6,6 +6,7 @@ import { getMemberAreaPath } from '@/lib/members/paths'
 import MemberAccountShell from '@/components/members/account/MemberAccountShell'
 import { getMemberOrderDetail } from '@/modules/shop/lib/member-orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { productHref } from '@/modules/shop/lib/product-url'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { formatMoney } from '@/modules/shop/lib/money'
@@ -183,7 +184,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
                     <span style={{ fontWeight: 'var(--font-medium)' }}>
                       {line.productSlug ? (
-                        <Link href={`/shop/products/${line.productSlug}`} prefetch={false} style={{ color: 'inherit' }}>
+                        <Link href={productHref(line.productSlug, config.productUrlStyle)} prefetch={false} style={{ color: 'inherit' }}>
                           {line.item.productName}
                         </Link>
                       ) : (

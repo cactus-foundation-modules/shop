@@ -345,6 +345,19 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
           <h3 style={sectionHeading}>SEO</h3>
           <div className="field"><label>Shop title</label><input value={config.shopTitle} onChange={(e) => set('shopTitle', e.target.value)} /></div>
           <div className="field"><label>Meta description</label><textarea rows={3} value={config.shopMetaDescription} onChange={(e) => set('shopMetaDescription', e.target.value)} /></div>
+          <div className="field">
+            <label>Product page address</label>
+            <select value={config.productUrlStyle} onChange={(e) => set('productUrlStyle', e.target.value as ShpConfig['productUrlStyle'])}>
+              <option value="SHOP">/shop/products/product-name (standard)</option>
+              <option value="ROOT">/product-name (site root)</option>
+            </select>
+            <span className="field-hint">
+              Only the product page itself moves; categories, collections and the cart stay under /shop.
+              The old address keeps working either way, and tells search engines where the page now lives,
+              so switching breaks nothing already shared or indexed. A page with the same address wins the
+              spot - keep product names distinctive.
+            </span>
+          </div>
         </div>
       )}
 

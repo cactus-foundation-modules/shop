@@ -5,6 +5,7 @@ import { sendShopEmail } from '@/modules/shop/lib/email'
 import { signUnsubscribeToken } from '@/modules/shop/lib/unsubscribe-token'
 import { getSiteUrl } from '@/lib/config/env'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { productUrl as productUrlFor } from '@/modules/shop/lib/product-url'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
 const INLINE_DISPATCH_THRESHOLD = 50
@@ -17,7 +18,7 @@ async function dispatchNotifications(product: ShpProduct): Promise<void> {
   const config = await getShopConfigCached()
   const media = await getProductMedia(product.id)
   const primary = media.find((m) => m.isPrimary) ?? media[0]
-  const productUrl = `${siteUrl}/shop/products/${product.slug}`
+  const productUrl = productUrlFor(siteUrl, product.slug, config.productUrlStyle)
 
   for (const sub of subscribers) {
     const unsubscribeUrl = `${siteUrl}/api/m/shop/public/back-in-stock?token=${signUnsubscribeToken(product.id, sub.email)}`

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { hidesOutOfStockFromShoppers, outOfStockSql } from '@/modules/shop/lib/stock-visibility'
+import { productUrl } from '@/modules/shop/lib/product-url'
 
 // Active products, categories with products, and collections (spec 14.1) -
 // getPublicSitemapEntries is the actual mechanism scanned by
@@ -34,7 +35,9 @@ export async function getPublicSitemapEntries(siteUrl: string): Promise<Metadata
 
   return [
     { url: `${siteUrl}/shop`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.7 },
-    ...products.map((p) => ({ url: `${siteUrl}/shop/products/${p.slug}`, lastModified: p.updated_at, changeFrequency: 'weekly' as const, priority: 0.6 })),
+    // Products are listed at their canonical address, so on the ROOT style the
+    // sitemap is what tells search engines where the pages have moved to.
+    ...products.map((p) => ({ url: productUrl(siteUrl, p.slug, shopConfig.productUrlStyle), lastModified: p.updated_at, changeFrequency: 'weekly' as const, priority: 0.6 })),
     ...categories.map((c) => ({ url: `${siteUrl}/shop/categories/${c.slug}`, lastModified: c.updated_at, changeFrequency: 'weekly' as const, priority: 0.5 })),
     ...collections.map((c) => ({ url: `${siteUrl}/shop/collections/${c.slug}`, lastModified: c.updated_at, changeFrequency: 'weekly' as const, priority: 0.5 })),
   ]

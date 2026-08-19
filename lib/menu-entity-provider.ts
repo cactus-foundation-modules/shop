@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import type { MenuEntityKind, MenuEntitySearchResult, MenuEntityProvider, ResolvedMenuEntity } from '@/lib/modules/menu-entity-provider'
+import { getProductUrlStyle, productHref } from '@/modules/shop/lib/product-url'
 
 // Contributes to the "core.menu-entity-provider" extension point so the admin
 // menu builder can link to shop content. URL scheme mirrors lib/sitemap.ts:
@@ -52,7 +53,9 @@ async function resolveEntity(kind: string, id: string): Promise<ResolvedMenuEnti
     const product = rows[0]
     if (!product) return null
     // Only ACTIVE products render on the storefront; DRAFT/ARCHIVED are admin-only.
-    return { label: product.name, href: `/shop/products/${product.slug}`, publiclyVisible: product.status === 'ACTIVE' }
+    // Resolved live per render, so flipping the product URL style re-points
+    // every menu without anyone re-saving a menu.
+    return { label: product.name, href: productHref(product.slug, await getProductUrlStyle()), publiclyVisible: product.status === 'ACTIVE' }
   }
   if (kind === 'category') {
     const rows = await prisma.$queryRaw<Array<{ name: string; slug: string }>>`SELECT "name", "slug" FROM "shp_categories" WHERE "id" = ${id} LIMIT 1`

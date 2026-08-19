@@ -166,6 +166,15 @@ export const ShpConfigSchema = z.object({
   shopTitle: z.string().default(''),
   shopMetaDescription: z.string().default(''),
 
+  // Where a product page lives. 'SHOP' is /shop/products/<slug>, which is what
+  // every shop has always had. 'ROOT' puts the product at /<slug> - claimed
+  // through core's publicRootSlug mechanism, so an info page or a module index
+  // with the same slug still wins. Only the product page itself moves: category,
+  // collection and tag pages stay under /shop regardless, and the old
+  // /shop/products/<slug> address keeps rendering with a canonical that points
+  // at the root form, so nothing already indexed or bookmarked breaks.
+  productUrlStyle: z.enum(['SHOP', 'ROOT']).default('SHOP'),
+
   // Category browsing - shop-wide default for how a category page lists
   // products. 'rollup' also shows products filed in any descendant category;
   // 'exact' shows only products filed directly on the category. Each category

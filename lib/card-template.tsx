@@ -13,6 +13,7 @@ import { SHOP_DEFAULT_COMMERCE_MODE, type ResolvedShopCommerceMode } from '@/mod
 import type { CardPartContext, CardBadge, PartImage } from '@/modules/shop/components/puck/parts/part-context'
 import type { ShopCardExtra } from '@/modules/shop/lib/card-media'
 import type { ShopCardFromPrice } from '@/modules/shop/lib/card-price'
+import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 
 // Server-only helper shared by every product-card surface (grid, related,
 // featured, single). It resolves the one Product Card template - a per-block
@@ -110,7 +111,11 @@ export function buildCardContext(
   // resolved once for the whole grid like taxDisplay. Optional for the same
   // reason: a card surface in another module that has not been rebuilt still
   // compiles, and falls back to shop's own basket behaviour.
-  pricing?: { enabledPriceTypes?: readonly string[]; showRetailPrice?: boolean; taxDisplay?: TaxDisplay; commerce?: ResolvedShopCommerceMode },
+  // `productUrlStyle` rides along the same way (callers spread the whole shop
+  // config in here): it decides the card's link target via productHref().
+  // Absent - a surface built before the setting existed - means the classic
+  // /shop/products/<slug> form, which is also the setting's own default.
+  pricing?: { enabledPriceTypes?: readonly string[]; showRetailPrice?: boolean; taxDisplay?: TaxDisplay; commerce?: ResolvedShopCommerceMode; productUrlStyle?: ProductUrlStyle },
   // The figure when a companion module prices this product itself
   // (shop-variations), resolved once for the whole grid via resolveCardFromPrices
   // and passed in per product. Null/absent leaves the card on shop's own price.
@@ -186,6 +191,7 @@ export function buildCardContext(
     badge: badges[0] ?? null,
     fromPrice: fromPrice ? (adjust ? adjust(Number(fromPrice.price)).toFixed(2) : fromPrice.price) : null,
     fromPriceVaries: fromPrice?.varies ?? false,
+    productHref: productHref(product.slug, pricing?.productUrlStyle ?? 'SHOP'),
   }
 }
 
@@ -214,7 +220,7 @@ export async function renderCards(template: PuckData, items: CardItem[]): Promis
             buttons instead of interactive content illegally nested in an <a>. The
             link sits above the picture and text (z-index) but below those controls -
             see shopCardCss. */}
-        <a className="shop-card-link" href={`/shop/products/${product.slug}`} aria-label={product.name} />
+        <a className="shop-card-link" href={ctx.productHref} aria-label={product.name} />
         <Render config={config as any} data={data as Data} />
       </div>
     )
@@ -224,7 +230,7 @@ export async function renderCards(template: PuckData, items: CardItem[]): Promis
 // Safety-net card used only when no Product Card layout is published at all.
 export function MinimalCard({ product, ctx }: CardItem) {
   return (
-    <a href={`/shop/products/${product.slug}`} className="shop-card">
+    <a href={ctx.productHref} className="shop-card">
       <div className="shop-card-img">
         {ctx.image && (
           // eslint-disable-next-line @next/next/no-img-element
