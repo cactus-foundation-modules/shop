@@ -90,6 +90,9 @@ export async function POST(request: NextRequest) {
       available: line.available,
       availabilityReason: line.availabilityReason ?? null,
       isPreOrder: line.isPreOrder,
+      // The floor the basket's stepper stops at - 1 unless the product (or the
+      // chosen variation's own row) says otherwise.
+      minOrderQuantity: line.minOrderQuantity,
       preOrderDispatchDate: line.product.preOrderDispatchDate,
       imageUrl: primary?.url ?? null,
       // Normalised personalisation for display (null for a plain line).

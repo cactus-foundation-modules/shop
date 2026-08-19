@@ -37,6 +37,19 @@ export function StockPanel({ state, setField, errors, weightBasedShippingEnabled
         )}
       </Section>
 
+      <Section title="How many at a time" blurb="For anything you will not sell one of - a box of fifty, or a screen that only ships in pairs.">
+        <Grid cols={3}>
+          <Field
+            label="Smallest order"
+            optional
+            error={errors.minOrderQuantity}
+            hint="Shoppers cannot buy fewer than this. Leave empty to sell them one at a time."
+          >
+            {(p) => <Control {...p} inputMode="numeric" value={f.minOrderQuantity} onChange={(e) => setField('minOrderQuantity', e.target.value)} placeholder="1" />}
+          </Field>
+        </Grid>
+      </Section>
+
       <Section title="Pre-order" blurb="For something you are taking money for now and posting later.">
         <Switch
           checked={f.isPreOrder}

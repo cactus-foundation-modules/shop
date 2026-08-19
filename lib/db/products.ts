@@ -45,6 +45,7 @@ function mapProduct(r: Record<string, unknown>): ShpProduct {
     preOrderNote: (r.pre_order_note as string | null) ?? null,
     preOrderMaxQuantity: (r.pre_order_max_quantity as number | null) ?? null,
     preOrderCount: r.pre_order_count as number,
+    minOrderQuantity: (r.min_order_quantity as number | null) ?? null,
     relatedMode: r.related_mode as ShpProduct['relatedMode'],
     upsellMode: r.upsell_mode as ShpProduct['upsellMode'],
     relatedLimit: r.related_limit as number,
@@ -472,6 +473,7 @@ export type CreateProductInput = {
   preOrderDispatchDate?: Date | null
   preOrderNote?: string | null
   preOrderMaxQuantity?: number | null
+  minOrderQuantity?: number | null
   relatedMode?: ShpProduct['relatedMode']
   upsellMode?: ShpProduct['upsellMode']
   relatedLimit?: number | null
@@ -488,7 +490,7 @@ export async function createProduct(data: CreateProductInput): Promise<{ id: str
       "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
       "download_limit", "download_expiry", "meta_title", "meta_description",
-      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity",
+      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity", "min_order_quantity",
       "related_mode", "upsell_mode", "related_limit", "upsell_limit", "catalogue_hidden"
     ) VALUES (
       ${data.name}, ${data.slug}, ${data.type}, ${data.status ?? 'DRAFT'}, ${data.description ?? null}, ${data.shortDescription ?? null}, ${data.sku ?? null}, ${data.saleSku ?? null}, ${data.barcode ?? null}, ${data.supplier ?? null},
@@ -496,7 +498,7 @@ export async function createProduct(data: CreateProductInput): Promise<{ id: str
       ${data.trackInventory ?? false}, ${data.stockCount ?? null}, ${data.lowStockThreshold ?? null}, ${data.outOfStockBehaviour ?? 'BLOCK'},
       ${data.weight ?? null}, ${data.weightUnit ?? null}, ${data.dimensionL ?? null}, ${data.dimensionW ?? null}, ${data.dimensionH ?? null}, ${data.dimensionUnit ?? null},
       ${data.downloadLimit ?? null}, ${data.downloadExpiry ?? null}, ${data.metaTitle ?? null}, ${data.metaDescription ?? null},
-      ${data.isPreOrder ?? false}, ${data.preOrderDispatchDate ?? null}, ${data.preOrderNote ?? null}, ${data.preOrderMaxQuantity ?? null},
+      ${data.isPreOrder ?? false}, ${data.preOrderDispatchDate ?? null}, ${data.preOrderNote ?? null}, ${data.preOrderMaxQuantity ?? null}, ${data.minOrderQuantity ?? null},
       ${data.relatedMode ?? 'AUTOMATIC'}, ${data.upsellMode ?? 'AUTOMATIC'}, ${data.relatedLimit ?? 4}, ${data.upsellLimit ?? 4}, ${data.catalogueHidden ?? false}
     )
     RETURNING "id"
@@ -545,6 +547,7 @@ export type UpdateProductInput = Partial<{
   preOrderDispatchDate: Date | null
   preOrderNote: string | null
   preOrderMaxQuantity: number | null
+  minOrderQuantity: number | null
   relatedMode: ShpProduct['relatedMode']
   upsellMode: ShpProduct['upsellMode']
   relatedLimit: number
@@ -564,7 +567,8 @@ const COLUMN_MAP: Record<Exclude<keyof UpdateProductInput, 'descriptionPuck'>, s
   downloadLimit: 'download_limit', downloadExpiry: 'download_expiry', metaTitle: 'meta_title',
   metaDescription: 'meta_description', ogImageId: 'og_image_id', masterCategoryId: 'master_category_id', isPreOrder: 'is_pre_order',
   preOrderDispatchDate: 'pre_order_dispatch_date', preOrderNote: 'pre_order_note',
-  preOrderMaxQuantity: 'pre_order_max_quantity', relatedMode: 'related_mode', upsellMode: 'upsell_mode',
+  preOrderMaxQuantity: 'pre_order_max_quantity', minOrderQuantity: 'min_order_quantity',
+  relatedMode: 'related_mode', upsellMode: 'upsell_mode',
   relatedLimit: 'related_limit', upsellLimit: 'upsell_limit', catalogueHidden: 'catalogue_hidden',
 }
 
@@ -737,7 +741,7 @@ export async function duplicateProduct(sourceId: string, next: { name: string; s
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
       "digital_file_id", "download_limit", "download_expiry",
       "meta_title", "meta_description", "og_image_id", "master_category_id",
-      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity",
+      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity", "min_order_quantity",
       "related_mode", "upsell_mode", "related_limit", "upsell_limit"
     )
     SELECT
@@ -747,7 +751,7 @@ export async function duplicateProduct(sourceId: string, next: { name: string; s
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
       "digital_file_id", "download_limit", "download_expiry",
       "meta_title", "meta_description", "og_image_id", "master_category_id",
-      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity",
+      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity", "min_order_quantity",
       "related_mode", "upsell_mode", "related_limit", "upsell_limit"
     FROM "shp_products" WHERE "id" = ${sourceId}
     RETURNING "id"

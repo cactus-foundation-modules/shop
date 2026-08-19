@@ -1,0 +1,16 @@
+-- Minimum order quantity per product.
+--
+-- Some things are simply not sold one at a time: a box of fifty castor cups, a
+-- desk screen that only ships in pairs. The shop had no way to say so, so the
+-- stepper started at one and the shopper found out at the wrong end of an email.
+--
+-- NULL (and 1, and anything below 1) all mean "no minimum" - the column is left
+-- nullable rather than defaulted so an existing catalogue keeps its untouched
+-- rows exactly as they were, and so the editor can tell "blank" from "one".
+--
+-- Variations need no table of their own for this: a variation IS a hidden
+-- shp_products row, so a per-variation minimum is this same column on the child.
+-- The storefront and the cart fall back to the parent's figure when a child
+-- carries none, which is what makes a product-wide minimum work without having
+-- to stamp it across three hundred variations.
+ALTER TABLE "shp_products" ADD COLUMN IF NOT EXISTS "min_order_quantity" INTEGER;

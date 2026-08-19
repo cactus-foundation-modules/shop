@@ -140,7 +140,7 @@ describe('product CSV format coverage', () => {
       'slug', 'dimension_l', 'dimension_w', 'dimension_h', 'dimension_unit',
       'download_limit', 'download_expiry', 'is_pre_order', 'pre_order_dispatch_date',
       'pre_order_note', 'pre_order_max_quantity', 'related_mode', 'related_limit',
-      'upsell_mode', 'upsell_limit',
+      'upsell_mode', 'upsell_limit', 'min_order_quantity',
     ]) {
       expect(CSV_COLUMNS).toContain(column)
     }

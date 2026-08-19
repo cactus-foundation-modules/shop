@@ -45,6 +45,7 @@ export type ProductForm = {
   stockCount: string
   lowStockThreshold: string
   outOfStockBehaviour: 'BLOCK' | 'BACKORDER'
+  minOrderQuantity: string
   weight: string
   weightUnit: 'kg' | 'lb'
   dimensionL: string
@@ -152,6 +153,7 @@ export function toEditorState(payload: ProductPayload): EditorState {
       stockCount: str(p.stockCount),
       lowStockThreshold: str(p.lowStockThreshold),
       outOfStockBehaviour: (str(p.outOfStockBehaviour) || 'BLOCK') as ProductForm['outOfStockBehaviour'],
+      minOrderQuantity: str(p.minOrderQuantity),
       weight: str(p.weight),
       weightUnit: (str(p.weightUnit) || 'kg') as ProductForm['weightUnit'],
       dimensionL: str(p.dimensionL),
@@ -223,6 +225,9 @@ export function toProductBody(s: EditorState): Record<string, unknown> {
     stockCount: f.trackInventory ? int(f.stockCount) : null,
     lowStockThreshold: f.trackInventory ? int(f.lowStockThreshold) : null,
     outOfStockBehaviour: f.outOfStockBehaviour,
+    // A minimum of one is no minimum, so it is stored as nothing rather than as
+    // a 1 that would then have to be read past everywhere it is used.
+    minOrderQuantity: int(f.minOrderQuantity) != null && Number(f.minOrderQuantity) > 1 ? int(f.minOrderQuantity) : null,
     weight: num(f.weight),
     weightUnit: f.weight.trim() === '' ? null : f.weightUnit,
     dimensionL: num(f.dimensionL),
@@ -270,7 +275,7 @@ const TAB_FIELDS: Record<ShopTabId, ReadonlyArray<keyof ProductForm>> = {
   media: [],
   pricing: ['price', 'salePrice', 'saleSku', 'retailPrice', 'tradePrice', 'costPrice', 'taxClassId'],
   stock: [
-    'trackInventory', 'stockCount', 'lowStockThreshold', 'outOfStockBehaviour',
+    'trackInventory', 'stockCount', 'lowStockThreshold', 'outOfStockBehaviour', 'minOrderQuantity',
     'isPreOrder', 'preOrderDispatchDate', 'preOrderNote', 'preOrderMaxQuantity',
     'weight', 'weightUnit', 'dimensionL', 'dimensionW', 'dimensionH', 'dimensionUnit',
   ],
@@ -342,6 +347,10 @@ export function validate(s: EditorState): Errors {
 
   for (const key of ['weight', 'dimensionL', 'dimensionW', 'dimensionH'] as const) {
     if (!positiveNumber(f[key])) e[key] = 'Must be a number, and not negative.'
+  }
+
+  if (f.minOrderQuantity.trim() !== '' && (!Number.isInteger(Number(f.minOrderQuantity)) || Number(f.minOrderQuantity) < 1)) {
+    e.minOrderQuantity = 'Minimum order must be a whole number, and at least 1.'
   }
 
   if (f.isPreOrder && f.preOrderMaxQuantity.trim() !== '' && !Number.isInteger(Number(f.preOrderMaxQuantity))) {

@@ -73,6 +73,9 @@ const Body = z.object({
   preOrderDispatchDate: z.coerce.date().nullable().optional(),
   preOrderNote: z.string().nullable().optional(),
   preOrderMaxQuantity: z.number().int().nullable().optional(),
+  // The fewest the shop will sell in one go. Null clears it; 1 and below mean
+  // the same thing as null and are normalised on the way in.
+  minOrderQuantity: z.number().int().nullable().optional(),
   regenerateSlug: z.boolean().optional(),
   media: z.array(MediaItem).optional(),
   categoryIds: z.array(z.string()).optional(),

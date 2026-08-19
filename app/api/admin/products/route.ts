@@ -64,6 +64,7 @@ const Body = z.object({
   stockCount: z.number().int().nullable().optional(),
   lowStockThreshold: z.number().int().nullable().optional(),
   outOfStockBehaviour: z.enum(['BLOCK', 'BACKORDER']).optional(),
+  minOrderQuantity: z.number().int().nullable().optional(),
 })
 
 export async function POST(request: NextRequest) {

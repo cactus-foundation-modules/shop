@@ -34,12 +34,18 @@ export function RemoveCross({ label, onClick, disabled }: { label: string; onCli
 // same job and land the row's width all over the place. Non-digits are dropped
 // as typed, and an emptied box is left alone until it's blurred, so backspacing
 // to retype doesn't remove the line under the shopper.
+//
+// `min` is the smallest the shop will sell of this line, 1 for all but a handful
+// of products. It is the floor the − button and the typed value both stop at, so
+// a shopper cannot walk a line down to a quantity the checkout would then refuse
+// - Remove is still how a line leaves the basket.
 export function QuantityStepper({
-  value, label, onChange, disabled,
-}: { value: number; label: string; onChange: (next: number) => void; disabled?: boolean }) {
+  value, label, onChange, disabled, min = 1,
+}: { value: number; label: string; onChange: (next: number) => void; disabled?: boolean; min?: number }) {
+  const floor = Number.isFinite(min) && min > 1 ? Math.floor(min) : 1
   return (
     <div className="scl-qty scl-qtybox">
-      <button type="button" aria-label="Decrease quantity" disabled={disabled || value <= 1} onClick={() => onChange(value - 1)}>−</button>
+      <button type="button" aria-label="Decrease quantity" disabled={disabled || value <= floor} onClick={() => onChange(Math.max(floor, value - 1))}>−</button>
       <input
         type="text"
         inputMode="numeric"
@@ -49,7 +55,7 @@ export function QuantityStepper({
         onChange={(e) => {
           const digits = e.target.value.replace(/[^0-9]/g, '')
           if (digits === '') return
-          onChange(Math.max(1, Number(digits)))
+          onChange(Math.max(floor, Number(digits)))
         }}
       />
       <button type="button" aria-label="Increase quantity" disabled={disabled} onClick={() => onChange(value + 1)}>+</button>

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { getCart, setLineQuantity, subscribeCart } from '@/modules/shop/components/public/cart'
+import { minOrderQuantity } from '@/modules/shop/lib/min-order'
 import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } from '@/modules/shop/components/public/validated-cache'
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import { formatMoney } from '@/modules/shop/lib/money'
@@ -22,6 +23,8 @@ type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
   lineSubtotal: number; available: boolean; availabilityReason: string | null
   isPreOrder: boolean; imageUrl: string | null
+  // The fewest of this line the shop sells in one go; absent reads as 1.
+  minOrderQuantity?: number
   lineId?: string | null; lineMeta?: LineMeta | null
   displayTitle?: CartLineTitle | null
 }
@@ -180,6 +183,7 @@ export function CartPageClient() {
             <QuantityStepper
               value={line.quantity}
               label={`Quantity for ${line.displayTitle?.name || line.name}`}
+              min={minOrderQuantity(line.minOrderQuantity)}
               onChange={(next) => setLineQuantity(lineKey(line), next)}
             />
             <span className="scl-price" style={{ minWidth: 70, textAlign: 'right' }}>{money(line.lineSubtotal)}</span>

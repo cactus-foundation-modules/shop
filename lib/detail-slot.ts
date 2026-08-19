@@ -45,6 +45,10 @@ export type ShopDetailPurchaseClassNames = {
   stepper: string
   add: string
   outOfStock: string
+  // The muted line under the buy row that says the smallest order. Optional so a
+  // provider built against the old contract still compiles; one that renders the
+  // note without it simply gets an unstyled paragraph rather than a crash.
+  minQuantityNote?: string
 }
 
 // Structurally the same as the parts' own PartImage; declared here so the slot
@@ -123,6 +127,12 @@ export type ShopDetailPurchaseSlotProps = SlotBase & {
   classNames: ShopDetailPurchaseClassNames
   showStepper: boolean
   label: string
+  // The PARENT product's smallest order, already normalised (1 means no
+  // minimum). A provider selling chosen combinations reads its own from the
+  // combination and falls back to this, exactly as it does with price - the
+  // owner sets one figure on the product rather than across every variation.
+  // Optional so a provider built against the old contract still compiles.
+  minQuantity?: number
 }
 
 export type ShopDetailSupplierValueSlotProps = SlotBase & {

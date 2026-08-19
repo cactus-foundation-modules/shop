@@ -36,6 +36,7 @@ type ImportFields = Partial<{
   dimensionL: number | null; dimensionW: number | null; dimensionH: number | null; dimensionUnit: string | null
   downloadLimit: number | null; downloadExpiry: number | null
   isPreOrder: boolean; preOrderDispatchDate: Date | null; preOrderNote: string | null; preOrderMaxQuantity: number | null
+  minOrderQuantity: number | null
   relatedMode: ShpRecommendationMode; upsellMode: ShpRecommendationMode; relatedLimit: number; upsellLimit: number
   metaTitle: string | null; metaDescription: string | null; barcode: string | null
   supplier: string | null; saleSku: string | null
@@ -314,6 +315,12 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       // The offer code. Never a match key - `sku` is the identity, and the whole
       // point of this column is that the two are allowed to differ.
       put('sale_sku', 'saleSku', cell(row, 'sale_sku') || null)
+      // Smallest order. A sheet saying 1 (or 0) means "no minimum", so it lands
+      // as null rather than as a figure every reader then has to see past.
+      put('min_order_quantity', 'minOrderQuantity', (() => {
+        const n = numOrNull(cell(row, 'min_order_quantity'))
+        return n != null && n > 1 ? Math.floor(n) : null
+      })())
       // Status is honoured on both create and update: the sheet gives the owner a
       // DRAFT/ACTIVE/ARCHIVED dropdown, so a Pull that ignored it would silently
       // discard the one edit they most expect to stick. An unreadable or blank

@@ -132,6 +132,11 @@ export type ShpProduct = {
   preOrderNote: string | null
   preOrderMaxQuantity: number | null
   preOrderCount: number
+  // The fewest of this the shop will sell in one go. Null - and any figure below
+  // 1 - mean no minimum, which is all but every product. A shop-variations child
+  // row carries its own and falls back to the parent's, so a minimum can be set
+  // once on the product or per combination. See lib/min-order.ts.
+  minOrderQuantity: number | null
   relatedMode: ShpRecommendationMode
   upsellMode: ShpRecommendationMode
   relatedLimit: number

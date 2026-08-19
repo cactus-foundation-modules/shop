@@ -19,6 +19,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { getCart, setLineMeta, setLineQuantity, subscribeCart } from '@/modules/shop/components/public/cart'
+import { minOrderQuantity } from '@/modules/shop/lib/min-order'
 import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } from '@/modules/shop/components/public/validated-cache'
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 import { CART_DRAWER_CSS } from '@/modules/shop/components/public/cart-drawer-css'
@@ -44,6 +45,8 @@ type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
   lineSubtotal: number; available: boolean; availabilityReason: string | null
   isPreOrder: boolean; imageUrl: string | null
+  // The fewest of this line the shop sells in one go; absent reads as 1.
+  minOrderQuantity?: number
   lineId?: string | null; lineMeta?: LineMeta | null
   control?: CartLineControl | null
   displayTitle?: CartLineTitle | null
@@ -302,6 +305,7 @@ export function CartDrawerClient({
                   <QuantityStepper
                     value={line.quantity}
                     label={`Quantity for ${title}`}
+                    min={minOrderQuantity(line.minOrderQuantity)}
                     onChange={(next) => setLineQuantity(key, Math.max(0, next))}
                   />
                 </div>

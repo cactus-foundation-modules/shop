@@ -1,4 +1,5 @@
 import { AddToCartButton } from '@/modules/shop/components/public/AddToCartButton'
+import { minOrderQuantity } from '@/modules/shop/lib/min-order'
 import { GalleryViewportFit } from '@/modules/shop/components/public/GalleryViewportFit'
 import { ProductGallery, ProductSectionTabs, type ProductTab, type TabAction } from '@/modules/shop/components/public/ProductDetailIslands'
 import { StickyStripHeight } from '@/modules/shop/components/public/StickyStripHeight'
@@ -888,6 +889,9 @@ const buyCss = `
 .spd-add{flex:1;min-width:200px;height:52px;border:none;border-radius:9999px;font:inherit;font-weight:600;font-size:16px;cursor:pointer;transition:transform .06s ease}
 .spd-add:active{transform:scale(.99)}
 .spd-oos{margin-top:16px;color:var(--color-text-muted);font-weight:600}
+/* The minimum-order line under the buy row. Muted, one line, and never in the
+   way of the button it belongs to. */
+.spd-minqty{margin:10px 0 0;color:var(--color-text-muted);font-size:14px}
 /* The Tabs strip's "Configure" action jumps here; clear the site header (the
    strip itself is below this point on the page, so its height need not be in
    the offset). */
@@ -947,7 +951,8 @@ export function ShopDetailAddToCartRsc(props: AddProps) {
             layoutBlockTypes={ctx.layoutBlockTypes}
             showStepper={showStepper}
             label={label}
-            classNames={{ row: 'spd-buy-row', stepper: 'spd-stepper', add: 'spd-add', outOfStock: 'spd-oos' }}
+            classNames={{ row: 'spd-buy-row', stepper: 'spd-stepper', add: 'spd-add', outOfStock: 'spd-oos', minQuantityNote: 'spd-minqty' }}
+            minQuantity={minOrderQuantity(product.minOrderQuantity)}
           />
         </div>
       </>
@@ -960,7 +965,7 @@ export function ShopDetailAddToCartRsc(props: AddProps) {
         {outOfStock ? (
           <p className="spd-oos">Out of stock</p>
         ) : (
-          <AddToCartButton productId={product.id} label={label} showStepper={showStepper} />
+          <AddToCartButton productId={product.id} label={label} showStepper={showStepper} minQuantity={minOrderQuantity(product.minOrderQuantity)} />
         )}
       </div>
     </>

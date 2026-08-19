@@ -157,6 +157,11 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
     "pre_order_max_quantity" INTEGER,
     "pre_order_count" INTEGER NOT NULL DEFAULT 0,
 
+    -- Fewest of this the shop will sell in one go (021_min_order_quantity.sql).
+    -- NULL, and anything below 1, mean no minimum. A shop-variations child row
+    -- carries its own, falling back to its parent's when it has none.
+    "min_order_quantity" INTEGER,
+
     -- Related products / upsells (addendum D)
     "related_mode" TEXT NOT NULL DEFAULT 'AUTOMATIC',
     "upsell_mode" TEXT NOT NULL DEFAULT 'AUTOMATIC',

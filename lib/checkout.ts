@@ -8,6 +8,7 @@ import { countPriorCouponOrdersByEmail } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { effectivePrice } from '@/modules/shop/lib/pricing'
 import { getCartLineResolvers, getCartLineResolverPrefetchers, resolveLineMeta, type CartLineCharge, type CartLineControl, type CartLineGroup, type CartLineTitle } from '@/modules/shop/lib/line-meta'
+import { minOrderQuantity } from '@/modules/shop/lib/min-order'
 import type { CartLine } from '@/modules/shop/components/public/cart'
 import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 
@@ -26,6 +27,11 @@ export type ResolvedCartLine = {
   available: boolean
   availabilityReason?: string
   isPreOrder: boolean
+  // The fewest of this line the shop will sell in one go - 1 on all but a
+  // handful of products. Carried out to the basket so its stepper can stop at
+  // the right floor rather than letting a shopper walk a line down to a
+  // quantity the checkout will then refuse.
+  minOrderQuantity: number
   // Personalisation carried from the cart line: the stable client key and the
   // normalised, server-priced meta (null for a plain line). unitPrice already
   // includes any personalisation price adjustment.
@@ -131,6 +137,18 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       availabilityReason = 'Pre-order is no longer available'
     }
 
+    // Minimum order quantity. Failing the line rather than quietly rounding the
+    // quantity up: the basket's own steppers already stop at the floor, so a
+    // line that arrives under it came from a stale basket or a hand-edited
+    // request, and neither is a good reason to add money to someone's order
+    // without saying so. The reason names the figure, which is the one thing
+    // the shopper needs in order to put it right.
+    const minQuantity = minOrderQuantity(product.minOrderQuantity)
+    if (line.quantity < minQuantity) {
+      available = false
+      availabilityReason = `Sold in ${minQuantity}s - please order at least ${minQuantity}`
+    }
+
     // Personalisation add-ons: a registered resolver validates the shopper's
     // inputs and returns a server-authoritative price adjustment. An invalid
     // input fails the line just like an out-of-stock one. The client never
@@ -153,6 +171,7 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       available,
       availabilityReason,
       isPreOrder: product.isPreOrder,
+      minOrderQuantity: minQuantity,
       lineId: line.lineId,
       lineMeta: metaResolution.persistMeta,
       control: metaResolution.control ?? null,

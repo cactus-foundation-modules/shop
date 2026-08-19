@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { getCart, setLineQuantity, setLineMeta, subscribeCart } from '@/modules/shop/components/public/cart'
+import { minOrderQuantity } from '@/modules/shop/lib/min-order'
 import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } from '@/modules/shop/components/public/validated-cache'
 import { updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import type { LineMeta, LineMetaField } from '@/modules/shop/lib/types'
@@ -34,6 +35,9 @@ type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
   lineSubtotal: number; available: boolean; availabilityReason: string | null
   isPreOrder: boolean; imageUrl: string | null
+  // The fewest of this line the shop sells in one go. Absent on a response from
+  // a shop that predates it, which reads as 1 - no minimum.
+  minOrderQuantity?: number
   lineId?: string | null; lineMeta?: LineMeta | null
   control?: CartLineControl | null
   displayTitle?: CartLineTitle | null
@@ -255,7 +259,13 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
     }
   }
 
-  const onQty = (id: string, q: number) => { if (!preview) setLineQuantity(id, Math.max(0, q)) }
+  // 0 still removes the line - that is what the plain number input's own
+  // spinner does at the bottom of its range, and Remove by another name. Any
+  // other figure is held at or above the line's minimum.
+  const onQty = (id: string, q: number, min = 1) => {
+    if (preview) return
+    setLineQuantity(id, q <= 0 ? 0 : Math.max(min, q))
+  }
   // Removal goes through the undo hook, which snapshots the line first so the
   // toast can put it back where it was. A main line with attachments still in
   // the basket asks the question first (see renderGroupConfirm) rather than
@@ -757,21 +767,23 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
     if (quantityControl === 'readonly') {
       return <span className="scl-qty" style={{ minWidth: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>× {line.quantity}</span>
     }
+    const min = minOrderQuantity(line.minOrderQuantity)
     if (quantityControl === 'stepper') {
       return (
         <QuantityStepper
           value={line.quantity}
           label={`Quantity for ${line.displayTitle?.name || line.name}`}
           disabled={preview}
-          onChange={(next) => onQty(lineKey(line), next)}
+          min={min}
+          onChange={(next) => onQty(lineKey(line), next, min)}
         />
       )
     }
     return (
       <input
         className="scl-qty"
-        type="number" min={0} value={line.quantity} readOnly={preview}
-        onChange={(e) => onQty(lineKey(line), Number(e.target.value))}
+        type="number" min={0} step={1} value={line.quantity} readOnly={preview}
+        onChange={(e) => onQty(lineKey(line), Number(e.target.value), min)}
         style={{ width: 56, padding: '0.375rem', borderRadius: 6, border: '1px solid var(--color-border)' }}
       />
     )

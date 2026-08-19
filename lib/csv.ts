@@ -22,6 +22,9 @@ export const CSV_COLUMNS = [
   // sat next to `sku` so every sheet written before it existed keeps its column
   // order (the Google-Sheet mirror aligns by header, but a hand-kept CSV does not).
   'sale_sku',
+  // The fewest of a line the shop will sell in one go. Appended for the same
+  // column-order reason as `sale_sku` above.
+  'min_order_quantity',
 ] as const
 
 export type CsvColumn = (typeof CSV_COLUMNS)[number]
@@ -42,7 +45,7 @@ const OPTIONAL_CSV_COLUMNS: readonly CsvColumn[] = [
   'download_limit', 'download_expiry',
   'is_pre_order', 'pre_order_dispatch_date', 'pre_order_note', 'pre_order_max_quantity',
   'related_mode', 'related_limit', 'upsell_mode', 'upsell_limit',
-  'supplier', 'sale_sku',
+  'supplier', 'sale_sku', 'min_order_quantity',
 ]
 
 // Columns whose values are numbers, not text. The CSV writer does not care (every
@@ -51,7 +54,7 @@ const OPTIONAL_CSV_COLUMNS: readonly CsvColumn[] = [
 export const NUMERIC_CSV_COLUMNS: readonly CsvColumn[] = [
   'price', 'sale_price', 'retail_price', 'trade_price', 'cost_price', 'stock_count', 'low_stock_threshold', 'weight',
   'dimension_l', 'dimension_w', 'dimension_h', 'download_limit', 'download_expiry',
-  'pre_order_max_quantity', 'related_limit', 'upsell_limit',
+  'pre_order_max_quantity', 'min_order_quantity', 'related_limit', 'upsell_limit',
 ]
 
 // Columns whose values are booleans. `sku` and `barcode` are excluded from the
