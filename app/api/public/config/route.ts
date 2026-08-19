@@ -40,6 +40,11 @@ export async function GET() {
     // it to decide whether a weight box is worth showing, which is why it rides
     // along on the config call it already makes rather than a new one.
     weightBasedShippingEnabled: config.weightBasedShippingEnabled,
+    // Where a product page lives - /shop/products/<slug> or the bare /<slug>.
+    // Rides along for the same reason as the two above: the admin product
+    // editor's search preview prints the product's address, and printing the
+    // one the shop has moved off makes a liar of the preview.
+    productUrlStyle: config.productUrlStyle,
     // Supplier field settings. Storefront rendering is decided server-side, so
     // this slice exists for the admin product editor, which reads its config
     // from here: whether to offer the box, what to call it, and whether the

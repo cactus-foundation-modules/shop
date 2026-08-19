@@ -25,6 +25,7 @@ import { PricingPanel } from '@/modules/shop/components/admin/product-editor/pan
 import type { ShpPriceType } from '@/modules/shop/lib/pricing'
 import { RecommendationsPanel } from '@/modules/shop/components/admin/product-editor/panels/recommendations'
 import { SeoPanel } from '@/modules/shop/components/admin/product-editor/panels/seo'
+import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 import { StockPanel } from '@/modules/shop/components/admin/product-editor/panels/stock'
 
 /** A tab contributed by another module through `shop.product-editor-sections`. */
@@ -58,6 +59,9 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
   // Whether the Stock tab offers a weight box at all. Same first-paint reasoning
   // as the price types: start on the shop config's own default.
   const [weightBasedShippingEnabled, setWeightBasedShippingEnabled] = useState(true)
+  // Where product pages live, for the Search tab's address preview. Starts on
+  // the shop config's own default for the same first-paint reason as above.
+  const [productUrlStyle, setProductUrlStyle] = useState<ProductUrlStyle>('SHOP')
   // Whether the Details tab offers a supplier box, and what it is called. Starts
   // off, matching the shop config's own default, so a shop that never asked for
   // one never sees it flicker in.
@@ -187,6 +191,7 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
       setCurrency(config.currencySymbol ?? '£')
       if (Array.isArray(config.enabledPriceTypes)) setEnabledPriceTypes(config.enabledPriceTypes)
       setWeightBasedShippingEnabled(config.weightBasedShippingEnabled !== false)
+      if (config.productUrlStyle === 'ROOT' || config.productUrlStyle === 'SHOP') setProductUrlStyle(config.productUrlStyle)
       if (config.supplierField) {
         setSupplierField({
           enabled: config.supplierField.enabled === true,
@@ -408,7 +413,7 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
       { id: 'stock', label: 'Stock & delivery', order: SHOP_TAB_ORDER.stock, render: () => <StockPanel {...panelProps} /> },
       { id: 'organisation', label: 'Organisation', order: SHOP_TAB_ORDER.organisation, render: () => <OrganisationPanel {...panelProps} categories={categories} tags={tags} collections={collections} createTag={createTag} /> },
       { id: 'recommendations', label: 'Recommendations', order: SHOP_TAB_ORDER.recommendations, render: () => <RecommendationsPanel {...panelProps} productId={productId} /> },
-      { id: 'seo', label: 'Search', order: SHOP_TAB_ORDER.seo, render: () => <SeoPanel {...panelProps} siteUrl={siteUrl} /> },
+      { id: 'seo', label: 'Search', order: SHOP_TAB_ORDER.seo, render: () => <SeoPanel {...panelProps} siteUrl={siteUrl} productUrlStyle={productUrlStyle} /> },
     ]
     if (state.form.type === 'DIGITAL') {
       own.push({ id: 'digital', label: 'Download', order: SHOP_TAB_ORDER.digital, render: () => <DigitalPanel {...panelProps} /> })
@@ -420,7 +425,7 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
       render: () => t.node,
     }))
     return [...own, ...contributed].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
-  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier, taxClasses, categories, tags, collections, createTag, productId, siteUrl, extraTabs, mediaSections, openDescriptionEditor])
+  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier, taxClasses, categories, tags, collections, createTag, productId, siteUrl, productUrlStyle, extraTabs, mediaSections, openDescriptionEditor])
 
   // Derived, not stored: a tab that vanishes (the product stopped being digital)
   // or a ?tab= naming a module that isn't installed falls back to the first tab
@@ -540,7 +545,7 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
               {f.status === 'ACTIVE' && f.slug ? (
                 <a
                   className="btn btn-secondary spe-save-btn"
-                  href={`/shop/products/${f.slug}`}
+                  href={productHref(f.slug, productUrlStyle)}
                   target="_blank"
                   rel="noreferrer"
                   title="Open this product on the shop in a new tab"

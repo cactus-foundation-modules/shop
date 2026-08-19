@@ -2,17 +2,23 @@
 
 import { Control, Field, Grid, Section, TextArea } from '@/modules/shop/components/admin/product-editor/fields'
 import type { PanelProps } from '@/modules/shop/components/admin/product-editor/model'
+import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 
 const TITLE_MAX = 60
 const DESC_MAX = 160
 
 /** Search engines fall back to the product's own name and short description
  * when these are empty, so the preview shows what would actually appear. */
-export function SeoPanel({ state, setField, siteUrl }: PanelProps & { siteUrl: string }) {
+export function SeoPanel({ state, setField, siteUrl, productUrlStyle }: PanelProps & { siteUrl: string; productUrlStyle: ProductUrlStyle }) {
   const f = state.form
   const title = f.metaTitle.trim() || f.name.trim() || 'Untitled product'
   const description = f.metaDescription.trim() || f.shortDescription.trim() || 'No description yet, so search engines will make one up from the page.'
-  const url = `${siteUrl.replace(/\/$/, '')}/shop/products/${f.slug || '…'}`
+  // The address the page actually answers on, so the preview matches reality on
+  // a shop that has moved its products to the site root. The placeholder stands
+  // in before a slug exists; encodeURIComponent would only mangle the ellipsis.
+  const url = f.slug
+    ? `${siteUrl.replace(/\/$/, '')}${productHref(f.slug, productUrlStyle)}`
+    : `${siteUrl.replace(/\/$/, '')}${productUrlStyle === 'ROOT' ? '/…' : '/shop/products/…'}`
 
   return (
     <div className="spe-panel">

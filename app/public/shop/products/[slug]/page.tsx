@@ -12,6 +12,7 @@ import { resolveAliasedProduct } from '@/modules/shop/lib/product-page-resolver'
 import { resolveProductSocialImage } from '@/modules/shop/lib/product-social-image'
 import { rememberProductPageSearchParams, type ProductPageSearchParams } from '@/modules/shop/lib/product-page-params'
 import { getProductUrlStyle, productUrl } from '@/modules/shop/lib/product-url'
+import { shopClaimsRootSlug } from '@/modules/shop/lib/root-slug'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner, ShopStockHiddenBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { getProductPageStockGate } from '@/modules/shop/lib/stock-visibility'
@@ -121,7 +122,12 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   }
 }
 
-export default async function ShopProductPage({ params, searchParams }: Props) {
+// The page itself, address-agnostic: it renders by slug and emits a
+// style-aware canonical, so it serves both /shop/products/<slug> and the bare
+// /<slug> the ROOT style claims. Exported by name for the root route, which
+// must NOT inherit the redirect the default export below adds - re-exporting
+// that one would send the root address to itself, forever.
+export async function ShopProductPageView({ params, searchParams }: Props) {
   const { slug } = await params
   // Same parking as generateMetadata: the layout's blocks (and companion
   // modules behind them) read the shared link's selection while they render.
@@ -165,4 +171,21 @@ export default async function ShopProductPage({ params, searchParams }: Props) {
       <Render config={getModuleLayoutPuckRscConfig('shopProduct') as any} data={data as Data} />
     </div>
   )
+}
+
+// What /shop/products/<slug> serves. On the ROOT style it serves nothing: the
+// product lives at the bare /<slug> and this address is simply not one of the
+// shop's any more, so it 404s like any other address that names no page. No
+// redirect - a shop that has moved its products to the root has one address per
+// product, not one address and a forwarding note.
+//
+// Gated on shopClaimsRootSlug - the very predicate core asks before serving the
+// bare slug - so this closes only where the root address genuinely answers.
+// It matches catalogue-hidden rows too, so a variation's own deep link is
+// closed here exactly as its parent is. On the default SHOP style nothing
+// changes: the claim is false and this address is the product's own.
+export default async function ShopProductPage({ params, searchParams }: Props) {
+  const { slug } = await params
+  if (await shopClaimsRootSlug(slug)) notFound()
+  return <ShopProductPageView params={params} searchParams={searchParams} />
 }
