@@ -26,6 +26,15 @@ export async function shopMediaUsageProvider(): Promise<string[]> {
     SELECT "og_image_id" AS ref FROM "shp_categories" WHERE "og_image_id" IS NOT NULL
     UNION ALL
     SELECT "image_url" AS ref FROM "shp_categories" WHERE "image_url" IS NOT NULL
+    UNION ALL
+    -- The designed description is a Puck document, and the feature videos and
+    -- photographs inside it are addressed by url within the JSON. Returned whole
+    -- as text (the contract allows it - core folds every string into one
+    -- haystack), because picking the urls back out here would only duplicate the
+    -- matching core already does. Without it a product's description videos read
+    -- as unused: on Deskwell that was 232 live files sitting in the Unused tile
+    -- with a delete button over them.
+    SELECT "description_puck"::text AS ref FROM "shp_products" WHERE "description_puck" IS NOT NULL
   `
   return rows.map((r) => r.ref).filter((r): r is string => !!r)
 }
