@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.249",
+  "version": "0.1.250",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1123",
@@ -132,6 +132,19 @@
       "layoutTypes": [
         "shopIndex",
         "shopCategory"
+      ]
+    },
+    {
+      "type": "ShopCollectionBrowser",
+      "import": "./components/puck/ShopCollectionBrowser",
+      "component": "shopCollectionBrowserPuckComponent",
+      "rscComponent": "shopCollectionBrowserPuckRscComponent",
+      "rscImport": "./components/puck/ShopCollectionBrowser.rsc",
+      "layoutTypes": [
+        "shopIndex",
+        "shopCategory",
+        "shopCollection",
+        "shopTag"
       ]
     },
     {

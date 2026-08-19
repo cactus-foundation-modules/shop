@@ -425,6 +425,54 @@ export async function deleteCollection(id: string): Promise<void> {
   await prisma.$executeRaw`DELETE FROM "shp_collections" WHERE "id" = ${id}`
 }
 
+// The collection index: every collection that actually has something in it,
+// with its product count and a cover picture borrowed from its first member.
+//
+// Collections carry an image_id column that nothing has ever rendered, so the
+// tile would otherwise be a grey box. Taking the first member's primary image
+// means an index page looks finished the moment a collection is created, and
+// keeps looking right as membership changes - nobody has to remember to set a
+// cover. Empty collections are left out: a tile promising products and landing
+// on an empty grid is worse than no tile.
+export async function listCollectionsForIndex(): Promise<Array<{
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  productCount: number
+  coverUrl: string | null
+}>> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT c."id", c."name", c."slug", c."description",
+           (SELECT count(*) FROM "shp_product_collections" pc
+              JOIN "shp_products" p ON p."id" = pc."product_id"
+             WHERE pc."collection_id" = c."id" AND p."status" = 'ACTIVE' AND p."catalogue_hidden" = false
+           )::int AS "product_count",
+           cover."url" AS "cover_url"
+      FROM "shp_collections" c
+      LEFT JOIN LATERAL (
+        SELECT m."url"
+          FROM "shp_product_collections" pc
+          JOIN "shp_products" p ON p."id" = pc."product_id"
+          JOIN "shp_product_media" m ON m."product_id" = p."id" AND m."type" = 'IMAGE'
+         WHERE pc."collection_id" = c."id" AND p."status" = 'ACTIVE' AND p."catalogue_hidden" = false
+         ORDER BY pc."position" ASC, m."is_primary" DESC, m."position" ASC
+         LIMIT 1
+      ) cover ON true
+     ORDER BY c."position" ASC, c."name" ASC
+  `
+  return rows
+    .map((r) => ({
+      id: r.id as string,
+      name: r.name as string,
+      slug: r.slug as string,
+      description: (r.description as string | null) ?? null,
+      productCount: Number(r.product_count ?? 0),
+      coverUrl: (r.cover_url as string | null) ?? null,
+    }))
+    .filter((c) => c.productCount > 0)
+}
+
 // Manages membership from the collection side (product order in this one
 // collection) - unlike setProductCollections, this never touches a product's
 // membership in any *other* collection.
