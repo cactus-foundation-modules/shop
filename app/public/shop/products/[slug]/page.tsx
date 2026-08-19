@@ -2,16 +2,25 @@ import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
+import type { Metadata } from 'next'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getSiteUrlOrNull } from '@/lib/config/env'
 import { getProductBySlug } from '@/modules/shop/lib/db/products'
+import { getProductMedia } from '@/modules/shop/lib/db'
 import { resolveAliasedProduct } from '@/modules/shop/lib/product-page-resolver'
+import { resolveProductSocialImage } from '@/modules/shop/lib/product-social-image'
+import { rememberProductPageSearchParams, type ProductPageSearchParams } from '@/modules/shop/lib/product-page-params'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner, ShopStockHiddenBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { getProductPageStockGate } from '@/modules/shop/lib/stock-visibility'
 import { injectProductContext } from '@/modules/shop/lib/inject-product-context'
-import type { PuckData } from '@/modules/shop/lib/types'
+import type { PuckData, ShpProduct } from '@/modules/shop/lib/types'
+
+type Props = {
+  params: Promise<{ slug: string }>
+  searchParams?: Promise<ProductPageSearchParams>
+}
 
 // generateMetadata and the render below both need the same row. Behind React
 // cache() that is one query per request instead of two. Wrapped here rather
@@ -19,26 +28,68 @@ import type { PuckData } from '@/modules/shop/lib/types'
 // written, and a request-scoped memo would hand them the pre-write row.
 const getProduct = cache(getProductBySlug)
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+// The social preview block (og:image and friends) for a product page. The
+// image is whatever the page itself leads with: a companion module's answer
+// for this request's configuration first (a variation deep link, or option
+// choices a shared URL carries - see lib/product-social-image.ts), else the
+// product's own first photograph. Relative media URLs are made absolute where
+// the site knows its own address - scrapers do not resolve relative paths.
+async function socialMetadata(product: ShpProduct, title: string, description: string | undefined, requestSlug: string, searchParams: ProductPageSearchParams): Promise<Metadata> {
+  let image = await resolveProductSocialImage(product)
+  if (!image) {
+    const media = await getProductMedia(product.id)
+    image = media.find((m) => m.type !== 'VIDEO_URL')?.url ?? null
+  }
+  const siteUrl = getSiteUrlOrNull()
+  if (image && image.startsWith('/') && siteUrl) image = `${siteUrl}${image}`
+  // og:url keeps the query string: the whole point of a shared configured link
+  // is that the configuration travels with it.
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (typeof value === 'string') query.append(key, value)
+    else if (Array.isArray(value)) for (const v of value) query.append(key, v)
+  }
+  const qs = query.toString()
+  const pageUrl = siteUrl ? `${siteUrl}/shop/products/${encodeURIComponent(requestSlug)}${qs ? `?${qs}` : ''}` : undefined
+  return {
+    openGraph: {
+      title,
+      description,
+      type: 'website',
+      ...(pageUrl ? { url: pageUrl } : {}),
+      ...(image ? { images: [{ url: image, alt: product.name }] } : {}),
+    },
+    twitter: { card: 'summary_large_image' },
+  }
+}
+
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { slug } = await params
   // A closed shop must not publish its product names either, so the title is
   // withheld from anyone the page itself would turn away.
   if ((await getShopGate()).blocked) return {}
+  // Park the query string for companion modules before anything resolves: the
+  // social image below depends on the selection a shared link carries.
+  const sp = (await searchParams) ?? {}
+  rememberProductPageSearchParams(sp)
   const found = await getProduct(slug)
   // Mirrors the page's visibility gate below. Next currently discards this
   // metadata once the page calls notFound(), but only while no
   // global-not-found convention exists - adding one flips metadata resolution
   // back to the page and would publish a hidden product's name.
-  const siteUrl = getSiteUrlOrNull()
   if (found && found.status === 'ACTIVE' && !found.catalogueHidden) {
     if ((await getProductPageStockGate(found.id)).notFound) return {}
+    const title = found.metaTitle || found.name
+    const description = found.metaDescription || found.shortDescription || undefined
+    const siteUrl = getSiteUrlOrNull()
     return {
-      title: found.metaTitle || found.name,
-      description: found.metaDescription || found.shortDescription || undefined,
+      title,
+      description,
       // Self-canonical: this URL is the product's one true address, so shared
       // links carrying option choices in the query string never register with
       // search engines as duplicate pages.
       ...(siteUrl ? { alternates: { canonical: `${siteUrl}/shop/products/${found.slug}` } } : {}),
+      ...(await socialMetadata(found, title, description, slug, sp)),
     }
   }
   // A slug shop won't show on its own may still be a variant's deep link. If a
@@ -48,19 +99,29 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const parent = await resolveAliasedProduct(slug, found)
   if (!parent) return {}
   if ((await getProductPageStockGate(parent.id)).notFound) return {}
+  const title = found?.name || parent.metaTitle || parent.name
+  const description = parent.metaDescription || parent.shortDescription || undefined
+  const siteUrl = getSiteUrlOrNull()
   return {
-    title: found?.name || parent.metaTitle || parent.name,
-    description: parent.metaDescription || parent.shortDescription || undefined,
+    title,
+    description,
     // A variation's own link renders the parent's page, so the parent's URL is
     // the canonical one. Without this, every variation deep link (the cart's,
     // and the Google Shopping feed's) reads to a crawler as a duplicate of the
     // parent page under a different address.
     ...(siteUrl ? { alternates: { canonical: `${siteUrl}/shop/products/${parent.slug}` } } : {}),
+    // The social image resolves against the parent - the page that renders -
+    // with the deep link's combination already recorded by the resolver above,
+    // so the preview shows the variation the link names.
+    ...(await socialMetadata(parent, title, description, slug, sp)),
   }
 }
 
-export default async function ShopProductPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ShopProductPage({ params, searchParams }: Props) {
   const { slug } = await params
+  // Same parking as generateMetadata: the layout's blocks (and companion
+  // modules behind them) read the shared link's selection while they render.
+  rememberProductPageSearchParams((await searchParams) ?? {})
   const gate = await getShopGate()
   if (gate.blocked) return <ShopClosedNotice message={gate.message} />
 
