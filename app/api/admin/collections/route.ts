@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
-import { listCollections, createCollection } from '@/modules/shop/lib/db'
+import { listCollections, createCollection, getCollectionProductCounts, getCollectionPreviewImages } from '@/modules/shop/lib/db'
 import { slugify, ensureUniqueCollectionSlug } from '@/modules/shop/lib/slug'
 
 export async function GET() {
   const gate = await requireShopUser('shop.products', { allowAccess: true })
   if (gate.error) return gate.error
-  const collections = await listCollections()
-  return NextResponse.json({ collections })
+  // The counts ride along with the list so the admin screen can print how many
+  // products each collection holds without a query per row - same shape the
+  // categories list route returns.
+  const [collections, productCounts, previewImages] = await Promise.all([
+    listCollections(), getCollectionProductCounts(), getCollectionPreviewImages(),
+  ])
+  return NextResponse.json({ collections, productCounts, previewImages })
 }
 
 const Body = z.object({ name: z.string().min(1), description: z.string().nullable().optional(), imageId: z.string().nullable().optional() })

@@ -485,3 +485,145 @@ export async function setCollectionProducts(collectionId: string, productIds: st
     `),
   ])
 }
+
+// How many products sit in each collection, keyed by collection id. Mirrors
+// getCategoryProductCounts - one grouped read for the whole admin list rather
+// than a count query per row.
+export async function getCollectionProductCounts(): Promise<Record<string, number>> {
+  const rows = await prisma.$queryRaw<{ collection_id: string; count: bigint }[]>`
+    SELECT "collection_id", COUNT(*)::bigint AS count
+    FROM "shp_product_collections"
+    GROUP BY "collection_id"
+  `
+  const counts: Record<string, number> = {}
+  for (const r of rows) counts[r.collection_id] = Number(r.count)
+  return counts
+}
+
+// Position is written as the array index, the way reorderCategories and
+// reorderTags do it. Collections list in this order everywhere (listCollections
+// orders by position, then name), so this is what the admin's drag handles and
+// up/down arrows persist.
+export async function reorderCollections(orderedIds: string[]): Promise<void> {
+  if (orderedIds.length === 0) return
+  await prisma.$transaction(
+    orderedIds.map((id, i) => prisma.$executeRaw`
+      UPDATE "shp_collections" SET "position" = ${i}, "updated_at" = CURRENT_TIMESTAMP WHERE "id" = ${id}
+    `)
+  )
+}
+
+/** One row of a collection's product list, as the admin's Products panel needs it. */
+export type CollectionProductRow = {
+  id: string
+  name: string
+  slug: string
+  status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
+  position: number
+  imageUrl: string | null
+}
+
+// The products filed in one collection, in the order the collection lists them.
+// The picture comes from the same primary-image rule getPrimaryProductImages
+// uses, inlined as a lateral sub-select so the whole panel is one query.
+export async function listCollectionProducts(collectionId: string): Promise<CollectionProductRow[]> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT
+      p."id", p."name", p."slug", p."status", pc."position",
+      (
+        SELECT m."url" FROM "shp_product_media" m
+        WHERE m."product_id" = p."id" AND m."type" = 'IMAGE'
+        ORDER BY m."is_primary" DESC, m."position" ASC
+        LIMIT 1
+      ) AS image_url
+    FROM "shp_product_collections" pc
+    JOIN "shp_products" p ON p."id" = pc."product_id"
+    WHERE pc."collection_id" = ${collectionId}
+    ORDER BY pc."position" ASC, p."name" ASC
+  `
+  return rows.map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    slug: r.slug as string,
+    status: r.status as 'DRAFT' | 'ACTIVE' | 'ARCHIVED',
+    position: r.position as number,
+    imageUrl: (r.image_url as string | null) ?? null,
+  }))
+}
+
+// Adds products to the end of a collection, leaving everything already in it
+// exactly where it was. setCollectionProducts replaces the whole membership,
+// which is right for a reorder and wrong for an "add these" - hence both.
+export async function addProductsToCollection(collectionId: string, productIds: string[]): Promise<void> {
+  if (productIds.length === 0) return
+  const rows = await prisma.$queryRaw<{ next: number }[]>`
+    SELECT COALESCE(MAX("position"), -1) + 1 AS next
+    FROM "shp_product_collections" WHERE "collection_id" = ${collectionId}
+  `
+  const start = Number(rows[0]?.next ?? 0)
+  await prisma.$transaction(
+    productIds.map((productId, i) => prisma.$executeRaw`
+      INSERT INTO "shp_product_collections" ("product_id", "collection_id", "position")
+      VALUES (${productId}, ${collectionId}, ${start + i})
+      ON CONFLICT DO NOTHING
+    `)
+  )
+}
+
+// Copies a collection - its content, its SEO and its product list, in order -
+// into a fresh one. The caller supplies the new name and slug so uniqueness is
+// settled before anything is written.
+export async function duplicateCollection(
+  sourceId: string,
+  next: { name: string; slug: string }
+): Promise<{ id: string } | null> {
+  const source = await getCollectionById(sourceId)
+  if (!source) return null
+  const created = await prisma.$queryRaw<{ id: string }[]>`
+    INSERT INTO "shp_collections" ("name", "slug", "description", "image_id", "position", "meta_title", "meta_description", "og_image_id")
+    VALUES (
+      ${next.name}, ${next.slug}, ${source.description}, ${source.imageId},
+      ${source.position}, ${source.metaTitle}, ${source.metaDescription}, ${source.ogImageId}
+    )
+    RETURNING "id"
+  `
+  const row = created[0]
+  if (!row) return null
+  await prisma.$executeRaw`
+    INSERT INTO "shp_product_collections" ("product_id", "collection_id", "position")
+    SELECT "product_id", ${row.id}, "position"
+    FROM "shp_product_collections" WHERE "collection_id" = ${sourceId}
+    ON CONFLICT DO NOTHING
+  `
+  return { id: row.id }
+}
+
+// Up to four product pictures per collection, in the order the collection lists
+// them, so the admin list can show what is actually in each one rather than a
+// row of identical grey boxes. Products with no picture are dropped before the
+// ranking, otherwise a collection whose first four happen to be image-less
+// would come back empty-handed despite being full.
+export async function getCollectionPreviewImages(): Promise<Record<string, string[]>> {
+  const rows = await prisma.$queryRaw<{ collection_id: string; url: string }[]>`
+    WITH firsts AS (
+      SELECT
+        pc."collection_id",
+        pc."position",
+        (
+          SELECT m."url" FROM "shp_product_media" m
+          WHERE m."product_id" = pc."product_id" AND m."type" = 'IMAGE'
+          ORDER BY m."is_primary" DESC, m."position" ASC
+          LIMIT 1
+        ) AS url
+      FROM "shp_product_collections" pc
+    ),
+    ranked AS (
+      SELECT "collection_id", url, ROW_NUMBER() OVER (PARTITION BY "collection_id" ORDER BY "position" ASC) AS rn
+      FROM firsts WHERE url IS NOT NULL
+    )
+    SELECT "collection_id", url FROM ranked WHERE rn <= 4
+  `
+  const out: Record<string, string[]> = {}
+  for (const r of rows) (out[r.collection_id] ??= []).push(r.url)
+  return out
+}
