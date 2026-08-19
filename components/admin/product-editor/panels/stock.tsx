@@ -37,13 +37,13 @@ export function StockPanel({ state, setField, errors, weightBasedShippingEnabled
         )}
       </Section>
 
-      <Section title="How many at a time" blurb="For anything you will not sell one of - a box of fifty, or a screen that only ships in pairs.">
+      <Section title="How many at a time" blurb="For anything you will not sell one of - a box of fifty, or a screen that only ships in pairs. On a product with options the count is across the whole product, so four of one colour and four in a mix both count as four.">
         <Grid cols={3}>
           <Field
             label="Smallest order"
             optional
             error={errors.minOrderQuantity}
-            hint="Shoppers cannot buy fewer than this. Leave empty to sell them one at a time."
+            hint="A basket holding fewer than this is held back at the checkout. Leave empty to sell them one at a time."
           >
             {(p) => <Control {...p} inputMode="numeric" value={f.minOrderQuantity} onChange={(e) => setField('minOrderQuantity', e.target.value)} placeholder="1" />}
           </Field>

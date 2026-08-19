@@ -120,8 +120,17 @@ export async function POST(request: NextRequest) {
     : null
 
   const resolvedLines = await resolveCartLines(data.lines)
-  if (resolvedLines.some((l) => !l.available) || resolvedLines.length === 0) {
-    return NextResponse.json({ error: 'Some items in your basket are no longer available.' }, { status: 409 })
+  const blocked = resolvedLines.filter((l) => !l.available)
+  if (blocked.length > 0 || resolvedLines.length === 0) {
+    // Name the reason where the lines agree on one. "Some items in your basket
+    // are no longer available" is true of an out-of-stock line and useless for a
+    // basket held back by a minimum order - the shopper is not being told what
+    // to do about it, and every one of those is a support call. Several distinct
+    // reasons fall back to the general wording rather than picking a favourite.
+    const reasons = [...new Set(blocked.map((l) => l.availabilityReason).filter(Boolean))]
+    return NextResponse.json({
+      error: reasons.length === 1 ? reasons[0] : 'Some items in your basket are no longer available.',
+    }, { status: 409 })
   }
 
   const zone = await findShippingZoneForPostcode(data.shippingAddress.postcode)

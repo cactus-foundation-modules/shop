@@ -35,9 +35,11 @@ type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
   lineSubtotal: number; available: boolean; availabilityReason: string | null
   isPreOrder: boolean; imageUrl: string | null
-  // The fewest of this line the shop sells in one go. Absent on a response from
-  // a shop that predates it, which reads as 1 - no minimum.
+  // The minimum this line answers to, and whether it is pooled across the whole
+  // listing. Absent on a response from a shop that predates them, which reads as
+  // no minimum at all.
   minOrderQuantity?: number
+  minOrderPooled?: boolean
   lineId?: string | null; lineMeta?: LineMeta | null
   control?: CartLineControl | null
   displayTitle?: CartLineTitle | null
@@ -767,7 +769,10 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
     if (quantityControl === 'readonly') {
       return <span className="scl-qty" style={{ minWidth: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>× {line.quantity}</span>
     }
-    const min = minOrderQuantity(line.minOrderQuantity)
+    // A pooled line goes down to 1: its minimum is the listing's, and the
+    // basket makes it up out of whichever combinations the shopper picked. An
+    // unpooled one stops at its own minimum, which nothing else can satisfy.
+    const min = line.minOrderPooled ? 1 : minOrderQuantity(line.minOrderQuantity)
     if (quantityControl === 'stepper') {
       return (
         <QuantityStepper

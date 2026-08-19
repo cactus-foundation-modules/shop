@@ -8,7 +8,7 @@ import { countPriorCouponOrdersByEmail } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { effectivePrice } from '@/modules/shop/lib/pricing'
 import { getCartLineResolvers, getCartLineResolverPrefetchers, resolveLineMeta, type CartLineCharge, type CartLineControl, type CartLineGroup, type CartLineTitle } from '@/modules/shop/lib/line-meta'
-import { minOrderQuantity } from '@/modules/shop/lib/min-order'
+import { minOrderQuantity, minOrderShortfallReason } from '@/modules/shop/lib/min-order'
 import type { CartLine } from '@/modules/shop/components/public/cart'
 import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 
@@ -27,11 +27,16 @@ export type ResolvedCartLine = {
   available: boolean
   availabilityReason?: string
   isPreOrder: boolean
-  // The fewest of this line the shop will sell in one go - 1 on all but a
-  // handful of products. Carried out to the basket so its stepper can stop at
-  // the right floor rather than letting a shopper walk a line down to a
-  // quantity the checkout will then refuse.
+  // The fewest the shop will sell in one go, for the POOL this line belongs to -
+  // 1 on all but a handful of products. Carried out to the basket so it can say
+  // what the rule is, and so an unpooled line's stepper can stop at the right
+  // floor rather than walking down to a quantity the checkout will then refuse.
   minOrderQuantity: number
+  // Whether that minimum is counted across several lines (a listing's variations)
+  // rather than against this line alone. A pooled line's own stepper must go
+  // down to 1 - four chairs in four colours are still four chairs - so this is
+  // what tells the basket which floor to use.
+  minOrderPooled: boolean
   // Personalisation carried from the cart line: the stable client key and the
   // normalised, server-priced meta (null for a plain line). unitPrice already
   // includes any personalisation price adjustment.
@@ -108,7 +113,7 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
   // count and made a full cart take seconds. Order is preserved (Promise.all
   // keeps input order); a skipped line returns null and is filtered out, exactly
   // as the old `continue` dropped it.
-  const resolved = await Promise.all(cart.map(async (line): Promise<ResolvedCartLine | null> => {
+  const resolved = await Promise.all(cart.map(async (line): Promise<PoolingLine | null> => {
     const product = products.get(line.productId)
     if (!product || product.status !== 'ACTIVE') return null
 
@@ -137,18 +142,6 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       availabilityReason = 'Pre-order is no longer available'
     }
 
-    // Minimum order quantity. Failing the line rather than quietly rounding the
-    // quantity up: the basket's own steppers already stop at the floor, so a
-    // line that arrives under it came from a stale basket or a hand-edited
-    // request, and neither is a good reason to add money to someone's order
-    // without saying so. The reason names the figure, which is the one thing
-    // the shopper needs in order to put it right.
-    const minQuantity = minOrderQuantity(product.minOrderQuantity)
-    if (line.quantity < minQuantity) {
-      available = false
-      availabilityReason = `Sold in ${minQuantity}s - please order at least ${minQuantity}`
-    }
-
     // Personalisation add-ons: a registered resolver validates the shopper's
     // inputs and returns a server-authoritative price adjustment. An invalid
     // input fails the line just like an out-of-stock one. The client never
@@ -158,6 +151,21 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       available = false
       availabilityReason = metaResolution.reason ?? 'Please check the options on this item'
     }
+
+    // The minimum this line answers to: its own product row, or the resolver's
+    // figure where it knows better - a variation child's row is very nearly
+    // always blank, because the minimum lives on the parent listing and only the
+    // resolver can see it. The larger of the two wins, so neither source can
+    // quietly talk the other down.
+    //
+    // NOT enforced here: a minimum belongs to a listing, not to a basket line,
+    // so four different colours of one chair satisfy a minimum of four between
+    // them. The check is a second pass over the whole resolved basket, below,
+    // once every line's pool is known.
+    const minQuantity = Math.max(
+      minOrderQuantity(product.minOrderQuantity),
+      minOrderQuantity(metaResolution.minOrder?.quantity),
+    )
 
     // effectivePrice, not product.price: a product on offer is charged its sale
     // price. Resolved here rather than at display time so the figure charged is
@@ -172,6 +180,10 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       availabilityReason,
       isPreOrder: product.isPreOrder,
       minOrderQuantity: minQuantity,
+      // Filled in by the pooling pass below - a resolver's key decides it, and
+      // the requirement itself can rise there too.
+      minOrderPooled: false,
+      minOrderGroupKey: metaResolution.minOrder?.key ?? null,
       lineId: line.lineId,
       lineMeta: metaResolution.persistMeta,
       control: metaResolution.control ?? null,
@@ -185,7 +197,63 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       group: metaResolution.group ?? null,
     }
   }))
-  return resolved.filter((line): line is ResolvedCartLine => line !== null)
+  return applyMinimumOrderQuantities(resolved.filter((line): line is PoolingLine => line !== null))
+}
+
+// A resolved line while the pooling key is still attached to it. The key never
+// leaves this file (bar the test): shop groups by it and forgets it, so nothing
+// downstream can start reasoning about what it means.
+export type PoolingLine = ResolvedCartLine & { minOrderGroupKey: string | null }
+
+// The minimum-order check, over the whole basket rather than line by line.
+//
+// A minimum is a rule about a LISTING: "we do not sell fewer than four of these
+// chairs". A shopper taking one of each of four colours has met it, and the
+// first cut of this - which failed any line under its own minimum - told them
+// they had to take four of one colour, which is not the rule anyone meant.
+//
+// So lines pool under the key a cart-line resolver gave them (a variation child
+// returns its parent listing's id) and stand alone otherwise, which leaves an
+// ordinary product behaving exactly as it did: its pool is itself. The pool's
+// requirement is the LARGEST minimum among its lines, so a single combination
+// sold only in tens raises the bar for the listing rather than being quietly
+// rounded down to the parent's four.
+//
+// A short pool fails every line in it, so the basket says so against each line
+// the shopper would have to touch, and the checkout's existing "some items are
+// no longer available" gate stops the order. A line already failing for another
+// reason (out of stock, a bad add-on) keeps the reason it had - being told about
+// a minimum is no help when the thing cannot be bought at all.
+export function applyMinimumOrderQuantities(lines: PoolingLine[]): ResolvedCartLine[] {
+  const pools = new Map<string, { requirement: number; total: number; pooled: boolean }>()
+  for (const line of lines) {
+    const key = line.minOrderGroupKey ?? `product:${line.product.id}`
+    const pool = pools.get(key)
+    if (pool) {
+      pool.requirement = Math.max(pool.requirement, line.minOrderQuantity)
+      pool.total += line.quantity
+    } else {
+      pools.set(key, {
+        requirement: line.minOrderQuantity,
+        total: line.quantity,
+        pooled: line.minOrderGroupKey != null,
+      })
+    }
+  }
+
+  return lines.map(({ minOrderGroupKey, ...line }) => {
+    const pool = pools.get(minOrderGroupKey ?? `product:${line.product.id}`)!
+    const out: ResolvedCartLine = {
+      ...line,
+      minOrderQuantity: pool.requirement,
+      minOrderPooled: pool.pooled,
+    }
+    if (out.available && pool.total < pool.requirement) {
+      out.available = false
+      out.availabilityReason = minOrderShortfallReason(pool.requirement, pool.requirement - pool.total, pool.pooled)
+    }
+    return out
+  })
 }
 
 export type DiscountResolution = {

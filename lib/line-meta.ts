@@ -139,6 +139,30 @@ export type CartLineResolution = {
   // long after the resolvers ran (the confirmation page, an email, a quote's
   // document) can keep the group together without re-resolving anything.
   group?: CartLineGroup | null
+  // Minimum-order facts only the resolver can know (see CartLineMinOrder).
+  // Absent/null leaves the line standing on its own product row, exactly as an
+  // ordinary product does.
+  minOrder?: CartLineMinOrder | null
+}
+
+// What a resolver can tell shop about a line's minimum order, where the product
+// row alone would give the wrong answer. Both halves were learned the hard way.
+//
+// `key` is the identity the minimum POOLS across, when this line is one of
+// several ways of buying the same thing. A variation child returns its parent
+// listing's id, so four different colours of one chair satisfy that chair's
+// minimum of four between them - a minimum belongs to the listing, not to the
+// colour. Shop never reads the key, only groups by it.
+//
+// `quantity` is the minimum that line actually answers to, and it exists because
+// a variation child's own `min_order_quantity` is very nearly always NULL: the
+// figure lives on the PARENT and only the resolver can see it. Shop reading the
+// child row alone resolved every variation to "no minimum", so a basket taken
+// down to one sailed through the checkout while the product page was still
+// insisting on four. Shop takes the larger of this and the line's own row.
+export type CartLineMinOrder = {
+  key: string
+  quantity?: number | null
 }
 
 export type CartLineResolver = (
@@ -249,6 +273,14 @@ export async function resolveLineMeta(
   let control: CartLineControl | null = null
   let displayTitle: CartLineTitle | null = null
   let group: CartLineGroup | null = null
+  // The line's minimum-order facts. The first resolver to name a pool keeps it -
+  // a line is one way of buying one listing - but the strictest QUANTITY wins,
+  // so a second resolver that knows a larger figure can raise the bar and never
+  // lower it. This is deliberately merged rather than passed through: the
+  // resolution returned below is built field by field, and a new field left out
+  // of it is silently dropped, which is exactly how the minimum reached the
+  // checkout as "no minimum" the first time.
+  let minOrder: CartLineMinOrder | null = null
   // Likewise one bucket per line: the first resolver to claim one keeps it (see
   // LineMetaBatch). Two modules bucketing the same line differently is a
   // question shop cannot answer, so it does not try.
@@ -284,6 +316,12 @@ export async function resolveLineMeta(
     if (!displayTitle && res.displayTitle) displayTitle = res.displayTitle
     // And the first group - a line belongs to at most one set at a time.
     if (!group && res.group) group = res.group
+    if (res.minOrder?.key) {
+      if (!minOrder) minOrder = { ...res.minOrder }
+      else if (res.minOrder.quantity != null) {
+        minOrder.quantity = Math.max(minOrder.quantity ?? 1, res.minOrder.quantity)
+      }
+    }
     if (!batch && res.persistMeta?.batch) batch = res.persistMeta.batch
     // A charge only ever names money already counted in priceAdjust, so a
     // negative one would be money invented. Those are dropped rather than
@@ -310,5 +348,6 @@ export async function resolveLineMeta(
     displayTitle,
     charges: charges.length ? charges : null,
     group,
+    minOrder,
   }
 }

@@ -45,8 +45,11 @@ type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
   lineSubtotal: number; available: boolean; availabilityReason: string | null
   isPreOrder: boolean; imageUrl: string | null
-  // The fewest of this line the shop sells in one go; absent reads as 1.
+  // The minimum this line answers to, and whether it is pooled across the whole
+  // listing. Absent on a response from a shop that predates them, which reads as
+  // no minimum at all.
   minOrderQuantity?: number
+  minOrderPooled?: boolean
   lineId?: string | null; lineMeta?: LineMeta | null
   control?: CartLineControl | null
   displayTitle?: CartLineTitle | null
@@ -305,7 +308,7 @@ export function CartDrawerClient({
                   <QuantityStepper
                     value={line.quantity}
                     label={`Quantity for ${title}`}
-                    min={minOrderQuantity(line.minOrderQuantity)}
+                    min={line.minOrderPooled ? 1 : minOrderQuantity(line.minOrderQuantity)}
                     onChange={(next) => setLineQuantity(key, Math.max(0, next))}
                   />
                 </div>

@@ -90,9 +90,12 @@ export async function POST(request: NextRequest) {
       available: line.available,
       availabilityReason: line.availabilityReason ?? null,
       isPreOrder: line.isPreOrder,
-      // The floor the basket's stepper stops at - 1 unless the product (or the
-      // chosen variation's own row) says otherwise.
+      // The minimum this line answers to, and whether it is counted across the
+      // whole listing rather than against this line alone. A pooled line's
+      // stepper floor is 1 (four colours are still four chairs); an unpooled
+      // one stops at the minimum, which it could never satisfy by itself.
       minOrderQuantity: line.minOrderQuantity,
+      minOrderPooled: line.minOrderPooled,
       preOrderDispatchDate: line.product.preOrderDispatchDate,
       imageUrl: primary?.url ?? null,
       // Normalised personalisation for display (null for a plain line).

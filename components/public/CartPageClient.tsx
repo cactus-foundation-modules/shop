@@ -23,8 +23,11 @@ type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
   lineSubtotal: number; available: boolean; availabilityReason: string | null
   isPreOrder: boolean; imageUrl: string | null
-  // The fewest of this line the shop sells in one go; absent reads as 1.
+  // The minimum this line answers to, and whether it is pooled across the whole
+  // listing. Absent on a response from a shop that predates them, which reads as
+  // no minimum at all.
   minOrderQuantity?: number
+  minOrderPooled?: boolean
   lineId?: string | null; lineMeta?: LineMeta | null
   displayTitle?: CartLineTitle | null
 }
@@ -183,7 +186,7 @@ export function CartPageClient() {
             <QuantityStepper
               value={line.quantity}
               label={`Quantity for ${line.displayTitle?.name || line.name}`}
-              min={minOrderQuantity(line.minOrderQuantity)}
+              min={line.minOrderPooled ? 1 : minOrderQuantity(line.minOrderQuantity)}
               onChange={(next) => setLineQuantity(lineKey(line), next)}
             />
             <span className="scl-price" style={{ minWidth: 70, textAlign: 'right' }}>{money(line.lineSubtotal)}</span>

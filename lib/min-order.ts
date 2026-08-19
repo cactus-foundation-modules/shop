@@ -37,11 +37,30 @@ export function applyMinOrderQuantity(quantity: number, min: number): number {
 }
 
 /**
- * How to say it to a shopper. One sentence, no jargon, and the unit word agrees
- * with the number so "sold in 1s" can never appear.
+ * How to say it to a shopper on the product page. One sentence, no jargon, and
+ * the unit word agrees with the number so "sold in 1s" can never appear.
+ *
+ * `pooled` is true where the minimum counts across everything the shopper picks
+ * from one listing - four chairs in four different colours are still four
+ * chairs - which has to be said, or a shopper wanting a mix reads the stepper's
+ * opening figure as "four of THIS one".
  */
-export function minOrderSentence(min: number): string {
-  return `Sold in ${min}s - the smallest order for this is ${min}.`
+export function minOrderSentence(min: number, pooled = false): string {
+  return pooled
+    ? `Sold in ${min}s - order at least ${min} in total, in any mix of options.`
+    : `Sold in ${min}s - the smallest order for this is ${min}.`
+}
+
+/**
+ * Why a basket is being held back: what the minimum is, and how many more are
+ * needed to reach it. Both halves matter - "minimum order 4" alone leaves a
+ * shopper counting their own basket to work out what to do about it.
+ */
+export function minOrderShortfallReason(min: number, shortfall: number, pooled = false): string {
+  const more = `add ${shortfall} more`
+  return pooled
+    ? `Sold in ${min}s - ${more} from this product, in any mix of options`
+    : `Sold in ${min}s - ${more}`
 }
 
 /** The same thing at basket length, where there is room for one line only. */

@@ -31,7 +31,13 @@ export async function POST(request: NextRequest) {
   const resolvedLines = await resolveCartLines(rawLines)
   const unavailable = resolvedLines.filter((l) => !l.available)
   if (unavailable.length > 0) {
-    return NextResponse.json({ error: 'Some items in your basket are no longer available', unavailable: unavailable.map((l) => l.product.slug) }, { status: 409 })
+    // As in payment-intent: a single shared reason is worth far more than the
+    // general wording, since it is the one that tells the shopper what to do.
+    const reasons = [...new Set(unavailable.map((l) => l.availabilityReason).filter(Boolean))]
+    return NextResponse.json({
+      error: reasons.length === 1 ? reasons[0] : 'Some items in your basket are no longer available',
+      unavailable: unavailable.map((l) => l.product.slug),
+    }, { status: 409 })
   }
   if (resolvedLines.length === 0) return NextResponse.json({ error: 'Your basket is empty' }, { status: 400 })
 
