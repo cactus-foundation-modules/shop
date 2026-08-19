@@ -1229,7 +1229,7 @@ const sectionAnchorId = (id: string) => `${SECTION_ID_PREFIX}${id}`
 // what labels. The Tabs block, the Sections block, and the standalone Section
 // links block all build from this, so a link can never point at a section that
 // isn't there. Carved out of the old ShopDetailTabsRsc body unchanged.
-function buildDetailSections(ctx: DetailPartContext, opts?: { specAutoSort?: boolean }): OrderedTab[] {
+function buildDetailSections(ctx: DetailPartContext, opts?: { specAutoSort?: boolean; hideDims?: boolean }): OrderedTab[] {
   const { product, digitalFile, detailTabs, supplierLabel, slot, currencySymbol, layoutBlockTypes, descriptionBody, specOverride } = ctx
 
   const weightStr = product.weight ? `${product.weight}${product.weightUnit ? ` ${product.weightUnit}` : ''}` : null
@@ -1283,7 +1283,11 @@ function buildDetailSections(ctx: DetailPartContext, opts?: { specAutoSort?: boo
     ? <specOverride.Panel payload={specOverride.payload} autoSort={opts?.specAutoSort} />
     : <FactsTable rows={specRows} />
   own.push({ id: 'spec', order: TAB_ORDER.spec, label: 'Specification', content: specContent })
-  if (dimRows.length > 0) {
+  // Dimensions is the one own-section an author can turn off per layout: a
+  // product whose measurements already sit in the spec table (or whose figures
+  // are half-filled) reads better without it. No prop stored means shown, so
+  // every page built before the option is untouched.
+  if (dimRows.length > 0 && !opts?.hideDims) {
     own.push({ id: 'dims', order: TAB_ORDER.dims, label: 'Dimensions', content: <FactsTable rows={dimRows} /> })
   }
   if (digitalFile) {
@@ -1326,7 +1330,7 @@ function buildDetailSections(ctx: DetailPartContext, opts?: { specAutoSort?: boo
 const navClassFor = (align?: string, sticky?: string, divider?: boolean) =>
   `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${sticky === 'yes' ? ' sticky' : ''}${divider ? ' divider' : ''}`
 
-type TabsProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; divider?: string; padTop?: number; padBottom?: number; bgColour?: string; bgOpacity?: number }
+type TabsProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; divider?: string; dimsTab?: string; padTop?: number; padBottom?: number; bgColour?: string; bgOpacity?: number }
 
 // The strip's own vertical padding, adjustable per block. Blank or non-numeric
 // (the clearable field stores undefined for an emptied box) falls back to the
@@ -1391,7 +1395,7 @@ function navBgVars(bgColour: unknown, bgOpacity: unknown): CSSProperties | undef
 // match (span here, <a> there, as the standalone Section links block also does).
 export function ShopDetailTabs(props: TabsProps) {
   const divider = props.divider !== 'no'
-  const labels = ['Description', 'Specification', 'Dimensions']
+  const labels = ['Description', 'Specification', ...(props.dimsTab === 'no' ? [] : ['Dimensions'])]
   // Mirror the storefront island's markup: the nav sits inside a .spd-tab-shell
   // (which carries sticky and, live, the fade/arrow overlay). The editor preview
   // is static, so no overlay renders - the wrapper only keeps the DOM in parity.
@@ -1422,7 +1426,7 @@ export function ShopDetailTabsRsc(props: TabsProps) {
   const ctx = props._ctx
   if (!ctx) return null
   const divider = props.divider !== 'no'
-  const sections = buildDetailSections(ctx)
+  const sections = buildDetailSections(ctx, { hideDims: props.dimsTab === 'no' })
   if (sections.length === 0) return null
 
   // The nav points at the anchors the Product: Sections block renders; content
@@ -1469,6 +1473,14 @@ export const shopDetailTabsPuckComponent = {
       label: 'Divider above',
       options: yesNo,
     },
+    // Drops the Dimensions tab from the strip. Pair it with the same setting on
+    // the Sections block, or the panel stays on the page with nothing linking
+    // to it.
+    dimsTab: {
+      type: 'select' as const,
+      label: 'Show Dimensions tab',
+      options: yesNo,
+    },
     padTop: { type: 'custom' as const, label: 'Padding above tabs (px)', render: ClearableNumberField },
     padBottom: { type: 'custom' as const, label: 'Padding below tabs (px)', render: ClearableNumberField },
     // One field carries both arms: the swatch row sets the light colour and a
@@ -1483,7 +1495,7 @@ export const shopDetailTabsPuckComponent = {
     // Clearing this one genuinely stores nothing and falls back to 100%.
     bgOpacity: { type: 'custom' as const, label: 'Background opacity (%)', render: ClearableNumberField },
   },
-  defaultProps: { align: 'left', sticky: 'no', divider: 'yes', padTop: NAV_PAD_DEFAULT, padBottom: NAV_PAD_DEFAULT, bgColour: '', bgOpacity: BG_OPACITY_DEFAULT },
+  defaultProps: { align: 'left', sticky: 'no', divider: 'yes', dimsTab: 'yes', padTop: NAV_PAD_DEFAULT, padBottom: NAV_PAD_DEFAULT, bgColour: '', bgOpacity: BG_OPACITY_DEFAULT },
   render: ShopDetailTabs,
 }
 export const shopDetailTabsPuckRscComponent = { ...shopDetailTabsPuckComponent, render: ShopDetailTabsRsc }
@@ -1492,11 +1504,11 @@ export const shopDetailTabsPuckRscComponent = { ...shopDetailTabsPuckComponent, 
 // Sections (stacked / accordion - no tab bar, own "Section display" setting)
 // ---------------------------------------------------------------------------
 
-type SectionsProps = { _ctx?: DetailPartContext; display?: string; divider?: string; specSort?: string }
+type SectionsProps = { _ctx?: DetailPartContext; display?: string; divider?: string; dimsTab?: string; specSort?: string }
 
 export function ShopDetailSections(props: SectionsProps) {
   const divider = props.divider !== 'no'
-  const labels = ['Description', 'Specification', 'Dimensions']
+  const labels = ['Description', 'Specification', ...(props.dimsTab === 'no' ? [] : ['Dimensions'])]
   return (
     <>
       <Style css={tabsCss(DEFAULT_BREAKPOINTS)} />
@@ -1516,7 +1528,7 @@ export function ShopDetailSectionsRsc(props: SectionsProps) {
   if (!ctx) return null
   const display = props.display === 'accordion' ? 'accordion' : 'stacked'
   const divider = props.divider !== 'no'
-  const sections = buildDetailSections(ctx, { specAutoSort: props.specSort === 'yes' })
+  const sections = buildDetailSections(ctx, { specAutoSort: props.specSort === 'yes', hideDims: props.dimsTab === 'no' })
   if (sections.length === 0) return null
 
   // Stacked and accordion are pure server markup - no tab state to hold, so no
@@ -1560,6 +1572,13 @@ export const shopDetailSectionsPuckComponent = {
       label: 'Divider above',
       options: yesNo,
     },
+    // The Tabs / Section links strip carries the same setting - turn it off in
+    // both places to take Dimensions off the page entirely.
+    dimsTab: {
+      type: 'select' as const,
+      label: 'Show Dimensions section',
+      options: yesNo,
+    },
     // A hint carried through the product-detail-spec seam (lib/detail-spec.ts):
     // a module that fills the Specification body with headed groups may re-order
     // them for the tightest column fill instead of the author's order. Does
@@ -1570,7 +1589,7 @@ export const shopDetailSectionsPuckComponent = {
       options: yesNo,
     },
   },
-  defaultProps: { display: 'stacked', divider: 'yes', specSort: 'no' },
+  defaultProps: { display: 'stacked', divider: 'yes', dimsTab: 'yes', specSort: 'no' },
   render: ShopDetailSections,
 }
 export const shopDetailSectionsPuckRscComponent = { ...shopDetailSectionsPuckComponent, render: ShopDetailSectionsRsc }
@@ -1582,10 +1601,10 @@ export const shopDetailSectionsPuckRscComponent = { ...shopDetailSectionsPuckCom
 // stay below. It jumps to the anchors the Sections block renders in stacked or
 // accordion mode; pair it with that block (the Tabs block keeps its own nav).
 
-type SectionNavProps = { _ctx?: DetailPartContext; align?: string; sticky?: string }
+type SectionNavProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; dimsTab?: string }
 
 export function ShopDetailSectionNav(props: SectionNavProps) {
-  const labels = ['Description', 'Specification', 'Dimensions']
+  const labels = ['Description', 'Specification', ...(props.dimsTab === 'no' ? [] : ['Dimensions'])]
   return (
     <>
       <Style css={tabsCss(DEFAULT_BREAKPOINTS)} />
@@ -1608,7 +1627,7 @@ export function ShopDetailSectionNav(props: SectionNavProps) {
 export function ShopDetailSectionNavRsc(props: SectionNavProps) {
   const ctx = props._ctx
   if (!ctx) return null
-  const sections = buildDetailSections(ctx)
+  const sections = buildDetailSections(ctx, { hideDims: props.dimsTab === 'no' })
   if (sections.length === 0) return null
   return (
     <>
@@ -1648,8 +1667,15 @@ export const shopDetailSectionNavPuckComponent = {
       label: 'Sticky',
       options: yesNo,
     },
+    // Same setting as the Tabs and Sections blocks, so a hidden section can't
+    // be left with a link pointing at it.
+    dimsTab: {
+      type: 'select' as const,
+      label: 'Show Dimensions link',
+      options: yesNo,
+    },
   },
-  defaultProps: { align: 'left', sticky: 'no' },
+  defaultProps: { align: 'left', sticky: 'no', dimsTab: 'yes' },
   render: ShopDetailSectionNav,
 }
 export const shopDetailSectionNavPuckRscComponent = { ...shopDetailSectionNavPuckComponent, render: ShopDetailSectionNavRsc }
