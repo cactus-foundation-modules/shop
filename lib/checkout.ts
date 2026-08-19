@@ -256,6 +256,33 @@ export function applyMinimumOrderQuantities(lines: PoolingLine[]): ResolvedCartL
   })
 }
 
+/**
+ * One sentence for a basket the checkout has refused, for the places that have
+ * no room to show a reason per line - the two 409s, and the Order review block
+ * that replaces itself with whatever they say.
+ *
+ * "Some items in your basket are no longer available" was all those places said,
+ * which names neither the problem nor the product, and on a minimum-order block
+ * leaves a shopper staring at a sentence about a chair with no idea WHICH chair.
+ * So where the blocked lines agree on one reason it is used, and where they also
+ * agree on one product that product is named. Lines disagreeing about either
+ * fall back to the general wording rather than picking a favourite.
+ *
+ * The line's own `availabilityReason` is deliberately left saying "this": it is
+ * rendered directly beneath the line it belongs to, where naming the product
+ * again would only be noise.
+ */
+export function blockedLinesMessage(blocked: ResolvedCartLine[]): string {
+  const general = 'Some items in your basket are no longer available.'
+  const reasons = [...new Set(blocked.map((l) => l.availabilityReason).filter((r): r is string => !!r))]
+  if (reasons.length !== 1) return general
+  // The retitle where a resolver gave one (a variation's parent listing), so the
+  // shopper is told about "the ISO Stacking Chair" rather than about one hidden
+  // child row called "ISO Stacking Chair - Teal / Matching back / Black".
+  const names = [...new Set(blocked.map((l) => l.displayTitle?.name || l.product.name))]
+  return names.length === 1 ? `${names[0]}: ${reasons[0]}` : reasons[0]!
+}
+
 export type DiscountResolution = {
   discountAmount: number
   freeShipping: boolean

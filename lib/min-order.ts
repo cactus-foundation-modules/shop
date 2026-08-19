@@ -37,8 +37,13 @@ export function applyMinOrderQuantity(quantity: number, min: number): number {
 }
 
 /**
- * How to say it to a shopper on the product page. One sentence, no jargon, and
- * the unit word agrees with the number so "sold in 1s" can never appear.
+ * How to say it to a shopper on the product page.
+ *
+ * The wording deliberately never says "sold in 4s". That was the first attempt,
+ * and it states a rule the shop does not have: it reads as "in multiples of
+ * four", so a shopper wanting five believes they have to take eight. A minimum
+ * is a floor and nothing more - five, six and seven are all perfectly fine - so
+ * the sentence says "smallest order" and stops there.
  *
  * `pooled` is true where the minimum counts across everything the shopper picks
  * from one listing - four chairs in four different colours are still four
@@ -47,20 +52,21 @@ export function applyMinOrderQuantity(quantity: number, min: number): number {
  */
 export function minOrderSentence(min: number, pooled = false): string {
   return pooled
-    ? `Sold in ${min}s - order at least ${min} in total, in any mix of options.`
-    : `Sold in ${min}s - the smallest order for this is ${min}.`
+    ? `The smallest order for this is ${min}, in any mix of options.`
+    : `The smallest order for this is ${min}.`
 }
 
 /**
  * Why a basket is being held back: what the minimum is, and how many more are
  * needed to reach it. Both halves matter - "minimum order 4" alone leaves a
- * shopper counting their own basket to work out what to do about it.
+ * shopper counting their own basket to work out what to do about it - and
+ * neither half may imply multiples, for the reason above.
  */
 export function minOrderShortfallReason(min: number, shortfall: number, pooled = false): string {
   const more = `add ${shortfall} more`
   return pooled
-    ? `Sold in ${min}s - ${more} from this product, in any mix of options`
-    : `Sold in ${min}s - ${more}`
+    ? `The smallest order for this is ${min} - ${more}, in any mix of options`
+    : `The smallest order for this is ${min} - ${more}`
 }
 
 /** The same thing at basket length, where there is room for one line only. */

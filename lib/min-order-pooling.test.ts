@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyMinimumOrderQuantities, type PoolingLine } from '@/modules/shop/lib/checkout'
+import { applyMinimumOrderQuantities, blockedLinesMessage, type PoolingLine } from '@/modules/shop/lib/checkout'
 import { resolveLineMeta } from '@/modules/shop/lib/line-meta'
 import { resolveMinOrderQuantity } from '@/modules/shop/lib/min-order'
 
@@ -55,13 +55,13 @@ describe('applyMinimumOrderQuantities', () => {
       line({ productId: 'black', quantity: 1, min: 4, group: 'chair' }),
     ])
     expect(out.map((l) => l.available)).toEqual([false, false])
-    expect(out[0]!.availabilityReason).toBe('Sold in 4s - add 1 more from this product, in any mix of options')
+    expect(out[0]!.availabilityReason).toBe('The smallest order for this is 4 - add 1 more, in any mix of options')
   })
 
   it('keeps an ordinary product answering for its own quantity', () => {
     const out = applyMinimumOrderQuantities([line({ productId: 'p1', quantity: 3, min: 4 })])
     expect(out[0]!.available).toBe(false)
-    expect(out[0]!.availabilityReason).toBe('Sold in 4s - add 1 more')
+    expect(out[0]!.availabilityReason).toBe('The smallest order for this is 4 - add 1 more')
     expect(out[0]!.minOrderPooled).toBe(false)
   })
 
@@ -88,7 +88,7 @@ describe('applyMinimumOrderQuantities', () => {
     ])
     expect(out.map((l) => l.available)).toEqual([false, false])
     expect(out[0]!.minOrderQuantity).toBe(10)
-    expect(out[0]!.availabilityReason).toBe('Sold in 10s - add 4 more from this product, in any mix of options')
+    expect(out[0]!.availabilityReason).toBe('The smallest order for this is 10 - add 4 more, in any mix of options')
   })
 
   it('leaves a line that already failed for another reason saying why', () => {
@@ -154,5 +154,41 @@ describe('resolveMinOrderQuantity', () => {
     expect(resolveMinOrderQuantity(1, null)).toBe(1)
     expect(resolveMinOrderQuantity(0, null)).toBe(1)
     expect(resolveMinOrderQuantity(null, null)).toBe(1)
+  })
+})
+
+// What a shopper is told when the checkout refuses the basket. The Order review
+// block replaces itself with this one string, so it has to name the product as
+// well as the problem - "the smallest order for this is 4" on its own, with no
+// "this" on screen, is what sent Chris back to ask which product it meant.
+describe('blockedLinesMessage', () => {
+  const blocked = (name: string, reason: string, displayName?: string) => ({
+    product: { id: name, name },
+    availabilityReason: reason,
+    displayTitle: displayName ? { name: displayName } : null,
+  } as unknown as PoolingLine)
+
+  it('names the product when every blocked line is the same one', () => {
+    expect(blockedLinesMessage([
+      blocked('ISO Chair - Teal', 'The smallest order for this is 4 - add 1 more, in any mix of options', 'ISO Stacking Chair'),
+      blocked('ISO Chair - Black', 'The smallest order for this is 4 - add 1 more, in any mix of options', 'ISO Stacking Chair'),
+    ])).toBe('ISO Stacking Chair: The smallest order for this is 4 - add 1 more, in any mix of options')
+  })
+
+  it('prefers a resolver`s retitle to the hidden variation`s own name', () => {
+    expect(blockedLinesMessage([blocked('ISO Chair - Teal / Black', 'Out of stock', 'ISO Stacking Chair')]))
+      .toBe('ISO Stacking Chair: Out of stock')
+  })
+
+  it('drops the name when two different products are blocked for one reason', () => {
+    expect(blockedLinesMessage([blocked('Mug', 'Out of stock'), blocked('Desk', 'Out of stock')]))
+      .toBe('Out of stock')
+  })
+
+  it('falls back to the general wording when the reasons disagree', () => {
+    expect(blockedLinesMessage([
+      blocked('Mug', 'Out of stock'),
+      blocked('Mug', 'The smallest order for this is 4 - add 1 more'),
+    ])).toBe('Some items in your basket are no longer available.')
   })
 })

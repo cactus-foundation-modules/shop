@@ -37,7 +37,7 @@ export function StockPanel({ state, setField, errors, weightBasedShippingEnabled
         )}
       </Section>
 
-      <Section title="How many at a time" blurb="For anything you will not sell one of - a box of fifty, or a screen that only ships in pairs. On a product with options the count is across the whole product, so four of one colour and four in a mix both count as four.">
+      <Section title="How many at a time" blurb="For anything you will not sell one of - a box of fifty castor cups, or a chair you will not send fewer than four of. It is a floor, not a batch size: someone can still order five. On a product with options the count is across the whole product, so four of one colour and four in a mix both count as four.">
         <Grid cols={3}>
           <Field
             label="Smallest order"

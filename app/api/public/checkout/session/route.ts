@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkout'
+import { blockedLinesMessage, resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkout'
 import { findShippingZoneForPostcode, listShippingRatesForZone } from '@/modules/shop/lib/db/tax-shipping'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
@@ -31,11 +31,11 @@ export async function POST(request: NextRequest) {
   const resolvedLines = await resolveCartLines(rawLines)
   const unavailable = resolvedLines.filter((l) => !l.available)
   if (unavailable.length > 0) {
-    // As in payment-intent: a single shared reason is worth far more than the
-    // general wording, since it is the one that tells the shopper what to do.
-    const reasons = [...new Set(unavailable.map((l) => l.availabilityReason).filter(Boolean))]
+    // As in payment-intent: this string is the whole of what the Order review
+    // block shows in place of itself, so it names the product as well as the
+    // reason - see blockedLinesMessage.
     return NextResponse.json({
-      error: reasons.length === 1 ? reasons[0] : 'Some items in your basket are no longer available',
+      error: blockedLinesMessage(unavailable),
       unavailable: unavailable.map((l) => l.product.slug),
     }, { status: 409 })
   }
