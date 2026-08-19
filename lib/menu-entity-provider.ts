@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db/prisma'
 import type { MenuEntityKind, MenuEntitySearchResult, MenuEntityProvider, ResolvedMenuEntity } from '@/lib/modules/menu-entity-provider'
-import { getProductUrlStyle, productHref } from '@/modules/shop/lib/product-url'
+import { productHref } from '@/modules/shop/lib/product-url'
+import { getProductUrlStyle } from '@/modules/shop/lib/product-url-server'
 
 // Contributes to the "core.menu-entity-provider" extension point so the admin
 // menu builder can link to shop content. URL scheme mirrors lib/sitemap.ts:

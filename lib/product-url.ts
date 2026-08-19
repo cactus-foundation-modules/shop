@@ -1,10 +1,9 @@
-// Type-only, so nothing server-side is dragged in by importing this file: the
-// two builders below are pure string work and the admin product editor's search
-// preview - a client component - needs them as much as any server render does.
-// getProductUrlStyle is the one thing here that must reach the database, so it
-// loads config where it is called rather than at module scope; a static import
-// would put prisma in the browser bundle the moment a client file imported
-// productHref.
+// Pure string work and one type import, nothing else, ever: client components
+// all over the shop (and other modules) import productHref, so a single edge
+// from here to config would put prisma - and through the payment registry,
+// every module's server code - in the browser bundle. The style lookup, which
+// does need the database, lives in product-url-server.ts. Even a dynamic
+// import counts as an edge; that is exactly how this broke once.
 import type { ShpConfig } from './config'
 
 export type ProductUrlStyle = ShpConfig['productUrlStyle']
@@ -18,13 +17,6 @@ export function productHref(slug: string, style: ProductUrlStyle): string {
   return style === 'ROOT'
     ? `/${encodeURIComponent(slug)}`
     : `/shop/products/${encodeURIComponent(slug)}`
-}
-
-// Server-only by nature - it reads the shop's settings. See the note above on
-// why the import sits inside the function.
-export async function getProductUrlStyle(): Promise<ProductUrlStyle> {
-  const { getShopConfigCached } = await import('./config')
-  return (await getShopConfigCached()).productUrlStyle
 }
 
 // Absolute form, for canonicals, share links and feeds.
