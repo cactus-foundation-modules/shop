@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { uploadOneFile } from '@/lib/media/upload-client'
+import { IMAGE_ACCEPT_ATTR } from '@/lib/media/limits'
 
 type MediaItem = { id: string; url: string; key: string; altText: string | null; mimeType: string }
 
@@ -50,7 +52,10 @@ export function MediaPickerModal({ onAdd, onClose, resolveFolderId, resolveIniti
   // selection made in one folder must survive navigating to another - reading
   // the picks back out of the current listing would quietly drop them.
   const [picked, setPicked] = useState<Map<string, MediaItem>>(new Map())
-  const [uploading, setUploading] = useState(false)
+  // Null when nothing is going up; otherwise how far through the batch we are,
+  // so a drop of thirty photographs says which one it is on rather than sitting
+  // on "Uploading…" for two minutes.
+  const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [folders, setFolders] = useState<Folder[]>([])
   // null = library root; undefined = still resolving where to open.
@@ -182,24 +187,57 @@ export function MediaPickerModal({ onAdd, onClose, resolveFolderId, resolveIniti
     })
   }
 
-  async function handleUpload(file: File) {
-    setUploading(true)
+  /**
+   * Upload the files the admin just picked, and tick every one that lands.
+   *
+   * Through core's own uploader rather than a hand-rolled POST to
+   * /api/admin/media. That endpoint is the serverless fallback, capped at 4 MB
+   * by the hosting platform - which is why adding a photograph straight off a
+   * camera to a product came back "over 4 MB" while the same file went into the
+   * media library without complaint. `uploadOneFile` takes the direct-to-storage
+   * path when it can (50 MB), falls back to that same serverless route when it
+   * cannot, and reports which one refused it and why.
+   *
+   * Three at a time, matching the media library's own pool: some browsers -
+   * Safari in particular - refuse more than a handful of simultaneous
+   * connections to one host, and a wider pool just queues invisibly.
+   */
+  async function handleUpload(files: File[]) {
+    if (files.length === 0) return
+    setUploading({ done: 0, total: files.length })
     setUploadError(null)
     const uploadFolderId = resolveFolderId ? await resolveFolderId() : null
-    const body = new FormData()
-    body.append('file', file)
-    if (uploadFolderId) body.append('folderId', uploadFolderId)
-    const res = await fetch('/api/admin/media', { method: 'POST', body })
-    setUploading(false)
-    if (!res.ok) { setUploadError((await res.json().catch(() => ({}))).error ?? 'Upload failed'); return }
-    const uploaded = await res.json().catch(() => null) as MediaItem | null
 
-    // Tick the new image straight away: the admin just picked the file, so
-    // making them hunt for it in the grid is a step for the sake of it. The
+    const uploaded: MediaItem[] = []
+    const failures: string[] = []
+    let next = 0
+    let done = 0
+    const worker = async () => {
+      while (next < files.length) {
+        const file = files[next++]
+        if (!file) return
+        try {
+          uploaded.push(await uploadOneFile(file, uploadFolderId))
+        } catch (err) {
+          // One bad file costs that file. The rest of the batch carries on, and
+          // what went wrong is listed at the end rather than replacing every
+          // other result with a single red line.
+          failures.push(err instanceof Error ? err.message : `${file.name}: upload failed`)
+        }
+        done++
+        setUploading({ done, total: files.length })
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(3, files.length) }, worker))
+    setUploading(null)
+    setUploadError(failures.length > 0 ? failures.join(' · ') : null)
+
+    // Tick the new images straight away: the admin just picked the files, so
+    // making them hunt for them in the grid is a step for the sake of it. The
     // upload files into the product's folder, which may not be the folder on
     // screen - so jump there (it exists now the upload has made it), which both
-    // shows the image and re-lists the folder it now sits in.
-    if (uploaded?.id) {
+    // shows the images and re-lists the folder they now sit in.
+    if (uploaded.length > 0) {
       const foldersRes = await fetch('/api/admin/media/folders').then((r) => r.ok ? r.json() : null).catch(() => null)
       if (foldersRes?.folders) setFolders(foldersRes.folders)
       setQuery('')
@@ -207,7 +245,11 @@ export function MediaPickerModal({ onAdd, onClose, resolveFolderId, resolveIniti
       // Covers the case where the upload folder is the folder already on screen:
       // the folder effect wouldn't re-run on its own, so nudge it.
       setReloadKey((k) => k + 1)
-      setPicked((prev) => new Map(prev).set(uploaded.id, uploaded))
+      setPicked((prev) => {
+        const nextPicked = new Map(prev)
+        for (const item of uploaded) nextPicked.set(item.id, item)
+        return nextPicked
+      })
     }
   }
 
@@ -236,8 +278,24 @@ export function MediaPickerModal({ onAdd, onClose, resolveFolderId, resolveIniti
           >
             {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f) }} />
-          <button type="button" className="btn btn-secondary btn-sm" disabled={uploading} onClick={() => fileInputRef.current?.click()}>{uploading ? 'Uploading…' : 'Upload new'}</button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            // The types core actually accepts, rather than a blanket image/*
+            // that offers files the library will refuse on arrival.
+            accept={IMAGE_ACCEPT_ATTR}
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const picked = Array.from(e.target.files ?? [])
+              // Cleared so picking the same files again still fires a change.
+              e.target.value = ''
+              if (picked.length > 0) void handleUpload(picked)
+            }}
+          />
+          <button type="button" className="btn btn-secondary btn-sm" disabled={!!uploading} onClick={() => fileInputRef.current?.click()}>
+            {uploading ? `Uploading ${Math.min(uploading.done + 1, uploading.total)} of ${uploading.total}…` : 'Upload new'}
+          </button>
           <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-secondary)', lineHeight: 1, flexShrink: 0 }}>×</button>
         </div>
         {uploadError && <p style={{ color: 'var(--color-danger)', margin: '0.5rem 1.25rem 0', fontSize: '0.8125rem' }}>{uploadError}</p>}
