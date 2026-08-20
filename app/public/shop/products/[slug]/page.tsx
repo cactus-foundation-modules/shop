@@ -12,6 +12,7 @@ import { resolveAliasedProduct } from '@/modules/shop/lib/product-page-resolver'
 import { resolveProductSocialImage } from '@/modules/shop/lib/product-social-image'
 import { rememberProductPageSearchParams, type ProductPageSearchParams } from '@/modules/shop/lib/product-page-params'
 import { productUrl } from '@/modules/shop/lib/product-url'
+import { resolveProductCanonicalQuery } from '@/modules/shop/lib/product-canonical'
 import { getProductUrlStyle } from '@/modules/shop/lib/product-url-server'
 import { shopClaimsRootSlug } from '@/modules/shop/lib/root-slug'
 import { getShopGate } from '@/modules/shop/lib/access'
@@ -66,6 +67,26 @@ async function socialMetadata(product: ShpProduct, title: string, description: s
   }
 }
 
+// The address this page asks search engines to treat as the real one.
+//
+// Normally the bare product URL: option choices carried in the query string
+// describe the same page, so folding them onto one address is right, and on the
+// ROOT style this same tag (emitted by both routes) is what folds the
+// still-serving /shop/products/ address into the root one without a redirect.
+//
+// The exception is a configuration a companion module has published for indexing
+// in its own right - a specific, buyable variation with its own picture and its
+// own price, listed at its own address in the sitemap. That module answers
+// shop.product-canonical-query with the address it published, and the page then
+// agrees with the sitemap instead of contradicting it. Nothing to ask on a URL
+// with no query string, which is most of them.
+async function canonicalUrl(product: ShpProduct, siteUrl: string, searchParams: ProductPageSearchParams): Promise<string> {
+  const base = productUrl(siteUrl, product.slug, await getProductUrlStyle())
+  if (Object.keys(searchParams).length === 0) return base
+  const query = await resolveProductCanonicalQuery(product)
+  return query ? `${base}?${query}` : base
+}
+
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { slug } = await params
   // A closed shop must not publish its product names either, so the title is
@@ -88,13 +109,10 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     return {
       title,
       description,
-      // Self-canonical in the shop's chosen URL style: that address is the
-      // product's one true one, so shared links carrying option choices in the
-      // query string never register with search engines as duplicate pages -
-      // and on the ROOT style, this same tag (emitted by both routes) is what
-      // folds the still-serving /shop/products/ address into the root one
-      // without a redirect.
-      ...(siteUrl ? { alternates: { canonical: productUrl(siteUrl, found.slug, await getProductUrlStyle()) } } : {}),
+      // Self-canonical in the shop's chosen URL style, unless a module has
+      // published this request's configuration as a page of its own - see
+      // canonicalUrl above.
+      ...(siteUrl ? { alternates: { canonical: await canonicalUrl(found, siteUrl, sp) } } : {}),
       ...(await socialMetadata(found, title, description, slug, sp)),
     }
   }
