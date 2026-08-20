@@ -91,6 +91,44 @@ const NOSCRIPT_CSS = `
 // Whether the folded text is actually taller than the fold. Assumed true, which
 // is what the server renders and what every real description does; the measure
 // below only ever takes the toggle away, so the common case never moves.
+/**
+ * Calls `onChange` whenever the fold's size could have changed. Returns its own
+ * teardown. Exported for its own test.
+ *
+ * Both mechanisms, deliberately. The observer catches the element resizing when
+ * the window has not - a sidebar opening beside it, say. The window listener is
+ * the one that still works where ResizeObserver is missing or stubbed: some
+ * embedded browsers ship it as a no-op that never fires at all, not even the
+ * initial callback the spec guarantees, and the fold would then keep whatever
+ * its first measurement said forever.
+ *
+ * Bursts are coalesced to one call per frame - dragging a window edge fires
+ * continuously, and every measurement forces a layout.
+ */
+export function watchFoldSize(el: Element, onChange: () => void): () => void {
+  let frame = 0
+  let stopped = false
+  const schedule = () => {
+    if (stopped) return
+    cancelAnimationFrame(frame)
+    frame = requestAnimationFrame(onChange)
+  }
+
+  const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null
+  observer?.observe(el)
+  window.addEventListener('resize', schedule)
+  // A webfont landing late changes the line height, and with it whether four
+  // lines were ever enough.
+  document.fonts?.ready.then(schedule).catch(() => { /* no font loading API, or it rejected - the other two still cover it */ })
+
+  return () => {
+    stopped = true
+    cancelAnimationFrame(frame)
+    observer?.disconnect()
+    window.removeEventListener('resize', schedule)
+  }
+}
+
 function useOverflows(foldRef: React.RefObject<HTMLDivElement | null>, open: boolean): boolean {
   const [overflows, setOverflows] = useState(true)
 
@@ -101,14 +139,13 @@ function useOverflows(foldRef: React.RefObject<HTMLDivElement | null>, open: boo
     if (open) return
     const el = foldRef.current
     if (!el) return
-    // Re-measured on resize as well as on mount: the fold only exists below the
-    // mobile breakpoint, so crossing it - or turning a phone sideways - changes
-    // the answer. The 1px allows for sub-pixel line heights.
+    // Re-measured on every size change, not just on mount: the fold only exists
+    // below the mobile breakpoint, so crossing it - or turning a phone sideways -
+    // changes the answer, and the first measurement may well have been taken at
+    // a width where nothing was clamped. The 1px allows for sub-pixel lines.
     const measure = () => setOverflows(el.scrollHeight > el.clientHeight + 1)
     measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(el)
-    return () => observer.disconnect()
+    return watchFoldSize(el, measure)
   }, [foldRef, open])
 
   return overflows
