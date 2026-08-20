@@ -11,19 +11,28 @@
 // else's modal - so there is nothing for those components to render into. This
 // point asks for data instead, which is the one thing a static view can use.
 //
-// Additive and order-aware: a provider says whether its pictures belong in front
-// of the product's own or behind them, because that is the owner's setting on the
-// product and shop has no way to know it.
+// Additive and order-aware: a provider says where its pictures belong among the
+// product's own, because that is the owner's arrangement on the product's Images
+// tab and shop has no way to know it.
 import { prisma } from '@/lib/db/prisma'
 import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 import type { ShopDetailSlotImage } from '@/modules/shop/lib/detail-slot'
 
+// A contributed picture, and where it sits in the finished strip: `position` is
+// its index in that strip, the product's own photographs and every contributed
+// one counted together - the same ordinal space the Images tab drags them around
+// in (see product-editor/gallery-extras.tsx). Absent means "after the product's
+// own", which is where a newly contributed picture starts.
+export type ShopExtraDetailImage = ShopDetailSlotImage & { position?: number | null }
+
 export type ShopExtraDetailImages = {
-  images: ShopDetailSlotImage[]
-  // 'before' puts them in front of the product's own photographs, 'after' behind
-  // them. The provider owns this because it owns the setting behind it.
-  placement: 'before' | 'after'
+  images: ShopExtraDetailImage[]
+  // The older, whole-set form: 'before' puts every one of them in front of the
+  // product's own photographs, 'after' behind. Read only where no image carries
+  // a `position` of its own, so a module built against the previous contract
+  // still places its pictures the way it asked to.
+  placement?: 'before' | 'after'
 }
 
 export type ShopDetailImagesProvider = {
@@ -54,8 +63,7 @@ export async function resolveShopDetailImages(
     select: { manifest: true },
   })
 
-  const before: ShopDetailSlotImage[] = []
-  const after: ShopDetailSlotImage[] = []
+  const contributed: ShopExtraDetailImage[] = []
   for (const mod of modules) {
     const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null
     if (!manifest?.extensionPoints) continue
@@ -66,19 +74,43 @@ export async function resolveShopDetailImages(
       try {
         const extra = await provider.load(productId)
         if (!extra || extra.images.length === 0) continue
-        ;(extra.placement === 'before' ? before : after).push(...extra.images)
+        // The older contract, translated into the newer one: 'before' is
+        // simply every picture claiming a slot at the front, in the order it
+        // listed them, and 'after' is the absent position they already get.
+        const placed = extra.images.some((img) => img.position != null)
+        if (!placed && extra.placement === 'before') {
+          contributed.push(...extra.images.map((img, i) => ({ ...img, position: i })))
+        } else {
+          contributed.push(...extra.images)
+        }
       } catch (error) {
         console.error(`[shop] detail-images provider "${entry.id}" failed for product ${productId}:`, error)
       }
     }
   }
-  if (before.length === 0 && after.length === 0) return own
+  if (contributed.length === 0) return own
+
+  // Lay the product's own out in order and drop each contributed picture into the
+  // slot it asked for. Forgiving on purpose: one that asked for a slot past the
+  // end simply lands at the end, which is what happens when the product loses a
+  // photograph after the gallery was arranged.
+  const placed = [...contributed]
+    .map((image, index) => ({ image, index }))
+    .sort((a, b) => (a.image.position ?? Number.POSITIVE_INFINITY) - (b.image.position ?? Number.POSITIVE_INFINITY) || a.index - b.index)
+  const merged: ShopDetailSlotImage[] = []
+  let next = 0
+  for (const { image } of placed) {
+    const target = image.position ?? Number.POSITIVE_INFINITY
+    while (next < own.length && merged.length < target) merged.push(own[next++]!)
+    merged.push({ url: image.url, alt: image.alt })
+  }
+  while (next < own.length) merged.push(own[next++]!)
 
   // Same picture twice reads as a mistake in a strip this short: a variation
   // promoted for a photograph the parent also carries would otherwise appear
   // alongside itself. First occurrence wins, so the requested order stands.
   const seen = new Set<string>()
-  return [...before, ...own, ...after].filter((img) => {
+  return merged.filter((img) => {
     if (seen.has(img.url)) return false
     seen.add(img.url)
     return true
