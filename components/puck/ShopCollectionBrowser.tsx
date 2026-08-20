@@ -1,4 +1,5 @@
 import { shopCategoryPillsCss } from '@/modules/shop/components/public/ShopCategoryPills.shared'
+import { DEFAULT_BREAKPOINTS } from '@/modules/shop/lib/breakpoints-shared'
 
 // EDITOR half only: placeholder + Puck field config. The server render lives in
 // ShopCollectionBrowser.rsc.tsx (wired by `rscImport` in the manifest) so
@@ -29,7 +30,7 @@ export function ShopCollectionBrowser(props: ShopCollectionBrowserProps) {
     // editor half cannot fetch.
     return (
       <>
-        <style dangerouslySetInnerHTML={{ __html: shopCategoryPillsCss }} />
+        <style dangerouslySetInnerHTML={{ __html: shopCategoryPillsCss(DEFAULT_BREAKPOINTS) }} />
         <nav className="shop-cat-pills" aria-label="Collections" style={{ opacity: 0.6, pointerEvents: 'none' }}>
           {['A collection', 'Another one', 'A third', 'One more'].map((name) => (
             <a key={name} className="shop-cat-pill" href="#">{name}</a>

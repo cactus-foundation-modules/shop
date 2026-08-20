@@ -239,8 +239,12 @@ export function ShopCardImage(props: ImageProps) {
           <ShopCardMedia images={ctx.images} overlays={ctx.overlays} productId={ctx.product.id} />
         ) : (
           ctx?.image && (
+            // Lazy, like the carousel island's picture and every other public
+            // content image: a category grid is dozens of cards, and eagerly
+            // fetching the lot pulled the whole catalogue's photography down
+            // before the first row had painted.
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={ctx.image.url} alt={ctx.image.alt} />
+            <img src={ctx.image.url} alt={ctx.image.alt} loading="lazy" decoding="async" />
           )
         )}
         {fill && <div className="shop-card-scrim" />}

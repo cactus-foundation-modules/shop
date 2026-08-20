@@ -234,7 +234,7 @@ export function MinimalCard({ product, ctx }: CardItem) {
       <div className="shop-card-img">
         {ctx.image && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={ctx.image.url} alt={ctx.image.alt} />
+          <img src={ctx.image.url} alt={ctx.image.alt} loading="lazy" decoding="async" />
         )}
       </div>
       <h3 className="shop-card-name">{product.name}</h3>

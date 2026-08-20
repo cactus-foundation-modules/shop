@@ -24,7 +24,7 @@ export async function ShopCollectionBrowserRsc(props: ShopCollectionBrowserProps
   if (props.display === 'pills') {
     return (
       <>
-        <style dangerouslySetInnerHTML={{ __html: shopCategoryPillsCss }} />
+        <style dangerouslySetInnerHTML={{ __html: shopCategoryPillsCss(breakpoints) }} />
         <nav className="shop-cat-pills" aria-label="Collections">
           {collections.map((c) => (
             <a key={c.id} className="shop-cat-pill" href={`/shop/collections/${c.slug}`}>{c.name}</a>

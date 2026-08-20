@@ -25,7 +25,7 @@ export async function ShopCategoryBrowserRsc(props: ShopCategoryBrowserProps) {
 
   // The compact strip for pages where the sub-categories are shortcuts, not
   // the main event - a filtered category page keeps its height for products.
-  if (props.display === 'pills') return <ShopCategoryPills categories={categories} />
+  if (props.display === 'pills') return <ShopCategoryPills categories={categories} breakpoints={breakpoints} />
 
   return (
     <ShopCategoryCards

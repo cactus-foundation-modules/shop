@@ -1,4 +1,5 @@
 import type { ShopCategoryCardItem } from '@/modules/shop/components/public/ShopCategoryCards'
+import type { Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
 import { shopCategoryPillsCss } from '@/modules/shop/components/public/ShopCategoryPills.shared'
 
 // The pill strip: the compact alternative to the category card grid. Same data,
@@ -11,11 +12,11 @@ import { shopCategoryPillsCss } from '@/modules/shop/components/public/ShopCateg
 // placeholder (ShopCategoryBrowser.tsx renders sample pills through the same
 // classes), so the editor canvas and the live page stay pixel-identical.
 
-export function ShopCategoryPills({ categories }: { categories: ShopCategoryCardItem[] }) {
+export function ShopCategoryPills({ categories, breakpoints }: { categories: ShopCategoryCardItem[]; breakpoints: Breakpoints }) {
   if (categories.length === 0) return null
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: shopCategoryPillsCss }} />
+      <style dangerouslySetInnerHTML={{ __html: shopCategoryPillsCss(breakpoints) }} />
       <nav className="shop-cat-pills" aria-label="Sub-categories">
         {categories.map((c) => (
           <a key={c.id} className="shop-cat-pill" href={`/shop/categories/${c.slug}`}>{c.name}</a>
