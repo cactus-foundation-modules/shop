@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
 import {
   getCheckoutState, subscribeCheckoutState, updateCheckoutState, areAgreementsAccepted,
@@ -64,11 +64,14 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
   const populated = useCartPopulated(preview)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [incomplete, setIncomplete] = useState(true)
   // Which compulsory boxes above are still outstanding, named as their own
   // labels name them. The shopper reads this instead of being left to hunt for
-  // whichever field is holding the button shut.
+  // whichever field is holding the button shut. It gates the button; it no
+  // longer hides the total, which is the one thing a shopper came here for.
   const [missing, setMissing] = useState<MissingCheckoutField[]>([])
+  // Whether carriage is still unpriced - no postcode, or no service chosen -
+  // so the figures on screen are the goods and nothing else.
+  const [awaitingDelivery, setAwaitingDelivery] = useState(false)
   const [placing, setPlacing] = useState(false)
   const [agreements, setAgreements] = useState<Agreement[]>([])
   const [businessNameRequired, setBusinessNameRequired] = useState(false)
@@ -82,6 +85,11 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
   // radio buttons live in the payment block, and this block has to know whether
   // one has been picked before it will let the order be placed.
   const [paymentMethod, setPaymentMethod] = useState<string | null>(null)
+  // The last query the totals were worked out from, and a ticket per request,
+  // so a form being typed into does not fire a request per character or apply
+  // its answers out of order.
+  const lastQueryRef = useRef<string | null>(null)
+  const requestRef = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -101,27 +109,58 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
   }, [])
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+
     function loadSummary() {
       const state = getCheckoutState()
       const lines = getCart()
       setTicked(state.agreements ?? {})
       setPaymentMethod(state.paymentMethod)
-      const outstandingFields = missingCheckoutFields(state, { businessNameRequired, businessNameLabel, phoneRequired })
-      setMissing(outstandingFields)
-      if (lines.length === 0 || outstandingFields.length > 0) {
-        setIncomplete(true)
-        setSummary(null)
-        return
-      }
-      setIncomplete(false)
-      fetch('/api/m/shop/public/checkout/session', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lines, postcode: state.shippingAddress.postcode, shippingRateId: state.shippingRateId, couponCode: state.couponCode, customerEmail: state.customerEmail }),
-      }).then(async (res) => {
-        const data = await res.json()
-        if (res.ok) { setSummary(data); setError(null) }
-        else setError(data.error ?? 'Could not load order summary')
+      setMissing(missingCheckoutFields(state, { businessNameRequired, businessNameLabel, phoneRequired }))
+      if (lines.length === 0) { setSummary(null); return }
+
+      // Carriage is only priced once there is a postcode and a service picked,
+      // so an early total is the goods on their own. Said out loud below rather
+      // than left to read like free delivery.
+      setAwaitingDelivery(state.shippingAddress.postcode.trim().length === 0 || !state.shippingRateId)
+
+      const query = JSON.stringify({
+        lines,
+        postcode: state.shippingAddress.postcode,
+        shippingRateId: state.shippingRateId,
+        couponCode: state.couponCode,
+        // The route validates this as an email address, so a half-typed one
+        // would 400 the total off the screen mid-keystroke. It only bears on
+        // per-customer coupon limits, so null until it is one costs nothing.
+        customerEmail: /\S+@\S+\.\S+/.test(state.customerEmail) ? state.customerEmail : null,
       })
+      // Every keystroke in the boxes above republishes checkout state, and most
+      // of them change nothing the total is worked out from. Only a query that
+      // has actually changed is worth a request, and even then not until the
+      // typing stops.
+      if (query === lastQueryRef.current) return
+      const first = lastQueryRef.current === null
+      lastQueryRef.current = query
+
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        const ticket = ++requestRef.current
+        fetch('/api/m/shop/public/checkout/session', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: query,
+        }).then(async (res) => {
+          const data = await res.json()
+          // A slow earlier answer must never land on top of a later one.
+          if (ticket !== requestRef.current) return
+          if (res.ok) { setSummary(data); setError(null) }
+          else {
+            setSummary(null)
+            setError(data.error ?? 'Could not load order summary')
+            // Let the same query be asked again once something else changes -
+            // a refused total is not an answer worth caching.
+            lastQueryRef.current = null
+          }
+        }).catch(() => {})
+      }, first ? 0 : 350)
     }
 
     loadSummary()
@@ -129,7 +168,11 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
 
     function onError(e: Event) { setPlacing(false); setError((e as CustomEvent).detail) }
     window.addEventListener('cactus-shop-order-error', onError)
-    return () => { unsubscribe(); window.removeEventListener('cactus-shop-order-error', onError) }
+    return () => {
+      unsubscribe()
+      window.removeEventListener('cactus-shop-order-error', onError)
+      if (timer) clearTimeout(timer)
+    }
     // Re-runs when the business-name and phone rules arrive from config: the
     // completeness test above closes over them, so a stale `false` would wave
     // through a checkout the order route is about to refuse.
@@ -141,11 +184,12 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
     updateCheckoutState({ agreements: next })
   }
 
-  // What is still outstanding, in the order the page presents it, as one
-  // sentence. Null means the order can be placed. The button reads this rather
-  // than shouting after a click: a shopper should be able to see what is left,
-  // not discover it by being refused - and see all of it, not be sent back for
-  // the second thing once they have done the first.
+  // What is still outstanding ON THIS BLOCK, in the order the page presents it,
+  // as one sentence. Null means nothing here is holding the button - the boxes
+  // further up the page are listed separately, as rows that jump to them. The
+  // button reads both rather than shouting after a click: a shopper should be
+  // able to see what is left, not discover it by being refused - and see all of
+  // it, not be sent back for the second thing once they have done the first.
   function blockedReason(): string | null {
     const outstanding: string[] = []
     if (!paymentMethod) outstanding.push('choose a payment method above')
@@ -160,7 +204,7 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
   function placeOrder() {
     // The button is disabled while anything is outstanding, so this is a guard
     // rather than a code path - it exists so a stale render can never post.
-    if (blockedReason()) return
+    if (blockedReason() || missingCheckoutFields(getCheckoutState(), { businessNameRequired, businessNameLabel, phoneRequired }).length > 0) return
     setPlacing(true)
     setError(null)
     window.dispatchEvent(new CustomEvent('cactus-shop-place-order'))
@@ -170,53 +214,68 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
   // order-summary block carries the empty message.
   if (!populated) return null
 
-  if (incomplete) {
+  // What is still owed in the boxes above, as rows that take the shopper to the
+  // box in question. Shown BESIDE the totals rather than instead of them: the
+  // figures are what a shopper opened this step for, and an order they cannot
+  // price yet is an order they cannot decide on.
+  const outstanding = missing.length === 0 ? null : (
+    <div id="shop-place-order-missing" style={{ display: 'grid', gap: '0.5rem' }}>
+      <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}>
+        Still to fill in above before you can place this order:
+      </p>
+      <ul style={{ margin: 0, paddingLeft: '1.25rem', display: 'grid', gap: '0.25rem' }}>
+        {missing.map((field) => (
+          <li key={field.key}>
+            {/* A button rather than a line of text: naming the field is most of
+                the answer, but on a long checkout the shopper still has to go
+                and find it, and the page can do that. */}
+            <button
+              type="button"
+              onClick={() => focusCheckoutField(field.key)}
+              style={{
+                background: 'none', border: 0, padding: 0, font: 'inherit',
+                color: 'var(--color-primary)', textDecoration: 'underline', cursor: 'pointer',
+              }}
+            >
+              {field.label}
+            </button>
+            {/* The wording comes with the row, from whoever decided the box was
+                wrong. Naming a specific field here is what had a phone number
+                told it did not look like an email address. */}
+            {field.reason === 'invalid' && field.hint && (
+              <span style={{ color: 'var(--color-text-secondary)' }}> - {field.hint}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+
+  // No total yet: the first request is still out, or the shop refused to price
+  // this basket (a minimum order, a line that has just sold out). Either way the
+  // outstanding list still belongs on screen.
+  if (!summary) {
     return (
       // The top margin is the gap to the step above: these are separate blocks
       // in one Puck zone, so nothing else puts air between the checkout steps.
       <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480, marginTop: '2rem' }}>
         <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Order review'}</h2>
-        {missing.length === 0 ? (
-          <p style={{ color: 'var(--color-text-muted)' }}>Fill in your contact and shipping details above to see your order total.</p>
-        ) : (
-          <div style={{ display: 'grid', gap: '0.5rem' }}>
-            <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}>
-              Your order total appears once {missing.length === 1 ? 'this is' : 'these are'} filled in above:
-            </p>
-            <ul style={{ margin: 0, paddingLeft: '1.25rem', display: 'grid', gap: '0.25rem' }}>
-              {missing.map((field) => (
-                <li key={field.key}>
-                  {/* A button rather than a line of text: naming the field is
-                      most of the answer, but on a long checkout the shopper
-                      still has to go and find it, and the page can do that. */}
-                  <button
-                    type="button"
-                    onClick={() => focusCheckoutField(field.key)}
-                    style={{
-                      background: 'none', border: 0, padding: 0, font: 'inherit',
-                      color: 'var(--color-primary)', textDecoration: 'underline', cursor: 'pointer',
-                    }}
-                  >
-                    {field.label}
-                  </button>
-                  {/* The wording comes with the row, from whoever decided the
-                      box was wrong. Naming a specific field here is what had a
-                      phone number told it did not look like an email address. */}
-                  {field.reason === 'invalid' && field.hint && (
-                    <span style={{ color: 'var(--color-text-secondary)' }}> - {field.hint}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {error
+          ? <p style={{ color: 'var(--color-danger)', margin: 0 }}>{error}</p>
+          : <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>Working out your order total…</p>}
+        {outstanding}
       </section>
     )
   }
-  if (!summary) return error ? <p style={{ color: 'var(--color-danger)' }}>{error}</p> : null
+
 
   const money = (n: number) => `${summary.currencySymbol}${n.toFixed(2)}`
-  const blocked = blockedReason()
+  const reason = blockedReason()
+  // Both halves hold the button shut: the boxes above, and the decisions on this
+  // block. Neither hides the total any more.
+  const blocked = reason !== null || missing.length > 0
+  const describedBy = [reason ? 'shop-place-order-blocked' : null, missing.length > 0 ? 'shop-place-order-missing' : null]
+    .filter(Boolean).join(' ')
 
   return (
     // Same top margin as the incomplete state above, so the step does not jump
@@ -250,6 +309,13 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
         )}
         <dt style={{ fontWeight: 600 }}>Total</dt><dd style={{ margin: 0, fontWeight: 600 }}>{money(summary.total)}</dd>
       </dl>
+      {/* Said before the shopper works it out for themselves: a total with no
+          postcode behind it is the goods, and delivery lands on it later. */}
+      {awaitingDelivery && (
+        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', margin: 0 }}>
+          Delivery is added to this once your postcode and delivery choice are in above.
+        </p>
+      )}
       {/* The shop owner's tickboxes, immediately above the button they gate.
           Anywhere further up the page and a shopper hits a button that refuses
           to work for a reason that has scrolled off the screen. */}
@@ -280,17 +346,18 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
       )}
       {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
       {/* Sits above the button rather than below it, and appears before the
-          click rather than after: the one thing left to do should be readable
-          in the same glance as the button it is holding shut. */}
-      {blocked && (
+          click rather than after: what is left to do should be readable in the
+          same glance as the button it is holding shut. */}
+      {outstanding}
+      {reason && (
         <p id="shop-place-order-blocked" role="status" style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem', margin: 0 }}>
-          {blocked}
+          {reason}
         </p>
       )}
       <button
         onClick={placeOrder}
-        disabled={placing || blocked !== null}
-        aria-describedby={blocked ? 'shop-place-order-blocked' : undefined}
+        disabled={placing || blocked}
+        aria-describedby={describedBy || undefined}
         style={{
           background: blocked ? 'var(--color-bg-subtle)' : 'var(--color-primary)',
           // Secondary rather than muted: a disabled control still has to be

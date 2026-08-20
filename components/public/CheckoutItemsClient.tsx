@@ -91,11 +91,16 @@ export type CheckoutItemsOptions = {
 // a scrolling page is a trap for a thumb. Its default height leaves room for the
 // heading, the item count and a little air beneath - the owner can name an exact
 // height instead when their own header maths says otherwise.
+// The list deliberately does NOT contain its overscroll: a pointer sitting over
+// the summary is the common case on a two-column checkout, and containing it
+// meant that reaching the end of the order list froze the page under the mouse.
+// Chaining on means the wheel runs the list to its end and then carries on down
+// the page, taking the summary with it - one continuous scroll either way.
 const SCI_CSS = `
 .sci-toggle{display:none;border:none;background:none;color:var(--color-primary);font-size:0.875rem;cursor:pointer;padding:0}
 @media (min-width: 641px){
   .sci-sticky{position:sticky;top:var(--sci-top,1rem);align-self:flex-start}
-  .sci-scrolls .sci-body{max-height:var(--sci-max,calc(100vh - var(--sci-top,1rem) - 6rem));overflow-y:auto;overscroll-behavior:contain;padding-right:0.5rem;scrollbar-width:thin;scrollbar-color:var(--color-border) transparent}
+  .sci-scrolls .sci-body{max-height:var(--sci-max,calc(100vh - var(--sci-top,1rem) - 6rem));overflow-y:auto;overscroll-behavior-y:auto;padding-right:0.5rem;scrollbar-width:thin;scrollbar-color:var(--color-border) transparent}
   .sci-scrolls .sci-body::-webkit-scrollbar{width:8px}
   .sci-scrolls .sci-body::-webkit-scrollbar-thumb{background:var(--color-border);border-radius:4px}
 }
