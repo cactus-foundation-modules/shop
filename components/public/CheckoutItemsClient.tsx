@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { getCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import { postCartValidate } from '@/modules/shop/components/public/validated-cache'
@@ -96,10 +96,24 @@ export type CheckoutItemsOptions = {
 // meant that reaching the end of the order list froze the page under the mouse.
 // Chaining on means the wheel runs the list to its end and then carries on down
 // the page, taking the summary with it - one continuous scroll either way.
+// The wrapper is what buys the summary its own stretch of page. A pinned block
+// only travels as far as its column is tall, and a checkout's form column stops
+// where the Place order button does - so on a long order the last few items had
+// nowhere left to be revealed, and carrying on scrolling simply took the whole
+// checkout past into the footer. The wrapper claims the order's FULL natural
+// height as a floor (`--sci-fill`, measured in the browser), so the column is
+// always at least as tall as the list would be if it ran down the page. That
+// reserved run is where the scroll handler below feeds the list, and it is the
+// only reason the summary is still pinned when the form has run out.
+// `height:100%` keeps the travel the column already had: without it the wrapper
+// would be its own content's height and the summary would unpin somewhere up
+// the form. The floor still counts towards how tall the row grows, which is the
+// whole trick.
 const SCI_CSS = `
 .sci-toggle{display:none;border:none;background:none;color:var(--color-primary);font-size:0.875rem;cursor:pointer;padding:0}
 @media (min-width: 641px){
-  .sci-sticky{position:sticky;top:var(--sci-top,1rem);align-self:flex-start}
+  .sci-fill{height:100%;min-height:var(--sci-fill,0)}
+  .sci-sticky{position:sticky;top:var(--sci-top,1rem)}
   .sci-scrolls .sci-body{max-height:var(--sci-max,calc(100vh - var(--sci-top,1rem) - 6rem));overflow-y:auto;overscroll-behavior-y:auto;padding-right:0.5rem;scrollbar-width:thin;scrollbar-color:var(--color-border) transparent}
   .sci-scrolls .sci-body::-webkit-scrollbar{width:8px}
   .sci-scrolls .sci-body::-webkit-scrollbar-thumb{background:var(--color-border);border-radius:4px}
@@ -123,6 +137,9 @@ const SCI_CSS = `
 export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOffset = '1rem', scroll = 'auto', scrollHeight, heading, editLabel }: CheckoutItemsOptions) {
   const headingText = heading || 'Your order'
   const scrolls = scroll === 'on' || (scroll !== 'off' && sticky === 'on')
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+  const sectionRef = useRef<HTMLElement | null>(null)
+  const bodyRef = useRef<HTMLDivElement | null>(null)
   const [lines, setLines] = useState<ValidatedLine[] | null>(null)
   const [notes, setNotes] = useState<Note[]>([])
   const [symbol, setSymbol] = useState('£')
@@ -142,6 +159,131 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
     // eslint-disable-next-line react-hooks/set-state-in-effect -- seeding from matchMedia must wait for the client; a lazy initialiser would mismatch the SSR markup
     if (!preview && window.matchMedia('(max-width: 640px)').matches) setCollapsed(true)
   }, [preview])
+
+  // Hands the page's scroll to the order list once the form beside it has run
+  // out. Two halves, and both are needed:
+  //
+  //  1. The floor. `--sci-fill` is set to the summary's pinned height plus
+  //     whatever the list still has below its own fold, so the column reserves
+  //     exactly enough page for every remaining item. Without it there is no
+  //     scrolling left to hand over - the checkout would simply carry on into
+  //     the footer with the summary's last items never seen, which is precisely
+  //     what was reported.
+  //  2. The hand-over. Over the LAST stretch of the column's travel - the bit
+  //     the floor reserved, which is reached only once the form has finished -
+  //     every pixel the page scrolls is passed to the list as well. The block
+  //     is still pinned throughout, so nothing moves on screen except the order
+  //     scrolling itself, and the moment the list runs out the block unpins and
+  //     the page carries on to the footer as it always did.
+  //
+  // Deliberately driven by page scroll rather than by intercepting the wheel:
+  // a trackpad, a touchscreen, the arrow keys and a dragged scrollbar all move
+  // the page, and only one of them is a wheel. Nothing is preventDefault-ed, so
+  // scrolling the list directly with the pointer over it still works exactly as
+  // it did - that path is the browser's, not ours.
+  useEffect(() => {
+    // Never in the layout editor: the canvas is not the storefront's page, and
+    // a floor measured against it would only pad the column out with empty space
+    // for whoever is designing the checkout.
+    if (preview || !(sticky === 'on' && scrolls)) return
+    const wrap = wrapRef.current
+    const section = sectionRef.current
+    if (!wrap || !section) return
+
+    const desktop = () => window.matchMedia('(min-width: 641px)').matches
+    // What the list still has hidden below its own fold. Zero on a short order,
+    // which is the signal to do nothing at all.
+    const overflow = () => {
+      const body = bodyRef.current
+      if (!body) return 0
+      return Math.max(0, body.scrollHeight - body.clientHeight)
+    }
+
+    // How tall the column BESIDE this one actually is - its content, not its box.
+    // Columns in a split stretch to the tallest of them, so every one of them
+    // measures the same and measuring the box tells us nothing; the extent of
+    // its children is the real answer. Returns 0 where there is no column beside
+    // this one to speak of, which is the single-column layout the block warns
+    // against being pinned in anyway.
+    function neighbourHeight(wrapper: HTMLElement): number {
+      const column = wrapper.parentElement
+      const row = column?.parentElement
+      if (!column || !row || row.children.length < 2) return 0
+      const display = getComputedStyle(row).display
+      if (display !== 'grid' && display !== 'flex') return 0
+      let tallest = 0
+      for (const sibling of Array.from(row.children)) {
+        if (sibling === column) continue
+        const top = sibling.getBoundingClientRect().top
+        for (const child of Array.from(sibling.children)) {
+          tallest = Math.max(tallest, child.getBoundingClientRect().bottom - top)
+        }
+      }
+      return tallest
+    }
+
+    // The floor: tall enough that the reserved run sits BELOW the end of the
+    // column beside it, so the order starts scrolling where the form finishes
+    // rather than alongside its last few fields. Falls back to the block's own
+    // height where there is no neighbouring column to measure.
+    function measure() {
+      const w = wrapRef.current
+      const el = sectionRef.current
+      if (!w || !el) return
+      const spare = desktop() ? overflow() : 0
+      if (spare <= 0) { w.style.removeProperty('--sci-fill'); return }
+      const floor = Math.max(el.offsetHeight, neighbourHeight(w)) + spare
+      w.style.setProperty('--sci-fill', `${Math.ceil(floor)}px`)
+    }
+
+    let lastY = window.scrollY
+    let queued = false
+    // Banked rather than dropped: scroll fires faster than frames, and a delta
+    // thrown away is a pixel the list never travels, so a fast flick would leave
+    // the order short of its end by however much was binned on the way down.
+    let pending = 0
+    function onScroll() {
+      const y = window.scrollY
+      pending += y - lastY
+      lastY = y
+      if (queued || pending === 0 || !desktop()) return
+      queued = true
+      requestAnimationFrame(() => {
+        queued = false
+        const dy = pending
+        pending = 0
+        const w = wrapRef.current
+        const el = sectionRef.current
+        const body = bodyRef.current
+        if (!w || !el || !body) return
+        const spare = overflow()
+        if (spare <= 0) return
+        // How much travel the pinned block has left before its foot meets the
+        // bottom of the column. Inside the reserved run, the page and the list
+        // move together; above it the page is still scrolling the form, and the
+        // list is left alone.
+        const remaining = w.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom
+        if (remaining < 0 || remaining > spare + 1) return
+        body.scrollTop += dy
+      })
+    }
+
+    measure()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', measure)
+    // The order itself changes height - a basket edited in another tab, an
+    // arrival heading appearing once delivery is worked out - and the floor is
+    // wrong the moment it does.
+    const observer = new ResizeObserver(measure)
+    if (bodyRef.current) observer.observe(bodyRef.current)
+    observer.observe(section)
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', measure)
+      observer.disconnect()
+      wrap.style.removeProperty('--sci-fill')
+    }
+  }, [preview, sticky, scrolls, lines, collapsed])
 
   useEffect(() => {
     let cancelled = false
@@ -199,9 +341,14 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
   const batches = batchLines(lines.map((l) => ({ ...l, group: l.lineMeta?.group ?? null, batch: l.lineMeta?.batch ?? null })))
 
   return (
-    // No max-width of its own: the block fills whatever column its layout gives
-    // it - a sidebar, a split's left half, or a narrow section.
+    // The wrapper carries the reserved run (see the scroll effect above) and
+    // nothing else - no width, no padding, no look of its own - so a layout that
+    // never pins the block gets the same box it always had.
+    <div ref={wrapRef} className={sticky === 'on' && scrolls ? 'sci-fill' : undefined}>
+    {/* No max-width of its own: the block fills whatever column its layout gives
+        it - a sidebar, a split's left half, or a narrow section. */}
     <section
+      ref={sectionRef}
       className={`${sticky === 'on' ? 'sci-sticky' : ''}${scrolls ? ' sci-scrolls' : ''}${collapsed ? ' sci-collapsed' : ''}`}
       style={{
         display: 'grid',
@@ -225,7 +372,7 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
       <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', margin: 0 }}>
         {itemCount} {itemCount === 1 ? 'item' : 'items'} · {money(goodsTotal)}
       </p>
-      <div className="sci-body" style={{ display: 'grid', gap: '1rem' }}>
+      <div ref={bodyRef} className="sci-body" style={{ display: 'grid', gap: '1rem' }}>
         {/* One list per arrival, soonest first, with everything that lands
             together under its own heading - via the persisted meta's batch, so
             shop states what it was handed and never dates anything itself.
@@ -298,5 +445,6 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
         ))}
       </div>
     </section>
+    </div>
   )
 }
