@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { addToCart } from '@/modules/shop/components/public/cart'
+import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 
 // "Buy it again" for an order line.
 //
@@ -24,9 +25,13 @@ type Props = {
   productSlug: string | null
   quantity: number
   personalised: boolean
+  // Handed down by the order page rather than fetched: that page is a server
+  // component with the shop config already open, and a link that guessed the
+  // style would 404 on every shop serving its products from the root.
+  productUrlStyle: ProductUrlStyle
 }
 
-export default function BuyAgainButton({ productId, productSlug, quantity, personalised }: Props) {
+export default function BuyAgainButton({ productId, productSlug, quantity, personalised, productUrlStyle }: Props) {
   const [added, setAdded] = useState(false)
 
   // A product that has since been deleted has nowhere to send anybody.
@@ -34,7 +39,7 @@ export default function BuyAgainButton({ productId, productSlug, quantity, perso
 
   if (personalised) {
     return (
-      <a className="btn btn-sm" href={`/shop/products/${productSlug}`}>
+      <a className="btn btn-sm" href={productHref(productSlug, productUrlStyle)}>
         Buy again
       </a>
     )

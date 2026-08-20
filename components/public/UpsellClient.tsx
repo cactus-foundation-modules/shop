@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { getCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 
 type UpsellProduct = { id: string; slug: string; name: string; price: string }
 
@@ -27,13 +28,22 @@ const UPSELL_CSS = `
 export function UpsellClient({ heading, maxItems = 4 }: { heading?: string; maxItems?: number }) {
   const [products, setProducts] = useState<UpsellProduct[]>([])
   const [currencySymbol, setCurrencySymbol] = useState('£')
+  // Where product pages live for this shop, filled in by the config fetch
+  // below. 'SHOP' is only the pre-fetch stand-in, not a guess about the shop.
+  const [urlStyle, setUrlStyle] = useState<ProductUrlStyle>('SHOP')
 
   useEffect(() => {
     if (getCart().length > 0) {
       let cancelled = false
       fetch('/api/m/shop/public/config')
         .then((res) => (res.ok ? res.json() : null))
-        .then((data) => { if (!cancelled && data) setCurrencySymbol(data.currencySymbol) })
+        .then((data) => {
+          if (cancelled || !data) return
+          setCurrencySymbol(data.currencySymbol)
+          // Where product pages live - a shop on the ROOT style has no
+          // /shop/products/<slug> address for these pills to point at.
+          if (data.productUrlStyle === 'ROOT' || data.productUrlStyle === 'SHOP') setUrlStyle(data.productUrlStyle)
+        })
         .catch(() => {})
       return () => { cancelled = true }
     }
@@ -86,7 +96,7 @@ export function UpsellClient({ heading, maxItems = 4 }: { heading?: string; maxI
           <b className="spu-title">{heading || 'Step up your setup'}</b>
           <div className="spu-items">
             {products.slice(0, Math.max(1, maxItems)).map((p) => (
-              <a key={p.id} href={`/shop/products/${p.slug}`} className="spu-item">
+              <a key={p.id} href={productHref(p.slug, urlStyle)} className="spu-item">
                 <span className="spu-name">{p.name}</span>
                 <span className="spu-price">{formatMoney(p.price, currencySymbol)}</span>
               </a>

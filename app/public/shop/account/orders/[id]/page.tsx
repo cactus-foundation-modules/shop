@@ -228,6 +228,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
                         productSlug={line.productSlug}
                         quantity={line.item.quantity}
                         personalised={!!line.item.lineMeta?.fields?.length}
+                        productUrlStyle={config.productUrlStyle}
                       />
                     )}
                   </div>

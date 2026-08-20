@@ -37,6 +37,7 @@ import {
 import type { LineMeta } from '@/modules/shop/lib/types'
 import type { CartLineControl, CartLineGroup, CartLineTitle } from '@/modules/shop/lib/line-meta'
 import { effectiveGroup, groupMemberKeys, sortLinesByGroup } from '@/modules/shop/lib/cart-group'
+import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 
 // The cart validate's line shape, as the cart page reads it too. Kept in step
 // with CartFullClient's copy by hand: the response is the module's own, so a
@@ -106,6 +107,9 @@ export function CartDrawerClient({
   // How this shop is transacted with (see lib/commerce-mode-shared.ts). Shop's
   // own basket-and-checkout until the config lands.
   const [commerce, setCommerce] = useState(SHOP_DEFAULT_COMMERCE_MODE)
+  // Where product pages live for this shop, filled in by the config fetch
+  // below. 'SHOP' is only the pre-fetch stand-in, not a guess about the shop.
+  const [urlStyle, setUrlStyle] = useState<ProductUrlStyle>('SHOP')
   const [hasLoaded, setHasLoaded] = useState(false)
   const { toast, removeLine, removeLines, undo } = useCartUndo(true)
   // The line whose remove is waiting on the "its accessories too?" question -
@@ -150,6 +154,10 @@ export function CartDrawerClient({
         if (cancelled || !data) return
         setCurrencySymbol(data.currencySymbol)
         setCommerce(normaliseShopCommerceMode(data.commerce))
+        // Where product pages live. Until this lands the links below fall back
+        // to the default style; a shop on ROOT has no /shop/products/<slug>
+        // address at all, so guessing it would hand the shopper a 404.
+        if (data.productUrlStyle === 'ROOT' || data.productUrlStyle === 'SHOP') setUrlStyle(data.productUrlStyle)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -292,7 +300,7 @@ export function CartDrawerClient({
                 {attachment?.caption && (
                   <p className="scd-sec" style={{ margin: '0 0 0.125rem' }}><span aria-hidden="true">↳ </span>{attachment.caption}</p>
                 )}
-                <a className="scd-name" href={`/shop/products/${line.slug}`}>{title}</a>
+                <a className="scd-name" href={productHref(line.slug, urlStyle)}>{title}</a>
                 {secondary && <p className="scd-sec">{secondary}</p>}
                 {!line.available && <p className="scd-warn">{line.availabilityReason || 'Unavailable'}</p>}
                 {line.isPreOrder && <p className="scd-note">Pre-order</p>}

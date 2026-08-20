@@ -18,6 +18,7 @@ import type { CartLineTitle } from '@/modules/shop/lib/line-meta'
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 import { CartStickyBar, CartUndoToast, QuantityStepper, RemoveCross } from '@/modules/shop/components/public/CartChrome'
 import { useCartUndo, useOutOfView } from '@/modules/shop/components/public/use-cart-undo'
+import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 
 type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
@@ -46,6 +47,9 @@ export function CartPageClient() {
   const [currencySymbol, setCurrencySymbol] = useState('£')
   // How this shop is transacted with (see lib/commerce-mode-shared.ts).
   const [commerce, setCommerce] = useState(SHOP_DEFAULT_COMMERCE_MODE)
+  // Where product pages live for this shop, filled in by the config fetch
+  // below. 'SHOP' is only the pre-fetch stand-in, not a guess about the shop.
+  const [urlStyle, setUrlStyle] = useState<ProductUrlStyle>('SHOP')
   const [couponCode, setCouponCode] = useState('')
   const [couponMessage, setCouponMessage] = useState<string | null>(null)
   const [hasLoaded, setHasLoaded] = useState(false)
@@ -62,6 +66,9 @@ export function CartPageClient() {
         if (cancelled || !data) return
         setCurrencySymbol(data.currencySymbol)
         setCommerce(normaliseShopCommerceMode(data.commerce))
+        // See CartDrawerClient: the product URL style decides whether a line
+        // links to /shop/products/<slug> or the bare /<slug>.
+        if (data.productUrlStyle === 'ROOT' || data.productUrlStyle === 'SHOP') setUrlStyle(data.productUrlStyle)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -168,7 +175,7 @@ export function CartPageClient() {
               <img className="scl-thumb" src={line.imageUrl} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6 }} />
             )}
             <div className="scl-main" style={{ flex: 1, minWidth: 0 }}>
-              <a href={`/shop/products/${line.slug}`} style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>{line.displayTitle?.name || line.name}</a>
+              <a href={productHref(line.slug, urlStyle)} style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>{line.displayTitle?.name || line.name}</a>
               {line.displayTitle?.secondary && <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>{line.displayTitle.secondary}</p>}
               {!line.available && <p style={{ color: 'var(--color-danger)', fontSize: '0.8125rem', margin: '0.25rem 0 0' }}>{line.availabilityReason}</p>}
               {line.isPreOrder && <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>Pre-order</p>}

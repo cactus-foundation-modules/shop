@@ -18,6 +18,7 @@ import {
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 import { CartStickyBar, CartUndoToast, QuantityStepper, RemoveCross, TickIcon } from '@/modules/shop/components/public/CartChrome'
 import { useCartUndo, useOutOfView } from '@/modules/shop/components/public/use-cart-undo'
+import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 
 // Full cart-display island. ONE render path, shared by the Puck editor preview
 // (seeded with SAMPLE_LINES, no fetch, controls inert) and the live frontend
@@ -173,6 +174,9 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   // own basket-and-checkout until the config lands, so a slow config read never
   // flashes a quote-only shop's wording onto an ordinary cart or the reverse.
   const [commerce, setCommerce] = useState(SHOP_DEFAULT_COMMERCE_MODE)
+  // Where product pages live for this shop, filled in by the config fetch
+  // below. 'SHOP' is only the pre-fetch stand-in, not a guess about the shop.
+  const [urlStyle, setUrlStyle] = useState<ProductUrlStyle>('SHOP')
   const [couponCode, setCouponCode] = useState('')
   const [couponMessage, setCouponMessage] = useState<string | null>(null)
   const [hasLoaded, setHasLoaded] = useState(preview ?? false)
@@ -192,6 +196,9 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
         if (cancelled || !data) return
         setCurrencySymbol(data.currencySymbol)
         setCommerce(normaliseShopCommerceMode(data.commerce))
+        // See CartDrawerClient: the product URL style decides whether a line
+        // links to /shop/products/<slug> or the bare /<slug>.
+        if (data.productUrlStyle === 'ROOT' || data.productUrlStyle === 'SHOP') setUrlStyle(data.productUrlStyle)
         const mode = data.priceDisplay?.displayTaxMode ?? data.taxMode
         if (mode === 'INCLUSIVE' || mode === 'EXCLUSIVE') setTaxMode(mode)
       })
@@ -476,7 +483,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
         )}
         {preview
           ? <span style={style}>{title}</span>
-          : <a href={`/shop/products/${line.slug}`} style={style}>{title}</a>}
+          : <a href={productHref(line.slug, urlStyle)} style={style}>{title}</a>}
         {secondary && (
           <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>{secondary}</p>
         )}

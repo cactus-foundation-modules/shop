@@ -407,7 +407,7 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
     if (!state) return []
     const panelProps: PanelProps = { state, setField, patch, errors: visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier }
     const own: Tab[] = [
-      { id: 'details', label: 'Details', order: SHOP_TAB_ORDER.details, render: () => <DetailsPanel {...panelProps} productId={productId} onOpenDescriptionEditor={openDescriptionEditor} /> },
+      { id: 'details', label: 'Details', order: SHOP_TAB_ORDER.details, render: () => <DetailsPanel {...panelProps} productId={productId} productUrlStyle={productUrlStyle} onOpenDescriptionEditor={openDescriptionEditor} /> },
       { id: 'media', label: 'Images', order: SHOP_TAB_ORDER.media, render: () => <MediaPanel {...panelProps} productId={productId} sections={mediaSections} /> },
       { id: 'pricing', label: 'Pricing', order: SHOP_TAB_ORDER.pricing, render: () => <PricingPanel {...panelProps} taxClasses={taxClasses} /> },
       { id: 'stock', label: 'Stock & delivery', order: SHOP_TAB_ORDER.stock, render: () => <StockPanel {...panelProps} /> },

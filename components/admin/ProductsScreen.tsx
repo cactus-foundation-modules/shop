@@ -8,6 +8,8 @@ import { productsScreenCss } from '@/modules/shop/components/admin/products-scre
 import { formatMoney } from '@/modules/shop/lib/money'
 import { isOnSale as onSale } from '@/modules/shop/lib/pricing'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
+import { useProductUrlStyle } from '@/modules/shop/components/admin/use-product-url-style'
+import { productHref } from '@/modules/shop/lib/product-url'
 import { usePrompt, useConfirm, useAlert } from '@/modules/shop/components/admin/dialogs'
 
 type ProductRow = {
@@ -53,6 +55,7 @@ export function ProductsScreen({ toolbarExtras }: {
 } = {}) {
   const adminPath = useAdminPath()
   const currencySymbol = useCurrencySymbol()
+  const urlStyle = useProductUrlStyle()
   const [promptText, promptNode] = usePrompt()
   const [confirm, confirmNode] = useConfirm()
   const [alert, alertNode] = useAlert()
@@ -366,7 +369,7 @@ export function ProductsScreen({ toolbarExtras }: {
                         {p.status === 'ACTIVE' ? (
                           <a
                             className="btn btn-secondary btn-sm"
-                            href={`/shop/products/${p.slug}`}
+                            href={productHref(p.slug, urlStyle)}
                             target="_blank"
                             rel="noreferrer"
                             title={`Open ${p.name} on the shop in a new tab`}
