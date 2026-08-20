@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Render } from '@puckeditor/core/rsc'
@@ -25,17 +26,34 @@ import { ShopCategoryCards } from '@/modules/shop/components/public/ShopCategory
 import { ShopCategoryDescriptionBody } from '@/modules/shop/components/public/ShopCategoryDescriptionBody'
 import type { PuckData } from '@/modules/shop/lib/types'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
+import { getSiteUrlOrNull } from '@/lib/config/env'
+import { absoluteSocialImageUrl, resolveCategorySocialImage } from '@/modules/shop/lib/catalogue-social-image'
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
   if ((await getShopGate()).blocked) return {}
   const category = await getCategoryBySlug(slug)
   if (!category) return {}
   // The short blurb before the long one: a meta description is a one-liner, and
   // the long description may now be a builder document with no plain text at all.
+  const title = category.metaTitle || category.name
+  const description = category.metaDescription || category.shortDescription || category.description || undefined
+  // A category page is a landing page like any other, so it publishes a social
+  // image the same way a product page does - see lib/catalogue-social-image.ts
+  // for what it settles on when nobody has chosen one.
+  const siteUrl = getSiteUrlOrNull()
+  const image = absoluteSocialImageUrl(await resolveCategorySocialImage(category), siteUrl)
   return {
-    title: category.metaTitle || category.name,
-    description: category.metaDescription || category.shortDescription || category.description || undefined,
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: 'website',
+      ...(siteUrl ? { url: `${siteUrl}/shop/categories/${category.slug}` } : {}),
+      ...(image ? { images: [{ url: image, alt: category.name }] } : {}),
+    },
+    ...(image ? { twitter: { card: 'summary_large_image' as const } } : {}),
   }
 }
 

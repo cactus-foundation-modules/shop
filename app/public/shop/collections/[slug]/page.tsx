@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { Render } from '@puckeditor/core/rsc'
 import { getCollectionBySlug, listTags } from '@/modules/shop/lib/db/catalogue'
@@ -16,13 +17,32 @@ import { resolveCardTemplate, buildCardContext, buildTagMaps, renderCards, Minim
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import type { PuckData } from '@/modules/shop/lib/types'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
+import { getSiteUrlOrNull } from '@/lib/config/env'
+import { absoluteSocialImageUrl, resolveCollectionSocialImage } from '@/modules/shop/lib/catalogue-social-image'
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
   if ((await getShopGate()).blocked) return {}
   const collection = await getCollectionBySlug(slug)
   if (!collection) return {}
-  return { title: collection.metaTitle || collection.name, description: collection.metaDescription || collection.description || undefined }
+  const title = collection.metaTitle || collection.name
+  const description = collection.metaDescription || collection.description || undefined
+  // Same social preview treatment as a category and a product page - see
+  // lib/catalogue-social-image.ts for the order the picture is settled in.
+  const siteUrl = getSiteUrlOrNull()
+  const image = absoluteSocialImageUrl(await resolveCollectionSocialImage(collection), siteUrl)
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: 'website',
+      ...(siteUrl ? { url: `${siteUrl}/shop/collections/${collection.slug}` } : {}),
+      ...(image ? { images: [{ url: image, alt: collection.name }] } : {}),
+    },
+    ...(image ? { twitter: { card: 'summary_large_image' as const } } : {}),
+  }
 }
 
 export default async function ShopCollectionPage({ params }: { params: Promise<{ slug: string }> }) {
