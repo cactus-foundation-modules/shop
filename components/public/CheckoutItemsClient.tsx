@@ -199,27 +199,61 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
       return Math.max(0, body.scrollHeight - body.clientHeight)
     }
 
-    // How tall the column BESIDE this one actually is - its content, not its box.
-    // Columns in a split stretch to the tallest of them, so every one of them
-    // measures the same and measuring the box tells us nothing; the extent of
-    // its children is the real answer. Returns 0 where there is no column beside
-    // this one to speak of, which is the single-column layout the block warns
-    // against being pinned in anyway.
-    function neighbourHeight(wrapper: HTMLElement): number {
+    // The columns beside this one. Returns nothing where there is no column to
+    // speak of - the single-column layout the block warns against being pinned
+    // in anyway - so neither the floor nor the hold below does anything there.
+    function neighbours(wrapper: HTMLElement): HTMLElement[] {
       const column = wrapper.parentElement
       const row = column?.parentElement
-      if (!column || !row || row.children.length < 2) return 0
+      if (!column || !row || row.children.length < 2) return []
       const display = getComputedStyle(row).display
-      if (display !== 'grid' && display !== 'flex') return 0
+      if (display !== 'grid' && display !== 'flex') return []
+      return Array.from(row.children).filter((el): el is HTMLElement => el instanceof HTMLElement && el !== column)
+    }
+
+    // How tall the column beside this one actually is - its content, not its
+    // box. Columns in a split stretch to the tallest of them, so every one of
+    // them measures the same and measuring the box says nothing; the extent of
+    // its children is the real answer.
+    // Deliberately offsetTop/offsetHeight rather than rects: the hold below
+    // moves that column with a transform, rects carry transforms, and measuring
+    // a held column would raise the floor, which would lengthen the hold, which
+    // would raise the floor again. Layout values cannot see the transform at
+    // all, so there is nothing to run away with.
+    function neighbourHeight(wrapper: HTMLElement): number {
       let tallest = 0
-      for (const sibling of Array.from(row.children)) {
-        if (sibling === column) continue
-        const top = sibling.getBoundingClientRect().top
+      for (const sibling of neighbours(wrapper)) {
+        let top = Infinity
+        let bottom = 0
         for (const child of Array.from(sibling.children)) {
-          tallest = Math.max(tallest, child.getBoundingClientRect().bottom - top)
+          if (!(child instanceof HTMLElement)) continue
+          top = Math.min(top, child.offsetTop)
+          bottom = Math.max(bottom, child.offsetTop + child.offsetHeight)
         }
+        if (top !== Infinity) tallest = Math.max(tallest, bottom - top)
       }
       return tallest
+    }
+
+    // Holds the column beside this one still while the order list scrolls. The
+    // reserved run is page scroll like any other, so without this the form would
+    // slide up and off the top exactly when the shopper is checking the order
+    // against it. Moving it down by however much of the run has been used cancels
+    // that out and it simply sits there.
+    // A transform rather than sticky: it needs no assumption about what the
+    // other column is made of (a dropzone's children are whatever blocks were
+    // dropped in it), and it changes nothing about the layout, so the row keeps
+    // the height the floor gave it. Held all the way to the end rather than let
+    // go at the finish line - at full hold the column's foot sits exactly on the
+    // row's foot, so it carries on up the page from there with nothing to snap
+    // back to and nothing below it to overlap.
+    let holding = -1
+    function hold(px: number) {
+      if (px === holding) return
+      holding = px
+      for (const sibling of neighbours(wrapRef.current ?? sectionRef.current!)) {
+        sibling.style.transform = px > 0 ? `translateY(${px}px)` : ''
+      }
     }
 
     // The floor: tall enough that the reserved run sits BELOW the end of the
@@ -231,7 +265,7 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
       const el = sectionRef.current
       if (!w || !el) return
       const spare = desktop() ? overflow() : 0
-      if (spare <= 0) { w.style.removeProperty('--sci-fill'); return }
+      if (spare <= 0) { w.style.removeProperty('--sci-fill'); hold(0); return }
       const floor = Math.max(el.offsetHeight, neighbourHeight(w)) + spare
       w.style.setProperty('--sci-fill', `${Math.ceil(floor)}px`)
     }
@@ -257,12 +291,21 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
         const body = bodyRef.current
         if (!w || !el || !body) return
         const spare = overflow()
-        if (spare <= 0) return
+        if (spare <= 0) { hold(0); return }
         // How much travel the pinned block has left before its foot meets the
         // bottom of the column. Inside the reserved run, the page and the list
         // move together; above it the page is still scrolling the form, and the
         // list is left alone.
         const remaining = w.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom
+        // Where the list belongs for this page position, which is also how far
+        // the column beside it is being held.
+        const mapped = Math.min(spare, Math.max(0, Math.round(spare - remaining)))
+        hold(mapped)
+        // A jump rather than a scroll - Home, a back-to-top button, an anchor,
+        // a restored position - has no deltas to follow, so the list is put
+        // where the page now is. Without this, jumping back to the top of the
+        // checkout left the order showing its last item.
+        if (Math.abs(dy) > window.innerHeight) { body.scrollTop = mapped; return }
         if (remaining < 0 || remaining > spare + 1) return
         body.scrollTop += dy
       })
@@ -281,6 +324,7 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', measure)
       observer.disconnect()
+      hold(0)
       wrap.style.removeProperty('--sci-fill')
     }
   }, [preview, sticky, scrolls, lines, collapsed])
