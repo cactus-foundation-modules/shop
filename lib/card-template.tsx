@@ -12,6 +12,7 @@ import { makeDisplayAdjuster, NO_TAX_DISPLAY, type TaxDisplay } from '@/modules/
 import { SHOP_DEFAULT_COMMERCE_MODE, type ResolvedShopCommerceMode } from '@/modules/shop/lib/commerce-mode-shared'
 import type { CardPartContext, CardBadge, PartImage } from '@/modules/shop/components/puck/parts/part-context'
 import type { ShopCardExtra } from '@/modules/shop/lib/card-media'
+import { mergeCardImages } from '@/modules/shop/lib/card-image-order'
 import type { ShopCardFromPrice } from '@/modules/shop/lib/card-price'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 
@@ -133,23 +134,17 @@ export function buildCardContext(
 ): CardPartContext {
   // The product's own pictures, primary first then the rest in position order,
   // videos-by-URL excluded (they cannot sit in an <img>) - the same filter the
-  // detail gallery uses. Variation photos, if any, follow after.
+  // detail gallery uses. Contributed photos are folded in below.
   const usable = media.filter((m) => m.type !== 'VIDEO_URL')
   const primary = usable.find((m) => m.isPrimary) ?? usable[0]
   const ordered = primary ? [primary, ...usable.filter((m) => m !== primary)] : usable
   const ownImages: PartImage[] = ordered.map((m) => ({ url: m.url, alt: m.altText ?? product.name }))
-  // Own images first, then any a companion module folded in, deduped by url so a
-  // variation whose photo is also the parent's primary does not appear twice.
-  // Ahead of both sit any a module asked to LEAD with (`leadImages`), which is how
-  // a product whose own shots are line drawings can put a variation's photograph
-  // on the grid - the product's own pictures still follow, nothing is dropped.
-  const images: PartImage[] = []
-  const seenUrls = new Set<string>()
-  for (const im of [...(extra?.leadImages ?? []), ...ownImages, ...(extra?.images ?? [])]) {
-    if (seenUrls.has(im.url)) continue
-    seenUrls.add(im.url)
-    images.push(im)
-  }
+  // The product's own pictures with any a companion module folded in at the slot
+  // it asked for. This is how a card ends up in the same order as the product
+  // page's gallery: the owner arranges both in one grid on the Images tab, so the
+  // tile a shopper hovers and the page they land on cannot disagree about which
+  // picture is second. See lib/card-image-order.ts for the rule.
+  const images = mergeCardImages(ownImages, extra?.images ?? [], extra?.leadImages ?? [])
   // A contributed image carries no alt of its own where the media row had none -
   // fine for a supplementary picture behind the arrows, not fine for the one the
   // card leads with, which is all a screen reader meets before the name. Only the

@@ -47,15 +47,19 @@ export type CardOverlayProps = { payload: unknown; productId: string; activeSour
 // only adds an overlay (3D) omits `images`. A product the provider has nothing for
 // is simply absent from the map, which is the common case and costs no markup.
 export type ShopCardMediaPayload = {
+  // Each may carry a `position` - its index in the FINISHED carousel, the
+  // product's own photographs counted in - and lands there rather than behind
+  // them all. That is how a card ends up in the same order as the product page's
+  // gallery, which the owner arranges for both at once on the Images tab. No
+  // position means "after the product's own", which is right for a supplementary
+  // colour and is what every contribution did before positions existed.
   images?: PartImage[]
-  // Images that go in FRONT of the product's own photographs rather than after
-  // them, so the first one is the picture the grid leads with. The one place a
-  // provider gets to touch what the card shows before the shopper has done
-  // anything, and it is still additive: nothing of the product's own is dropped,
-  // it simply follows. shop-variations uses it where the owner has said a
-  // promoted variation's photo is the handsome one and the parent's is a line
-  // drawing. Several providers leading at once is merely first-registered-first,
-  // which is the same rule the appended images already follow.
+  // The older way of saying "in front of the product's own photographs": these
+  // lead the carousel, and the product's own follow. Superseded by `position` on
+  // an image above, which can say the same thing (slot 0) and much else besides,
+  // but kept working - a provider built against the previous contract leads
+  // exactly as it did, because images here with no position of their own claim
+  // slots 0..n. Still additive either way: nothing of the product's is dropped.
   leadImages?: PartImage[]
   overlay?: unknown
   // An opaque blob for the provider's own card part-block to render. Unlike

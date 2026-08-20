@@ -31,7 +31,15 @@ import type { ShpProduct } from '@/modules/shop/lib/types'
 // puts in the product page's gallery. Shop only uses it to decide the card's
 // hover-swap target: a promoted picture is a fair thing to reveal on hover, an
 // arbitrary colour is not. Absent means supplementary, which is the default.
-export type PartImage = { url: string; alt: string; sourceId?: string; promoted?: boolean }
+//
+// `position` is where a contributed picture belongs in the FINISHED carousel -
+// its index with the product's own photographs counted in, the same ordinal space
+// the product editor's Images grid arranges them in. Absent means "after the
+// product's own", which is where a contributed picture starts and what every
+// contribution did before this existed. It is read forgivingly (see
+// buildCardContext): one asking for slot 7 of a four-picture card lands at the
+// end rather than being stranded past it.
+export type PartImage = { url: string; alt: string; sourceId?: string; promoted?: boolean; position?: number | null }
 
 // The four original variants each map to a `.shop-card-badge-*` class of fixed
 // token colours. 'tag' is the owner-defined one: a tag row switched its badge on
