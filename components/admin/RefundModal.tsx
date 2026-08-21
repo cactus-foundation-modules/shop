@@ -18,8 +18,10 @@ function grossPerUnit(item: OrderItem, taxOnTop: boolean): number {
 }
 
 const MANUAL_METHOD_COPY: Record<string, string> = {
-  BANK_TRANSFER: 'This is a bank transfer order - refunding here just records it. You still need to send the money back yourself.',
-  CASH: 'This is a cash order - refunding here just records it. You still need to hand back the cash yourself.',
+  BANK_TRANSFER:
+    'This is a bank transfer order. Recording it here takes the items off the order, credits your books and sends the customer a credit note - but the money itself is yours to send. Nothing leaves your bank account by pressing this.',
+  CASH:
+    'This is a cash order. Recording it here takes the items off the order, credits your books and sends the customer a credit note - but the cash itself is yours to hand back.',
 }
 
 // Per-item refund modal: quantity per item pre-filled against the remaining
@@ -61,7 +63,15 @@ export function RefundModal({ orderId, items, paymentMethod, taxMode, onClose, o
       }),
     })
     setSaving(false)
-    if (!res.ok) { setError((await res.json()).error ?? 'Refund failed'); return }
+    // The catch matters. A 500 does not necessarily carry a JSON body, and
+    // without this res.json() throws INSIDE the click handler - so the modal
+    // showed nothing at all, which is exactly how a hard failure came to look
+    // like "I pressed refund and nothing happened".
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string }
+      setError(body.error ?? `Refund failed (${res.status}). Nothing has been refunded.`)
+      return
+    }
     onDone()
   }
 

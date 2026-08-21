@@ -40,6 +40,18 @@ export interface ShpPaymentProvider {
   // order carries amount/currency so providers can re-validate what was actually
   // charged against what the order costs - never trust payload alone (spec 7).
   confirmPayment(order: ShpOrderDraft, payload: unknown): Promise<ShpPaymentResult>
+  // 'manual' providers move no money of their own when a refund is recorded -
+  // bank transfer and cash both need somebody to send the money themselves, and
+  // the refund modal says so in as many words. They still RECORD the refund:
+  // the quantities come off, the order status follows, and the credit note goes
+  // out, because from the shop's point of view the money has been given back.
+  // Only the actual transfer is off-platform.
+  //
+  // Refusing instead (which is what they did before this existed) meant a
+  // bank-transfer shop could never record a refund at all - so its books kept
+  // the whole sale, its stock never came back, and the customer got no credit
+  // note, all while the screen promised the opposite. Defaults to 'provider'.
+  refundMode?: 'provider' | 'manual'
   refundOrder(refund: ShpRefundRequest): Promise<ShpRefundResult>
   handleWebhook?(req: Request): Promise<ShpWebhookResult>
   // Optional: answers "did this refund actually happen?" for a refund row whose

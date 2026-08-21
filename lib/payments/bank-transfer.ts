@@ -21,8 +21,15 @@ async function confirmPayment(_order: ShpOrderDraft, _payload: unknown): Promise
   return { success: false, error: 'Bank transfer payments are confirmed manually by an admin.' }
 }
 
+// Records the refund; it does not move the money, because nothing here can.
+// Whoever pressed the button still has to send it. Returning a refusal instead
+// - which is what this did until a shop taking mostly bank transfer tried to refund
+// somebody - left the shop unable to record a refund at all: the quantities
+// stayed put, the order kept its old status, the books kept the whole sale and
+// no credit note was raised, while the modal cheerfully said it had been
+// recorded. See `refundMode` on ShpPaymentProvider.
 async function refundOrder(_refund: ShpRefundRequest): Promise<ShpRefundResult> {
-  return { success: false, error: 'Bank transfer refunds must be processed manually outside Cactus.' }
+  return { success: true }
 }
 
 export const bankTransferProvider: ShpPaymentProvider = {
@@ -31,6 +38,7 @@ export const bankTransferProvider: ShpPaymentProvider = {
   description: 'Pay straight from your bank account. We send the account details with your order.',
   logo: bankTransferLogo,
   confirmMode: 'manual',
+  refundMode: 'manual',
   createIntent,
   confirmPayment,
   refundOrder,

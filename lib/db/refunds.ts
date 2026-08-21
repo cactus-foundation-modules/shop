@@ -229,7 +229,16 @@ async function settleRefund(
     async (tx) => {
       // Blocking rather than try-lock: settling is not optional, and nothing
       // holds this lock for longer than one of these short transactions.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${REFUND_LOCK_NAMESPACE}::int4, hashtext(${input.orderId}))`
+      //
+      // $executeRaw, NOT $queryRaw, and this is not a style choice.
+      // pg_advisory_xact_lock returns `void`, and Prisma has no mapping for
+      // that type - $queryRaw tries to deserialise the column and throws
+      // "Failed to deserialize column of type 'void'" every single time. It
+      // threw here on the FIRST refund this shop ever took, after the PENDING
+      // reservation had already been committed: the row stranded, the order
+      // never moved, and the browser got a 500 it could not read. The try-lock
+      // in prepareRefund above is fine because its variant returns boolean.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${REFUND_LOCK_NAMESPACE}::int4, hashtext(${input.orderId}))`
 
       await tx.$executeRaw`
         UPDATE "shp_refunds" SET "status" = ${result.success ? 'COMPLETED' : 'FAILED'}, "provider_refund_id" = ${result.providerRefundId}

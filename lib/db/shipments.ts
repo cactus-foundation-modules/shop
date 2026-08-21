@@ -340,7 +340,11 @@ export async function isOrderFullyDispatched(orderId: string): Promise<boolean> 
 // the shipment covered and the delete cannot race a concurrent dispatch.
 export async function deleteShipment(shipmentId: string, orderId: string): Promise<boolean> {
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(${ORDER_LOCK_NAMESPACE}::int4, hashtext(${orderId}))`
+    // $executeRaw, not $queryRaw: pg_advisory_xact_lock returns `void` and
+    // Prisma cannot deserialise that type, so $queryRaw throws before the lock
+    // is any use. See the longer note in lib/db/refunds.ts, where the same line
+    // broke every refund the shop tried to settle.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ORDER_LOCK_NAMESPACE}::int4, hashtext(${orderId}))`
 
     const covered = await tx.$queryRaw<{ product_id: string | null; quantity: number; is_pre_order: boolean }[]>`
       SELECT oi."product_id" AS product_id, si."quantity" AS quantity, oi."is_pre_order" AS is_pre_order
