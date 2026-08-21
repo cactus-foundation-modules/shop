@@ -98,6 +98,14 @@ export const shopCollectionBrowserPuckComponent = {
     limit: { type: 'number' as const, label: 'Most it will show (blank for all)' },
   },
   defaultProps: { display: 'cards', columns: 4, ctaLabel: 'Browse', showBlurb: 'yes', showCount: 'yes' },
+  // The editor's canvas render. Every other block wires this and this one never
+  // did, which made the block unopenable rather than merely unpainted: Puck calls
+  // `config.components[type].render(props)` unconditionally, so an absent render
+  // threw "e is not a function" and took the whole page builder down with it - any
+  // page carrying a Collection Browser could not be edited at all. The storefront
+  // was fine throughout, the RSC half below having always had its own render,
+  // which is why nothing looked wrong from the outside.
+  render: ShopCollectionBrowser,
   // The sidebar grows one Yes/No per companion module that has pages of its own
   // worth listing here - today that is the filters module's filter collections.
   // An install with no such module gets the field list exactly as written above,
