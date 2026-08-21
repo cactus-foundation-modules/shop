@@ -37,8 +37,8 @@ export const shopCheckoutItemsPuckComponent = {
       type: 'select' as const,
       label: 'Scroll a long order inside the block',
       options: [
-        { value: 'auto', label: 'Automatic (whenever it stays in view)' },
-        { value: 'on', label: 'Always' },
+        { value: 'auto', label: 'Automatic (run down the page; a pinned block stays reachable by its foot)' },
+        { value: 'on', label: 'Always (cap the list and scroll it inside the block)' },
         { value: 'off', label: 'Never - let it run down the page' },
       ],
     },
