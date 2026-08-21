@@ -5,8 +5,10 @@
 // next/server + db imports never land in the client editor bundle.
 //
 // A layout saved before these settings existed passes nothing; the RSC half
-// falls back to the historical look (breadcrumbs, "The range", the blurb), so
-// nothing changes until a setting is changed.
+// falls back to the historical look (breadcrumbs and the blurb both on), so
+// nothing changes until a setting is changed. The one exception is the small
+// line above the name, which used to default to "The range" and now defaults to
+// blank - a category page is entitled to open with its own name.
 export type ShopCategoryHeaderProps = { categorySlug?: string; eyebrow?: string; showBreadcrumbs?: string; showBlurb?: string }
 
 export function ShopCategoryHeader() {
@@ -26,7 +28,7 @@ export const shopCategoryHeaderPuckComponent = {
     showBreadcrumbs: { type: 'select' as const, label: 'Show breadcrumb trail', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
     showBlurb: { type: 'select' as const, label: 'Show the category description', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
   },
-  defaultProps: { eyebrow: 'The range', showBreadcrumbs: 'yes', showBlurb: 'yes' },
+  defaultProps: { eyebrow: '', showBreadcrumbs: 'yes', showBlurb: 'yes' },
   permissions: { delete: false, duplicate: false },
   render: ShopCategoryHeader,
 }

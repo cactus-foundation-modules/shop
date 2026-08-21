@@ -31,9 +31,12 @@ export async function ShopCategoryHeaderRsc(props: ShopCategoryHeaderProps) {
   const category = await getCategoryBySlug(props.categorySlug)
   if (!category) return null
   const crumbs = (await getCategoryAncestorPath(category.id)).filter((a) => a.id !== category.id)
-  // ?? not ||: a layout saved before the setting existed passes nothing and
-  // keeps the historical wording; an owner blanking the field hides the line.
-  const eyebrow = props.eyebrow ?? 'The range'
+  // No fallback wording. The line used to default to "The range", which meant
+  // every category on the site announced itself the same way whether or not
+  // anyone had asked for it; blank is the default now, here and in the block's
+  // defaultProps, and the span only appears once an owner types something.
+  // Matches FilterCollectionHeader, which has always worked this way.
+  const eyebrow = props.eyebrow
 
   return (
     <div>
