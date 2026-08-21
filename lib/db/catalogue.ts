@@ -507,6 +507,28 @@ export async function listCollectionsForIndex(): Promise<Array<{
     .filter((c) => c.productCount > 0)
 }
 
+// A random handful of collection links for the footer's Collection Links
+// block. Deliberately the lightest read on this page: name and slug only, no
+// counts, no cover images - it runs on every page of the site. The EXISTS
+// keeps empty and hidden-only collections out, same rule as the index above,
+// and Postgres does the shuffling so each request genuinely gets a fresh
+// draw rather than a cached one.
+export async function listRandomCollectionLinks(limit: number): Promise<Array<{ name: string; slug: string }>> {
+  const capped = Math.max(1, Math.min(24, Math.floor(limit)))
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT c."name", c."slug"
+      FROM "shp_collections" c
+     WHERE EXISTS (
+       SELECT 1 FROM "shp_product_collections" pc
+         JOIN "shp_products" p ON p."id" = pc."product_id"
+        WHERE pc."collection_id" = c."id" AND p."status" = 'ACTIVE' AND p."catalogue_hidden" = false
+     )
+     ORDER BY random()
+     LIMIT ${capped}
+  `
+  return rows.map((r) => ({ name: r.name as string, slug: r.slug as string }))
+}
+
 // Manages membership from the collection side (product order in this one
 // collection) - unlike setProductCollections, this never touches a product's
 // membership in any *other* collection.
