@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="module-art.webp" alt="Shop module" width="640" />
+</p>
+
 # Shop module
 
 Full ecommerce foundation for Cactus: catalogue, checkout, payments (Stripe,
