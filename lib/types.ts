@@ -512,6 +512,134 @@ export type ShpOrderDispatchSummary = {
   partiallyDispatched: boolean
 }
 
+// ---------------------------------------------------------------------------
+// Invoices
+// ---------------------------------------------------------------------------
+//
+// Every one of these is a SNAPSHOT taken at the moment of issue and stored as
+// JSONB on shp_invoices - never a live read of the order, the settings or the
+// catalogue. An invoice is the paperwork for what was charged on a given day,
+// so a product renamed next month, a business that moves, or a VAT number typed
+// in later must all leave already-issued invoices exactly as they were.
+
+/** Who issued it, as the settings read on the day. */
+export type ShpInvoiceSeller = {
+  name: string
+  addressLines: string[]
+  vatNumber: string
+  companyNumber: string
+  email: string
+  phone: string
+  /** The site's own name and logo, so the document can head itself without
+   *  every block reaching for core config at render time. */
+  siteName: string
+  siteUrl: string
+  logoUrl: string | null
+}
+
+/** Who it is for. Addresses are already rendered to lines - the invoice does not
+ *  re-format an address that may have been captured under different rules. */
+export type ShpInvoiceCustomer = {
+  name: string
+  company: string
+  email: string
+  phone: string
+  billingAddress: string[]
+  shippingAddress: string[]
+}
+
+/** One charged line. Money is held as decimal strings, as everywhere else in
+ *  the module, and net/tax/gross are all three stored rather than derived, so no
+ *  reader has to know which way the shop's tax mode ran. */
+export type ShpInvoiceLine = {
+  name: string
+  sku: string | null
+  quantity: number
+  /** Per unit, exactly as charged (gross on an INCLUSIVE shop, net on an
+   *  EXCLUSIVE one) - the figure the customer recognises from the checkout. */
+  unitPrice: string
+  /** Quantity times unit price, before any order-level discount. This is the
+   *  figure that belongs in the line's money column: a line that showed its
+   *  share of a basket-wide coupon would not equal its own arithmetic. */
+  lineTotal: string
+  taxRatePercent: string
+  /** The line's share AFTER any order-level discount, which is what was
+   *  actually taxed. These three are what tie to the tax summary and the
+   *  totals; `lineTotal` above is what ties to the line's own sum. */
+  net: string
+  tax: string
+  gross: string
+  /** Personalisation and options as they were recorded on the order line. */
+  detail: { label: string; value: string }[]
+}
+
+/** Net, tax and gross at one rate. The part an accountant actually reads, and
+ *  what a bookkeeping module needs to file a return - which is why it is stored
+ *  rather than worked out again downstream. */
+export type ShpInvoiceTaxRow = {
+  ratePercent: string
+  net: string
+  tax: string
+  gross: string
+}
+
+/** Headings and small print as they stood in settings on the day. */
+export type ShpInvoiceWording = {
+  heading: string
+  intro: string
+  taxLabel: string
+  paymentDetails: string
+  terms: string
+  footer: string
+}
+
+/** What one registered bookkeeping sink made of this invoice. */
+export type ShpInvoiceSinkResult = {
+  id: string
+  ok: boolean
+  /** What the sink did with it, in words an owner can read ("Recorded as
+   *  income", "VAT period already filed"). */
+  message: string
+  at: string
+}
+
+export type ShpInvoiceStatus = 'ISSUED' | 'VOID'
+
+export type ShpInvoice = {
+  id: string
+  orderId: string
+  /** The order's number as it stood when the invoice was raised. */
+  orderNumber: string
+  invoiceNumber: string
+  status: ShpInvoiceStatus
+  issuedAt: Date
+  /** yyyy-mm-dd. The date the VAT belongs to: when the order was paid where
+   *  that is known, the issue date otherwise. */
+  taxPointDate: string
+  dueDate: string | null
+  currency: string
+  currencySymbol: string
+  taxMode: 'INCLUSIVE' | 'EXCLUSIVE'
+  subtotal: string
+  discountAmount: string
+  shippingAmount: string
+  taxAmount: string
+  total: string
+  seller: ShpInvoiceSeller
+  customer: ShpInvoiceCustomer
+  lines: ShpInvoiceLine[]
+  taxBreakdown: ShpInvoiceTaxRow[]
+  wording: ShpInvoiceWording
+  issuedBy: 'AUTO' | 'MANUAL'
+  issueTrigger: string | null
+  createdByUserId: string | null
+  sinkResults: ShpInvoiceSinkResult[]
+  voidedAt: Date | null
+  voidReason: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
 // A customer asking for an order to be called off or sent back. The asking and
 // the doing are separate on purpose: approving a request is what calls the
 // existing cancel or refund machinery, so a decline - or an approval whose

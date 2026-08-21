@@ -19,6 +19,8 @@ import {
   badgeClass,
   formatOrderDate,
 } from '@/modules/shop/lib/order-display'
+import { getInvoiceForOrder } from '@/modules/shop/lib/db/invoices'
+import { invoicePath } from '@/modules/shop/lib/invoice-token'
 import OrderRequestPanel from '@/modules/shop/components/public/OrderRequestPanel'
 import WithdrawRequestButton from '@/modules/shop/components/public/WithdrawRequestButton'
 import BuyAgainButton from '@/modules/shop/components/public/BuyAgainButton'
@@ -107,6 +109,11 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
 
   const { order, lines, shipments, refunds, refundItems, downloads, requests, openRequest } = detail
   const symbol = config.currencySymbol
+  // Only looked up on a shop that invoices AND is willing to show it, so an
+  // ordinary shop's order page costs exactly what it always did.
+  const invoice = config.invoicesEnabled && config.invoiceShowToCustomer
+    ? await getInvoiceForOrder(order.id)
+    : null
   const status = ORDER_STATUS_DISPLAY[order.status]
   const completedRefunds = refunds.filter((refund) => refund.status === 'COMPLETED')
   const refundedTotal = completedRefunds.reduce((sum, refund) => sum + Number(refund.amount), 0)
@@ -144,6 +151,18 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
           <Link href={`/shop/account/orders/${order.id}/receipt`} prefetch={false} style={{ color: 'var(--color-primary)' }}>
             Printable receipt
           </Link>
+          {/* The invoice, once one has been raised and the shop is willing to
+              show it. A plain <a>: the invoice page is signed rather than
+              session-bound, so prefetching it would put the token in the browser's
+              speculation cache for no gain. */}
+          {invoice && (
+            <>
+              {' · '}
+              <a href={invoicePath(invoice.invoiceNumber)} style={{ color: 'var(--color-primary)' }}>
+                Invoice {invoice.invoiceNumber}
+              </a>
+            </>
+          )}
         </p>
       </div>
 

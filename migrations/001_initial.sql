@@ -917,3 +917,59 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 CREATE INDEX IF NOT EXISTS "shp_products_master_category_id_idx" ON "shp_products" ("master_category_id");
+
+-- ---------------------------------------------------------------------------
+-- Invoices (see migrations/023_invoices.sql for the full reasoning). Snapshots
+-- in JSONB rather than joins, numbered from a sequence so two orders completing
+-- in the same second cannot share a number, one live invoice per order.
+-- ---------------------------------------------------------------------------
+
+CREATE SEQUENCE IF NOT EXISTS "shp_invoice_number_seq" START 1;
+
+CREATE TABLE IF NOT EXISTS "shp_invoices" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "order_id" TEXT NOT NULL,
+    -- Snapshot of the order's own number. The FK is there for the join, but the
+    -- number is printed on the document and must survive whatever happens to the
+    -- order it came from.
+    "order_number" TEXT NOT NULL DEFAULT '',
+    "invoice_number" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'ISSUED',
+    "issued_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "tax_point_date" DATE NOT NULL,
+    "due_date" DATE,
+    "currency" TEXT NOT NULL,
+    "currency_symbol" TEXT NOT NULL DEFAULT '',
+    "tax_mode" TEXT NOT NULL,
+    "subtotal" NUMERIC(10,2) NOT NULL,
+    "discount_amount" NUMERIC(10,2) NOT NULL DEFAULT 0,
+    "shipping_amount" NUMERIC(10,2) NOT NULL DEFAULT 0,
+    "tax_amount" NUMERIC(10,2) NOT NULL DEFAULT 0,
+    "total" NUMERIC(10,2) NOT NULL,
+    "seller" JSONB NOT NULL DEFAULT '{}',
+    "customer" JSONB NOT NULL DEFAULT '{}',
+    "lines" JSONB NOT NULL DEFAULT '[]',
+    "tax_breakdown" JSONB NOT NULL DEFAULT '[]',
+    "wording" JSONB NOT NULL DEFAULT '{}',
+    "issued_by" TEXT NOT NULL DEFAULT 'AUTO',
+    "issue_trigger" TEXT,
+    "created_by_user_id" TEXT,
+    "sink_results" JSONB NOT NULL DEFAULT '[]',
+    "voided_at" TIMESTAMP(3),
+    "void_reason" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "shp_invoices_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "shp_invoices_invoice_number_key" UNIQUE ("invoice_number"),
+    CONSTRAINT "shp_invoices_status_check" CHECK ("status" IN ('ISSUED', 'VOID')),
+    CONSTRAINT "shp_invoices_issued_by_check" CHECK ("issued_by" IN ('AUTO', 'MANUAL')),
+    CONSTRAINT "shp_invoices_order_id_fkey"
+        FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "shp_invoices_order_issued_key"
+    ON "shp_invoices" ("order_id") WHERE "status" = 'ISSUED';
+CREATE INDEX IF NOT EXISTS "shp_invoices_order_id_idx" ON "shp_invoices" ("order_id");
+CREATE INDEX IF NOT EXISTS "shp_invoices_issued_at_idx" ON "shp_invoices" ("issued_at" DESC);
+CREATE INDEX IF NOT EXISTS "shp_invoices_tax_point_idx" ON "shp_invoices" ("tax_point_date");

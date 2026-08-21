@@ -1,0 +1,124 @@
+import { getSiteUrl } from '@/lib/config/env'
+
+// Turning the invoice document into a PDF.
+//
+// The document is printed by a headless browser opening the invoice's own page,
+// so the PDF is the layout the owner designed - the same markup, the same CSS,
+// the same figures - rather than a second rendering of it that would drift the
+// first time somebody moved a block. The print rules in invoice-doc-css.ts are
+// what make it ink on paper rather than a screenshot of a dark-mode page.
+//
+// Both heavy packages are dynamically imported, so a shop that never presses the
+// button never loads a browser. They are declared in core's next.config.ts
+// serverExternalPackages, and @sparticuz/chromium's brotli packs are traced into
+// every /api/m/** function there - which is what makes this work deployed as
+// well as locally.
+//
+// Two environments, deliberately different:
+//
+//  - Deployed (Linux serverless): @sparticuz/chromium supplies the binary, and
+//    its args are the ones that make chromium survive a read-only filesystem
+//    with no /dev/shm worth speaking of.
+//  - A developer's own machine: there is no Linux binary to unpack, so it uses a
+//    locally installed Chrome. CHROME_PATH names it; failing that the usual
+//    macOS and Linux install paths are tried. If none is there, the caller gets
+//    a clear refusal rather than a stack trace.
+
+const MAC_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+const MAC_CHROMIUM = '/Applications/Chromium.app/Contents/MacOS/Chromium'
+const LINUX_CHROME = '/usr/bin/google-chrome'
+const LINUX_CHROMIUM = '/usr/bin/chromium'
+
+/** True on a serverless/Linux deployment, where the packaged chromium is the one
+ *  to use. AWS_LAMBDA_FUNCTION_NAME is set on Vercel's Node runtime. */
+function isServerless(): boolean {
+  return Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.VERCEL)
+}
+
+async function localChromePath(): Promise<string | null> {
+  if (process.env.CHROME_PATH) return process.env.CHROME_PATH
+  const { existsSync } = await import('fs')
+  for (const candidate of [MAC_CHROME, MAC_CHROMIUM, LINUX_CHROME, LINUX_CHROMIUM]) {
+    if (existsSync(candidate)) return candidate
+  }
+  return null
+}
+
+export class InvoicePdfUnavailableError extends Error {}
+
+/**
+ * Prints one invoice to PDF bytes.
+ *
+ * `path` is a site-relative URL (the invoice's own page, token and all). It is
+ * fetched over HTTP from the site's own address rather than rendered in-process,
+ * because that is the only way to be certain the PDF and the page agree - and
+ * because a Puck layout of async server components cannot be rendered to a
+ * string by hand.
+ */
+export async function renderInvoicePdf(path: string): Promise<Uint8Array> {
+  const [{ default: puppeteer }, chromiumModule] = await Promise.all([
+    import('puppeteer-core'),
+    isServerless() ? import('@sparticuz/chromium') : Promise.resolve(null),
+  ])
+  const chromium = chromiumModule?.default ?? null
+
+  let executablePath: string | null = null
+  try {
+    executablePath = chromium ? await chromium.executablePath() : await localChromePath()
+  } catch (error) {
+    throw new InvoicePdfUnavailableError(
+      `The packaged browser could not be unpacked: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  if (!executablePath) {
+    throw new InvoicePdfUnavailableError(
+      'No browser is available to make a PDF. Install Google Chrome locally, or set CHROME_PATH.',
+    )
+  }
+
+  let browser
+  try {
+    browser = await puppeteer.launch({
+      executablePath,
+      args: chromium ? chromium.args : ['--no-sandbox', '--disable-dev-shm-usage'],
+      headless: true,
+      // Sized to a sheet of A4 at 96dpi, so a layout with a breakpoint in it
+      // prints its desktop shape rather than its phone one.
+      defaultViewport: { width: 794, height: 1123, deviceScaleFactor: 2 },
+    })
+  } catch (error) {
+    throw new InvoicePdfUnavailableError(
+      `The browser would not start: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+
+  try {
+    const page = await browser.newPage()
+    const url = `${getSiteUrl()}${path}`
+    // 25s of the dispatcher's 60s ceiling. An invoice page is one database read
+    // and a logo; anything slower than this is broken, not busy.
+    const response = await page.goto(url, { waitUntil: 'networkidle0', timeout: 25_000 })
+    if (!response || !response.ok()) {
+      throw new InvoicePdfUnavailableError(`The invoice page could not be loaded to print (${response?.status() ?? 'no response'}).`)
+    }
+    await page.emulateMediaType('print')
+    const pdf = await page.pdf({
+      format: 'a4',
+      // Backgrounds on, or every rule and border in the document prints white.
+      printBackground: true,
+      margin: { top: '16mm', bottom: '16mm', left: '14mm', right: '14mm' },
+      preferCSSPageSize: false,
+    })
+    return pdf
+  } finally {
+    // Always, even when the print threw: a leaked browser on a warm serverless
+    // instance is a memory leak that outlives the request that caused it.
+    await browser.close().catch(() => {})
+  }
+}
+
+/** The filename a browser saves it as. */
+export function invoicePdfFilename(prefix: string, invoiceNumber: string): string {
+  const clean = (value: string) => value.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
+  return `${clean(prefix) || 'invoice'}-${clean(invoiceNumber) || 'document'}.pdf`
+}

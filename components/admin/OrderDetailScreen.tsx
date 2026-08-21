@@ -19,7 +19,7 @@ import {
 } from '@/modules/shop/components/admin/order-labels'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
-import { useAlert, useConfirm } from '@/modules/shop/components/admin/dialogs'
+import { useAlert, useConfirm, usePrompt } from '@/modules/shop/components/admin/dialogs'
 
 type LineMetaField = { label: string; value: string; href?: string }
 type OrderItem = {
@@ -80,14 +80,45 @@ const EMAIL_TRIGGER_LABEL: Record<string, string> = {
 
 type TimelineEvent = { id: string; at: string; icon: string; title: string; note?: string }
 
+/** How the invoice panel says when invoices go out, in the words the order
+ *  screen already uses for those states. */
+const INVOICE_TRIGGER_WORDING: Record<string, string> = {
+  PAID: 'paid for',
+  DISPATCHED: 'dispatched',
+  COMPLETED: 'completed',
+}
+
+// The invoice panel's own payload (GET .../invoice). Kept apart from OrderDetail
+// because invoicing is switched off on most shops and there is no sense making
+// every order screen carry the shape of a feature it does not use.
+type InvoiceSinkResult = { id: string; ok: boolean; message: string; at: string }
+type OrderInvoice = {
+  id: string; invoiceNumber: string; orderNumber: string; status: 'ISSUED' | 'VOID'
+  issuedAt: string; taxPointDate: string; dueDate: string | null
+  total: string; taxAmount: string; currencySymbol: string
+  issuedBy: 'AUTO' | 'MANUAL'; issueTrigger: string | null
+  sinkResults: InvoiceSinkResult[]
+  voidedAt: string | null; voidReason: string | null
+  viewUrl: string; pdfUrl: string
+}
+type InvoiceState = {
+  enabled: boolean
+  issueOn: 'MANUAL' | 'PAID' | 'DISPATCHED' | 'COMPLETED'
+  pdfEnabled: boolean
+  hasBookkeeping: boolean
+  invoices: OrderInvoice[]
+}
+
 export function OrderDetailScreen({ orderId, children }: { orderId: string; children?: React.ReactNode }) {
   const adminPath = useAdminPath()
   const currencySymbol = useCurrencySymbol()
   const [alert, alertNode] = useAlert()
   const [confirm, confirmNode] = useConfirm()
+  const [prompt, promptNode] = usePrompt()
 
   const [data, setData] = useState<OrderDetail | null>(null)
   const [dispatch, setDispatch] = useState<DispatchDetail | null>(null)
+  const [invoicing, setInvoicing] = useState<InvoiceState | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [sendEmailOnChange, setSendEmailOnChange] = useState(true)
@@ -106,6 +137,11 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
       .catch(() => setLoadError('This order could not be loaded.'))
     fetch(`/api/m/shop/admin/orders/${orderId}/dispatch`)
       .then(async (r) => { if (r.ok) setDispatch(await r.json()) })
+      .catch(() => {})
+    // Its own call, like dispatch: the panel is absent on a shop that does not
+    // invoice, and a failed read here must not take the order screen with it.
+    fetch(`/api/m/shop/admin/orders/${orderId}/invoice`)
+      .then(async (r) => { if (r.ok) setInvoicing(await r.json()) })
       .catch(() => {})
   }, [orderId])
 
@@ -170,6 +206,57 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
     setBusy(false)
     if (!res.ok) {
       await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That dispatch could not be undone.')
+      return
+    }
+    refresh()
+  }
+
+  async function issueInvoice() {
+    setBusy(true)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/invoice`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'issue' }),
+    })
+    setBusy(false)
+    if (!res.ok) {
+      await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That invoice could not be raised.')
+      return
+    }
+    refresh()
+  }
+
+  async function resendInvoice(invoiceId: string) {
+    setBusy(true)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/invoice`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'resend', invoiceId }),
+    })
+    setBusy(false)
+    if (!res.ok) {
+      await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That invoice could not be sent to the books.')
+      return
+    }
+    refresh()
+  }
+
+  async function voidTheInvoice(invoice: OrderInvoice) {
+    // A reason, not a tickbox. The number stays spent and the document stays
+    // readable, so the only thing that explains the gap is what is typed here.
+    const reason = await prompt({
+      title: `Void invoice ${invoice.invoiceNumber}?`,
+      message: 'It stays on file, marked void, and its number is not used again. Say why - this is what an audit reads.',
+      placeholder: 'e.g. wrong delivery address, reissued as INV-000124',
+      confirmLabel: 'Void this invoice',
+    })
+    if (!reason) return
+    setBusy(true)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/invoice`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'void', invoiceId: invoice.id, reason }),
+    })
+    setBusy(false)
+    if (!res.ok) {
+      await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That invoice could not be voided.')
       return
     }
     refresh()
@@ -608,6 +695,70 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
             </div>
           </section>
 
+          {/* Invoicing. The whole card is absent on a shop that has not switched
+              it on, which is nearly all of them - see the panel's own comment in
+              app/api/admin/orders/[id]/invoice/route.ts. */}
+          {invoicing?.enabled && (
+            <section className="sox-card sox-noprint">
+              <div className="sox-card-head"><h2>Invoice</h2></div>
+              <div className="sox-card-body" style={{ display: 'grid', gap: '0.75rem' }}>
+                {invoicing.invoices.length === 0 && (
+                  <>
+                    <p className="sox-sub" style={{ margin: 0 }}>
+                      {invoicing.issueOn === 'MANUAL'
+                        ? 'This shop raises invoices by hand.'
+                        : `Raised automatically when an order is ${INVOICE_TRIGGER_WORDING[invoicing.issueOn]}. This one has not been yet.`}
+                    </p>
+                    <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={issueInvoice}>
+                      Raise the invoice now
+                    </button>
+                  </>
+                )}
+                {invoicing.invoices.map((invoice) => (
+                  <div key={invoice.id} style={{ display: 'grid', gap: '0.375rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <strong className="sox-mono">{invoice.invoiceNumber}</strong>
+                      {invoice.status === 'VOID'
+                        ? <span className="badge badge-default">Void</span>
+                        : <span className="badge badge-success">Issued</span>}
+                      <span className="sox-muted">{formatDate(invoice.issuedAt)}</span>
+                    </div>
+                    <div className="sox-sub">
+                      {formatMoney(invoice.total, invoice.currencySymbol || currencySymbol)}
+                      {Number(invoice.taxAmount) > 0 && ` · tax ${formatMoney(invoice.taxAmount, invoice.currencySymbol || currencySymbol)}`}
+                      {invoice.issuedBy === 'MANUAL' ? ' · raised by hand' : ''}
+                    </div>
+                    {invoice.voidReason && <div className="sox-sub">Voided: {invoice.voidReason}</div>}
+                    {/* What the books made of it. A failure here is the one that
+                        otherwise goes unnoticed until the VAT return is due, so
+                        it is stated rather than logged. */}
+                    {invoice.sinkResults.map((result) => (
+                      <div key={result.id} className="sox-sub">
+                        {result.ok ? '✓' : '⚠'} {result.id}: {result.message}
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                      <a className="btn btn-secondary btn-sm" href={invoice.viewUrl} target="_blank" rel="noreferrer">View</a>
+                      {invoicing.pdfEnabled && (
+                        <a className="btn btn-secondary btn-sm" href={invoice.pdfUrl}>PDF</a>
+                      )}
+                      {invoice.status === 'ISSUED' && invoicing.hasBookkeeping && (
+                        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => resendInvoice(invoice.id)}>
+                          Send to the books again
+                        </button>
+                      )}
+                      {invoice.status === 'ISSUED' && (
+                        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => voidTheInvoice(invoice)}>
+                          Void
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           <section className="sox-card">
             <div className="sox-card-head"><h2>Totals</h2></div>
             <div className="sox-card-body">
@@ -668,6 +819,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
 
       {alertNode}
       {confirmNode}
+      {promptNode}
     </div>
   )
 }

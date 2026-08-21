@@ -8,6 +8,7 @@ import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
 import { rememberOrderAddress } from '@/modules/shop/lib/order-address-book'
 import { sendShopEmail } from '@/modules/shop/lib/email'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
+import { issueInvoiceForOrder, shouldIssueOn } from '@/modules/shop/lib/invoices'
 import { formatMoney } from '@/modules/shop/lib/money'
 
 function formatAddress(address: { line1: string; line2?: string; city: string; postcode: string; country: string }): string {
@@ -87,6 +88,16 @@ export async function fulfillPaidOrder(orderId: string): Promise<void> {
     shopName: config.shopTitle || 'Shop',
     shopUrl: `${siteUrl}/shop`,
   })
+
+  // The invoice, for a shop that invoices on payment rather than on despatch or
+  // completion. Same swallow-and-log rule as the other trigger in
+  // lib/order-status.ts: the money has landed and the customer has been told, so
+  // paperwork that will not raise is a job for the button on the order screen,
+  // not a reason to fail a payment webhook.
+  if (shouldIssueOn(config, 'PAID')) {
+    const invoiced = await issueInvoiceForOrder(order.id, { trigger: 'PAID', issuedBy: 'AUTO' })
+    if (!invoiced.ok) console.error('[shop] could not invoice order', order.id, invoiced.error)
+  }
 
   const adminAlertEmail = config.adminOrderAlertEmail || config.storeEmail
   if (adminAlertEmail) {

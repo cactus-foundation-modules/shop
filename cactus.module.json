@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.271",
+  "version": "0.1.272",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1123",
@@ -53,6 +53,7 @@
     "shp_digital_downloads",
     "shp_coupons",
     "shp_automatic_discounts",
+    "shp_invoices",
     "shp_orders",
     "shp_order_items",
     "shp_refunds",
@@ -500,6 +501,60 @@
       "layoutTypes": [
         "shopProductCard"
       ]
+    },
+    {
+      "type": "ShopInvoiceHeader",
+      "import": "./components/puck/invoice-parts",
+      "component": "shopInvoiceHeaderPuckComponent",
+      "rscComponent": "shopInvoiceHeaderPuckRscComponent",
+      "layoutTypes": [
+        "shopInvoice"
+      ]
+    },
+    {
+      "type": "ShopInvoiceParties",
+      "import": "./components/puck/invoice-parts",
+      "component": "shopInvoicePartiesPuckComponent",
+      "rscComponent": "shopInvoicePartiesPuckRscComponent",
+      "layoutTypes": [
+        "shopInvoice"
+      ]
+    },
+    {
+      "type": "ShopInvoiceLines",
+      "import": "./components/puck/invoice-parts",
+      "component": "shopInvoiceLinesPuckComponent",
+      "rscComponent": "shopInvoiceLinesPuckRscComponent",
+      "layoutTypes": [
+        "shopInvoice"
+      ]
+    },
+    {
+      "type": "ShopInvoiceTotals",
+      "import": "./components/puck/invoice-parts",
+      "component": "shopInvoiceTotalsPuckComponent",
+      "rscComponent": "shopInvoiceTotalsPuckRscComponent",
+      "layoutTypes": [
+        "shopInvoice"
+      ]
+    },
+    {
+      "type": "ShopInvoiceTaxSummary",
+      "import": "./components/puck/invoice-parts",
+      "component": "shopInvoiceTaxSummaryPuckComponent",
+      "rscComponent": "shopInvoiceTaxSummaryPuckRscComponent",
+      "layoutTypes": [
+        "shopInvoice"
+      ]
+    },
+    {
+      "type": "ShopInvoicePayment",
+      "import": "./components/puck/invoice-parts",
+      "component": "shopInvoicePaymentPuckComponent",
+      "rscComponent": "shopInvoicePaymentPuckRscComponent",
+      "layoutTypes": [
+        "shopInvoice"
+      ]
     }
   ],
   "emailTemplates": {
@@ -604,6 +659,12 @@
           "className": "shop-card",
           "maxWidth": 340
         }
+      },
+      {
+        "key": "shopInvoice",
+        "label": "Invoice document",
+        "starterImport": "./lib/starterLayouts",
+        "starterExport": "shopInvoiceStarters"
       }
     ]
   },

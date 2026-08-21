@@ -8,6 +8,7 @@ import {
 import { createShipment, getOrderDispatchSummary } from '@/modules/shop/lib/db/shipments'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
+import { issueInvoiceForOrder, shouldIssueOn, type InvoiceTrigger } from '@/modules/shop/lib/invoices'
 import type { ShpEmailTemplateTrigger, ShpOrderItem, ShpOrderStatus } from '@/modules/shop/lib/types'
 
 // Everything that happens when an order's status changes, in one place.
@@ -109,6 +110,21 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail }: {
     // again instead of being held by an order that is never going to happen.
     if (status === 'CANCELLED') {
       await releasePreOrderAllocationForOrder(orderId)
+    }
+
+    // Invoicing, when the shop has asked for it on this particular transition.
+    // Hangs off `changed` with everything else here, so an order flipped back
+    // and forth cannot be invoiced twice - and the unique index behind
+    // issueInvoiceForOrder makes that true even if it were called twice anyway.
+    //
+    // A refusal is logged and nothing more: the status change has happened, the
+    // customer has been emailed, and rolling all that back because the paperwork
+    // would not raise would be a worse outcome than an invoice raised by hand.
+    const invoiceTrigger: InvoiceTrigger | null =
+      status === 'SHIPPED' ? 'DISPATCHED' : status === 'COMPLETED' ? 'COMPLETED' : null
+    if (invoiceTrigger && shouldIssueOn(config, invoiceTrigger)) {
+      const invoiced = await issueInvoiceForOrder(orderId, { trigger: invoiceTrigger, issuedBy: 'AUTO' })
+      if (!invoiced.ok) console.error('[shop] could not invoice order', orderId, invoiced.error)
     }
   }
 

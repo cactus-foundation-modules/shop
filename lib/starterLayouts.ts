@@ -614,3 +614,111 @@ export function shopProductCardStarters() {
     },
   ]
 }
+
+// ---------------------------------------------------------------------------
+// Invoice document templates (3) - shopInvoice
+// ---------------------------------------------------------------------------
+//
+// One publishes by default, because this layout IS the invoice: the page, the
+// PDF and the link the customer follows all render it, and a shop that switched
+// invoicing on and found a blank page would reasonably call it broken.
+//
+// It is also the fallback when nothing is published at all - see
+// INVOICE_FALLBACK_DATA below and lib/invoice-document.tsx. That matters on an
+// existing install: layout starters are seeded when a module is first installed,
+// so a shop that has had this module for a year never gets this type seeded at
+// all, and an invoice must still come out looking like an invoice.
+
+const INVOICE_HEADER = block('ShopInvoiceHeader', 'inv-head', {
+  heading: '', fontFamily: '', showLogo: 'yes', showName: 'yes',
+  showOrderNumber: 'yes', showTaxPoint: 'no', taxPointLabel: 'Tax point',
+})
+const INVOICE_PARTIES = block('ShopInvoiceParties', 'inv-parties', {
+  fontFamily: '', showFrom: 'yes', fromLabel: 'From', toLabel: 'Invoice to',
+  showDelivery: 'yes', deliverLabel: 'Delivered to', showRegistration: 'yes',
+})
+const INVOICE_LINES = block('ShopInvoiceLines', 'inv-lines', {
+  fontFamily: '', showSku: 'yes', showDetail: 'yes', showTaxRate: 'no',
+  itemLabel: 'Description', qtyLabel: 'Qty', priceLabel: 'Unit price', rateLabel: 'Rate', totalLabel: 'Amount',
+})
+const INVOICE_TOTALS = block('ShopInvoiceTotals', 'inv-totals', {
+  fontFamily: '', subtotalLabel: 'Subtotal', discountLabel: 'Discount', deliveryLabel: 'Delivery',
+  taxLabel: '', totalLabel: 'Total', showPaid: 'yes', paidWording: 'Paid in full - thank you.',
+})
+const INVOICE_TAX = block('ShopInvoiceTaxSummary', 'inv-tax', {
+  fontFamily: '', heading: '', rateLabel: 'Rate', netLabel: 'Net', taxLabel: '', grossLabel: 'Gross',
+  hideWhenSingleZero: 'yes',
+})
+const INVOICE_PAYMENT = block('ShopInvoicePayment', 'inv-pay', {
+  fontFamily: '', showPaymentDetails: 'yes', paymentHeading: 'Payment',
+  showTerms: 'yes', termsHeading: 'Terms', showFooter: 'yes',
+})
+
+/** What an invoice renders as when no layout of this type is published. Kept in
+ *  step with the standard template below by being the same blocks. */
+export const INVOICE_FALLBACK_DATA = {
+  content: [INVOICE_HEADER, INVOICE_PARTIES, INVOICE_LINES, INVOICE_TOTALS, INVOICE_TAX, INVOICE_PAYMENT],
+  root: { props: {} },
+  zones: {},
+}
+
+export function shopInvoiceStarters() {
+  return [
+    {
+      id: 'starter-shop-invoice-standard',
+      name: 'Standard invoice',
+      description: 'Heading, both addresses, the items, the totals, a tax summary and your payment terms - in the order an accountant reads them.',
+      publishByDefault: true,
+      data: {
+        content: [INVOICE_HEADER, INVOICE_PARTIES, INVOICE_LINES, INVOICE_TOTALS, INVOICE_TAX, INVOICE_PAYMENT],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+    {
+      id: 'starter-shop-invoice-rates',
+      name: 'Mixed rates',
+      description: 'The same invoice with the tax rate against every line. For a shop selling at more than one rate.',
+      data: {
+        content: [
+          INVOICE_HEADER,
+          INVOICE_PARTIES,
+          block('ShopInvoiceLines', 'inv-lines', {
+            fontFamily: '', showSku: 'yes', showDetail: 'yes', showTaxRate: 'yes',
+            itemLabel: 'Description', qtyLabel: 'Qty', priceLabel: 'Unit price', rateLabel: 'Rate', totalLabel: 'Amount',
+          }),
+          INVOICE_TOTALS,
+          block('ShopInvoiceTaxSummary', 'inv-tax', {
+            fontFamily: '', heading: '', rateLabel: 'Rate', netLabel: 'Net', taxLabel: '', grossLabel: 'Gross',
+            hideWhenSingleZero: 'no',
+          }),
+          INVOICE_PAYMENT,
+        ],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+    {
+      id: 'starter-shop-invoice-plain',
+      name: 'Plain',
+      description: 'No logo, no delivery address, no tax table. For a shop that pays somebody to do its books and just needs the paperwork.',
+      data: {
+        content: [
+          block('ShopInvoiceHeader', 'inv-head', {
+            heading: '', fontFamily: '', showLogo: 'no', showName: 'yes',
+            showOrderNumber: 'yes', showTaxPoint: 'no', taxPointLabel: 'Tax point',
+          }),
+          block('ShopInvoiceParties', 'inv-parties', {
+            fontFamily: '', showFrom: 'yes', fromLabel: 'From', toLabel: 'Invoice to',
+            showDelivery: 'no', deliverLabel: 'Delivered to', showRegistration: 'yes',
+          }),
+          INVOICE_LINES,
+          INVOICE_TOTALS,
+          INVOICE_PAYMENT,
+        ],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+  ]
+}

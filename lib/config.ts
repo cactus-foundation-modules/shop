@@ -256,6 +256,58 @@ export const ShpConfigSchema = z.object({
   // straight to the basket, a personalised one opens the product page on the
   // variation that was bought so the choices are already made.
   buyAgainEnabled: z.boolean().default(true),
+
+  // -------------------------------------------------------------------------
+  // Invoices
+  // -------------------------------------------------------------------------
+  //
+  // Off by default, and deliberately so: the shop has always printed a receipt
+  // (see the account order receipt page), and a receipt is not an invoice. An
+  // invoice carries the seller's registered details and a number that has to
+  // stay unique and sequential for as long as the business exists. Switching
+  // this on is a decision about paperwork, not a display preference, so nobody
+  // inherits it by updating.
+  invoicesEnabled: z.boolean().default(false),
+  // When one is raised automatically. COMPLETED is the default because that is
+  // the moment the shop has finished its side of the bargain. PAID suits a shop
+  // that invoices on payment; DISPATCHED suits one that invoices on despatch;
+  // MANUAL leaves every invoice to the button on the order screen.
+  invoiceIssueOn: z.enum(['MANUAL', 'PAID', 'DISPATCHED', 'COMPLETED']).default('COMPLETED'),
+  // Numbering, as shop does for orders. The running number itself comes from a
+  // database sequence and cannot be edited - that is rather the point of it.
+  invoiceNumberPrefix: z.string().default('INV-'),
+  // Days from the tax point that payment is due, printed as a "due by" date.
+  // 0 prints no due date at all, which is right for a shop paid at checkout.
+  invoicePaymentTermsDays: z.number().int().min(0).max(365).default(0),
+
+  // Who is issuing it. Blank falls back to the shop title and store email, but
+  // an invoice with no trading address and no VAT number is not much of an
+  // invoice, which is what the settings screen says in as many words.
+  invoiceBusinessName: z.string().default(''),
+  invoiceAddress: z.string().default(''),
+  invoiceVatNumber: z.string().default(''),
+  invoiceCompanyNumber: z.string().default(''),
+  invoiceContactEmail: z.string().default(''),
+  invoiceContactPhone: z.string().default(''),
+
+  // Wording, snapshotted onto each invoice as it is issued so later edits never
+  // rewrite paperwork already sent out.
+  invoiceHeading: z.string().default('Invoice'),
+  invoiceIntro: z.string().default(''),
+  // What the tax row is called. "VAT" here, "Sales tax" elsewhere.
+  invoiceTaxLabel: z.string().default('VAT'),
+  invoicePaymentDetails: z.string().default(''),
+  invoiceTerms: z.string().default(''),
+  invoiceFooter: z.string().default(''),
+
+  // Whether the customer gets a link to it from their own order page. On by
+  // default: an invoice the buyer cannot reach is filing, not invoicing.
+  invoiceShowToCustomer: z.boolean().default(true),
+
+  // PDF download. On by default; an owner whose host cannot run the renderer
+  // can switch it off and keep the on-screen invoice.
+  invoicePdfEnabled: z.boolean().default(true),
+  invoicePdfFilenamePrefix: z.string().default('invoice'),
 })
 
 export type ShpConfig = z.infer<typeof ShpConfigSchema>

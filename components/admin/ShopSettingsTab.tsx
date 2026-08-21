@@ -9,12 +9,13 @@ import type { ShpAdminPaymentMethod } from '@/modules/shop/lib/payments/admin-me
 import { PaymentsSettings, PAYMENT_METHODS_TAB, isHostedPaymentPanelTab } from '@/modules/shop/components/admin/PaymentsSettings'
 import { PRICE_TYPES, PRICE_TYPE_META } from '@/modules/shop/lib/pricing'
 
-type SubTab = 'general' | 'checkout' | 'payments' | 'notifications'
+type SubTab = 'general' | 'checkout' | 'payments' | 'invoices' | 'notifications'
 
 const SUB_TABS: { key: SubTab; label: string }[] = [
   { key: 'general', label: 'General' },
   { key: 'checkout', label: 'Checkout' },
   { key: 'payments', label: 'Payments' },
+  { key: 'invoices', label: 'Invoices' },
   { key: 'notifications', label: 'Notifications' },
 ]
 
@@ -628,6 +629,143 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
           activeTab={paymentTab}
           onTabChange={setPaymentTab}
         />
+      )}
+
+      {subTab === 'invoices' && (
+        <div>
+          <p style={{ margin: '0 0 var(--space-4)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
+            An invoice is not a receipt. It carries your trading details, your VAT registration and a number that
+            has to stay unique and in sequence - so it is off until you say otherwise. What the document actually
+            looks like is designed under Appearance &gt; Layouts, as the &ldquo;Invoice document&rdquo; layout.
+          </p>
+
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.invoicesEnabled} onChange={(e) => set('invoicesEnabled', e.target.checked)} />
+            Raise invoices for orders
+          </label>
+
+          {config.invoicesEnabled && (
+            <>
+              <div style={fieldGrid}>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>Raise one when an order is</label>
+                  <select value={config.invoiceIssueOn} onChange={(e) => set('invoiceIssueOn', e.target.value as ShpConfig['invoiceIssueOn'])}>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="DISPATCHED">Dispatched</option>
+                    <option value="PAID">Paid for</option>
+                    <option value="MANUAL">Never - I will raise them myself</option>
+                  </select>
+                  <span className="field-hint">There is a button on every order either way.</span>
+                </div>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>Invoice number prefix</label>
+                  <input value={config.invoiceNumberPrefix} onChange={(e) => set('invoiceNumberPrefix', e.target.value)} />
+                  <span className="field-hint">
+                    Invoice numbers look like {config.invoiceNumberPrefix || 'INV-'}000123. The running number cannot be
+                    edited - that is rather the point of it.
+                  </span>
+                </div>
+              </div>
+
+              <hr style={hr} />
+              <h3 style={sectionHeading}>Your details, as they appear on the invoice</h3>
+              {!config.invoiceVatNumber.trim() && (
+                <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
+                  No VAT registration number yet. Without one the document is a bill rather than a VAT invoice, and a
+                  customer reclaiming the tax will be back in touch.
+                </p>
+              )}
+              <div style={fieldGrid}>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>Business name</label>
+                  <input value={config.invoiceBusinessName} onChange={(e) => set('invoiceBusinessName', e.target.value)} placeholder={config.shopTitle || 'Your registered business name'} />
+                </div>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>VAT registration number</label>
+                  <input value={config.invoiceVatNumber} onChange={(e) => set('invoiceVatNumber', e.target.value)} placeholder="GB 123 4567 89" />
+                </div>
+              </div>
+              <div className="field">
+                <label>Trading address</label>
+                <textarea rows={4} value={config.invoiceAddress} onChange={(e) => set('invoiceAddress', e.target.value)} placeholder={'12 Example Street\nLeeds\nLS1 1AA'} />
+                <span className="field-hint">One line each. Printed under your name at the top of the invoice.</span>
+              </div>
+              <div style={fieldGrid}>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>Company number</label>
+                  <input value={config.invoiceCompanyNumber} onChange={(e) => set('invoiceCompanyNumber', e.target.value)} placeholder="01234567" />
+                </div>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>Accounts email</label>
+                  <input type="email" value={config.invoiceContactEmail} onChange={(e) => set('invoiceContactEmail', e.target.value)} placeholder={config.storeEmail || 'accounts@example.com'} />
+                </div>
+              </div>
+              <div style={fieldGrid}>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>Phone</label>
+                  <input value={config.invoiceContactPhone} onChange={(e) => set('invoiceContactPhone', e.target.value)} />
+                </div>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>Payment terms</label>
+                  <input
+                    type="number" min={0} max={365}
+                    value={config.invoicePaymentTermsDays}
+                    onChange={(e) => set('invoicePaymentTermsDays', Math.max(0, Math.min(365, Number(e.target.value) || 0)))}
+                  />
+                  <span className="field-hint">Days from the invoice date until payment is due. 0 prints no due date, which is right for a shop paid at checkout.</span>
+                </div>
+              </div>
+
+              <hr style={hr} />
+              <h3 style={sectionHeading}>Wording</h3>
+              <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
+                Copied onto each invoice as it is raised, so editing these never rewrites paperwork already sent out.
+              </p>
+              <div style={fieldGrid}>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>Heading</label>
+                  <input value={config.invoiceHeading} onChange={(e) => set('invoiceHeading', e.target.value)} placeholder="Invoice" />
+                </div>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>What the tax row is called</label>
+                  <input value={config.invoiceTaxLabel} onChange={(e) => set('invoiceTaxLabel', e.target.value)} placeholder="VAT" />
+                </div>
+              </div>
+              <div className="field">
+                <label>Opening line</label>
+                <textarea rows={2} value={config.invoiceIntro} onChange={(e) => set('invoiceIntro', e.target.value)} />
+              </div>
+              <div className="field">
+                <label>How to pay</label>
+                <textarea rows={3} value={config.invoicePaymentDetails} onChange={(e) => set('invoicePaymentDetails', e.target.value)} placeholder="Bank transfer to Example Bank, sort code 00-00-00, account 12345678." />
+              </div>
+              <div className="field">
+                <label>Terms</label>
+                <textarea rows={3} value={config.invoiceTerms} onChange={(e) => set('invoiceTerms', e.target.value)} placeholder="Payment due within 30 days. Goods remain our property until paid for in full." />
+              </div>
+              <div className="field">
+                <label>Footer line</label>
+                <input value={config.invoiceFooter} onChange={(e) => set('invoiceFooter', e.target.value)} />
+              </div>
+
+              <hr style={hr} />
+              <h3 style={sectionHeading}>Who can see it</h3>
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.invoiceShowToCustomer} onChange={(e) => set('invoiceShowToCustomer', e.target.checked)} />
+                Show it to the customer on their own order page
+              </label>
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.invoicePdfEnabled} onChange={(e) => set('invoicePdfEnabled', e.target.checked)} />
+                Offer a PDF download
+              </label>
+              <div className="field">
+                <label>PDF filename prefix</label>
+                <input value={config.invoicePdfFilenamePrefix} onChange={(e) => set('invoicePdfFilenamePrefix', e.target.value)} />
+                <span className="field-hint">Saves as {config.invoicePdfFilenamePrefix || 'invoice'}-{config.invoiceNumberPrefix || 'INV-'}000123.pdf.</span>
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       {subTab === 'notifications' && (
