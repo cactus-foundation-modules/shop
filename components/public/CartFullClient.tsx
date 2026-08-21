@@ -833,10 +833,21 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
     // the longest service label in the basket (capped, so a very long one wraps
     // rather than pushing the page sideways) and the product column takes the
     // rest.
+    //
+    // Both of those are written as a px preference capped to a share of the row
+    // (`min(247px, 22%)`), not as flat pixels. A flat px track keeps its full
+    // width until every flexible track has been squeezed to nothing, which is
+    // exactly what went wrong: narrowing the window took the room off the
+    // delivery column alone while the picture and the product name sat at their
+    // full desktop size, and the delivery card's contents ran out over the
+    // quantity and price. With the cap, the percentage takes over as soon as
+    // the row is too short to honour the pixels, so the image, the name and the
+    // delivery column all give up room together and the desktop layout at full
+    // width is unchanged.
     const summaryDelivery = lines.some((line) => line.control && isSummaryControl(line.control))
     const cols = [
-      showImage ? `${imageSize}px` : null,
-      anyDelivery && summaryDelivery ? `minmax(0,${SUMMARY_NAME_COL}px)` : 'minmax(0,1fr)',
+      showImage ? `min(${imageSize}px,8%)` : null,
+      anyDelivery && summaryDelivery ? `minmax(0,min(${SUMMARY_NAME_COL}px,22%))` : 'minmax(0,1fr)',
       anyDelivery ? (summaryDelivery ? 'minmax(0,1fr)' : 'fit-content(45%)') : null,
       'max-content',                                        // quantity
       showLinePrice ? 'minmax(70px,max-content)' : null,

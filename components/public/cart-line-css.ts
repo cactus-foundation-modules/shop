@@ -30,6 +30,11 @@
 
 export const CART_LINE_CSS = `
 .scl{min-width:0;display:flex;gap:1rem;align-items:center}
+/* The image track shrinks with the row (see --scl-cols in CartFullClient), so
+   the thumbnail has to come with it - a fixed width would just spill into the
+   product name. Height is left alone and object-fit crops, so the rows keep an
+   even height instead of the pictures growing shorter as the page narrows. */
+.scl > .scl-thumb{max-width:100%}
 .scl-main{min-width:0;overflow-wrap:anywhere}
 .scl-main select{max-width:100%}
 .scl-main label{min-width:0;flex-wrap:wrap}
@@ -88,6 +93,13 @@ export const CART_LINE_CSS = `
   }
 }
 
+/* Below ~1024px every pixel of gutter is a pixel the delivery card has not got,
+   so the column gap comes in with the columns rather than staying at 1rem while
+   the content around it is squeezed. */
+@media (min-width:641px) and (max-width:1024px){
+  .scl-list,.scl{column-gap:0.625rem}
+}
+
 /* ---- Chosen-service summary + switch chips (control renderAs 'summary') ----
    One confirmed line per cart line, stating what the shopper has chosen and
    when it lands, with every other option beside it as a one-click chip. */
@@ -99,21 +111,31 @@ export const CART_LINE_CSS = `
 .scl-tick{flex:none;width:19px;height:19px;border-radius:50%;background:var(--color-primary);color:var(--color-on-primary);
   display:flex;align-items:center;justify-content:center;margin-top:2px}
 .scl-sum-lines{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-.scl-s-top{display:flex;align-items:baseline;gap:0.875rem;min-width:0}
-.scl-s-date{font-size:0.9375rem;font-weight:700;color:var(--color-primary);white-space:nowrap}
-.scl-s-desc{font-size:0.8438rem;color:var(--color-text-secondary);white-space:nowrap}
+/* Every part of the top line may wrap. It used to be one unwrappable row, on
+   the reasoning that the column was always wide enough - which held until the
+   window narrowed and the promised date, the service name and the fee simply
+   carried on out of the card and over the quantity and price columns. Wrapping
+   costs a line at narrow widths and nothing at all at wide ones, since these
+   parts still sit on one line whenever they fit. break-word rather than
+   anywhere, so it breaks between words and only splits a word that could not
+   fit on a line of its own. */
+.scl-s-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:0.25rem 0.875rem;min-width:0}
+.scl-s-date{font-size:0.9375rem;font-weight:700;color:var(--color-primary);overflow-wrap:break-word;min-width:0}
+.scl-s-desc{font-size:0.8438rem;color:var(--color-text-secondary);overflow-wrap:break-word;min-width:0}
 .scl-s-fee{margin-left:auto;font-size:0.9063rem;font-weight:700;white-space:nowrap;color:var(--color-text)}
-.scl-s-below{font-size:0.8125rem;color:var(--color-text-secondary);line-height:1.45}
+.scl-s-below{font-size:0.8125rem;color:var(--color-text-secondary);line-height:1.45;overflow-wrap:break-word}
 .scl-free{color:var(--color-success)}
 .scl-hints{display:flex;flex-wrap:wrap;align-items:center;gap:0.375rem;margin-top:0.5rem}
 .scl-hints-t{font-size:0.8125rem;font-weight:600;color:var(--color-text-secondary)}
-.scl-hint{position:relative;display:inline-block;white-space:nowrap;border:1px solid var(--color-border);background:var(--color-surface);
+/* A chip stays on one line by shrink-to-fit whenever it fits; a chip wider than
+   the column now wraps inside itself instead of sticking out of the card. */
+.scl-hint{position:relative;display:inline-block;max-width:100%;border:1px solid var(--color-border);background:var(--color-surface);
   border-radius:9999px;padding:0.25rem 0.625rem;font-size:0.8125rem;font-weight:600;color:var(--color-primary);cursor:pointer;
   transition:border-color 120ms ease-out,background 120ms ease-out}
 .scl-hint:hover{border-color:var(--color-primary);background:var(--color-primary-subtle)}
 .scl-hint input{position:absolute;opacity:0;pointer-events:none}
 .scl-hint:has(input:focus-visible){outline:2px solid var(--color-primary);outline-offset:2px}
-.scl-hint-fee{margin-left:0.4375rem;color:var(--color-text)}
+.scl-hint-fee{margin-left:0.4375rem;white-space:nowrap;color:var(--color-text)}
 
 /* ---- Basket totals: Subtotal / any broken-out charges / tax / Total ----
    A two-column definition list, so a screen reader reads each label with its
@@ -165,8 +187,8 @@ export const CART_LINE_CSS = `
   text-decoration:underline;cursor:pointer}
 
 @media (max-width:640px){
-  .scl-s-top{flex-wrap:wrap}
-  .scl-s-date,.scl-s-desc{white-space:normal}
+  /* The summary card's own wrapping now holds at every width (see .scl-s-top),
+     so the phone has nothing left to relax here. */
   .scb-meta{display:none}
   .scb-inner{padding:0.625rem 1rem;gap:0.75rem}
   .sct{left:1rem;right:1rem;transform:none;justify-content:space-between}

@@ -111,7 +111,7 @@ export const CART_DRAWER_CSS = `
    Nothing may shrink either: a flex child that gives way would keep the row's
    own scrollWidth inside its box and the row would measure as fitting while its
    text was quietly cut off. */
-.scd-deliv .scl-s-top,.scd-deliv .scl-s-foot{display:flex;align-items:baseline;gap:0.5rem;min-width:0;
+.scd-deliv .scl-s-top,.scd-deliv .scl-s-foot{display:flex;flex-wrap:nowrap;align-items:baseline;gap:0.5rem;min-width:0;
   overflow:hidden;white-space:nowrap;font-size:0.8438rem}
 .scd-deliv .scl-s-top > *,.scd-deliv .scl-s-foot > *{flex:0 0 auto;min-width:0}
 /* The mobile rules on the shared card let these wrap; a panel is phone-narrow at
