@@ -242,6 +242,72 @@ export function missingCheckoutFields(
   return missing
 }
 
+// One part of the "still to do" line on the review step. `fieldKey` set means
+// this part is a link to the box or choice it names - the review step turns it
+// into a button that scrolls there; unset means it is plain wording holding the
+// sentence together.
+export type CheckoutBlockedSegment = { text: string; fieldKey?: string }
+
+// The whole refusal as one sentence: the boxes still owed above, then the
+// decisions still owed on the review step itself, each named as its own label
+// names it and each linked to itself. One sentence rather than a bullet list
+// plus a separate note by the button - a shopper told off twice for the same
+// thing still had to work out that the two added up to one refusal.
+//
+// Pure, and separate from the block that draws it, so the wording can be tested
+// without standing a checkout up around it.
+export function checkoutBlockedSegments(
+  missing: MissingCheckoutField[],
+  decisions: { key: string; text: string }[],
+): CheckoutBlockedSegment[] {
+  if (missing.length === 0 && decisions.length === 0) return []
+
+  const lower = (t: string) => `${t.charAt(0).toLowerCase()}${t.slice(1)}`
+  const upper = (t: string) => `${t.charAt(0).toUpperCase()}${t.slice(1)}`
+  // "a, b and c" - the separators are the only plain wording between the links.
+  const list = (fields: MissingCheckoutField[]): CheckoutBlockedSegment[] => fields.flatMap((f, i) => [
+    ...(i === 0 ? [] : [{ text: i === fields.length - 1 ? ' and ' : ', ' }]),
+    { text: lower(f.label), fieldKey: f.key },
+  ])
+
+  // Blank and wrong are different problems and get different verbs: telling
+  // somebody to fill in a box they have already filled in is no help at all.
+  const empty = missing.filter((f) => f.reason !== 'invalid')
+  const invalid = missing.filter((f) => f.reason === 'invalid')
+  const clauses: CheckoutBlockedSegment[][] = []
+  if (empty.length > 0) clauses.push([{ text: 'complete your ' }, ...list(empty)])
+  if (invalid.length > 0) clauses.push([{ text: 'correct your ' }, ...list(invalid)])
+
+  const segments: CheckoutBlockedSegment[] = []
+  clauses.forEach((clause, i) => {
+    // The sentence has to open with a capital, and its opening word is a link
+    // whenever every box above is already filled in - so in that case the
+    // capital goes on the link's own wording instead.
+    if (i === 0) segments.push({ ...clause[0]!, text: upper(clause[0]!.text) })
+    else segments.push({ text: ` and ${clause[0]!.text}` })
+    segments.push(...clause.slice(1))
+  })
+  if (clauses.length > 0) segments.push({ text: ' above' })
+
+  decisions.forEach((decision, i) => {
+    if (i > 0) segments.push({ text: ' and ' })
+    else if (clauses.length > 0) segments.push({ text: ', and then ' })
+    const first = i === 0 && clauses.length === 0
+    segments.push({ text: first ? upper(decision.text) : decision.text, fieldKey: decision.key })
+  })
+
+  segments.push({ text: ' to place your order.' })
+
+  // What is actually wrong with a box that was filled in, from whoever decided
+  // it was wrong. Naming the box here is what had a phone number told it did
+  // not look like an email address.
+  for (const field of invalid) {
+    if (field.hint) segments.push({ text: ` ${field.label} - ${field.hint}` })
+  }
+
+  return segments
+}
+
 // Sends the shopper to the box being asked about. The contact and shipping
 // steps mark their inputs with `data-shop-field`; matching them by attribute is
 // what lets the review step reach across, since the three are separate Puck

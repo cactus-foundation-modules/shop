@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  EMPTY_CHECKOUT_STATE, isContactAndShippingComplete, missingCheckoutFields,
+  EMPTY_CHECKOUT_STATE, isContactAndShippingComplete, missingCheckoutFields, checkoutBlockedSegments,
   type CheckoutState,
 } from '@/modules/shop/components/public/checkout-state'
 
@@ -129,5 +129,60 @@ describe('isContactAndShippingComplete', () => {
     const noPhone = { ...FILLED, customerPhone: '' }
     expect(isContactAndShippingComplete(noPhone)).toBe(true)
     expect(isContactAndShippingComplete(noPhone, { phoneRequired: true })).toBe(false)
+  })
+})
+
+describe('checkoutBlockedSegments', () => {
+  const say = (segments: { text: string }[]) => segments.map((s) => s.text).join('')
+  const PAY = { key: 'paymentMethod', text: 'choose a payment method above' }
+  const TICK = { key: 'agreements', text: 'tick the box marked *' }
+
+  it('says nothing at all when nothing is holding the button shut', () => {
+    expect(checkoutBlockedSegments([], [])).toEqual([])
+  })
+
+  it('says the boxes and the payment choice in one sentence, not two notices', () => {
+    const segments = checkoutBlockedSegments(
+      [{ key: 'customerEmail', label: 'Email', reason: 'empty' }, { key: 'customerName', label: 'Full name', reason: 'empty' }],
+      [PAY],
+    )
+    expect(say(segments)).toBe('Complete your email and full name above, and then choose a payment method above to place your order.')
+  })
+
+  it('opens with a capital even when the first word is a link', () => {
+    expect(say(checkoutBlockedSegments([], [PAY]))).toBe('Choose a payment method above to place your order.')
+  })
+
+  it('links every outstanding bit to the box or choice it names', () => {
+    const segments = checkoutBlockedSegments([{ key: 'customerEmail', label: 'Email', reason: 'empty' }], [PAY, TICK])
+    expect(segments.filter((s) => s.fieldKey).map((s) => s.fieldKey))
+      .toEqual(['customerEmail', 'paymentMethod', 'agreements'])
+    // The separators are wording, not links - clicking " and " takes nobody anywhere.
+    expect(segments.filter((s) => !s.fieldKey).every((s) => s.text.trim().length === 0 || /[a-z*.]/i.test(s.text))).toBe(true)
+  })
+
+  it('tells a box filled in wrongly apart from one left blank', () => {
+    const segments = checkoutBlockedSegments([
+      { key: 'customerName', label: 'Full name', reason: 'empty' },
+      { key: 'customerEmail', label: 'Email', reason: 'invalid', hint: 'that does not look like an email address.' },
+    ], [])
+    expect(say(segments)).toBe(
+      'Complete your full name and correct your email above to place your order.'
+      + ' Email - that does not look like an email address.'
+    )
+  })
+
+  it('lists three outstanding boxes with commas and a final and', () => {
+    const segments = checkoutBlockedSegments([
+      { key: 'line1', label: 'Address line 1', reason: 'empty' },
+      { key: 'city', label: 'Town or city', reason: 'empty' },
+      { key: 'postcode', label: 'Postcode', reason: 'empty' },
+    ], [])
+    expect(say(segments)).toBe('Complete your address line 1, town or city and postcode above to place your order.')
+  })
+
+  it('joins two outstanding decisions rather than sending anyone back twice', () => {
+    expect(say(checkoutBlockedSegments([], [PAY, TICK])))
+      .toBe('Choose a payment method above and tick the box marked * to place your order.')
   })
 })

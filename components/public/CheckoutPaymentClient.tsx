@@ -394,7 +394,7 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Payment method'}</h2>
       {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
       <div style={{ display: 'grid', gap: '0.5rem' }}>
-        {(config?.enabledPaymentMethods ?? []).map((m) => {
+        {(config?.enabledPaymentMethods ?? []).map((m, i) => {
           const logo = config?.paymentMethodLogos?.[m]
           const description = config?.paymentMethodDescriptions?.[m]
           return (
@@ -402,7 +402,10 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
             // under the name, centring floats the radio button and the logo
             // into the gap between the two lines.
             <label key={m} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
-              <input type="radio" name="paymentMethod" checked={method === m} onChange={() => chooseMethod(m)} disabled={loading} style={{ marginTop: '0.2rem' }} />
+              {/* The review step's "still to do" line links here, the same way it
+                  links to the boxes on the steps above. Only the first radio is
+                  marked: the ask is "pick one", not "pick this one". */}
+              <input type="radio" name="paymentMethod" data-shop-field={i === 0 ? 'paymentMethod' : undefined} checked={method === m} onChange={() => chooseMethod(m)} disabled={loading} style={{ marginTop: '0.2rem' }} />
               {logo && <PaymentMethodLogo logo={logo} />}
               <span style={{ display: 'grid', gap: '0.125rem', minWidth: 0 }}>
                 <span>{BUILT_IN_METHOD_LABELS[m] ?? config?.paymentMethodLabels?.[m] ?? m}</span>

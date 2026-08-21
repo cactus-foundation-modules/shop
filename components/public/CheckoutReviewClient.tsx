@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
 import {
   getCheckoutState, subscribeCheckoutState, updateCheckoutState, areAgreementsAccepted,
-  missingCheckoutFields, focusCheckoutField, type MissingCheckoutField,
+  missingCheckoutFields, focusCheckoutField, checkoutBlockedSegments, type MissingCheckoutField,
 } from '@/modules/shop/components/public/checkout-state'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
@@ -184,27 +184,26 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
     updateCheckoutState({ agreements: next })
   }
 
-  // What is still outstanding ON THIS BLOCK, in the order the page presents it,
-  // as one sentence. Null means nothing here is holding the button - the boxes
-  // further up the page are listed separately, as rows that jump to them. The
-  // button reads both rather than shouting after a click: a shopper should be
-  // able to see what is left, not discover it by being refused - and see all of
-  // it, not be sent back for the second thing once they have done the first.
-  function blockedReason(): string | null {
-    const outstanding: string[] = []
-    if (!paymentMethod) outstanding.push('choose a payment method above')
+  // What is still outstanding ON THIS BLOCK - the decisions that live here
+  // rather than in the boxes further up the page. Kept as parts rather than a
+  // sentence because they end up in the same sentence as the outstanding boxes,
+  // each one linked to the thing it is asking for.
+  function outstandingDecisions(): { key: string; text: string }[] {
+    const parts: { key: string; text: string }[] = []
+    if (!paymentMethod) parts.push({ key: 'paymentMethod', text: 'choose a payment method above' })
     if (!areAgreementsAccepted(ticked, agreements)) {
-      outstanding.push(`tick the box${agreements.filter((a) => a.required).length === 1 ? '' : 'es'} marked *`)
+      parts.push({
+        key: 'agreements',
+        text: `tick the box${agreements.filter((a) => a.required).length === 1 ? '' : 'es'} marked *`,
+      })
     }
-    if (outstanding.length === 0) return null
-    const sentence = outstanding.join(' and ')
-    return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)} to place your order.`
+    return parts
   }
 
   function placeOrder() {
     // The button is disabled while anything is outstanding, so this is a guard
     // rather than a code path - it exists so a stale render can never post.
-    if (blockedReason() || missingCheckoutFields(getCheckoutState(), { businessNameRequired, businessNameLabel, phoneRequired }).length > 0) return
+    if (outstandingDecisions().length > 0 || missingCheckoutFields(getCheckoutState(), { businessNameRequired, businessNameLabel, phoneRequired }).length > 0) return
     setPlacing(true)
     setError(null)
     window.dispatchEvent(new CustomEvent('cactus-shop-place-order'))
@@ -214,46 +213,46 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
   // order-summary block carries the empty message.
   if (!populated) return null
 
-  // What is still owed in the boxes above, as rows that take the shopper to the
-  // box in question. Shown BESIDE the totals rather than instead of them: the
-  // figures are what a shopper opened this step for, and an order they cannot
-  // price yet is an order they cannot decide on.
-  const outstanding = missing.length === 0 ? null : (
-    <div id="shop-place-order-missing" style={{ display: 'grid', gap: '0.5rem' }}>
-      <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}>
-        Still to fill in above before you can place this order:
-      </p>
-      <ul style={{ margin: 0, paddingLeft: '1.25rem', display: 'grid', gap: '0.25rem' }}>
-        {missing.map((field) => (
-          <li key={field.key}>
-            {/* A button rather than a line of text: naming the field is most of
-                the answer, but on a long checkout the shopper still has to go
-                and find it, and the page can do that. */}
-            <button
-              type="button"
-              onClick={() => focusCheckoutField(field.key)}
-              style={{
-                background: 'none', border: 0, padding: 0, font: 'inherit',
-                color: 'var(--color-primary)', textDecoration: 'underline', cursor: 'pointer',
-              }}
-            >
-              {field.label}
-            </button>
-            {/* The wording comes with the row, from whoever decided the box was
-                wrong. Naming a specific field here is what had a phone number
-                told it did not look like an email address. */}
-            {field.reason === 'invalid' && field.hint && (
-              <span style={{ color: 'var(--color-text-secondary)' }}> - {field.hint}</span>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
+  // Everything holding the button shut, in one red line, with each outstanding
+  // bit linked to the box or choice that owns it. The wording is worked out in
+  // checkout-state, next to the list of what is missing - this only draws it.
+  const segments = checkoutBlockedSegments(missing, outstandingDecisions())
+  const notice = segments.length === 0 ? null : (
+    <p
+      id="shop-place-order-blocked"
+      role="status"
+      // Theme-aware token, so the same line clears AA on the light storefront
+      // and the dark one. A hex here would only ever be right in one of them.
+      style={{ color: 'var(--color-danger)', margin: 0, fontSize: '0.875rem', lineHeight: 1.5 }}
+    >
+      {segments.map((segment, i) => (segment.fieldKey
+        // A button rather than an anchor: there is nowhere to link to, only a
+        // box further up to scroll to and focus. Colour is inherited so it
+        // reads as part of the red line, underlined so it still reads as
+        // something to press.
+        ? (
+          <button
+            key={i}
+            type="button"
+            onClick={() => focusCheckoutField(segment.fieldKey!)}
+            style={{
+              background: 'none', border: 0, padding: 0, font: 'inherit',
+              color: 'inherit', textDecoration: 'underline', cursor: 'pointer',
+            }}
+          >
+            {segment.text}
+          </button>
+        )
+        : <span key={i}>{segment.text}</span>
+      ))}
+    </p>
   )
+
+  const firstRequiredAgreementId = agreements.find((a) => a.required)?.id
 
   // No total yet: the first request is still out, or the shop refused to price
   // this basket (a minimum order, a line that has just sold out). Either way the
-  // outstanding list still belongs on screen.
+  // outstanding line still belongs on screen.
   if (!summary) {
     return (
       // The top margin is the gap to the step above: these are separate blocks
@@ -263,19 +262,16 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
         {error
           ? <p style={{ color: 'var(--color-danger)', margin: 0 }}>{error}</p>
           : <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>Working out your order total…</p>}
-        {outstanding}
+        {notice}
       </section>
     )
   }
 
 
   const money = (n: number) => `${summary.currencySymbol}${n.toFixed(2)}`
-  const reason = blockedReason()
   // Both halves hold the button shut: the boxes above, and the decisions on this
-  // block. Neither hides the total any more.
-  const blocked = reason !== null || missing.length > 0
-  const describedBy = [reason ? 'shop-place-order-blocked' : null, missing.length > 0 ? 'shop-place-order-missing' : null]
-    .filter(Boolean).join(' ')
+  // block. Neither hides the total any more, and both are said in the one line.
+  const blocked = notice !== null
 
   return (
     // Same top margin as the incomplete state above, so the step does not jump
@@ -329,8 +325,12 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
                 border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.625rem 0.75rem',
               }}
             >
+              {/* The line above links "tick the boxes marked *" to the first
+                  compulsory box, the same way it links to the boxes on the
+                  steps above. */}
               <input
                 type="checkbox"
+                data-shop-field={agreement.id === firstRequiredAgreementId ? 'agreements' : undefined}
                 checked={ticked[agreement.id] === true}
                 onChange={(e) => setAgreement(agreement.id, e.target.checked)}
                 required={agreement.required}
@@ -348,16 +348,11 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
       {/* Sits above the button rather than below it, and appears before the
           click rather than after: what is left to do should be readable in the
           same glance as the button it is holding shut. */}
-      {outstanding}
-      {reason && (
-        <p id="shop-place-order-blocked" role="status" style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem', margin: 0 }}>
-          {reason}
-        </p>
-      )}
+      {notice}
       <button
         onClick={placeOrder}
         disabled={placing || blocked}
-        aria-describedby={describedBy || undefined}
+        aria-describedby={notice ? 'shop-place-order-blocked' : undefined}
         style={{
           background: blocked ? 'var(--color-bg-subtle)' : 'var(--color-primary)',
           // Secondary rather than muted: a disabled control still has to be
