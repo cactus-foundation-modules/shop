@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db/prisma'
+import { prisma, type PrismaTransactionClient } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import { decrementPreOrderCount, getProductById } from '@/modules/shop/lib/db/products'
 import { normaliseStoredPhone } from '@/modules/shop/lib/phone'
@@ -104,6 +104,11 @@ export async function getOrderItemById(id: string): Promise<ShpOrderItem | null>
 }
 
 export type CreateOrderInput = {
+  // Normally left off and minted by the column default. It is supplied when the
+  // id was decided BEFORE the order existed - a checkout draft mints it so the
+  // payment provider can be handed a reference that survives into the order it
+  // eventually becomes. See lib/checkout-draft.ts.
+  id?: string | null
   orderNumber: string
   memberId?: string | null
   customerEmail: string
@@ -140,49 +145,68 @@ export type CreateOrderInput = {
   }>
 }
 
-// Creates the PENDING order row + item snapshot in one transaction (Q8 - the
-// order exists before the payment intent, so a webhook/confirm can always
-// find something to update, even if the shopper abandons checkout).
+// The order row + item snapshot, written inside a transaction the CALLER owns.
+//
+// Split out from createPendingOrder because a draft-backed checkout has to do
+// more in the same transaction than create the order: it deletes the draft the
+// order was made from, and the two must stand or fall together (see
+// lib/checkout-draft.ts). Everything about how an order row is born lives here,
+// so there is still exactly one place it happens.
 //
 // The phone number is put into canonical form here rather than at each caller:
 // this is the one place an order row is ever born, so a number typed on the
 // checkout, on the admin's manual order screen or by a module calling in is
 // stored the same way and can be searched for as one thing. See lib/phone.ts.
-export async function createPendingOrder(data: CreateOrderInput): Promise<{ id: string; orderNumber: string }> {
-  return prisma.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<[{ id: string }]>`
-      INSERT INTO "shp_orders" (
-        "order_number", "member_id", "customer_email", "customer_name", "customer_phone",
-        "shipping_address", "billing_address", "subtotal", "discount_amount", "shipping_amount",
-        "tax_amount", "total", "tax_mode", "currency", "coupon_id", "coupon_code",
-        "payment_method", "shipping_rate_id", "shipping_rate_name", "agreements"
+export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateOrderInput): Promise<{ id: string; orderNumber: string }> {
+  const rows = await tx.$queryRaw<[{ id: string }]>`
+    INSERT INTO "shp_orders" (
+      "id",
+      "order_number", "member_id", "customer_email", "customer_name", "customer_phone",
+      "shipping_address", "billing_address", "subtotal", "discount_amount", "shipping_amount",
+      "tax_amount", "total", "tax_mode", "currency", "coupon_id", "coupon_code",
+      "payment_method", "shipping_rate_id", "shipping_rate_name", "agreements"
+    ) VALUES (
+      -- An id the caller decided earlier, or the one the column would have
+      -- given it anyway. Written as a value rather than left to the default
+      -- so both cases go through one statement.
+      COALESCE(${data.id ?? null}::text, gen_random_uuid()::text),
+      ${data.orderNumber}, ${data.memberId ?? null}, ${data.customerEmail}, ${data.customerName}, ${normaliseStoredPhone(data.customerPhone)},
+      ${JSON.stringify(data.shippingAddress)}::jsonb, ${data.billingAddress ? JSON.stringify(data.billingAddress) : null}::jsonb,
+      ${data.subtotal}, ${data.discountAmount}, ${data.shippingAmount}, ${data.taxAmount}, ${data.total},
+      ${data.taxMode}, ${data.currency}, ${data.couponId ?? null}, ${data.couponCode ?? null},
+      ${data.paymentMethod}, ${data.shippingRateId ?? null}, ${data.shippingRateName ?? null},
+      ${data.agreements ? JSON.stringify(data.agreements) : null}::jsonb
+    )
+    RETURNING "id"
+  `
+  const orderId = rows[0].id
+  for (const item of data.items) {
+    await tx.$executeRaw`
+      INSERT INTO "shp_order_items" (
+        "order_id", "product_id", "product_name", "product_sku", "product_type",
+        "quantity", "unit_price", "tax_rate", "tax_amount", "total", "is_pre_order", "pre_order_dispatch_date",
+        "line_meta"
       ) VALUES (
-        ${data.orderNumber}, ${data.memberId ?? null}, ${data.customerEmail}, ${data.customerName}, ${normaliseStoredPhone(data.customerPhone)},
-        ${JSON.stringify(data.shippingAddress)}::jsonb, ${data.billingAddress ? JSON.stringify(data.billingAddress) : null}::jsonb,
-        ${data.subtotal}, ${data.discountAmount}, ${data.shippingAmount}, ${data.taxAmount}, ${data.total},
-        ${data.taxMode}, ${data.currency}, ${data.couponId ?? null}, ${data.couponCode ?? null},
-        ${data.paymentMethod}, ${data.shippingRateId ?? null}, ${data.shippingRateName ?? null},
-        ${data.agreements ? JSON.stringify(data.agreements) : null}::jsonb
+        ${orderId}, ${item.productId}, ${item.productName}, ${item.productSku}, ${item.productType},
+        ${item.quantity}, ${item.unitPrice}, ${item.taxRate}, ${item.taxAmount}, ${item.total},
+        ${item.isPreOrder}, ${item.preOrderDispatchDate},
+        ${item.lineMeta ? JSON.stringify(item.lineMeta) : null}::jsonb
       )
-      RETURNING "id"
     `
-    const orderId = rows[0].id
-    for (const item of data.items) {
-      await tx.$executeRaw`
-        INSERT INTO "shp_order_items" (
-          "order_id", "product_id", "product_name", "product_sku", "product_type",
-          "quantity", "unit_price", "tax_rate", "tax_amount", "total", "is_pre_order", "pre_order_dispatch_date",
-          "line_meta"
-        ) VALUES (
-          ${orderId}, ${item.productId}, ${item.productName}, ${item.productSku}, ${item.productType},
-          ${item.quantity}, ${item.unitPrice}, ${item.taxRate}, ${item.taxAmount}, ${item.total},
-          ${item.isPreOrder}, ${item.preOrderDispatchDate},
-          ${item.lineMeta ? JSON.stringify(item.lineMeta) : null}::jsonb
-        )
-      `
-    }
-    return { id: orderId, orderNumber: data.orderNumber }
-  })
+  }
+  return { id: orderId, orderNumber: data.orderNumber }
+}
+
+// Creates the PENDING order row + item snapshot in one transaction.
+//
+// Used by the methods that take payment with the shopper still on this site
+// (a card form, or a method somebody settles by hand later): the order exists
+// before the payment intent, so a webhook or a confirm call always has
+// something to update. Methods that hand the shopper over to a bank or a hosted
+// payment page do NOT come through here until the money is real - they draft
+// the order instead, and create it on settlement. See lib/checkout-draft.ts.
+export async function createPendingOrder(data: CreateOrderInput): Promise<{ id: string; orderNumber: string }> {
+  return prisma.$transaction((tx) => insertOrderRows(tx, data))
 }
 
 // Idempotent, in the same spirit as markOrderPaid below: the `status != status`

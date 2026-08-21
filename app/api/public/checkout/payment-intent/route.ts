@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { blockedLinesMessage, resolveCartLines, resolveOrderTotals, round2 } from '@/modules/shop/lib/checkout'
 import { findShippingZoneForPostcode, getShippingRateById } from '@/modules/shop/lib/db/tax-shipping'
-import { createPendingOrder } from '@/modules/shop/lib/db/orders'
+import { createPendingOrder, type CreateOrderInput } from '@/modules/shop/lib/db/orders'
+import { createCheckoutDraft } from '@/modules/shop/lib/checkout-draft'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
 import { getShopConfigCached, getAvailablePaymentMethods, resolveCheckoutAgreements } from '@/modules/shop/lib/config'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
-import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
+import { applyOrderPaymentState, previewOrderPaymentNotes } from '@/modules/shop/lib/order-payment-state'
 import { signOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
@@ -42,8 +43,16 @@ const Body = z.object({
   agreements: z.record(z.boolean()).optional(),
 })
 
-// PROTECTED - creates the PENDING order (Q8) then the provider intent. Stock
-// is not decremented here (only on ship/paid, see product PUT and confirm route).
+// PROTECTED - creates the provider intent, and either the PENDING order (Q8) or
+// the checkout draft that will become one, depending on the method. Stock is not
+// decremented here (only on ship/paid, see product PUT and confirm route).
+//
+// Which of the two it is comes off the provider's own `orderCreation`. A method
+// that takes the money here and now gets its order straight away, because there
+// is a payment about to happen against it. A method that sends the shopper off
+// to their bank or to a hosted card page gets a draft instead - see
+// lib/checkout-draft.ts for why an order that nobody has paid for is worse than
+// no order at all.
 export async function POST(request: NextRequest) {
   // This endpoint creates a real DB order row AND a live provider intent (Stripe
   // PaymentIntent / PayPal order) on every call, so it is the most expensive
@@ -164,11 +173,16 @@ export async function POST(request: NextRequest) {
   // `preOrderMaxQuantity` cap - is already enforced above, via resolveCartLines
   // marking the line unavailable and the 409 that follows.
 
+  // Resolved before anything is written: a method with no provider behind it
+  // cannot be paid for, so there is no sense in an order (or a draft) for it.
+  const provider = getPaymentProvider(data.paymentMethod)
+  if (!provider) return NextResponse.json({ error: 'Selected payment method is not available.' }, { status: 400 })
+
   const shippingRate = data.shippingRateId ? await getShippingRateById(data.shippingRateId) : null
   const member = await getMemberFromCookie().catch(() => null)
   const orderNumber = await generateOrderNumber()
 
-  const { id: orderId } = await createPendingOrder({
+  const orderInput: CreateOrderInput = {
     orderNumber,
     memberId: member?.id ?? null,
     customerEmail: data.customerEmail,
@@ -210,7 +224,32 @@ export async function POST(request: NextRequest) {
       preOrderDispatchDate: l.product.preOrderDispatchDate,
       lineMeta: l.lineMeta,
     })),
-  })
+  }
+
+  // A method that settles on somebody else's site: draft the order, do not
+  // create it. The draft mints the id the order will be given, so the intent
+  // below - and the module row and return URL it goes on to write - name the
+  // same id the order will have when the money arrives.
+  if (provider.orderCreation === 'on-payment') {
+    const draft = await createCheckoutDraft(orderInput)
+
+    // The look-ahead form of the notes below. There is no order to restate the
+    // lines of yet, so this only asks the modules what they would say about this
+    // method and prints it - see previewOrderPaymentNotes. The real call happens
+    // when the order is created, on settlement.
+    const notes = await previewOrderPaymentNotes(data.paymentMethod, resolvedLines)
+
+    const draftIntent = await provider.createIntent({
+      orderId: draft.id, orderNumber, amount: totals.total, currency: config.currency,
+      customerEmail: data.customerEmail, customerName: data.customerName,
+    })
+
+    return NextResponse.json({
+      orderId: draft.id, orderNumber, receiptToken: signOrderReceiptToken(orderNumber), ...draftIntent, notes,
+    })
+  }
+
+  const { id: orderId } = await createPendingOrder(orderInput)
 
   // The order now exists AND knows how it is being paid for, which is the first
   // moment anything can say what that means for these lines. A method that takes
@@ -219,8 +258,6 @@ export async function POST(request: NextRequest) {
   // sentence for the checkout explaining why. See lib/order-payment-state.ts.
   const notes = await applyOrderPaymentState(orderId)
 
-  const provider = getPaymentProvider(data.paymentMethod)
-  if (!provider) return NextResponse.json({ error: 'Selected payment method is not available.' }, { status: 400 })
   const intent = await provider.createIntent({
     orderId, orderNumber, amount: totals.total, currency: config.currency,
     customerEmail: data.customerEmail, customerName: data.customerName,

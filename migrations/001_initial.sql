@@ -526,6 +526,36 @@ CREATE INDEX IF NOT EXISTS "shp_order_items_order_id_idx" ON "shp_order_items" (
 CREATE INDEX IF NOT EXISTS "shp_order_items_product_id_idx" ON "shp_order_items" ("product_id");
 
 -- ---------------------------------------------------------------------------
+-- Checkout drafts (see migrations/025_checkout_drafts.sql for the full note)
+--
+-- An order that has not been paid for yet, and so is not an order yet. Payment
+-- methods that take the money on their own site put the whole order-to-be here
+-- and create the order itself only once the money is real, so an abandoned
+-- checkout leaves nothing behind in the orders list. The row is deleted in the
+-- same transaction that creates the order from it.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS "shp_checkout_drafts" (
+    -- Not defaulted: the caller mints this, because the payment provider is
+    -- told it before the row is written. It becomes the order's own id.
+    "id" TEXT NOT NULL,
+    "order_number" TEXT NOT NULL,
+    "payment_method" TEXT NOT NULL,
+    "customer_email" TEXT NOT NULL,
+    "customer_name" TEXT NOT NULL,
+    "total" NUMERIC(10,2) NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'GBP',
+    "payload" JSONB NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expires_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "shp_checkout_drafts_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "shp_checkout_drafts_order_number_key" UNIQUE ("order_number")
+);
+
+CREATE INDEX IF NOT EXISTS "shp_checkout_drafts_expires_at_idx" ON "shp_checkout_drafts" ("expires_at");
+
+-- ---------------------------------------------------------------------------
 -- Digital downloads
 -- ---------------------------------------------------------------------------
 

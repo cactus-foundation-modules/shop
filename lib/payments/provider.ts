@@ -28,6 +28,27 @@ export interface ShpPaymentProvider {
   // A provider that ships none simply gets a name, which is what every method
   // had before this existed.
   logo?: ShpPaymentLogo
+  // Where the order row comes from for this method.
+  //
+  //  'immediate' (the default, and what every method did before this existed) -
+  //      the order is written PENDING before the payment intent, so a webhook or
+  //      a confirm call always has a row to update. Right for a method that
+  //      takes the money with the shopper still on this page, and for one
+  //      somebody settles by hand later: in both cases the order is a real thing
+  //      the moment it is placed.
+  //
+  //  'on-payment' - nothing is written until the money is committed. Right for a
+  //      method that hands the shopper over to a bank or a hosted payment page,
+  //      because the shop loses sight of them at the door and most of the people
+  //      who leave never come back. The checkout drafts the order instead and
+  //      the settlement path creates it (see lib/checkout-draft.ts), so a
+  //      shopper who thinks better of it on somebody else's site leaves nothing
+  //      behind in the orders list.
+  //
+  // A provider choosing 'on-payment' takes on one duty in return: every path
+  // that settles a payment must call materialiseDraftOrder before it touches the
+  // order, and must NOT call it when the payment has failed.
+  orderCreation?: 'immediate' | 'on-payment'
   // 'manual' providers (bank transfer, cash) have no automated confirmation -
   // the confirm route parks the order at AWAITING_CONFIRMATION for an admin to
   // clear, rather than calling confirmPayment. Defaults to 'auto' when unset.

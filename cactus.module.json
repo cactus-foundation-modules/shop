@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.280",
+  "version": "0.1.281",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1123",
@@ -54,6 +54,7 @@
     "shp_coupons",
     "shp_automatic_discounts",
     "shp_invoices",
+    "shp_checkout_drafts",
     "shp_orders",
     "shp_order_items",
     "shp_refunds",
