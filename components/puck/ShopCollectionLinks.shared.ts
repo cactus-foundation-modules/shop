@@ -37,17 +37,28 @@ function safeColour(value: string): string {
 // page. Tokens by default: inherits the footer's own text colour and keeps AA
 // in both modes because the pairing is the page's own.
 export function shopCollectionLinksCss(id: string | undefined, props: ShopCollectionLinksProps): string {
+  // Heading and list metrics mirror globals.css's `.puck-richtext` rules to
+  // the value, so a footer column built from this block lines up with one
+  // built from a rich text block: same h3 face/size/margins (the 1.25em top
+  // margin is what keeps the column tops level - every column carries it, so
+  // every heading starts on the same line) and the same 1.75 line-height +
+  // per-item margin rhythm down the list.
   const rules: string[] = [`
 .shop-collection-links h3 {
-  margin: 0 0 0.75rem;
-  font-size: 1.05rem;
+  margin: 1.25em 0 0.5em;
+  line-height: 1.3;
+  font-weight: 700;
+  font-size: 1.25rem;
+  font-family: var(--h3-family, var(--font-heading));
 }
 .shop-collection-links ul {
-  margin: 0;
-  padding: 0 0 0 1.1rem;
+  margin: 0 0 1em 1.5em;
+  padding: 0;
+  line-height: 1.75;
   list-style-type: "›  ";
-  display: grid;
-  gap: 0.4rem;
+}
+.shop-collection-links li {
+  margin-bottom: 1.25em;
 }
 .shop-collection-links a {
   color: inherit;
@@ -58,10 +69,13 @@ export function shopCollectionLinksCss(id: string | undefined, props: ShopCollec
 }
 .shop-collection-links[data-scl-layout="inline"] ul {
   list-style: none;
-  padding: 0;
+  margin-left: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem 1.25rem;
+}
+.shop-collection-links[data-scl-layout="inline"] li {
+  margin-bottom: 0;
 }
 `]
   if (id) {
