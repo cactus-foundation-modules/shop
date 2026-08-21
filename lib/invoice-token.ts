@@ -42,3 +42,28 @@ export function verifyInvoiceToken(invoiceNumber: string, token: string | null |
 export function invoicePath(invoiceNumber: string): string {
   return `/shop/invoice/${encodeURIComponent(invoiceNumber)}?t=${signInvoiceToken(invoiceNumber)}`
 }
+
+/** The same, for a credit note. Its own namespace in the HMAC, so a token minted
+ *  for invoice INV-000087 cannot open credit note INV-000087 on a shop whose two
+ *  prefixes happen to collide. */
+export function signCreditNoteToken(creditNoteNumber: string): string {
+  return createHmac('sha256', getKey()).update(`credit-note:${creditNoteNumber}`).digest('base64url')
+}
+
+export function verifyCreditNoteToken(creditNoteNumber: string, token: string | null | undefined): boolean {
+  if (!creditNoteNumber || !token) return false
+  try {
+    const expected = signCreditNoteToken(creditNoteNumber)
+    const a = Buffer.from(token)
+    const b = Buffer.from(expected)
+    if (a.length !== b.length) return false
+    return timingSafeEqual(a, b)
+  } catch {
+    return false
+  }
+}
+
+/** The site-relative address of one credit note, token and all. */
+export function creditNotePath(creditNoteNumber: string): string {
+  return `/shop/credit-note/${encodeURIComponent(creditNoteNumber)}?t=${signCreditNoteToken(creditNoteNumber)}`
+}

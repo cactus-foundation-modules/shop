@@ -1,5 +1,6 @@
 import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { processRefund } from '@/modules/shop/lib/db/refunds'
+import { creditNoteForSettledRefund } from '@/modules/shop/lib/credit-notes'
 import { createOrderRequest, decideRequest, type CreateOrderRequestInput } from '@/modules/shop/lib/db/order-requests'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
@@ -161,6 +162,9 @@ async function issueRefund(
 
   if (!outcome.ok) return { ok: false, error: outcome.error }
   if (!outcome.success) return { ok: false, error: outcome.error ?? 'The payment provider refused the refund.' }
+  // A refund approved off the back of a return is the same money going back as
+  // one done from the order screen, and needs the same paperwork.
+  await creditNoteForSettledRefund(outcome.refundId, { userId })
   return { ok: true, amount: total }
 }
 

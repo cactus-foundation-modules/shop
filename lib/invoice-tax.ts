@@ -123,6 +123,9 @@ export function buildInvoiceMoney(order: ShpOrder, items: ShpOrderItem[]): Invoi
       tax: money(tax),
       gross: money(gross),
       detail: lineDetail(item),
+      // Which order line this is, so a credit note can find it again without
+      // matching on a product name that may since have been edited.
+      orderItemId: item.id,
     })
   }
 

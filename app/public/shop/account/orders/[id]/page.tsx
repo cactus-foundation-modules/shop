@@ -20,7 +20,8 @@ import {
   formatOrderDate,
 } from '@/modules/shop/lib/order-display'
 import { getInvoiceForOrder } from '@/modules/shop/lib/db/invoices'
-import { invoicePath } from '@/modules/shop/lib/invoice-token'
+import { listCreditNotesForOrder } from '@/modules/shop/lib/db/credit-notes'
+import { creditNotePath, invoicePath } from '@/modules/shop/lib/invoice-token'
 import OrderRequestPanel from '@/modules/shop/components/public/OrderRequestPanel'
 import WithdrawRequestButton from '@/modules/shop/components/public/WithdrawRequestButton'
 import BuyAgainButton from '@/modules/shop/components/public/BuyAgainButton'
@@ -111,9 +112,13 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
   const symbol = config.currencySymbol
   // Only looked up on a shop that invoices AND is willing to show it, so an
   // ordinary shop's order page costs exactly what it always did.
-  const invoice = config.invoicesEnabled && config.invoiceShowToCustomer
-    ? await getInvoiceForOrder(order.id)
-    : null
+  const showPaperwork = config.invoicesEnabled && config.invoiceShowToCustomer
+  const invoice = showPaperwork ? await getInvoiceForOrder(order.id) : null
+  // Money that went back is paperwork the buyer is owed just as much as the
+  // invoice - more so for a business buyer, whose own accountant needs the
+  // document rather than a line on a card statement. Only read where there is
+  // an invoice to credit, so an ordinary shop's order page costs what it did.
+  const creditNotes = invoice ? await listCreditNotesForOrder(order.id) : []
   const status = ORDER_STATUS_DISPLAY[order.status]
   const completedRefunds = refunds.filter((refund) => refund.status === 'COMPLETED')
   const refundedTotal = completedRefunds.reduce((sum, refund) => sum + Number(refund.amount), 0)
@@ -163,6 +168,14 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
               </a>
             </>
           )}
+          {creditNotes.map((note) => (
+            <span key={note.id}>
+              {' · '}
+              <a href={creditNotePath(note.creditNoteNumber)} style={{ color: 'var(--color-primary)' }}>
+                Credit note {note.creditNoteNumber}
+              </a>
+            </span>
+          ))}
         </p>
       </div>
 

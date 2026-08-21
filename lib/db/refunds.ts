@@ -41,6 +41,11 @@ export async function listRefundItemsForOrder(orderId: string): Promise<ShpRefun
   return rows.map(mapRefundItem)
 }
 
+export async function getRefundById(id: string): Promise<ShpRefund | null> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_refunds" WHERE "id" = ${id} LIMIT 1`
+  return rows[0] ? mapRefund(rows[0]) : null
+}
+
 export async function getRefundItems(refundId: string): Promise<ShpRefundItem[]> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_refund_items" WHERE "refund_id" = ${refundId}`
   return rows.map(mapRefundItem)
@@ -124,11 +129,17 @@ async function prepareRefund(input: ProcessRefundInput): Promise<PreparedRefund 
     `
     if (!locked[0]?.locked) return { ok: false, status: 409, error: REFUND_IN_PROGRESS_ERROR }
 
-    const orderRows = await tx.$queryRaw<{ total: string }[]>`
-      SELECT "total"::text AS total FROM "shp_orders" WHERE "id" = ${input.orderId}
+    const orderRows = await tx.$queryRaw<{ total: string; tax_mode: string }[]>`
+      SELECT "total"::text AS total, "tax_mode" FROM "shp_orders" WHERE "id" = ${input.orderId}
     `
     if (!orderRows[0]) return { ok: false, status: 404, error: 'Order not found' }
     const orderTotal = Number(orderRows[0].total)
+    // On an EXCLUSIVE shop a line's `total` is its NET value and the tax sits
+    // beside it; on an INCLUSIVE one the tax is already inside. The caps below
+    // are about money the customer actually parted with, so they have to know
+    // which. Getting this wrong capped every refund at the net figure and
+    // quietly kept the VAT.
+    const taxOnTop = orderRows[0].tax_mode === 'EXCLUSIVE'
 
     // Any PENDING refund row on this order is another request's reservation. A
     // live one means a provider call is in flight right now, so refuse rather
@@ -146,10 +157,11 @@ async function prepareRefund(input: ProcessRefundInput): Promise<PreparedRefund 
     let totalAmount = 0
     for (const item of input.items) {
       const rows = await tx.$queryRaw<
-        { order_id: string; product_name: string; quantity: number; refunded_qty: number; total: string; unit_price: string }[]
+        { order_id: string; product_name: string; quantity: number; refunded_qty: number; total: string; unit_price: string; tax_amount: string }[]
       >`
         SELECT "order_id", "product_name", "quantity", "refunded_qty",
-               "total"::text AS total, "unit_price"::text AS unit_price
+               "total"::text AS total, "unit_price"::text AS unit_price,
+               "tax_amount"::text AS tax_amount
         FROM "shp_order_items" WHERE "id" = ${item.orderItemId}
       `
       const oi = rows[0]
@@ -159,7 +171,13 @@ async function prepareRefund(input: ProcessRefundInput): Promise<PreparedRefund 
       }
       // Money cap: the requested amount can't exceed this line's tax-inclusive
       // value for the units being refunded (penny tolerance for rounding).
-      const perUnit = oi.quantity > 0 ? Number(oi.total) / oi.quantity : Number(oi.unit_price)
+      //
+      // Tax-inclusive means exactly that. An EXCLUSIVE shop's `total` is the net
+      // figure, so capping against it refuses to hand back the VAT the customer
+      // paid - a fifth of the money, permanently, with the API rejecting the
+      // correct amount even when somebody typed it in deliberately.
+      const lineGross = Number(oi.total) + (taxOnTop ? Number(oi.tax_amount) : 0)
+      const perUnit = oi.quantity > 0 ? lineGross / oi.quantity : Number(oi.unit_price)
       const maxLineRefund = perUnit * item.quantity + 0.01
       if (item.amount > maxLineRefund) {
         return { ok: false, status: 400, error: `Refund amount for ${oi.product_name} exceeds the value of the units being refunded` }

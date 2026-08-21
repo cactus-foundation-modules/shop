@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { processRefund } from '@/modules/shop/lib/db/refunds'
+import { creditNoteForSettledRefund } from '@/modules/shop/lib/credit-notes'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 
 const Body = z.object({
@@ -54,5 +55,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   })
 
   if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
+
+  // Money that has gone back needs a document behind it, and the books need
+  // telling: an invoice left standing in full against a part-refunded order is
+  // VAT the shop hands HMRC and never kept. Awaited rather than left dangling -
+  // a serverless function that returns is a function that may stop executing -
+  // and it never throws, so it cannot turn a good refund into a 500.
+  if (outcome.success) await creditNoteForSettledRefund(outcome.refundId, { userId: gate.user.id })
+
   return NextResponse.json({ refundId: outcome.refundId, success: outcome.success, error: outcome.error }, { status: outcome.success ? 201 : 502 })
 }

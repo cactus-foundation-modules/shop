@@ -4,7 +4,18 @@ import { useState } from 'react'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 
-type OrderItem = { id: string; productName: string; quantity: number; unitPrice: string; total: string; refundedQty: number; isPreOrder: boolean }
+type OrderItem = { id: string; productName: string; quantity: number; unitPrice: string; total: string; taxAmount: string; refundedQty: number; isPreOrder: boolean }
+
+// What one unit of a line actually cost the customer.
+//
+// On an EXCLUSIVE shop `unitPrice` and `total` are net and the tax sits beside
+// them, so refunding at the unit price hands back four fifths of the money and
+// keeps the VAT. The refund is the money going back, not the net sale being
+// unwound, so it is the gross figure every time.
+function grossPerUnit(item: OrderItem, taxOnTop: boolean): number {
+  const gross = Number(item.total) + (taxOnTop ? Number(item.taxAmount) : 0)
+  return item.quantity > 0 ? gross / item.quantity : Number(item.unitPrice)
+}
 
 const MANUAL_METHOD_COPY: Record<string, string> = {
   BANK_TRANSFER: 'This is a bank transfer order - refunding here just records it. You still need to send the money back yourself.',
@@ -13,13 +24,15 @@ const MANUAL_METHOD_COPY: Record<string, string> = {
 
 // Per-item refund modal: quantity per item pre-filled against the remaining
 // refundable amount, a reason, and provider-aware copy for manual methods.
-export function RefundModal({ orderId, items, paymentMethod, onClose, onDone }: {
+export function RefundModal({ orderId, items, paymentMethod, taxMode, onClose, onDone }: {
   orderId: string
   items: OrderItem[]
   paymentMethod: string
+  taxMode: 'INCLUSIVE' | 'EXCLUSIVE'
   onClose: () => void
   onDone: () => void
 }) {
+  const taxOnTop = taxMode === 'EXCLUSIVE'
   const currencySymbol = useCurrencySymbol()
   const refundable = items.filter((i) => i.refundedQty < i.quantity)
   const [quantities, setQuantities] = useState<Record<string, number>>(Object.fromEntries(refundable.map((i) => [i.id, 0])))
@@ -30,7 +43,7 @@ export function RefundModal({ orderId, items, paymentMethod, onClose, onDone }: 
   const selected = refundable
     .map((item) => ({ item, quantity: quantities[item.id] ?? 0 }))
     .filter((x) => x.quantity > 0)
-  const totalAmount = selected.reduce((sum, x) => sum + Number(x.item.unitPrice) * x.quantity, 0)
+  const totalAmount = selected.reduce((sum, x) => sum + grossPerUnit(x.item, taxOnTop) * x.quantity, 0)
 
   async function submit() {
     if (selected.length === 0) return
@@ -40,7 +53,11 @@ export function RefundModal({ orderId, items, paymentMethod, onClose, onDone }: 
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         reason: reason || null,
-        items: selected.map((x) => ({ orderItemId: x.item.id, quantity: x.quantity, amount: Number((Number(x.item.unitPrice) * x.quantity).toFixed(2)) })),
+        items: selected.map((x) => ({
+          orderItemId: x.item.id,
+          quantity: x.quantity,
+          amount: Number((grossPerUnit(x.item, taxOnTop) * x.quantity).toFixed(2)),
+        })),
       }),
     })
     setSaving(false)

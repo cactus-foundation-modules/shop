@@ -3,6 +3,7 @@ import { errorResponse } from '@/lib/utils'
 import { reconcileStaleRefunds } from '@/modules/shop/lib/db/refunds'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { creditNoteForSettledRefund } from '@/modules/shop/lib/credit-notes'
 import { sendEmail } from '@/lib/email'
 
 // Hourly. Resolves refunds left PENDING by a request that died between issuing
@@ -19,6 +20,15 @@ async function handle(request: NextRequest) {
   if (auth !== `Bearer ${secret}`) return errorResponse('Unauthorized', 401)
 
   const outcomes = await reconcileStaleRefunds((providerId) => getPaymentProvider(providerId) ?? null)
+
+  // A refund this run has just confirmed as gone through is money that moved
+  // without anybody watching, so it has had no credit note and the books have
+  // heard nothing. Raise it here, one at a time and never in parallel: each one
+  // may print a PDF, and a batch of headless browsers is how an hourly cron job
+  // starts falling over.
+  for (const outcome of outcomes) {
+    if (outcome.resolved === 'COMPLETED') await creditNoteForSettledRefund(outcome.refundId)
+  }
 
   const unresolved = outcomes.filter((o) => o.resolved === 'STILL_UNKNOWN')
 

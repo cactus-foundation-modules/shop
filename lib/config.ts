@@ -308,6 +308,30 @@ export const ShpConfigSchema = z.object({
   // can switch it off and keep the on-screen invoice.
   invoicePdfEnabled: z.boolean().default(true),
   invoicePdfFilenamePrefix: z.string().default('invoice'),
+
+  // Credit notes: the document that undoes an invoice when money goes back.
+  //
+  // On by default wherever invoicing is on, because the alternative is the
+  // shop's books carrying VAT on a sale it has refunded - which is money the
+  // owner hands HMRC and never took. Switchable all the same: a shop that
+  // credits by hand in its own accounts should not be issued documents it did
+  // not ask for.
+  creditNotesEnabled: z.boolean().default(true),
+  // Its own sequence and its own prefix. A credit note must never be handed an
+  // invoice number: the two are separate runs of documents and an accountant
+  // reading a gap in the invoice numbering wants an answer better than "that
+  // one was a refund".
+  creditNoteNumberPrefix: z.string().default('CN-'),
+  // The heading printed on the document. The rest of the wording - who is
+  // issuing it, the footer line - is the invoice's, because they are the same
+  // business on the same paper.
+  creditNoteHeading: z.string().default('Credit note'),
+  // What stands where "Paid in full" stands on an invoice.
+  creditNoteWording: z.string().default('This amount has been refunded to your original payment method.'),
+  // Whether the customer is emailed a copy when one is raised. On by default: a
+  // refund the buyer has no paperwork for is the next support ticket.
+  creditNoteEmailCustomer: z.boolean().default(true),
+  creditNotePdfFilenamePrefix: z.string().default('credit-note'),
 })
 
 export type ShpConfig = z.infer<typeof ShpConfigSchema>

@@ -83,7 +83,7 @@ type HeaderProps = DocProps & {
 }
 
 export function ShopInvoiceHeader(props: HeaderProps) {
-  const { invoice } = useCtx(props)
+  const { invoice, credit } = useCtx(props)
   const heading = props.heading?.trim() || invoice.wording?.heading || 'Invoice'
   const font = fontStyle(props)
   const showLogo = props.showLogo !== 'no' && Boolean(invoice.seller?.logoUrl)
@@ -112,8 +112,24 @@ export function ShopInvoiceHeader(props: HeaderProps) {
         <div className="shp-inv-meta">
           <h1 className="shp-inv-h1" style={font}>{heading}</h1>
           <dl className="shp-inv-facts">
-            <dt>Invoice</dt>
-            <dd>{invoice.invoiceNumber}</dd>
+            {/* A credit note leads with its own number and then names the
+                invoice it credits. The reference is not decoration: a credit
+                note that does not say which invoice it undoes is not one, and
+                it is the first thing an accountant looks for. */}
+            {credit && (
+              <>
+                <dt>{invoice.wording?.heading?.trim() || 'Credit note'}</dt>
+                <dd>{credit.creditNoteNumber}</dd>
+              </>
+            )}
+            {/* Skipped on a credit note whose invoice row has since been
+                deleted - an empty "Invoice" row says less than no row. */}
+            {(!credit || invoice.invoiceNumber) && (
+              <>
+                <dt>Invoice</dt>
+                <dd>{invoice.invoiceNumber}</dd>
+              </>
+            )}
             {props.showOrderNumber !== 'no' && invoice.orderNumber && (
               <>
                 <dt>Order</dt>
@@ -355,7 +371,7 @@ type TotalsProps = DocProps & {
 }
 
 export function ShopInvoiceTotals(props: TotalsProps) {
-  const { invoice } = useCtx(props)
+  const { invoice, credit } = useCtx(props)
   const font = fontStyle(props)
   const symbol = invoice.currencySymbol || '£'
   const inclusive = invoice.taxMode === 'INCLUSIVE'
@@ -397,7 +413,14 @@ export function ShopInvoiceTotals(props: TotalsProps) {
       </dl>
       {props.showPaid !== 'no' && (
         <p className="shp-inv-paid" style={font}>
-          {props.paidWording?.trim() || 'Paid in full - thank you.'}
+          {/* "Paid in full - thank you" on a refund would be quite the insult.
+              The credit note's own wording was snapshotted onto it when it was
+              raised, so a later edit in settings does not rewrite paperwork
+              already sent out - and the block's own override is ignored here,
+              because it was written for the other document. */}
+          {credit
+            ? invoice.wording?.creditWording?.trim() || 'This amount has been refunded to your original payment method.'
+            : props.paidWording?.trim() || 'Paid in full - thank you.'}
         </p>
       )}
     </>

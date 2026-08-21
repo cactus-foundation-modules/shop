@@ -28,6 +28,13 @@ import type { ShpInvoiceSinkResult, ShpInvoiceTaxRow } from '@/modules/shop/lib/
 // sale in a set of books and worked VAT out on it, and nothing but a message
 // saying so will take it back out again. Voiding without telling the books is
 // how a shop ends up paying VAT on a sale it withdrew.
+//
+// The third is the same fault at a smaller scale, and a much commoner one. A
+// refund does not withdraw an invoice - the sale happened, most of it stands -
+// but the money that went back is no longer turnover and the VAT inside it is no
+// longer owed. Refunding without telling the books leaves a shop paying HMRC tax
+// on money it handed to a customer, every time, for as long as nobody notices.
+// `shop.invoice-credited` is the credit note saying so.
 
 export type ShopInvoiceSinkPayload = {
   /** Always 'shop'. A recorder may register at more than one publisher's point
@@ -113,8 +120,62 @@ export type ShopInvoiceVoidSink = (
   payload: ShopInvoiceVoidedPayload,
 ) => Promise<{ ok: boolean; message: string }> | { ok: boolean; message: string }
 
+/** The statement when part or all of an invoice is credited back.
+ *
+ *  Deliberately NOT a void with a smaller number on it. A void says the sale
+ *  never stood; this says it stood and some of it has since been handed back,
+ *  which is a different entry in anybody's books and a different document in the
+ *  customer's file. It carries its own number because a credit note is a
+ *  document in its own right, and it names the invoice it credits because a
+ *  credit note that does not is not one.
+ *
+ *  Every figure is a POSITIVE magnitude - what was credited, not a negative
+ *  sale. The recorder negates, exactly as it already does for a void. */
+export type ShopInvoiceCreditedPayload = {
+  source: 'shop'
+  creditNoteId: string
+  creditNoteNumber: string
+  /** The invoice being credited. Its number is what a recorder filed the sale
+   *  under, so it is how the two are tied together. */
+  invoiceId: string | null
+  invoiceNumber: string
+  orderId: string
+  orderNumber: string
+  /** ISO timestamp the credit note was raised. */
+  issuedAt: string
+  /** yyyy-mm-dd. The tax point of the CREDIT - the day the money went back, not
+   *  the day of the sale. A credit dated back into the quarter the sale was in
+   *  would reopen a return that has very likely already been filed. */
+  taxPointDate: string
+  currency: string
+  taxMode: 'INCLUSIVE' | 'EXCLUSIVE'
+  customer: { name: string; company: string; email: string }
+  /** What was credited: net, tax and gross, all positive. */
+  totals: { net: string; tax: string; gross: string }
+  /** The same at each rate, summing to `totals`. Rates are the ones the lines
+   *  were SOLD at, not whatever the tax table says today. */
+  taxBreakdown: ShpInvoiceTaxRow[]
+  /** Whether this credits the whole invoice or part of it. A recorder may want
+   *  to word its entry differently; nothing else turns on it. */
+  full: boolean
+  /** Why the money went back, in the words whoever refunded it typed. May be
+   *  blank - a refund does not insist on a reason the way a void does. */
+  reason: string
+  description: string
+  documentUrl: string | null
+  /** The credit note as a file, for a recorder that keeps its own evidence.
+   *  Lazy for the same reason the invoice's is: printing runs a headless
+   *  browser and most recorders will not want one. */
+  document?: ShopInvoiceDocument
+}
+
+export type ShopInvoiceCreditSink = (
+  payload: ShopInvoiceCreditedPayload,
+) => Promise<{ ok: boolean; message: string }> | { ok: boolean; message: string }
+
 const POINT = 'shop.invoice-issued'
 const VOID_POINT = 'shop.invoice-voided'
+const CREDIT_POINT = 'shop.invoice-credited'
 
 type ExtensionPointEntry = { point: string; id: string }
 
@@ -141,6 +202,12 @@ async function gatherSinks<T>(point: string): Promise<{ id: string; sink: T }[]>
  *  a "send to the books again" button makes any sense. */
 export async function hasInvoiceSinks(): Promise<boolean> {
   return (await gatherSinks<ShopInvoiceSink>(POINT)).length > 0
+}
+
+/** The same question for credit notes, so the order screen only offers a "send
+ *  it to the books again" button where there are books to send it to. */
+export async function hasCreditSinks(): Promise<boolean> {
+  return (await gatherSinks<ShopInvoiceCreditSink>(CREDIT_POINT)).length > 0
 }
 
 /**
@@ -189,6 +256,32 @@ export async function dispatchInvoiceVoided(payload: ShopInvoiceVoidedPayload): 
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       console.error(`[shop] invoice void sink "${id}" failed for ${payload.invoiceNumber}:`, message)
+      results.push({ id, ok: false, message: message.slice(0, 500), at })
+    }
+  }
+  return results
+}
+
+/**
+ * Tells every registered sink that part or all of an invoice has been credited.
+ *
+ * Same rules as the other two: a sink that fails never fails the credit note.
+ * The money has already gone back to the customer and the document is raised;
+ * a bookkeeping module that was down at the wrong moment must not be able to
+ * hold that up. What it said is recorded on the credit note, and the order
+ * screen offers the button again.
+ */
+export async function dispatchInvoiceCredited(payload: ShopInvoiceCreditedPayload): Promise<ShpInvoiceSinkResult[]> {
+  const sinks = await gatherSinks<ShopInvoiceCreditSink>(CREDIT_POINT)
+  const results: ShpInvoiceSinkResult[] = []
+  for (const { id, sink } of sinks) {
+    const at = new Date().toISOString()
+    try {
+      const outcome = await sink(payload)
+      results.push({ id, ok: Boolean(outcome?.ok), message: String(outcome?.message ?? '').slice(0, 500), at })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[shop] invoice credit sink "${id}" failed for ${payload.creditNoteNumber}:`, message)
       results.push({ id, ok: false, message: message.slice(0, 500), at })
     }
   }

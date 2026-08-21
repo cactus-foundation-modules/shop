@@ -130,6 +130,19 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     mergeTags: ['customerName', 'orderNumber', 'requestType', 'adminNote', 'shopName'],
     transactional: false,
   },
+  // A refund the buyer has no paperwork for is the next support ticket, and a
+  // business buyer's own accountant will want the document rather than a line
+  // on a card statement. Transactional: it is the record of money moving, not
+  // marketing, so it goes out whether or not they take our newsletters.
+  {
+    key: 'shop.credit-note-issued',
+    label: 'Credit note issued',
+    subject: 'Credit note {{creditNoteNumber}} for order {{orderNumber}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>We have refunded {{creditAmount}} against order <strong>{{orderNumber}}</strong>, and here is the credit note for your records.</p>{{#if hasReason}}<p>Reason: {{creditReason}}</p>{{/if}}<p><a href="{{creditNoteUrl}}">View credit note {{creditNoteNumber}}</a></p><p>Depending on your bank the money can take a few working days to show up.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'creditNoteNumber', 'creditNoteUrl', 'creditAmount', 'creditReason', 'invoiceNumber', 'shopName'],
+    transactional: true,
+  },
   {
     key: 'shop.admin-new-request',
     label: 'New cancel or return request (admin alert)',
@@ -144,6 +157,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
 /** shp_email_templates.trigger to the key core knows it by. The trigger names
  * stay: they are all over the shop's own call sites and the order email log. */
 export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
+  CREDIT_NOTE_ISSUED: 'shop.credit-note-issued',
   ORDER_CONFIRMED: 'shop.order-confirmed',
   STATUS_PROCESSING: 'shop.status-processing',
   STATUS_SHIPPED: 'shop.status-shipped',

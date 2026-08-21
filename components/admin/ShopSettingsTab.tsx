@@ -763,6 +763,48 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
                 <input value={config.invoicePdfFilenamePrefix} onChange={(e) => set('invoicePdfFilenamePrefix', e.target.value)} />
                 <span className="field-hint">Saves as {config.invoicePdfFilenamePrefix || 'invoice'}-{config.invoiceNumberPrefix || 'INV-'}000123.pdf.</span>
               </div>
+
+              <hr style={hr} />
+              <h3 style={sectionHeading}>Credit notes</h3>
+              <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
+                When you refund something, the invoice you already sent is out of date and the tax on the
+                refunded part is no longer yours to hand over. A credit note is the document that says so.
+                It uses the same design as your invoice, so there is nothing else to lay out.
+              </p>
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.creditNotesEnabled} onChange={(e) => set('creditNotesEnabled', e.target.checked)} />
+                Raise a credit note whenever a refund goes through
+              </label>
+              {config.creditNotesEnabled && (
+                <>
+                  <div className="field">
+                    <label>Number prefix</label>
+                    <input value={config.creditNoteNumberPrefix} onChange={(e) => set('creditNoteNumberPrefix', e.target.value)} />
+                    <span className="field-hint">
+                      Credit notes are numbered separately from invoices, so {config.creditNoteNumberPrefix || 'CN-'}000001 onwards.
+                    </span>
+                  </div>
+                  <div className="field">
+                    <label>Heading</label>
+                    <input value={config.creditNoteHeading} onChange={(e) => set('creditNoteHeading', e.target.value)} />
+                  </div>
+                  <div className="field">
+                    <label>Wording under the total</label>
+                    <textarea rows={2} value={config.creditNoteWording} onChange={(e) => set('creditNoteWording', e.target.value)} />
+                  </div>
+                  <label style={checkboxRow}>
+                    <input type="checkbox" checked={config.creditNoteEmailCustomer} onChange={(e) => set('creditNoteEmailCustomer', e.target.checked)} />
+                    Email the customer a copy
+                  </label>
+                  <div className="field">
+                    <label>PDF filename prefix</label>
+                    <input value={config.creditNotePdfFilenamePrefix} onChange={(e) => set('creditNotePdfFilenamePrefix', e.target.value)} />
+                    <span className="field-hint">
+                      Saves as {config.creditNotePdfFilenamePrefix || 'credit-note'}-{config.creditNoteNumberPrefix || 'CN-'}000123.pdf.
+                    </span>
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>

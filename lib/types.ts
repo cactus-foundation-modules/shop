@@ -571,12 +571,33 @@ export type ShpInvoiceLine = {
   gross: string
   /** Personalisation and options as they were recorded on the order line. */
   detail: { label: string; value: string }[]
+  /** Which order line this came from, so a credit note can find the invoice line
+   *  a refund is against without matching on name. Optional: invoices raised
+   *  before credit notes existed do not carry it, and those fall back to
+   *  position (see lib/credit-note-tax.ts). */
+  orderItemId?: string | null
 }
 
 /** Net, tax and gross at one rate. The part an accountant actually reads, and
  *  what a bookkeeping module needs to file a return - which is why it is stored
  *  rather than worked out again downstream. */
 export type ShpInvoiceTaxRow = {
+  ratePercent: string
+  net: string
+  tax: string
+  gross: string
+}
+
+/** One thing on a document, as a set of books wants it: what it was, and the
+ *  money on it at one rate.
+ *
+ *  Handed over the bookkeeping seam so an entry reads as the list of what was
+ *  actually sold rather than one lump per VAT rate. Delivery and any rounding
+ *  penny arrive as items of their own, so these rows sum EXACTLY to
+ *  `taxBreakdown` - an entry built from them cannot end up disagreeing with the
+ *  invoice it came from, which is the only thing that makes them safe to file. */
+export type ShpLedgerItem = {
+  description: string
   ratePercent: string
   net: string
   tax: string
@@ -591,6 +612,10 @@ export type ShpInvoiceWording = {
   paymentDetails: string
   terms: string
   footer: string
+  /** What stands under the total on a credit note, where "Paid in full" stands
+   *  on an invoice. Only ever set on a credit note's own snapshot; absent on
+   *  every invoice, and on any credit note raised before it existed. */
+  creditWording?: string
 }
 
 /** What one registered bookkeeping sink made of this invoice. */
@@ -636,6 +661,52 @@ export type ShpInvoice = {
   sinkResults: ShpInvoiceSinkResult[]
   voidedAt: Date | null
   voidReason: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+// A credit note: the document that undoes an invoice, in whole or in part.
+//
+// Same snapshot shape as an invoice on purpose - seller, customer, lines, tax
+// breakdown and wording are all the invoice's types - because both documents are
+// drawn by the same six blocks on the same `shopInvoice` layout. An owner styles
+// their invoice once and the credit note matches it.
+//
+// Every money figure is a POSITIVE magnitude. The document says what it is in
+// its heading, which is how a credit note is written and what a customer expects
+// to read; a column of minus signs reads as a mistake. Negating is the job of
+// whoever consumes it, which is what the books already do for a voided invoice.
+export type ShpCreditNote = {
+  id: string
+  orderId: string
+  orderNumber: string
+  creditNoteNumber: string
+  /** The invoice being credited. Null only if that invoice row has since been
+   *  deleted - the number below is the snapshot that still prints. */
+  invoiceId: string | null
+  invoiceNumber: string
+  /** The refund that caused it, where one did. */
+  refundId: string | null
+  issuedAt: Date
+  /** yyyy-mm-dd. The tax point of the CREDIT - the day the money went back, not
+   *  the day of the sale. */
+  taxPointDate: string
+  currency: string
+  currencySymbol: string
+  taxMode: 'INCLUSIVE' | 'EXCLUSIVE'
+  subtotal: string
+  shippingAmount: string
+  taxAmount: string
+  total: string
+  seller: ShpInvoiceSeller
+  customer: ShpInvoiceCustomer
+  lines: ShpInvoiceLine[]
+  taxBreakdown: ShpInvoiceTaxRow[]
+  wording: ShpInvoiceWording
+  reason: string | null
+  issuedBy: 'AUTO' | 'MANUAL'
+  createdByUserId: string | null
+  sinkResults: ShpInvoiceSinkResult[]
   createdAt: Date
   updatedAt: Date
 }
@@ -718,6 +789,8 @@ export type ShpEmailTemplateTrigger =
   | 'ADMIN_NEW_ORDER' | 'LOW_STOCK' | 'BACK_IN_STOCK' | 'IMPORT_COMPLETE'
   // Cancel / return requests. See lib/order-request-actions.ts.
   | 'REQUEST_RECEIVED' | 'REQUEST_APPROVED' | 'REQUEST_DECLINED' | 'ADMIN_NEW_REQUEST'
+  // The credit note raised when a refund goes through. See lib/credit-notes.ts.
+  | 'CREDIT_NOTE_ISSUED'
 // ShpEmailTemplate is gone: the shop's email copy lives in core's single email
 // registry now (lib/email-templates.ts + the manifest's `emailTemplates` entry),
 // edited in Settings > Emails alongside every other email the site sends. The

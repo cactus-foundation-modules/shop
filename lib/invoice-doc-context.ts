@@ -1,4 +1,4 @@
-import type { ShpInvoice } from '@/modules/shop/lib/types'
+import type { ShpCreditNote, ShpInvoice } from '@/modules/shop/lib/types'
 
 // Context injected onto every invoice-document part-block before the layout
 // renders, and the injector that puts it there. Same pattern as
@@ -14,6 +14,24 @@ export type InvoiceDocContext = {
   /** True while rendering for the PDF. Parts use it to drop anything that only
    *  makes sense on screen. */
   print: boolean
+  /** Set when the document being drawn is a credit note rather than an invoice.
+   *
+   *  A credit note is drawn by these same six blocks on this same layout, so an
+   *  owner who has spent an afternoon on their invoice gets a matching credit
+   *  note for nothing. What differs is small enough to live here: the document
+   *  needs its own number printed above the invoice it credits, and the line
+   *  under the total says the money went back rather than that it came in.
+   *
+   *  Everything else - the figures, which are positive magnitudes on both - is
+   *  identical, which is why the money blocks need no branch at all. */
+  credit?: CreditDocMeta
+}
+
+/** The little a credit note needs beyond an invoice's own fields. */
+export type CreditDocMeta = {
+  creditNoteNumber: string
+  /** Why the money went back, where somebody said. */
+  reason: string | null
 }
 
 type PuckLikeData = { content?: unknown; zones?: Record<string, unknown>; root?: unknown }
@@ -128,4 +146,63 @@ export const SAMPLE_INVOICE_CONTEXT: InvoiceDocContext = {
     updatedAt: new Date('2026-04-06T09:00:00.000Z'),
   },
   print: false,
+}
+
+/**
+ * A credit note as the document blocks want it.
+ *
+ * The blocks are typed to an invoice because that is what they were written for
+ * and what the editor canvas previews; a credit note carries every one of those
+ * fields already (same seller, same customer, same line and rate shapes), so it
+ * is presented as one rather than the six blocks each learning about a second
+ * type.
+ *
+ * Two fields are worth pointing at:
+ *
+ *  - `invoiceNumber` is the CREDITED invoice's, not the credit note's. That is
+ *    what belongs in the header's "Invoice" row - the reference tying the two
+ *    documents together, which is the thing a credit note must carry. Its own
+ *    number rides on `credit` and is printed above it.
+ *
+ *  - `dueDate` is null, always. Nothing on a credit note falls due.
+ */
+export function creditNoteDocContext(note: ShpCreditNote, opts?: { print?: boolean }): InvoiceDocContext {
+  const invoice: ShpInvoice = {
+    id: note.id,
+    orderId: note.orderId,
+    orderNumber: note.orderNumber,
+    invoiceNumber: note.invoiceNumber,
+    status: 'ISSUED',
+    issuedAt: note.issuedAt,
+    taxPointDate: note.taxPointDate,
+    dueDate: null,
+    currency: note.currency,
+    currencySymbol: note.currencySymbol,
+    taxMode: note.taxMode,
+    subtotal: note.subtotal,
+    // A credit note credits money that has already had any discount taken off
+    // it, so there is nothing left to show a discount row for.
+    discountAmount: '0.00',
+    shippingAmount: note.shippingAmount,
+    taxAmount: note.taxAmount,
+    total: note.total,
+    seller: note.seller,
+    customer: note.customer,
+    lines: note.lines,
+    taxBreakdown: note.taxBreakdown,
+    wording: note.wording,
+    issuedBy: note.issuedBy,
+    issueTrigger: null,
+    createdByUserId: note.createdByUserId,
+    sinkResults: note.sinkResults,
+    voidedAt: null,
+    voidReason: null,
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt,
+  }
+  return {
+    invoice,
+    print: opts?.print ?? false,
+    credit: { creditNoteNumber: note.creditNoteNumber, reason: note.reason },
+  }
 }

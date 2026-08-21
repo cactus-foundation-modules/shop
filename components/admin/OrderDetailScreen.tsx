@@ -109,6 +109,25 @@ type InvoiceState = {
   invoices: OrderInvoice[]
 }
 
+// The credit note panel's own payload (GET .../credit-note), kept apart for the
+// same reason the invoice one is.
+type OrderCreditNote = {
+  id: string; creditNoteNumber: string; invoiceNumber: string; orderNumber: string
+  refundId: string | null
+  issuedAt: string; taxPointDate: string
+  total: string; taxAmount: string; currencySymbol: string
+  reason: string | null
+  issuedBy: 'AUTO' | 'MANUAL'
+  sinkResults: InvoiceSinkResult[]
+  viewUrl: string; pdfUrl: string
+}
+type CreditNoteState = {
+  enabled: boolean
+  pdfEnabled: boolean
+  hasBookkeeping: boolean
+  creditNotes: OrderCreditNote[]
+}
+
 export function OrderDetailScreen({ orderId, children }: { orderId: string; children?: React.ReactNode }) {
   const adminPath = useAdminPath()
   const currencySymbol = useCurrencySymbol()
@@ -119,6 +138,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   const [data, setData] = useState<OrderDetail | null>(null)
   const [dispatch, setDispatch] = useState<DispatchDetail | null>(null)
   const [invoicing, setInvoicing] = useState<InvoiceState | null>(null)
+  const [crediting, setCrediting] = useState<CreditNoteState | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [sendEmailOnChange, setSendEmailOnChange] = useState(true)
@@ -143,6 +163,9 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
     fetch(`/api/m/shop/admin/orders/${orderId}/invoice`)
       .then(async (r) => { if (r.ok) setInvoicing(await r.json()) })
       .catch(() => {})
+    fetch(`/api/m/shop/admin/orders/${orderId}/credit-note`)
+      .then(async (r) => { if (r.ok) setCrediting(await r.json()) })
+      .catch(() => {})
   }, [orderId])
 
   useEffect(refresh, [refresh])
@@ -151,6 +174,12 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   if (!data) return <div className="sox-loading">Loading order…</div>
 
   const { order } = data
+
+  // Settled refunds with no credit note against them. Worked out here rather
+  // than on the server so the panel does not need a second round trip after
+  // every refund - both lists are already on the screen.
+  const creditedRefundIds = new Set((crediting?.creditNotes ?? []).map((note) => note.refundId).filter(Boolean))
+  const uncreditedRefunds = data.refunds.filter((refund) => refund.status === 'COMPLETED' && !creditedRefundIds.has(refund.id))
 
   async function setStatus(status: string) {
     setBusy(true)
@@ -234,6 +263,34 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
     setBusy(false)
     if (!res.ok) {
       await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That invoice could not be sent to the books.')
+      return
+    }
+    refresh()
+  }
+
+  async function issueCreditNote(refundId: string) {
+    setBusy(true)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/credit-note`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'issue', refundId }),
+    })
+    setBusy(false)
+    if (!res.ok) {
+      await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That credit note could not be raised.')
+      return
+    }
+    refresh()
+  }
+
+  async function resendCreditNote(creditNoteId: string) {
+    setBusy(true)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/credit-note`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'resend', creditNoteId }),
+    })
+    setBusy(false)
+    if (!res.ok) {
+      await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That credit note could not be sent to the books.')
       return
     }
     refresh()
@@ -763,6 +820,69 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
             </section>
           )}
 
+          {/* Credit notes. Absent unless the shop invoices and has credit notes
+              switched on, and quiet until there is something to show - a card
+              saying "no refunds" on every order would be noise on the great
+              majority of them. */}
+          {crediting?.enabled && (crediting.creditNotes.length > 0 || uncreditedRefunds.length > 0) && (
+            <section className="sox-card sox-noprint">
+              <div className="sox-card-head"><h2>Credit notes</h2></div>
+              <div className="sox-card-body" style={{ display: 'grid', gap: '0.75rem' }}>
+                {crediting.creditNotes.map((note) => (
+                  <div key={note.id} style={{ display: 'grid', gap: '0.375rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <strong className="sox-mono">{note.creditNoteNumber}</strong>
+                      <span className="badge badge-default">Credited</span>
+                      <span className="sox-muted">{formatDate(note.issuedAt)}</span>
+                    </div>
+                    <div className="sox-sub">
+                      {formatMoney(note.total, note.currencySymbol || currencySymbol)}
+                      {Number(note.taxAmount) > 0 && ` · tax ${formatMoney(note.taxAmount, note.currencySymbol || currencySymbol)}`}
+                      {note.invoiceNumber ? ` · against ${note.invoiceNumber}` : ''}
+                      {note.issuedBy === 'MANUAL' ? ' · raised by hand' : ''}
+                    </div>
+                    {note.reason && <div className="sox-sub">Reason: {note.reason}</div>}
+                    {/* What the books made of it. Same reasoning as the
+                        invoice's: a credit that never reached them is VAT the
+                        shop hands over on money it gave back, and nobody
+                        notices until the return is due. */}
+                    {note.sinkResults.map((result) => (
+                      <div key={result.id} className="sox-sub">
+                        {result.ok ? '✓' : '⚠'} {result.id}: {result.message}
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                      <a className="btn btn-secondary btn-sm" href={note.viewUrl} target="_blank" rel="noreferrer">View</a>
+                      {crediting.pdfEnabled && <a className="btn btn-secondary btn-sm" href={note.pdfUrl}>PDF</a>}
+                      {crediting.hasBookkeeping && (
+                        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => resendCreditNote(note.id)}>
+                          Send to the books again
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {/* A refund whose credit note never got raised - the books were
+                    down, credit notes were off at the time, or the refund
+                    settled hours later on the reconcile run. Left visible
+                    rather than retried silently, because the owner is the one
+                    who knows whether it should exist. */}
+                {uncreditedRefunds.map((refund) => (
+                  <div key={refund.id} style={{ display: 'grid', gap: '0.375rem' }}>
+                    <div className="sox-sub">
+                      No credit note for the {formatMoney(refund.amount, currencySymbol)} refund of {formatDate(refund.createdAt)}.
+                    </div>
+                    <div>
+                      <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => issueCreditNote(refund.id)}>
+                        Raise the credit note
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           <section className="sox-card">
             <div className="sox-card-head"><h2>Totals</h2></div>
             <div className="sox-card-body">
@@ -806,6 +926,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
           orderId={orderId}
           items={data.items}
           paymentMethod={order.paymentMethod}
+          taxMode={order.taxMode === 'INCLUSIVE' ? 'INCLUSIVE' : 'EXCLUSIVE'}
           onClose={() => setRefundOpen(false)}
           onDone={() => { setRefundOpen(false); refresh() }}
         />
