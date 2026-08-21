@@ -135,3 +135,29 @@ describe('buildInvoiceMoney - it always ties to the payment', () => {
     expect(taxBreakdown).toEqual([{ ratePercent: '20', net: '10.00', tax: '2.00', gross: '12.00' }])
   })
 })
+
+describe('buildInvoiceMoney - what goes on a line beyond the money', () => {
+  it('keeps personalisation but drops the delivery promise', () => {
+    // The batch names the field it restates (LineMeta.fieldLabel). That field is
+    // a promise about a date in the future; an invoice is read months later.
+    const withMeta = item({
+      lineMeta: {
+        fields: [
+          { label: 'Delivery', value: 'Flat-Pack - by Wednesday 2nd of September' },
+          { label: 'Engraving', value: 'For Dad' },
+        ],
+        batch: { id: '2026-09-02', sort: '2026-09-02', heading: 'Arrives by Wednesday', fieldLabel: 'Delivery' },
+      },
+    })
+    const { lines } = buildInvoiceMoney(order(), [withMeta])
+    expect(lines[0]!.detail).toEqual([{ label: 'Engraving', value: 'For Dad' }])
+  })
+
+  it('keeps every field when no batch says which one is the delivery', () => {
+    const withMeta = item({
+      lineMeta: { fields: [{ label: 'Delivery', value: 'Next week' }] },
+    })
+    const { lines } = buildInvoiceMoney(order(), [withMeta])
+    expect(lines[0]!.detail).toEqual([{ label: 'Delivery', value: 'Next week' }])
+  })
+})

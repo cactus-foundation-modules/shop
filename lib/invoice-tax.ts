@@ -41,12 +41,21 @@ export function formatRatePercent(rate: number): string {
 
 /** One order line's detail rows, taken from the personalisation snapshot the
  *  cart-line resolvers wrote. Never re-resolved: the invoice records what was
- *  bought, not what the product page would say about it today. */
+ *  bought, not what the product page would say about it today.
+ *
+ *  The delivery field is dropped. A line's batch names the field it restates
+ *  (`fieldLabel` - see LineMeta), and that field is a promise about when
+ *  something will turn up: it belongs on a confirmation email, where it is still
+ *  a live question. An invoice is a record of what was charged, it is read
+ *  months later by an accountant, and "by Wednesday 2nd of September" is by then
+ *  either history or wrong. */
 function lineDetail(item: ShpOrderItem): { label: string; value: string }[] {
   const fields = item.lineMeta?.fields
   if (!Array.isArray(fields)) return []
+  const deliveryLabel = item.lineMeta?.batch?.fieldLabel?.trim().toLowerCase() ?? ''
   return fields
     .filter((field) => field && typeof field.label === 'string' && typeof field.value === 'string')
+    .filter((field) => !deliveryLabel || field.label.trim().toLowerCase() !== deliveryLabel)
     .map((field) => ({ label: field.label, value: field.value }))
 }
 

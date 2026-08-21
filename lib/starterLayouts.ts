@@ -630,7 +630,7 @@ export function shopProductCardStarters() {
 // all, and an invoice must still come out looking like an invoice.
 
 const INVOICE_HEADER = block('ShopInvoiceHeader', 'inv-head', {
-  heading: '', fontFamily: '', showLogo: 'yes', showName: 'yes',
+  heading: '', fontFamily: '', showLogo: 'yes', showName: 'auto',
   showOrderNumber: 'yes', showTaxPoint: 'no', taxPointLabel: 'Tax point',
 })
 const INVOICE_PARTIES = block('ShopInvoiceParties', 'inv-parties', {
@@ -638,7 +638,7 @@ const INVOICE_PARTIES = block('ShopInvoiceParties', 'inv-parties', {
   showDelivery: 'yes', deliverLabel: 'Delivered to', showRegistration: 'yes',
 })
 const INVOICE_LINES = block('ShopInvoiceLines', 'inv-lines', {
-  fontFamily: '', showSku: 'yes', showDetail: 'yes', showTaxRate: 'no',
+  fontFamily: '', showSku: 'no', showDetail: 'yes', showTaxRate: 'no',
   itemLabel: 'Description', qtyLabel: 'Qty', priceLabel: 'Unit price', rateLabel: 'Rate', totalLabel: 'Amount',
 })
 const INVOICE_TOTALS = block('ShopInvoiceTotals', 'inv-totals', {
@@ -651,7 +651,7 @@ const INVOICE_TAX = block('ShopInvoiceTaxSummary', 'inv-tax', {
 })
 const INVOICE_PAYMENT = block('ShopInvoicePayment', 'inv-pay', {
   fontFamily: '', showPaymentDetails: 'yes', paymentHeading: 'Payment',
-  showTerms: 'yes', termsHeading: 'Terms', showFooter: 'yes',
+  showTerms: 'yes', termsHeading: 'Terms', showFooter: 'yes', footerAlign: 'center',
 })
 
 /** What an invoice renders as when no layout of this type is published. Kept in
@@ -684,7 +684,7 @@ export function shopInvoiceStarters() {
           INVOICE_HEADER,
           INVOICE_PARTIES,
           block('ShopInvoiceLines', 'inv-lines', {
-            fontFamily: '', showSku: 'yes', showDetail: 'yes', showTaxRate: 'yes',
+            fontFamily: '', showSku: 'no', showDetail: 'yes', showTaxRate: 'yes',
             itemLabel: 'Description', qtyLabel: 'Qty', priceLabel: 'Unit price', rateLabel: 'Rate', totalLabel: 'Amount',
           }),
           INVOICE_TOTALS,
@@ -705,7 +705,7 @@ export function shopInvoiceStarters() {
       data: {
         content: [
           block('ShopInvoiceHeader', 'inv-head', {
-            heading: '', fontFamily: '', showLogo: 'no', showName: 'yes',
+            heading: '', fontFamily: '', showLogo: 'no', showName: 'auto',
             showOrderNumber: 'yes', showTaxPoint: 'no', taxPointLabel: 'Tax point',
           }),
           block('ShopInvoiceParties', 'inv-parties', {

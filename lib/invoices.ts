@@ -8,11 +8,18 @@ import {
   insertInvoice,
   InvoiceAlreadyIssuedError,
   saveSinkResults,
+  voidInvoice,
 } from '@/modules/shop/lib/db/invoices'
 import { generateInvoiceNumber } from '@/modules/shop/lib/invoice-number'
 import { buildInvoiceMoney } from '@/modules/shop/lib/invoice-tax'
-import { dispatchInvoiceIssued, type ShopInvoiceSinkPayload } from '@/modules/shop/lib/invoice-sinks'
-import { invoicePath } from '@/modules/shop/lib/invoice-token'
+import { invoicePdfFilename } from '@/modules/shop/lib/invoice-pdf'
+import {
+  dispatchInvoiceIssued,
+  dispatchInvoiceVoided,
+  type ShopInvoiceSinkPayload,
+  type ShopInvoiceVoidedPayload,
+} from '@/modules/shop/lib/invoice-sinks'
+import { invoicePath, signInvoiceToken } from '@/modules/shop/lib/invoice-token'
 import { addressLines } from '@/modules/shop/lib/order-display'
 import type { ShpInvoice, ShpInvoiceSeller, ShpInvoiceCustomer, ShpInvoiceWording, ShpOrder } from '@/modules/shop/lib/types'
 
@@ -107,6 +114,24 @@ function buildWording(config: ShpConfig): ShpInvoiceWording {
   }
 }
 
+/** The invoice printed to PDF bytes, for a sink that files evidence.
+ *
+ *  Never throws: a set of books that cannot get hold of the document should
+ *  record the sale anyway and say the evidence is missing, not lose the sale. A
+ *  shop with PDFs switched off simply has no document to hand over. */
+async function invoicePdfBytes(invoiceNumber: string): Promise<Buffer | null> {
+  try {
+    const config = await getShopConfigCached()
+    if (!config.invoicePdfEnabled) return null
+    const { renderInvoicePdf } = await import('@/modules/shop/lib/invoice-pdf')
+    const path = `/shop/invoice/${encodeURIComponent(invoiceNumber)}?t=${signInvoiceToken(invoiceNumber)}&print=1`
+    return Buffer.from(await renderInvoicePdf(path))
+  } catch (error) {
+    console.error('[shop] could not print invoice', invoiceNumber, 'for a bookkeeping sink:', error)
+    return null
+  }
+}
+
 /** The statement of fact handed to any bookkeeping module listening at
  *  `shop.invoice-issued`. Built here so the manual re-send and the automatic
  *  one send exactly the same thing. */
@@ -129,6 +154,34 @@ export function invoiceSinkPayload(invoice: ShpInvoice, orderNumber: string, set
     taxBreakdown: invoice.taxBreakdown,
     description: `Shop order ${orderNumber}, invoice ${invoice.invoiceNumber}`,
     documentUrl: siteUrl ? `${siteUrl}${invoicePath(invoice.invoiceNumber)}` : null,
+    document: {
+      filename: invoicePdfFilename(invoice.seller?.name || 'invoice', invoice.invoiceNumber),
+      mimeType: 'application/pdf',
+      bytes: () => invoicePdfBytes(invoice.invoiceNumber),
+    },
+  }
+}
+
+/** The matching statement when one is withdrawn. Built from the invoice itself
+ *  rather than from the order, for the same reason the invoice is a snapshot: a
+ *  sale is undone by exactly what was recorded, not by what the order says
+ *  today. */
+export function invoiceVoidSinkPayload(invoice: ShpInvoice, orderNumber: string): ShopInvoiceVoidedPayload {
+  const net = invoice.taxBreakdown.reduce((sum, row) => sum + Number(row.net), 0)
+  return {
+    source: 'shop',
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    orderId: invoice.orderId,
+    orderNumber,
+    issuedAt: invoice.issuedAt.toISOString(),
+    voidedAt: (invoice.voidedAt ?? new Date()).toISOString(),
+    reason: invoice.voidReason ?? '',
+    taxPointDate: invoice.taxPointDate,
+    currency: invoice.currency,
+    totals: { net: net.toFixed(2), tax: invoice.taxAmount, gross: invoice.total },
+    taxBreakdown: invoice.taxBreakdown,
+    description: `Shop order ${orderNumber}, invoice ${invoice.invoiceNumber} voided`,
   }
 }
 
@@ -235,9 +288,19 @@ export async function issueInvoiceForOrder(
 export async function resendInvoiceToSinks(invoiceId: string): Promise<IssueInvoiceResult> {
   const invoice = await getInvoiceById(invoiceId)
   if (!invoice) return { ok: false, status: 404, error: 'Invoice not found.' }
-  if (invoice.status === 'VOID') return { ok: false, status: 409, error: 'A voided invoice is not sent to the books.' }
 
   const order = await getOrderById(invoice.orderId)
+
+  // A voided invoice has something to say to the books as well, and it is the
+  // more urgent of the two: an entry left standing for a sale that was withdrawn
+  // is VAT the shop pays over and never took. So the button says the same thing
+  // again, whichever state the invoice is in.
+  if (invoice.status === 'VOID') {
+    const results = await dispatchInvoiceVoided(invoiceVoidSinkPayload(invoice, order?.orderNumber ?? ''))
+    await saveSinkResults(invoice.id, results)
+    return { ok: true, invoice: { ...invoice, sinkResults: results }, created: false }
+  }
+
   const site = await prisma.siteConfig
     .findUnique({ where: { id: 'singleton' }, select: { timezone: true } })
     .catch(() => null)
@@ -246,6 +309,35 @@ export async function resendInvoiceToSinks(invoiceId: string): Promise<IssueInvo
   const results = await dispatchInvoiceIssued(invoiceSinkPayload(invoice, order?.orderNumber ?? '', settledDate))
   await saveSinkResults(invoice.id, results)
   return { ok: true, invoice: { ...invoice, sinkResults: results }, created: false }
+}
+
+/**
+ * Withdraws an invoice and tells the books.
+ *
+ * The two halves are one action on purpose. Voiding the row and leaving whatever
+ * recorded the sale to find out on its own is how a shop ends up paying VAT on a
+ * sale it withdrew - which is precisely what happened before this existed.
+ *
+ * The sinks run after the row is voided, never before: the void is the thing
+ * that must not fail. What each said is recorded on the invoice and printed on
+ * the order screen, and the button there says it again if one was down.
+ */
+export async function voidInvoiceAndTellSinks(invoiceId: string, reason: string): Promise<IssueInvoiceResult> {
+  const done = await voidInvoice(invoiceId, reason)
+  if (!done) return { ok: false, status: 409, error: 'That invoice was not there to void.' }
+
+  const invoice = await getInvoiceById(invoiceId)
+  if (!invoice) return { ok: false, status: 404, error: 'Invoice not found.' }
+
+  const order = await getOrderById(invoice.orderId)
+  const results = await dispatchInvoiceVoided(invoiceVoidSinkPayload(invoice, order?.orderNumber ?? ''))
+  if (results.length > 0) {
+    await saveSinkResults(invoice.id, results).catch((error) => {
+      console.error('[shop] could not record void sink results for', invoice.invoiceNumber, error)
+    })
+    return { ok: true, invoice: { ...invoice, sinkResults: results }, created: false }
+  }
+  return { ok: true, invoice, created: false }
 }
 
 /** Whether a status change should raise an invoice, given the shop's setting.

@@ -88,8 +88,13 @@ export function ShopInvoiceHeader(props: HeaderProps) {
   const font = fontStyle(props)
   const showLogo = props.showLogo !== 'no' && Boolean(invoice.seller?.logoUrl)
   // Plenty of logos have the business name drawn into them, and printing it
-  // again beside the picture just says everything twice.
-  const showName = props.showName !== 'no' && Boolean(invoice.seller?.siteName || invoice.seller?.name)
+  // again beside the picture just says everything twice - so the default is to
+  // print the name only where there is no logo to say it. 'yes' and 'no' are
+  // still honoured outright, which is what a layout saved before this existed
+  // carries.
+  const nameSetting = props.showName?.trim() || 'auto'
+  const nameWanted = nameSetting === 'yes' || (nameSetting !== 'no' && !showLogo)
+  const showName = nameWanted && Boolean(invoice.seller?.siteName || invoice.seller?.name)
   return (
     <>
       <Style />
@@ -149,13 +154,17 @@ export const shopInvoiceHeaderPuckComponent = {
     heading: { type: 'text' as const, label: 'Heading (blank uses the one in Shop settings)' },
     fontFamily: fontField,
     showLogo: { type: 'select' as const, label: 'Site logo', options: yesNo },
-    showName: { type: 'select' as const, label: 'Business name beside the logo', options: yesNo },
+    showName: { type: 'select' as const, label: 'Business name in words', options: [
+      { value: 'auto', label: 'Only when there is no logo' },
+      { value: 'yes', label: 'Always' },
+      { value: 'no', label: 'Never' },
+    ] },
     showOrderNumber: { type: 'select' as const, label: 'Order number', options: yesNo },
     showTaxPoint: { type: 'select' as const, label: 'Tax point date as its own row', options: yesNo },
     taxPointLabel: { type: 'text' as const, label: 'Tax point row label' },
   },
   defaultProps: {
-    heading: '', fontFamily: '', showLogo: 'yes', showName: 'yes',
+    heading: '', fontFamily: '', showLogo: 'yes', showName: 'auto',
     showOrderNumber: 'yes', showTaxPoint: 'no', taxPointLabel: 'Tax point',
   },
   render: ShopInvoiceHeader,
@@ -260,7 +269,10 @@ export function ShopInvoiceLines(props: LinesProps) {
   const { invoice } = useCtx(props)
   const font = fontStyle(props)
   const symbol = invoice.currencySymbol || '£'
-  const showSku = props.showSku !== 'no'
+  // Off unless asked for. A product code is the shop's own filing reference; the
+  // customer's accountant wants the description and the money, and a column of
+  // codes beside every line is the first thing an owner asks to have taken off.
+  const showSku = props.showSku === 'yes'
   const showDetail = props.showDetail !== 'no'
   // A single-rate shop gains nothing from a column that says 20% all the way
   // down - the VAT summary below already says so once.
@@ -326,7 +338,7 @@ export const shopInvoiceLinesPuckComponent = {
     totalLabel: { type: 'text' as const, label: 'Amount column' },
   },
   defaultProps: {
-    fontFamily: '', showSku: 'yes', showDetail: 'yes', showTaxRate: 'no',
+    fontFamily: '', showSku: 'no', showDetail: 'yes', showTaxRate: 'no',
     itemLabel: 'Description', qtyLabel: 'Qty', priceLabel: 'Unit price', rateLabel: 'Rate', totalLabel: 'Amount',
   },
   render: ShopInvoiceLines,
@@ -498,7 +510,7 @@ export const shopInvoiceTaxSummaryPuckRscComponent = { ...shopInvoiceTaxSummaryP
 
 type PaymentProps = DocProps & {
   showPaymentDetails?: string; paymentHeading?: string
-  showTerms?: string; termsHeading?: string; showFooter?: string
+  showTerms?: string; termsHeading?: string; showFooter?: string; footerAlign?: string
 }
 
 /** Plain text from a settings textarea, split on blank lines into paragraphs -
@@ -514,6 +526,9 @@ export function ShopInvoicePayment(props: PaymentProps) {
   const showPayment = props.showPaymentDetails !== 'no' && Boolean(wording.paymentDetails)
   const showTerms = props.showTerms !== 'no' && Boolean(wording.terms)
   const showFooter = props.showFooter !== 'no' && Boolean(wording.footer)
+  // A strapline under a rule reads as a footer when it is centred and as an
+  // unfinished sentence when it is not. Centred unless a layout says otherwise.
+  const footerAlign = props.footerAlign === 'left' || props.footerAlign === 'right' ? props.footerAlign : 'center'
   if (!showPayment && !showTerms && !showFooter) return null
 
   return (
@@ -534,7 +549,9 @@ export function ShopInvoicePayment(props: PaymentProps) {
           </div>
         )}
       </section>
-      {showFooter && <p className="shp-inv-foot" style={font}>{wording.footer}</p>}
+      {showFooter && (
+        <p className="shp-inv-foot" style={{ ...font, textAlign: footerAlign }}>{wording.footer}</p>
+      )}
     </>
   )
 }
@@ -548,10 +565,15 @@ export const shopInvoicePaymentPuckComponent = {
     showTerms: { type: 'select' as const, label: 'Terms', options: yesNo },
     termsHeading: { type: 'text' as const, label: 'Terms heading' },
     showFooter: { type: 'select' as const, label: 'Footer line', options: yesNo },
+    footerAlign: { type: 'select' as const, label: 'Footer line sits', options: [
+      { value: 'center', label: 'Centred' },
+      { value: 'left', label: 'Left' },
+      { value: 'right', label: 'Right' },
+    ] },
   },
   defaultProps: {
     fontFamily: '', showPaymentDetails: 'yes', paymentHeading: 'Payment',
-    showTerms: 'yes', termsHeading: 'Terms', showFooter: 'yes',
+    showTerms: 'yes', termsHeading: 'Terms', showFooter: 'yes', footerAlign: 'center',
   },
   render: ShopInvoicePayment,
 }

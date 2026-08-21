@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { listInvoicesForOrder, voidInvoice } from '@/modules/shop/lib/db/invoices'
-import { issueInvoiceForOrder, resendInvoiceToSinks } from '@/modules/shop/lib/invoices'
+import { listInvoicesForOrder } from '@/modules/shop/lib/db/invoices'
+import { issueInvoiceForOrder, resendInvoiceToSinks, voidInvoiceAndTellSinks } from '@/modules/shop/lib/invoices'
 import { hasInvoiceSinks } from '@/modules/shop/lib/invoice-sinks'
 import { signInvoiceToken } from '@/modules/shop/lib/invoice-token'
 import type { ShpInvoice } from '@/modules/shop/lib/types'
@@ -100,8 +100,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!invoiceId) return NextResponse.json({ error: 'Which invoice?' }, { status: 400 })
   if (!reason?.trim()) return NextResponse.json({ error: 'Say why this invoice is being voided.' }, { status: 400 })
 
-  const done = await voidInvoice(invoiceId, reason)
-  if (!done) return NextResponse.json({ error: 'That invoice was not there to void.' }, { status: 409 })
+  // Voiding tells the books as part of the same action - see
+  // lib/invoices.ts. What they made of it comes back on the invoice's own sink
+  // results, which the panel prints.
+  const outcome = await voidInvoiceAndTellSinks(invoiceId, reason)
+  if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
   const invoices = await listInvoicesForOrder(id)
   return NextResponse.json({ invoices: invoices.map(present) })
 }

@@ -742,9 +742,13 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                       {invoicing.pdfEnabled && (
                         <a className="btn btn-secondary btn-sm" href={invoice.pdfUrl}>PDF</a>
                       )}
-                      {invoice.status === 'ISSUED' && invoicing.hasBookkeeping && (
+                      {/* Voided invoices get the button too, and it says the
+                          opposite thing: take the sale back out. Without it, an
+                          invoice voided while the books were down leaves VAT
+                          standing on a sale that never happened. */}
+                      {invoicing.hasBookkeeping && (
                         <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => resendInvoice(invoice.id)}>
-                          Send to the books again
+                          {invoice.status === 'VOID' ? 'Tell the books it is void' : 'Send to the books again'}
                         </button>
                       )}
                       {invoice.status === 'ISSUED' && (
