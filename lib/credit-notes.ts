@@ -13,6 +13,7 @@ import {
 } from '@/modules/shop/lib/db/credit-notes'
 import { generateCreditNoteNumber } from '@/modules/shop/lib/credit-note-number'
 import { CreditNoteMoneyError, buildCreditNoteMoney } from '@/modules/shop/lib/credit-note-tax'
+import { ledgerItems } from '@/modules/shop/lib/invoice-tax'
 import { invoicePdfFilename } from '@/modules/shop/lib/invoice-pdf'
 import { dispatchInvoiceCredited, type ShopInvoiceCreditedPayload } from '@/modules/shop/lib/invoice-sinks'
 import { creditNotePath, signCreditNoteToken } from '@/modules/shop/lib/invoice-token'
@@ -98,6 +99,10 @@ export function creditNoteSinkPayload(note: ShpCreditNote, full: boolean): ShopI
     },
     totals: { net: net.toFixed(2), tax: note.taxAmount, gross: note.total },
     taxBreakdown: note.taxBreakdown,
+    // What was actually handed back, line by line. No carriage label: a refund
+    // is against order lines and delivery never rides along on one, so anything
+    // left over here is the rounding penny and nothing else.
+    items: ledgerItems(note.lines, note.taxBreakdown),
     full,
     reason: note.reason ?? '',
     description: `Shop order ${note.orderNumber}, credit note ${note.creditNoteNumber} against invoice ${note.invoiceNumber}`,

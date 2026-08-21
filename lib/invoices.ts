@@ -11,7 +11,7 @@ import {
   voidInvoice,
 } from '@/modules/shop/lib/db/invoices'
 import { generateInvoiceNumber } from '@/modules/shop/lib/invoice-number'
-import { buildInvoiceMoney } from '@/modules/shop/lib/invoice-tax'
+import { buildInvoiceMoney, ledgerItems } from '@/modules/shop/lib/invoice-tax'
 import { invoicePdfFilename } from '@/modules/shop/lib/invoice-pdf'
 import {
   dispatchInvoiceIssued,
@@ -152,6 +152,16 @@ export function invoiceSinkPayload(invoice: ShpInvoice, orderNumber: string, set
     customer: { name: invoice.customer.name ?? '', company: invoice.customer.company ?? '', email: invoice.customer.email ?? '' },
     totals: { net: net.toFixed(2), tax: invoice.taxAmount, gross: invoice.total },
     taxBreakdown: invoice.taxBreakdown,
+    // What was actually sold, so the books read as a list of goods rather than
+    // one lump per VAT rate. Empty when the rows could not be made to tie to the
+    // rate summary exactly, which the recorder takes as "file it per rate".
+    // The delivery label only where there was delivery charged to explain the
+    // leftover. On an invoice with none, whatever is left over is the rounding
+    // penny the rate summary was nudged by, and calling that "Delivery" would be
+    // a small lie in somebody's books.
+    items: ledgerItems(invoice.lines, invoice.taxBreakdown, {
+      carriageLabel: Number(invoice.shippingAmount) > 0 ? 'Delivery' : undefined,
+    }),
     description: `Shop order ${orderNumber}, invoice ${invoice.invoiceNumber}`,
     documentUrl: siteUrl ? `${siteUrl}${invoicePath(invoice.invoiceNumber)}` : null,
     document: {

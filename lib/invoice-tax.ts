@@ -1,4 +1,4 @@
-import type { ShpInvoiceLine, ShpInvoiceTaxRow, ShpOrder, ShpOrderItem } from '@/modules/shop/lib/types'
+import type { ShpInvoiceLine, ShpInvoiceTaxRow, ShpLedgerItem, ShpOrder, ShpOrderItem } from '@/modules/shop/lib/types'
 
 // The arithmetic on an invoice, kept pure and kept here so it can be tested
 // without a database (see invoice-tax.test.ts). Nothing in this file reads
@@ -184,6 +184,137 @@ export function buildInvoiceMoney(order: ShpOrder, items: ShpOrderItem[]): Invoi
     }))
 
   return { lines, taxBreakdown: reconcile(rows, orderTax, orderTotal) }
+}
+
+// ---------------------------------------------------------------------------
+// The same money, itemised for a set of books
+// ---------------------------------------------------------------------------
+
+/** How one line reads on a ledger entry: short, and enough to recognise months
+ *  later. Personalisation is deliberately left off - it can run to paragraphs,
+ *  and the document itself is filed as evidence beside the entry. */
+function itemDescription(line: ShpInvoiceLine): string {
+  const name = (line.name || 'Item').trim()
+  const quantity = Number(line.quantity) || 0
+  const prefix = quantity > 1 ? `${quantity} x ` : ''
+  const sku = line.sku?.trim()
+  return `${prefix}${name}${sku ? ` (${sku})` : ''}`
+}
+
+/**
+ * Turns a document's lines and rate summary into item rows for a bookkeeping
+ * module, one per thing sold rather than one per VAT rate.
+ *
+ * Two things make this safe to file, and both are the whole point:
+ *
+ *  1. **It ties exactly.** Line money and rate money do not agree on their own -
+ *     delivery is rated into the buckets and never appears as a line, and the
+ *     summary is nudged by a penny so it matches what was charged. Whatever is
+ *     left over at each rate comes out as its own item, so the rows sum to
+ *     `taxBreakdown` to the penny.
+ *
+ *  2. **It refuses rather than guesses.** If the rows still do not tie - a rate
+ *     on a line that the summary has never heard of, a document from some
+ *     future shape we have not met - this hands back nothing at all, and the
+ *     recorder falls back to filing one line per rate. An entry that is merely
+ *     less detailed is a nuisance; an entry that disagrees with the invoice
+ *     behind it is a wrong VAT return.
+ *
+ * `carriageLabel` names the leftover where there is a delivery charge to
+ * explain it. Anything left over beyond that, or left over with no delivery on
+ * the document, is rounding and says so.
+ */
+export function ledgerItems(
+  lines: ShpInvoiceLine[],
+  taxBreakdown: ShpInvoiceTaxRow[],
+  opts: { carriageLabel?: string } = {},
+): ShpLedgerItem[] {
+  const items: ShpLedgerItem[] = []
+  const residual = new Map<string, { net: number; tax: number; gross: number }>()
+  for (const row of taxBreakdown) {
+    residual.set(row.ratePercent, {
+      net: Number(row.net) || 0,
+      tax: Number(row.tax) || 0,
+      gross: Number(row.gross) || 0,
+    })
+  }
+
+  for (const line of lines) {
+    const net = Number(line.net) || 0
+    const tax = Number(line.tax) || 0
+    const gross = Number(line.gross) || 0
+    // A line that came to nothing is not an entry line. It would pass every
+    // check and then sit in the books saying nothing.
+    if (round2(net) === 0 && round2(tax) === 0 && round2(gross) === 0) continue
+    const key = line.taxRatePercent || '0'
+    // A rate the summary has never heard of cannot be reconciled against it, so
+    // nothing is filed itemised. See the refusal rule above.
+    const left = residual.get(key)
+    if (!left) return []
+    left.net -= net
+    left.tax -= tax
+    left.gross -= gross
+    items.push({
+      description: itemDescription(line),
+      ratePercent: key,
+      net: money(net),
+      tax: money(tax),
+      gross: money(gross),
+    })
+  }
+
+  // Nothing to itemise. An invoice raised before lines were snapshotted has an
+  // empty `lines` array, and without this its whole value would come out below
+  // as one leftover row reading "Rounding" - which is not a lie a set of books
+  // should be asked to carry. The recorder falls back to filing it per rate.
+  if (items.length === 0) return []
+
+  for (const [key, left] of residual) {
+    const net = round2(left.net)
+    const tax = round2(left.tax)
+    const gross = round2(left.gross)
+    if (net === 0 && tax === 0 && gross === 0) continue
+    // Delivery where there is delivery to explain it, rounding otherwise - and
+    // rounding whenever the leftover is negative, because a negative delivery
+    // charge is not a thing anybody wants to read in a set of books.
+    const carriage = opts.carriageLabel?.trim()
+    items.push({
+      description: carriage && gross > 0 ? carriage : 'Rounding',
+      ratePercent: key,
+      net: money(net),
+      tax: money(tax),
+      gross: money(gross),
+    })
+  }
+
+  // The tie, checked rather than assumed. Everything above is arithmetic on
+  // floats that have been rounded on the way through, and "it should add up" is
+  // not a thing to take on trust when the answer is somebody's VAT return.
+  const sum = items.reduce(
+    (acc, item) => ({
+      net: acc.net + Number(item.net),
+      tax: acc.tax + Number(item.tax),
+      gross: acc.gross + Number(item.gross),
+    }),
+    { net: 0, tax: 0, gross: 0 },
+  )
+  const target = taxBreakdown.reduce(
+    (acc, row) => ({
+      net: acc.net + Number(row.net),
+      tax: acc.tax + Number(row.tax),
+      gross: acc.gross + Number(row.gross),
+    }),
+    { net: 0, tax: 0, gross: 0 },
+  )
+  if (
+    round2(sum.net) !== round2(target.net) ||
+    round2(sum.tax) !== round2(target.tax) ||
+    round2(sum.gross) !== round2(target.gross)
+  ) {
+    return []
+  }
+
+  return items
 }
 
 /**

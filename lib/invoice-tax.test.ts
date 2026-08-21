@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildInvoiceMoney, formatRatePercent } from '@/modules/shop/lib/invoice-tax'
-import type { ShpOrder, ShpOrderItem } from '@/modules/shop/lib/types'
+import { buildInvoiceMoney, formatRatePercent, ledgerItems } from '@/modules/shop/lib/invoice-tax'
+import type { ShpInvoiceLine, ShpInvoiceTaxRow, ShpOrder, ShpOrderItem } from '@/modules/shop/lib/types'
 
 // An invoice is the one document in the shop that somebody else audits. The
 // failure mode is quiet: a VAT summary a penny out from the payment, or a
@@ -159,5 +159,125 @@ describe('buildInvoiceMoney - what goes on a line beyond the money', () => {
     })
     const { lines } = buildInvoiceMoney(order(), [withMeta])
     expect(lines[0]!.detail).toEqual([{ label: 'Delivery', value: 'Next week' }])
+  })
+})
+
+// What goes over the bookkeeping seam. The rule that matters is not "does it
+// itemise" but "does it tie": an entry built from these rows must come to the
+// same money as the invoice, or it is a wrong VAT return dressed up as detail.
+
+function invLine(overrides: Partial<ShpInvoiceLine> = {}): ShpInvoiceLine {
+  return {
+    name: 'Oak desk', sku: 'DSK-1', quantity: 1, unitPrice: '1000.00', lineTotal: '1000.00',
+    taxRatePercent: '20', net: '1000.00', tax: '200.00', gross: '1200.00', detail: [],
+    orderItemId: 'itm_1',
+    ...overrides,
+  }
+}
+
+function sums(rows: { net: string; tax: string; gross: string }[]) {
+  return rows.reduce(
+    (acc, row) => ({
+      net: Math.round((acc.net + Number(row.net)) * 100) / 100,
+      tax: Math.round((acc.tax + Number(row.tax)) * 100) / 100,
+      gross: Math.round((acc.gross + Number(row.gross)) * 100) / 100,
+    }),
+    { net: 0, tax: 0, gross: 0 },
+  )
+}
+
+describe('ledgerItems', () => {
+  it('names each line, with its quantity and SKU', () => {
+    const breakdown: ShpInvoiceTaxRow[] = [{ ratePercent: '20', net: '1000.00', tax: '200.00', gross: '1200.00' }]
+    expect(ledgerItems([invLine()], breakdown)).toEqual([
+      { description: 'Oak desk (DSK-1)', ratePercent: '20', net: '1000.00', tax: '200.00', gross: '1200.00' },
+    ])
+  })
+
+  it('puts the quantity in front when more than one was bought', () => {
+    const breakdown: ShpInvoiceTaxRow[] = [{ ratePercent: '20', net: '2000.00', tax: '400.00', gross: '2400.00' }]
+    const items = ledgerItems([invLine({ quantity: 2, net: '2000.00', tax: '400.00', gross: '2400.00' })], breakdown)
+    expect(items[0]!.description).toBe('2 x Oak desk (DSK-1)')
+  })
+
+  it('gives delivery a row of its own, so the rows tie to the summary', () => {
+    // The invoice's own shape: delivery is rated into the bucket and never
+    // appears as a line, so without a row for it the items are 60.00 short.
+    const breakdown: ShpInvoiceTaxRow[] = [{ ratePercent: '20', net: '1050.00', tax: '210.00', gross: '1260.00' }]
+    const items = ledgerItems([invLine()], breakdown, { carriageLabel: 'Delivery' })
+    expect(items).toHaveLength(2)
+    expect(items[1]).toEqual({ description: 'Delivery', ratePercent: '20', net: '50.00', tax: '10.00', gross: '60.00' })
+    expect(sums(items)).toEqual(sums(breakdown))
+  })
+
+  it('calls a leftover penny rounding when there is no delivery to explain it', () => {
+    const breakdown: ShpInvoiceTaxRow[] = [{ ratePercent: '20', net: '1000.01', tax: '200.00', gross: '1200.01' }]
+    const items = ledgerItems([invLine()], breakdown)
+    expect(items[1]).toMatchObject({ description: 'Rounding', net: '0.01', gross: '0.01' })
+    expect(sums(items)).toEqual(sums(breakdown))
+  })
+
+  it('calls a negative leftover rounding rather than negative delivery', () => {
+    const breakdown: ShpInvoiceTaxRow[] = [{ ratePercent: '20', net: '999.99', tax: '200.00', gross: '1199.99' }]
+    const items = ledgerItems([invLine()], breakdown, { carriageLabel: 'Delivery' })
+    expect(items[1]).toMatchObject({ description: 'Rounding', net: '-0.01', gross: '-0.01' })
+    expect(sums(items)).toEqual(sums(breakdown))
+  })
+
+  it('keeps a mixed-rate basket on its own rates', () => {
+    const lines = [
+      invLine(),
+      invLine({ name: 'Book', sku: 'BK-1', taxRatePercent: '0', net: '20.00', tax: '0.00', gross: '20.00', orderItemId: 'itm_2' }),
+    ]
+    const breakdown: ShpInvoiceTaxRow[] = [
+      { ratePercent: '20', net: '1000.00', tax: '200.00', gross: '1200.00' },
+      { ratePercent: '0', net: '20.00', tax: '0.00', gross: '20.00' },
+    ]
+    const items = ledgerItems(lines, breakdown)
+    expect(items.map((i) => [i.description, i.ratePercent])).toEqual([
+      ['Oak desk (DSK-1)', '20'],
+      ['Book (BK-1)', '0'],
+    ])
+    expect(sums(items)).toEqual(sums(breakdown))
+  })
+
+  it('drops a line that came to nothing', () => {
+    const lines = [invLine(), invLine({ name: 'Freebie', net: '0.00', tax: '0.00', gross: '0.00', orderItemId: 'itm_2' })]
+    const breakdown: ShpInvoiceTaxRow[] = [{ ratePercent: '20', net: '1000.00', tax: '200.00', gross: '1200.00' }]
+    expect(ledgerItems(lines, breakdown)).toHaveLength(1)
+  })
+
+  it('hands back nothing at all when a line is at a rate the summary never heard of', () => {
+    const lines = [invLine({ taxRatePercent: '5' })]
+    const breakdown: ShpInvoiceTaxRow[] = [{ ratePercent: '20', net: '1000.00', tax: '200.00', gross: '1200.00' }]
+    expect(ledgerItems(lines, breakdown)).toEqual([])
+  })
+
+  it('hands back nothing for a document with no lines on it', () => {
+    expect(ledgerItems([], [])).toEqual([])
+  })
+
+  it('hands back nothing rather than filing a whole invoice as "Rounding"', () => {
+    // An invoice raised before lines were snapshotted. Every penny of it would
+    // otherwise come out as one leftover row.
+    const breakdown: ShpInvoiceTaxRow[] = [{ ratePercent: '20', net: '1000.00', tax: '200.00', gross: '1200.00' }]
+    expect(ledgerItems([], breakdown, { carriageLabel: 'Delivery' })).toEqual([])
+  })
+
+  it('hands back nothing when every line came to nothing', () => {
+    const breakdown: ShpInvoiceTaxRow[] = [{ ratePercent: '20', net: '50.00', tax: '10.00', gross: '60.00' }]
+    const zeroed = [invLine({ net: '0.00', tax: '0.00', gross: '0.00' })]
+    expect(ledgerItems(zeroed, breakdown, { carriageLabel: 'Delivery' })).toEqual([])
+  })
+
+  it('ties on a real invoice with a discount and delivery on it', () => {
+    const o = order({
+      subtotal: '1000.00', discountAmount: '100.00', shippingAmount: '50.00',
+      taxAmount: '190.00', total: '1140.00',
+    })
+    const { lines, taxBreakdown } = buildInvoiceMoney(o, [item({ taxAmount: '180.00' })])
+    const items = ledgerItems(lines, taxBreakdown, { carriageLabel: 'Delivery' })
+    expect(items.length).toBeGreaterThan(0)
+    expect(sums(items)).toEqual(sums(taxBreakdown))
   })
 })

@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db/prisma'
 import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
-import type { ShpInvoiceSinkResult, ShpInvoiceTaxRow } from '@/modules/shop/lib/types'
+import type { ShpInvoiceSinkResult, ShpInvoiceTaxRow, ShpLedgerItem } from '@/modules/shop/lib/types'
 
 // `shop.invoice-issued` and `shop.invoice-voided` - the seam a bookkeeping
 // module hangs off.
@@ -57,6 +57,17 @@ export type ShopInvoiceSinkPayload = {
   totals: { net: string; tax: string; gross: string }
   /** Net, tax and gross at each rate, summing to `totals`. */
   taxBreakdown: ShpInvoiceTaxRow[]
+  /** The same money itemised: one row per thing sold, plus delivery and any
+   *  rounding penny as rows of their own, summing EXACTLY to `taxBreakdown`.
+   *
+   *  Here so a set of books can record what was on the invoice instead of one
+   *  lump per VAT rate - an accountant reading the entry sees the goods, and a
+   *  category can eventually be picked per line rather than per document.
+   *
+   *  Empty when the rows could not be made to tie to the rate summary to the
+   *  penny. A recorder must treat empty as "no itemisation available" and fall
+   *  back to `taxBreakdown`, never as "the invoice came to nothing". */
+  items: ShpLedgerItem[]
   /** A sentence for the entry's description, already written in English. */
   description: string
   /** Absolute, signed link to the invoice document, for filing as evidence.
@@ -155,6 +166,17 @@ export type ShopInvoiceCreditedPayload = {
   /** The same at each rate, summing to `totals`. Rates are the ones the lines
    *  were SOLD at, not whatever the tax table says today. */
   taxBreakdown: ShpInvoiceTaxRow[]
+  /** The same money itemised: one row per thing sold, plus delivery and any
+   *  rounding penny as rows of their own, summing EXACTLY to `taxBreakdown`.
+   *
+   *  Here so a set of books can record what was on the invoice instead of one
+   *  lump per VAT rate - an accountant reading the entry sees the goods, and a
+   *  category can eventually be picked per line rather than per document.
+   *
+   *  Empty when the rows could not be made to tie to the rate summary to the
+   *  penny. A recorder must treat empty as "no itemisation available" and fall
+   *  back to `taxBreakdown`, never as "the invoice came to nothing". */
+  items: ShpLedgerItem[]
   /** Whether this credits the whole invoice or part of it. A recorder may want
    *  to word its entry differently; nothing else turns on it. */
   full: boolean
