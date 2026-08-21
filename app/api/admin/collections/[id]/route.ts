@@ -8,6 +8,11 @@ const Body = z.object({
   name: z.string().min(1).optional(),
   slug: z.string().optional(),
   description: z.string().nullable().optional(),
+  shortDescription: z.string().nullable().optional(),
+  // The designed description document, as PUT by the full-screen builder.
+  // Unvalidated on purpose - Puck owns its own schema, exactly as the category
+  // route treats it.
+  descriptionPuck: z.any().nullable().optional(),
   imageId: z.string().nullable().optional(),
   position: z.number().int().optional(),
   metaTitle: z.string().nullable().optional(),

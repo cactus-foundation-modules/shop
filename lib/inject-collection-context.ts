@@ -1,6 +1,6 @@
 import type { PuckData } from '@/modules/shop/lib/types'
 
-const COLLECTION_CONTEXT_BLOCKS = new Set(['ShopCollectionHeader', 'ShopProductGrid'])
+const COLLECTION_CONTEXT_BLOCKS = new Set(['ShopCollectionHeader', 'ShopCollectionDescription', 'ShopProductGrid'])
 
 type CollectionContext = { collectionSlug: string }
 

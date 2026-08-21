@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
+import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { useConfirm, usePrompt, useAlert } from '@/modules/shop/components/admin/dialogs'
 import { CollectionProductsPanel } from '@/modules/shop/components/admin/CollectionProductsPanel'
 
@@ -16,9 +17,15 @@ type Collection = {
   name: string
   slug: string
   description: string | null
+  // The one-liner on the collection's card and under its heading, the twin of a
+  // category's. The long `description` below it is the page copy.
+  shortDescription: string | null
   position: number
   metaTitle: string | null
   metaDescription: string | null
+  // Whether a designed description exists, so the row can say so without the
+  // list dragging every builder document across - see listCollections.
+  hasDesignedDescription: boolean
 }
 
 type Tab = 'details' | 'products'
@@ -72,6 +79,7 @@ export function CollectionsScreen() {
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [previews, setPreviews] = useState<Record<string, string[]>>({})
   const [loaded, setLoaded] = useState(false)
+  const adminPath = useAdminPath()
   const [search, setSearch] = useState('')
   const [openId, setOpenId] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('details')
@@ -85,6 +93,7 @@ export function CollectionsScreen() {
   const [editName, setEditName] = useState('')
   const [editSlug, setEditSlug] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [editShortDescription, setEditShortDescription] = useState('')
   const [editMetaTitle, setEditMetaTitle] = useState('')
   const [editMetaDescription, setEditMetaDescription] = useState('')
 
@@ -132,6 +141,7 @@ export function CollectionsScreen() {
     setEditName(collection.name)
     setEditSlug(collection.slug)
     setEditDescription(collection.description ?? '')
+    setEditShortDescription(collection.shortDescription ?? '')
     setEditMetaTitle(collection.metaTitle ?? '')
     setEditMetaDescription(collection.metaDescription ?? '')
   }
@@ -153,6 +163,7 @@ export function CollectionsScreen() {
       setEditName(name)
       setEditSlug(created.slug ?? '')
       setEditDescription('')
+      setEditShortDescription('')
       setEditMetaTitle('')
       setEditMetaDescription('')
     }
@@ -172,6 +183,7 @@ export function CollectionsScreen() {
         // than saving a collection nobody can reach.
         slug: editSlug.trim() || name,
         description: editDescription.trim() || null,
+        shortDescription: editShortDescription.trim() || null,
         metaTitle: editMetaTitle.trim() || null,
         metaDescription: editMetaDescription.trim() || null,
       }),
@@ -467,15 +479,49 @@ export function CollectionsScreen() {
                       </label>
 
                       <label style={{ display: 'grid', gap: '0.25rem' }}>
-                        <span style={labelStyle}>Description (printed at the top of the collection&rsquo;s page)</span>
+                        <span style={labelStyle}>Short description (shown on this collection&rsquo;s card and under its heading)</span>
+                        <input
+                          value={editShortDescription}
+                          onChange={(e) => setEditShortDescription(e.target.value)}
+                          placeholder="One line, e.g. Everything in oak, from desks to bookcases"
+                          style={inputStyle}
+                        />
+                      </label>
+
+                      <label style={{ display: 'grid', gap: '0.25rem' }}>
+                        <span style={labelStyle}>Full description (shown on this collection&rsquo;s own page)</span>
                         <textarea
                           value={editDescription}
                           onChange={(e) => setEditDescription(e.target.value)}
-                          rows={3}
-                          placeholder="A line or two on what ties these products together."
+                          rows={4}
+                          placeholder="A paragraph or two on what ties these products together."
                           style={{ ...inputStyle, resize: 'vertical' }}
                         />
                       </label>
+
+                      {/* The laid-out version, built in its own full-screen page
+                          builder. It wins over the plain box above whenever it
+                          has anything in it, exactly as a category's designed
+                          description does - so the plain text stays the easy
+                          option and this is the opt-in. */}
+                      <div style={{ display: 'grid', gap: '0.25rem' }}>
+                        <span style={labelStyle}>Designed description</span>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <a
+                            href={`/${adminPath}/m/shop/collections/${collection.id}/description`}
+                            target="_blank"
+                            rel="noopener"
+                            className="btn btn-secondary btn-sm"
+                          >
+                            {collection.hasDesignedDescription ? 'Edit the design' : 'Design this description'}
+                          </a>
+                          <span style={hintStyle}>
+                            {collection.hasDesignedDescription
+                              ? 'Opens in a new tab. The designed version is what shoppers see.'
+                              : 'Opens the page builder in a new tab. Anything you build there replaces the plain text above.'}
+                          </span>
+                        </div>
+                      </div>
 
                       <div style={{ display: 'grid', gap: '0.5rem', border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.75rem' }}>
                         <span style={{ fontSize: '0.8125rem', fontWeight: 600 }}>How this page looks in search results</span>

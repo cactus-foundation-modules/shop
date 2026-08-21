@@ -369,6 +369,9 @@ function mapCollection(r: Record<string, unknown>): ShpCollection {
     name: r.name as string,
     slug: r.slug as string,
     description: (r.description as string | null) ?? null,
+    shortDescription: (r.short_description as string | null) ?? null,
+    // Absent from the listCollections projection on purpose - see below.
+    descriptionPuck: (r.description_puck as PuckData | null) ?? null,
     imageId: (r.image_id as string | null) ?? null,
     position: r.position as number,
     metaTitle: (r.meta_title as string | null) ?? null,
@@ -379,9 +382,26 @@ function mapCollection(r: Record<string, unknown>): ShpCollection {
   }
 }
 
-export async function listCollections(): Promise<ShpCollection[]> {
-  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_collections" ORDER BY "position" ASC, "name" ASC`
-  return rows.map(mapCollection)
+// Every column except description_puck, for the same reason categories leave it
+// out of their listing: a designed description is a whole builder document, and
+// nothing that lists collections renders one. Rows come back with
+// descriptionPuck null; fetch the single collection when the document is wanted.
+const COLLECTION_LIST_COLUMNS = Prisma.sql`
+  "id", "name", "slug", "description", "short_description", "image_id", "position",
+  "meta_title", "meta_description", "og_image_id", "created_at", "updated_at"
+`
+
+// True when this collection has a designed description saved, so the admin can
+// show which ones have been designed without fetching any of the documents.
+export type ShpCollectionListRow = ShpCollection & { hasDesignedDescription: boolean }
+
+export async function listCollections(): Promise<ShpCollectionListRow[]> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT ${COLLECTION_LIST_COLUMNS}, ("description_puck" IS NOT NULL) AS has_designed_description
+    FROM "shp_collections"
+    ORDER BY "position" ASC, "name" ASC
+  `
+  return rows.map((r) => ({ ...mapCollection(r), hasDesignedDescription: r.has_designed_description === true }))
 }
 
 export async function getCollectionById(id: string): Promise<ShpCollection | null> {
@@ -394,10 +414,12 @@ export async function getCollectionBySlug(slug: string): Promise<ShpCollection |
   return rows[0] ? mapCollection(rows[0]) : null
 }
 
-export async function createCollection(data: { name: string; slug: string; description?: string | null; imageId?: string | null }): Promise<{ id: string }> {
+export async function createCollection(data: {
+  name: string; slug: string; description?: string | null; shortDescription?: string | null; imageId?: string | null
+}): Promise<{ id: string }> {
   const rows = await prisma.$queryRaw<[{ id: string }]>`
-    INSERT INTO "shp_collections" ("name", "slug", "description", "image_id")
-    VALUES (${data.name}, ${data.slug}, ${data.description ?? null}, ${data.imageId ?? null})
+    INSERT INTO "shp_collections" ("name", "slug", "description", "short_description", "image_id")
+    VALUES (${data.name}, ${data.slug}, ${data.description ?? null}, ${data.shortDescription ?? null}, ${data.imageId ?? null})
     RETURNING "id"
   `
   return rows[0]
@@ -405,12 +427,20 @@ export async function createCollection(data: { name: string; slug: string; descr
 
 export async function updateCollection(id: string, fields: Partial<{
   name: string; slug: string; description: string | null; imageId: string | null; position: number
+  shortDescription: string | null; descriptionPuck: PuckData | null
   metaTitle: string | null; metaDescription: string | null; ogImageId: string | null
 }>): Promise<void> {
   const sets: Prisma.Sql[] = []
   if (fields.name !== undefined) sets.push(Prisma.sql`"name" = ${fields.name}`)
   if (fields.slug !== undefined) sets.push(Prisma.sql`"slug" = ${fields.slug}`)
   if (fields.description !== undefined) sets.push(Prisma.sql`"description" = ${fields.description}`)
+  if (fields.shortDescription !== undefined) sets.push(Prisma.sql`"short_description" = ${fields.shortDescription}`)
+  // jsonb, so the parameter needs an explicit cast - a bare string parameter
+  // lands as text and Postgres refuses the assignment. Same shape as
+  // updateCategory's descriptionPuck branch.
+  if (fields.descriptionPuck !== undefined) {
+    sets.push(Prisma.sql`"description_puck" = ${fields.descriptionPuck ? JSON.stringify(fields.descriptionPuck) : null}::jsonb`)
+  }
   if (fields.imageId !== undefined) sets.push(Prisma.sql`"image_id" = ${fields.imageId}`)
   if (fields.position !== undefined) sets.push(Prisma.sql`"position" = ${fields.position}`)
   if (fields.metaTitle !== undefined) sets.push(Prisma.sql`"meta_title" = ${fields.metaTitle}`)
@@ -443,7 +473,11 @@ export async function listCollectionsForIndex(): Promise<Array<{
   coverUrl: string | null
 }>> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
-    SELECT c."id", c."name", c."slug", c."description",
+    SELECT c."id", c."name", c."slug",
+           -- The card blurb: the one-liner when there is one, else the long
+           -- description, so a collection written up before short descriptions
+           -- existed keeps the tile it has always had.
+           COALESCE(NULLIF(c."short_description", ''), c."description") AS "description",
            (SELECT count(*) FROM "shp_product_collections" pc
               JOIN "shp_products" p ON p."id" = pc."product_id"
              WHERE pc."collection_id" = c."id" AND p."status" = 'ACTIVE' AND p."catalogue_hidden" = false

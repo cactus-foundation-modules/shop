@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db/prisma'
+import { Prisma } from '@prisma/client'
 import type { MediaReferenceChange } from '@/lib/media/reference-rewriters'
 
 // Provider for the core.media-reference-rewriters extension point.
@@ -29,23 +30,29 @@ export async function shopMediaReferenceRewriter(change: MediaReferenceChange): 
     UPDATE "shp_categories" SET "image_url" = ${newUrl} WHERE "image_url" = ${oldUrl}
   `
 
-  // A product's designed description is a Puck document held here, and the
-  // feature videos and photographs inside it are addressed by url. Core rewrites
-  // the builder JSON it owns - pages and layouts - and cannot see this column, so
-  // a re-filed product used to keep its gallery and lose its description videos.
-  // Prefiltered by a literal substring search so only the products that mention
-  // the old url are read back; the swap is done on the serialised JSON, where a
-  // url is an opaque string that no escaping applies to.
-  const described = await prisma.$queryRaw<{ id: string; descriptionPuck: string }[]>`
-    SELECT "id", "description_puck"::text AS "descriptionPuck"
-    FROM "shp_products"
-    WHERE position(${oldUrl} in "description_puck"::text) > 0
-  `
-  for (const row of described) {
-    const rewritten = row.descriptionPuck.split(oldUrl).join(newUrl)
-    if (rewritten === row.descriptionPuck) continue
-    await prisma.$executeRaw`
-      UPDATE "shp_products" SET "description_puck" = ${rewritten}::jsonb WHERE "id" = ${row.id}
+  // A designed description is a Puck document held here, and the feature videos
+  // and photographs inside it are addressed by url. Core rewrites the builder
+  // JSON it owns - pages and layouts - and cannot see these columns, so a
+  // re-filed product used to keep its gallery and lose its description videos.
+  // Prefiltered by a literal substring search so only the rows that mention the
+  // old url are read back; the swap is done on the serialised JSON, where a url
+  // is an opaque string that no escaping applies to.
+  //
+  // All three tables that hold one of these documents, not just products:
+  // categories and collections are written in the same builder and break the
+  // same way.
+  for (const table of ['shp_products', 'shp_categories', 'shp_collections'] as const) {
+    const described = await prisma.$queryRaw<{ id: string; descriptionPuck: string }[]>`
+      SELECT "id", "description_puck"::text AS "descriptionPuck"
+      FROM ${Prisma.raw(`"${table}"`)}
+      WHERE position(${oldUrl} in "description_puck"::text) > 0
     `
+    for (const row of described) {
+      const rewritten = row.descriptionPuck.split(oldUrl).join(newUrl)
+      if (rewritten === row.descriptionPuck) continue
+      await prisma.$executeRaw`
+        UPDATE ${Prisma.raw(`"${table}"`)} SET "description_puck" = ${rewritten}::jsonb WHERE "id" = ${row.id}
+      `
+    }
   }
 }

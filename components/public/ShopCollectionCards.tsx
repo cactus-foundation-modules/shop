@@ -23,8 +23,16 @@ export type ShopCollectionCardItem = {
   name: string
   slug: string
   description: string | null
-  productCount: number
+  /** Left undefined by a source that cannot count cheaply - the line is dropped. */
+  productCount?: number
   coverUrl: string | null
+  /**
+   * Where the tile links to. Shop's own collections leave this off and get the
+   * address built from the slug; a companion module's pages (folded in through
+   * `shop.collection-index-sources`) live wherever that module puts them and
+   * say so here.
+   */
+  href?: string
 }
 
 export function ShopCollectionCards({ collections, columns, breakpoints, ctaLabel = 'Browse', showBlurb = true, showCount = true }: {
@@ -45,7 +53,7 @@ export function ShopCollectionCards({ collections, columns, breakpoints, ctaLabe
       <style dangerouslySetInnerHTML={{ __html: shopCardCss(breakpoints) }} />
       <div className="shop-grid" style={{ ['--shop-cols' as string]: String(columns) } as React.CSSProperties}>
         {collections.map((c) => (
-          <a key={c.id} className="shop-card" href={`/shop/collections/${c.slug}`}>
+          <a key={c.id} className="shop-card" href={c.href ?? `/shop/collections/${c.slug}`}>
             <div className="shop-card-img">
               {c.coverUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -54,7 +62,7 @@ export function ShopCollectionCards({ collections, columns, breakpoints, ctaLabe
             </div>
             <h3 className="shop-card-name">{c.name}</h3>
             {showBlurb && c.description && <p className="shop-card-blurb">{c.description}</p>}
-            {showCount && (
+            {showCount && typeof c.productCount === 'number' && (
               <span className="shop-card-blurb" style={{ opacity: 0.75 }}>
                 {c.productCount} {c.productCount === 1 ? 'product' : 'products'}
               </span>

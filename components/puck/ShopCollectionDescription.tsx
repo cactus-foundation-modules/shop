@@ -1,0 +1,23 @@
+// [ANCHOR] - collectionSlug is injected by the collection page
+//
+// EDITOR half only: placeholder + Puck field config. The server render lives in
+// ShopCollectionDescription.rsc.tsx (wired by `rscImport` in the manifest) so
+// next/server + db imports never land in the client editor bundle.
+export type ShopCollectionDescriptionProps = { collectionSlug?: string }
+
+export function ShopCollectionDescription() {
+  return (
+    <div style={{ opacity: 0.6, display: 'grid', gap: '0.5rem', maxWidth: '60ch' }}>
+      <div style={{ height: 14, width: '100%', background: 'var(--color-border)', borderRadius: 4 }} />
+      <div style={{ height: 14, width: '92%', background: 'var(--color-border)', borderRadius: 4 }} />
+      <div style={{ height: 14, width: '74%', background: 'var(--color-border)', borderRadius: 4 }} />
+    </div>
+  )
+}
+
+export const shopCollectionDescriptionPuckComponent = {
+  label: 'Shop: Collection Description [Anchor]',
+  fields: {},
+  defaultProps: {},
+  render: ShopCollectionDescription,
+}

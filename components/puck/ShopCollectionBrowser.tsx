@@ -1,5 +1,6 @@
 import { shopCategoryPillsCss } from '@/modules/shop/components/public/ShopCategoryPills.shared'
 import { DEFAULT_BREAKPOINTS } from '@/modules/shop/lib/breakpoints-shared'
+import { collectionIndexSourceProp } from '@/modules/shop/lib/collection-index-sources-shared'
 
 // EDITOR half only: placeholder + Puck field config. The server render lives in
 // ShopCollectionBrowser.rsc.tsx (wired by `rscImport` in the manifest) so
@@ -20,6 +21,31 @@ export type ShopCollectionBrowserProps = {
   showBlurb?: string
   showCount?: string
   limit?: number
+  // One `include_<source id>` key per module that has registered a
+  // `shop.collection-index-sources` provider, added to the sidebar by
+  // resolveFields below and read back by the RSC half. Loose on purpose: the
+  // keys are not known until an install says which modules it has.
+  [key: string]: string | number | undefined
+}
+
+// Which extra sources this install has, asked once per editing session. Same
+// shape as the search blocks' probe: a failure leaves the sidebar exactly as it
+// was rather than throwing inside a field resolver.
+type SourceProbe = Array<{ id: string; label: string }>
+let _sourceCache: { data: SourceProbe; expires: number } | null = null
+
+async function fetchSources(): Promise<SourceProbe> {
+  const now = Date.now()
+  if (_sourceCache && now < _sourceCache.expires) return _sourceCache.data
+  try {
+    const res = await fetch('/api/m/shop/public/collection-index-sources')
+    if (!res.ok) return _sourceCache?.data ?? []
+    const data = (await res.json()) as { sources?: SourceProbe }
+    _sourceCache = { data: data.sources ?? [], expires: now + 60_000 }
+    return _sourceCache.data
+  } catch {
+    return _sourceCache?.data ?? []
+  }
 }
 
 export function ShopCollectionBrowser(props: ShopCollectionBrowserProps) {
@@ -72,4 +98,19 @@ export const shopCollectionBrowserPuckComponent = {
     limit: { type: 'number' as const, label: 'Most it will show (blank for all)' },
   },
   defaultProps: { display: 'cards', columns: 4, ctaLabel: 'Browse', showBlurb: 'yes', showCount: 'yes' },
+  // The sidebar grows one Yes/No per companion module that has pages of its own
+  // worth listing here - today that is the filters module's filter collections.
+  // An install with no such module gets the field list exactly as written above,
+  // which is the whole point of asking rather than hard-coding the option.
+  async resolveFields(_data: { props: ShopCollectionBrowserProps }, { fields }: { fields: Record<string, unknown> }) {
+    const next = { ...fields }
+    for (const source of await fetchSources()) {
+      next[collectionIndexSourceProp(source.id)] = {
+        type: 'select' as const,
+        label: `Include ${source.label}`,
+        options: [{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }],
+      }
+    }
+    return next
+  },
 }

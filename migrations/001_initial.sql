@@ -339,7 +339,15 @@ CREATE TABLE IF NOT EXISTS "shp_collections" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     "name" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
+    -- The long plain-text description, shown on the collection's own page.
     "description" TEXT,
+    -- The one-liner printed on a collection card (the tiles the Collection
+    -- Browser block lists), mirroring shp_categories.short_description.
+    "short_description" TEXT,
+    -- Opt-in designed description: a Puck content-block document that renders in
+    -- place of the plain-text "description" on the collection page when present.
+    -- Mirrors shp_categories.description_puck. See 022_collection_content.sql.
+    "description_puck" JSONB,
     "image_id" TEXT,
     "position" INTEGER NOT NULL DEFAULT 0,
     "meta_title" TEXT,

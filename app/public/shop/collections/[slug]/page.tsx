@@ -10,6 +10,7 @@ import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/compone
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { injectCollectionContext } from '@/modules/shop/lib/inject-collection-context'
+import { ShopCollectionDescriptionBody } from '@/modules/shop/components/public/ShopCollectionDescriptionBody'
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
 import { resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
@@ -26,7 +27,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const collection = await getCollectionBySlug(slug)
   if (!collection) return {}
   const title = collection.metaTitle || collection.name
-  const description = collection.metaDescription || collection.description || undefined
+  const description = collection.metaDescription || collection.shortDescription || collection.description || undefined
   // Same social preview treatment as a category and a product page - see
   // lib/catalogue-social-image.ts for the order the picture is settled in.
   const siteUrl = getSiteUrlOrNull()
@@ -102,7 +103,18 @@ export default async function ShopCollectionPage({ params }: { params: Promise<{
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
       {gate.staffPreview && <ShopStaffPreviewBanner />}
       <h1 style={{ fontSize: '1.75rem' }}>{collection.name}</h1>
-      {collection.description && <p style={{ color: 'var(--color-text-muted)' }}>{collection.description}</p>}
+      {/* Only the short blurb sits with the heading, exactly as on a category
+          page. The long description - designed or plain - gets its own block
+          below, so whichever form it takes it never gets printed twice. */}
+      {collection.shortDescription && (
+        <p style={{ color: 'var(--color-text-muted)' }}>{collection.shortDescription}</p>
+      )}
+
+      <ShopCollectionDescriptionBody
+        collection={collection}
+        style={{ marginTop: '1.5rem' }}
+      />
+
       <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
       <div className="shop-grid" style={{ ['--shop-cols' as string]: '3', marginTop: '1.5rem' } as React.CSSProperties}>
         {cards}

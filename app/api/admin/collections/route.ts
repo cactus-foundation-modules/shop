@@ -16,7 +16,12 @@ export async function GET() {
   return NextResponse.json({ collections, productCounts, previewImages })
 }
 
-const Body = z.object({ name: z.string().min(1), description: z.string().nullable().optional(), imageId: z.string().nullable().optional() })
+const Body = z.object({
+  name: z.string().min(1),
+  description: z.string().nullable().optional(),
+  shortDescription: z.string().nullable().optional(),
+  imageId: z.string().nullable().optional(),
+})
 
 export async function POST(request: NextRequest) {
   const gate = await requireShopUser('shop.products')

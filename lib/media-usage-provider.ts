@@ -35,6 +35,12 @@ export async function shopMediaUsageProvider(): Promise<string[]> {
     -- as unused: on Deskwell that was 232 live files sitting in the Unused tile
     -- with a delete button over them.
     SELECT "description_puck"::text AS ref FROM "shp_products" WHERE "description_puck" IS NOT NULL
+    UNION ALL
+    -- Categories and collections carry the same kind of document, built in the
+    -- same builder, so their pictures count as used for the same reason.
+    SELECT "description_puck"::text AS ref FROM "shp_categories" WHERE "description_puck" IS NOT NULL
+    UNION ALL
+    SELECT "description_puck"::text AS ref FROM "shp_collections" WHERE "description_puck" IS NOT NULL
   `
   return rows.map((r) => r.ref).filter((r): r is string => !!r)
 }

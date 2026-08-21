@@ -22,7 +22,15 @@ export async function ShopCollectionHeaderRsc(props: ShopCollectionHeaderProps) 
         </nav>
       )}
       <h1 style={{ margin: '0 0 0.5rem', fontSize: '1.75rem' }}>{collection.name}</h1>
-      {props.showDescription !== 'no' && collection.description && <p style={{ margin: 0, fontSize: '1.0625rem', color: 'var(--color-text-muted)' }}>{collection.description}</p>}
+      {/* The header takes the short blurb, leaving the long description to the
+          Collection Description block (or the fallback page's own render of it).
+          Falling back to `description` keeps every collection that was written
+          up before short descriptions existed looking exactly as it did. */}
+      {props.showDescription !== 'no' && (collection.shortDescription || collection.description) && (
+        <p style={{ margin: 0, fontSize: '1.0625rem', color: 'var(--color-text-muted)' }}>
+          {collection.shortDescription || collection.description}
+        </p>
+      )}
     </div>
   )
 }

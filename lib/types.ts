@@ -248,6 +248,14 @@ export type ShpCollection = {
   name: string
   slug: string
   description: string | null
+  // The one-liner printed on this collection's card and under its heading.
+  // Falls back to `description` wherever a card has nothing shorter to show.
+  shortDescription: string | null
+  // Opt-in designed description, the collection twin of ShpCategory.descriptionPuck
+  // (shp_collections.description_puck). NULL means the plain-text box wins.
+  // Only ever populated by the single-collection fetches - listCollections
+  // leaves it null on purpose, same as listCategories.
+  descriptionPuck: PuckData | null
   imageId: string | null
   position: number
   metaTitle: string | null
