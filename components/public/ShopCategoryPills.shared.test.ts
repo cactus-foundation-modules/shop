@@ -121,21 +121,32 @@ describe('the more toggle', () => {
 })
 
 describe('the swipe affordance on the scrolling row', () => {
-  it('fades the edge in the page background, not in a grey of its own', () => {
-    expect(css).toContain('.shop-cat-fade-right {')
-    expect(css).toContain('linear-gradient(to left, var(--color-page-bg, var(--color-bg)), transparent)')
-    expect(css).toContain('linear-gradient(to right, var(--color-page-bg, var(--color-bg)), transparent)')
-    // Tokens only - a hardcoded background here would show as a pale smear on a
-    // dark theme, which is exactly the defect the fade is meant to prevent.
-    expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+  it('fades with a mask, never with a background colour', () => {
+    // The admin tab bar paints its fade in the page background because it only
+    // ever runs on one page. This block can be dropped on a section with any
+    // colour behind it, and --color-page-bg was white on a storefront whose
+    // pages are warm white - the painted fade showed as a white rectangle with
+    // two visible edges. A mask has no colour to get wrong.
+    expect(css).toContain('.shop-cat-scroller[data-fade-right] .shop-cat-pills')
+    expect(css).toContain('mask-image: linear-gradient(to left, transparent 0, #000 3.5rem)')
+    expect(css).toContain('-webkit-mask-image')
+    expect(css).not.toContain('var(--color-page-bg')
+    expect(css).not.toContain('background: linear-gradient')
+    expect(css).not.toContain('shop-cat-fade')
   })
 
-  it('sits the fade beside the arrow rather than under it', () => {
-    expect(css).toContain('.shop-cat-fade-left {\n  left: 1.5rem;')
-    expect(css).toContain('.shop-cat-arrow-left { left: 0; }')
+  it('gives the chevron no plate of its own to mismatch with', () => {
+    const arrow = css.slice(css.indexOf('.shop-cat-arrow {'), css.indexOf('.shop-cat-arrow:hover'))
+    expect(arrow).toContain('background: none')
+    expect(arrow).toContain('color: var(--color-text-muted)')
   })
 
-  it('needs the wrapper to be a positioning context, or the chrome lands elsewhere', () => {
+  it('fades both edges at once when the strip is somewhere in the middle', () => {
+    expect(css).toContain('.shop-cat-scroller[data-fade-left][data-fade-right] .shop-cat-pills')
+    expect(css).toContain('#000 calc(100% - 3.5rem), transparent 100%')
+  })
+
+  it('needs the wrapper to be a positioning context, or the arrows land elsewhere', () => {
     expect(css).toContain('.shop-cat-scroller {\n  position: relative;\n}')
   })
 

@@ -77,35 +77,36 @@ export function GalleryThumbStrip({
   }
 
   return (
-    <div className="spd-thumbs-wrap">
+    // The fades are masks in the stylesheet keyed off these attributes, rather
+    // than gradient elements painted in a background colour the strip has no
+    // way of knowing. See the note by .spd-thumbs-wrap in detail-parts.
+    <div
+      className="spd-thumbs-wrap"
+      data-fade-start={atStart ? undefined : ''}
+      data-fade-end={atEnd ? undefined : ''}
+    >
       <div ref={ref} className={className} role="tablist" aria-label={label}>
         {children}
       </div>
       {!atStart && (
-        <>
-          <div aria-hidden className="spd-thumbs-fade start" />
-          <button
-            type="button"
-            className="spd-thumbs-arrow start"
-            aria-label="Scroll thumbnails left"
-            onClick={() => step(-SCROLL_STEP)}
-          >
-            &lsaquo;
-          </button>
-        </>
+        <button
+          type="button"
+          className="spd-thumbs-arrow start"
+          aria-label="Scroll thumbnails left"
+          onClick={() => step(-SCROLL_STEP)}
+        >
+          &lsaquo;
+        </button>
       )}
       {!atEnd && (
-        <>
-          <div aria-hidden className="spd-thumbs-fade end" />
-          <button
-            type="button"
-            className="spd-thumbs-arrow end"
-            aria-label="Scroll thumbnails right"
-            onClick={() => step(SCROLL_STEP)}
-          >
-            &rsaquo;
-          </button>
-        </>
+        <button
+          type="button"
+          className="spd-thumbs-arrow end"
+          aria-label="Scroll thumbnails right"
+          onClick={() => step(SCROLL_STEP)}
+        >
+          &rsaquo;
+        </button>
       )}
     </div>
   )

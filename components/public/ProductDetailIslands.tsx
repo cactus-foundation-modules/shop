@@ -343,22 +343,24 @@ export function ProductSectionTabs({ tabs, align, sticky, divider = true, action
   const shellClass = `spd-tab-shell${sticky ? ' sticky' : ''}`
 
   return (
-    <div className={shellClass} style={shellStyle}>
+    <div
+      className={shellClass}
+      style={shellStyle}
+      data-fade-left={canLeft ? '' : undefined}
+      data-fade-right={canRight ? '' : undefined}
+    >
       {/* Pinned, this strip is in the sticky gallery's way and in every jump
           link's way; its measured height is what they read to clear it. The
           signal covers the editor swapping `sticky` or the tab count under it. */}
       <StickyStripHeight signal={`${sticky ? 'on' : 'off'}:${tabs.length}`} />
+      {/* Fades are masks on the nav, driven by the data attributes on the shell -
+          a painted gradient has to name the colour behind it, and the shell's
+          fill is the author's to choose. */}
       {canLeft && (
-        <>
-          <div aria-hidden className="spd-tab-fade left" />
-          <button type="button" className="spd-tab-arrow left" aria-label="Scroll tabs left" onClick={() => scrollNav(-160)}>‹</button>
-        </>
+        <button type="button" className="spd-tab-arrow left" aria-label="Scroll tabs left" onClick={() => scrollNav(-160)}>‹</button>
       )}
       {canRight && (
-        <>
-          <div aria-hidden className="spd-tab-fade right" />
-          <button type="button" className="spd-tab-arrow right" aria-label="Scroll tabs right" onClick={() => scrollNav(160)}>›</button>
-        </>
+        <button type="button" className="spd-tab-arrow right" aria-label="Scroll tabs right" onClick={() => scrollNav(160)}>›</button>
       )}
     <nav ref={navRef} className={navClass} style={navStyle} aria-label="Product information">
       {/* One pill-shaped track holding every tab, so the strip reads as a segmented

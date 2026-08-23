@@ -7,7 +7,10 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 // as "there is more this way". This is the admin tab bar's answer (see core's
 // components/admin/TabStrip.tsx): measure the overflow, fade the edge that has
 // content past it, and put a chevron button there for anyone who would rather
-// tap than swipe.
+// tap than swipe. The fade itself is a mask in the stylesheet, driven by the
+// data attributes set here - the tab bar paints its fade in the page's own
+// background colour, which a block that can be dropped on any coloured section
+// has no business assuming.
 //
 // The strip itself stays server-rendered - this wrapper only measures it and
 // draws chrome on top, so every sub-category link is still in the HTML with no
@@ -53,23 +56,22 @@ export function ShopCategoryPillsScroller({ children }: { children: ReactNode })
   }, [])
 
   return (
-    <div ref={wrapRef} className="shop-cat-scroller">
+    <div
+      ref={wrapRef}
+      className="shop-cat-scroller"
+      data-fade-left={canScrollLeft ? '' : undefined}
+      data-fade-right={canScrollRight ? '' : undefined}
+    >
       {children}
       {canScrollLeft && (
-        <>
-          <span aria-hidden className="shop-cat-fade shop-cat-fade-left" />
-          <button type="button" className="shop-cat-arrow shop-cat-arrow-left" aria-label="Scroll sub-categories left" onClick={() => scrollBy(-STEP)}>
-            &lsaquo;
-          </button>
-        </>
+        <button type="button" className="shop-cat-arrow shop-cat-arrow-left" aria-label="Scroll sub-categories left" onClick={() => scrollBy(-STEP)}>
+          &lsaquo;
+        </button>
       )}
       {canScrollRight && (
-        <>
-          <span aria-hidden className="shop-cat-fade shop-cat-fade-right" />
-          <button type="button" className="shop-cat-arrow shop-cat-arrow-right" aria-label="Scroll sub-categories right" onClick={() => scrollBy(STEP)}>
-            &rsaquo;
-          </button>
-        </>
+        <button type="button" className="shop-cat-arrow shop-cat-arrow-right" aria-label="Scroll sub-categories right" onClick={() => scrollBy(STEP)}>
+          &rsaquo;
+        </button>
       )}
     </div>
   )

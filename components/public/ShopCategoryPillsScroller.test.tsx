@@ -53,7 +53,7 @@ describe('pill strip scroll affordance', () => {
     expect(html).toContain('class="shop-cat-scroller"')
     expect(html).toContain('shop-cat-pills')
     expect(html).not.toContain('shop-cat-arrow')
-    expect(html).not.toContain('shop-cat-fade')
+    expect(html).not.toContain('data-fade')
   })
 
   it('leaves a strip that fits alone - no arrows where there is nothing to scroll to', async () => {
@@ -66,9 +66,11 @@ describe('pill strip scroll affordance', () => {
     overflow(600, 300)
     await act(async () => { nav.dispatchEvent(new Event('scroll')) })
     expect(container.querySelector('.shop-cat-arrow-right')).not.toBeNull()
-    expect(container.querySelector('.shop-cat-fade-right')).not.toBeNull()
+    // The fade is a mask keyed off the wrapper, so the attribute is the fade.
+    expect(container.querySelector('.shop-cat-scroller')?.hasAttribute('data-fade-right')).toBe(true)
     // Nothing to the left yet - the strip has not moved.
     expect(container.querySelector('.shop-cat-arrow-left')).toBeNull()
+    expect(container.querySelector('.shop-cat-scroller')?.hasAttribute('data-fade-left')).toBe(false)
   })
 
   it('swaps to the other edge when the strip is scrolled to the end', async () => {

@@ -137,34 +137,34 @@ export function shopCategoryPillsCss({ mobileBp }: Breakpoints): string {
     outline-offset: 2px;
   }
 }
-/* Swipe affordance on the scrolling row, copied in behaviour from the admin tab
-   bar (core's components/admin/TabStrip.tsx): the edge that has content past it
-   fades out and carries a chevron button. Drawn by the client wrapper
-   (ShopCategoryPillsScroller) once it has measured the overflow, so on a width
-   where the strip wraps instead of scrolling none of it ever appears.
+/* Swipe affordance on the scrolling row, in behaviour the admin tab bar's
+   (core's components/admin/TabStrip.tsx): the edge with content past it fades
+   out and carries a chevron button, drawn by the client wrapper
+   (ShopCategoryPillsScroller) once it has measured the overflow.
 
-   Both the fade and the button paint in the page's own background, which is
-   what makes the fade read as the row running out rather than as a grey box
-   sitting on it. --color-page-bg is the section's background where a section
-   sets one; --color-bg is the page's, and the fallback covers blocks that are
-   not inside a section. */
+   The fade is a MASK on the strip, not a gradient painted over it in a
+   background colour. The tab bar can name its background because it only ever
+   runs on the admin page; a shop block cannot. It sits wherever the owner drops
+   it - a section with its own colour, a tinted band, an image - and the page's
+   own --color-page-bg was pure white on a storefront whose pages are warm white,
+   so a painted fade showed up as a white rectangle with two visible edges. A
+   mask has no colour to get wrong: it fades the pills to transparent and lets
+   whatever is behind them come through, in either theme, on any background.
+   The chevron sits in the masked-out strip, so it needs no plate of its own. */
 .shop-cat-scroller {
   position: relative;
 }
-.shop-cat-fade {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2rem;
-  pointer-events: none;
+.shop-cat-scroller[data-fade-left] .shop-cat-pills {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 3.5rem);
+  mask-image: linear-gradient(to right, transparent 0, #000 3.5rem);
 }
-.shop-cat-fade-left {
-  left: 1.5rem;
-  background: linear-gradient(to right, var(--color-page-bg, var(--color-bg)), transparent);
+.shop-cat-scroller[data-fade-right] .shop-cat-pills {
+  -webkit-mask-image: linear-gradient(to left, transparent 0, #000 3.5rem);
+  mask-image: linear-gradient(to left, transparent 0, #000 3.5rem);
 }
-.shop-cat-fade-right {
-  right: 1.5rem;
-  background: linear-gradient(to left, var(--color-page-bg, var(--color-bg)), transparent);
+.shop-cat-scroller[data-fade-left][data-fade-right] .shop-cat-pills {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 3.5rem, #000 calc(100% - 3.5rem), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 3.5rem, #000 calc(100% - 3.5rem), transparent 100%);
 }
 .shop-cat-arrow {
   position: absolute;
@@ -176,7 +176,7 @@ export function shopCategoryPillsCss({ mobileBp }: Breakpoints): string {
   justify-content: center;
   padding: 0;
   border: none;
-  background: var(--color-page-bg, var(--color-bg));
+  background: none;
   color: var(--color-text-muted);
   font-family: inherit;
   font-size: 1rem;

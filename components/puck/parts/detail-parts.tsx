@@ -65,7 +65,7 @@ function Style({ css }: { css: string }) {
 // declares a width, and `max-width` (unlike `width`) is ignored while the track
 // is being sized, so it clamps the column to the track afterwards without
 // feeding a percentage back into the measurement that produced it.
-const galleryCss = ({ tabletBp, mobileBp }: Breakpoints, maxPct: number) => `
+export const galleryCss = ({ tabletBp, mobileBp }: Breakpoints, maxPct: number) => `
 /* Hard ceiling on the media column: whatever the Split's ratio says, the cell
    holding the gallery never takes more than maxPct of the row (the block's own
    "Max media width" field, default 45%), so the buy column keeps the rest.
@@ -182,10 +182,17 @@ const galleryCss = ({ tabletBp, mobileBp }: Breakpoints, maxPct: number) => `
 /* Fades start where the arrow ends, so the row appears to run on underneath the
    button rather than out of it. Page bg rather than a hardcoded white: this is
    the shopper's site, in whichever mode they are reading it in. */
-.spd-thumbs-fade{position:absolute;top:0;bottom:0;width:2rem;pointer-events:none}
-.spd-thumbs-fade.start{left:1.5rem;background:linear-gradient(to right,var(--color-page-bg,var(--color-bg)),transparent)}
-.spd-thumbs-fade.end{right:1.5rem;background:linear-gradient(to left,var(--color-page-bg,var(--color-bg)),transparent)}
-.spd-thumbs-arrow{position:absolute;top:0;bottom:0;width:1.5rem;z-index:1;display:flex;align-items:center;justify-content:center;padding:0;border:none;cursor:pointer;background:var(--color-page-bg,var(--color-bg));color:var(--color-text-muted);font-family:inherit;font-size:1rem;line-height:1}
+/* The fade is a mask on the strip, not a gradient painted over it, and the
+   chevron has no plate behind it. Painting either one means naming the colour
+   behind the strip, and a block cannot know it: --color-page-bg is #FFFFFF on a
+   storefront whose pages are warm white, so the arrow showed up as a white tile
+   with four visible rounded corners and the fade as a pale smear. A mask has no
+   colour to get wrong - it fades the thumbnails to transparent and lets
+   whatever is actually behind them through, in either theme. */
+.spd-thumbs-wrap[data-fade-start] .spd-thumbs{-webkit-mask-image:linear-gradient(to right,transparent 0,#000 3.5rem);mask-image:linear-gradient(to right,transparent 0,#000 3.5rem)}
+.spd-thumbs-wrap[data-fade-end] .spd-thumbs{-webkit-mask-image:linear-gradient(to left,transparent 0,#000 3.5rem);mask-image:linear-gradient(to left,transparent 0,#000 3.5rem)}
+.spd-thumbs-wrap[data-fade-start][data-fade-end] .spd-thumbs{-webkit-mask-image:linear-gradient(to right,transparent 0,#000 3.5rem,#000 calc(100% - 3.5rem),transparent 100%);mask-image:linear-gradient(to right,transparent 0,#000 3.5rem,#000 calc(100% - 3.5rem),transparent 100%)}
+.spd-thumbs-arrow{position:absolute;top:0;bottom:0;width:1.5rem;z-index:1;display:flex;align-items:center;justify-content:center;padding:0;border:none;border-radius:0;cursor:pointer;background:none;color:var(--color-text-muted);font-family:inherit;font-size:1rem;line-height:1}
 .spd-thumbs-arrow.start{left:0}
 .spd-thumbs-arrow.end{right:0}
 .spd-thumbs-arrow:hover{color:var(--color-text)}
@@ -1063,7 +1070,7 @@ export const shopDetailReassurePuckRscComponent = { ...shopDetailReassurePuckCom
 // the common portrait phones (375-430px), not a layout-collapse breakpoint.
 const SMALL_PHONE_BP = '480px'
 
-const tabsCss = ({ mobileBp }: Breakpoints) => `
+export const tabsCss = ({ mobileBp }: Breakpoints) => `
 .spd-tabs.divider{border-top:1px solid var(--color-border);margin-top:40px}
 /* Same rule for the standalone Tabs nav, which carries no .spd-tabs wrapper. */
 .spd-tab-nav.divider{border-top:1px solid var(--color-border);margin-top:40px}
@@ -1093,17 +1100,15 @@ const tabsCss = ({ mobileBp }: Breakpoints) => `
    the panel showing through as it scrolls under. */
 .spd-tab-shell{position:relative;background:var(--spd-tabnav-bg,transparent)}
 .spd-tab-shell.sticky{position:sticky;top:var(--spd-header-h,72px);z-index:20;background:var(--spd-tabnav-bg,var(--color-page-bg,var(--color-bg)))}
-/* Fade + arrow match the admin TabStrip: 2rem fade sitting inboard of a 1.5rem
-   arrow, both filled with the page background so tabs dissolve into / out from
-   under them. pointer-events:none on the fade so only the arrow takes the tap.
-   These sit OVER the shell's own fill, so they use --spd-tabnav-fade - the same
-   author colour already composited onto the page background - rather than
-   --spd-tabnav-bg. A see-through colour painted twice would darken the two
-   edges; the composited one matches what the middle of the strip looks like. */
-.spd-tab-fade{position:absolute;top:0;bottom:0;width:2rem;pointer-events:none;z-index:1}
-.spd-tab-fade.left{left:1.5rem;background:linear-gradient(to right,var(--spd-tabnav-fade,var(--color-page-bg,var(--color-bg))),transparent)}
-.spd-tab-fade.right{right:1.5rem;background:linear-gradient(to left,var(--spd-tabnav-fade,var(--color-page-bg,var(--color-bg))),transparent)}
-.spd-tab-arrow{position:absolute;top:0;bottom:0;width:1.5rem;display:flex;align-items:center;justify-content:center;border:none;padding:0;cursor:pointer;background:var(--spd-tabnav-fade,var(--color-page-bg,var(--color-bg)));color:var(--color-text-muted);font:inherit;font-size:1rem;z-index:2}
+/* Masked, like the thumbnail strip - see the note there. It matters more here:
+   the shell's fill is the author's to choose (--spd-tabnav-bg, possibly
+   translucent), so a fade painted in any single colour was guaranteed to
+   disagree with it sooner or later. Fading the tabs to transparent shows
+   whatever the shell is painting, whatever that turns out to be. */
+.spd-tab-shell[data-fade-left] .spd-tab-nav{-webkit-mask-image:linear-gradient(to right,transparent 0,#000 3.5rem);mask-image:linear-gradient(to right,transparent 0,#000 3.5rem)}
+.spd-tab-shell[data-fade-right] .spd-tab-nav{-webkit-mask-image:linear-gradient(to left,transparent 0,#000 3.5rem);mask-image:linear-gradient(to left,transparent 0,#000 3.5rem)}
+.spd-tab-shell[data-fade-left][data-fade-right] .spd-tab-nav{-webkit-mask-image:linear-gradient(to right,transparent 0,#000 3.5rem,#000 calc(100% - 3.5rem),transparent 100%);mask-image:linear-gradient(to right,transparent 0,#000 3.5rem,#000 calc(100% - 3.5rem),transparent 100%)}
+.spd-tab-arrow{position:absolute;top:0;bottom:0;width:1.5rem;display:flex;align-items:center;justify-content:center;border:none;border-radius:0;padding:0;cursor:pointer;background:none;color:var(--color-text-muted);font:inherit;font-size:1rem;z-index:2}
 .spd-tab-arrow.left{left:0}
 .spd-tab-arrow.right{right:0}
 /* The tabs sit inside one pill-shaped track rather than each wearing its own
@@ -1375,15 +1380,14 @@ function navBgVars(bgColour: unknown, bgOpacity: unknown): CSSProperties | undef
   // No colour chosen: opacity still means something - it thins the strip's
   // default fill (the page background the sticky fallback paints), so a sticky
   // strip can go translucent without the author having to re-pick the page
-  // colour by hand. The fades/arrows stay on the opaque page background - they
-  // sit over the fill and a see-through fade painted twice darkens the edges.
+  // colour by hand. The edges need no colour of their own any more: the fade is
+  // a mask on the tabs, so it shows whatever the fill is doing at that point.
   // At 100% nothing is set, keeping the long-standing transparent / sticky
   // fallback behaviour byte-identical.
   if (!raw) {
     if (pct >= 100) return undefined
     return {
       '--spd-tabnav-bg': `color-mix(in srgb, var(--color-page-bg, var(--color-bg)) ${pct}%, transparent)`,
-      '--spd-tabnav-fade': 'var(--color-page-bg, var(--color-bg))',
     } as CSSProperties
   }
   const { light, dark } = splitLightDark(raw)
@@ -1391,7 +1395,6 @@ function navBgVars(bgColour: unknown, bgOpacity: unknown): CSSProperties | undef
     composeLightDark(mixOpacity(light, pct, over), dark ? mixOpacity(dark, pct, over) : '')
   return {
     '--spd-tabnav-bg': compose('transparent'),
-    '--spd-tabnav-fade': compose('var(--color-page-bg, var(--color-bg))'),
   } as CSSProperties
 }
 
