@@ -195,6 +195,12 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
   const stripeElementsRef = useRef<unknown>(null)
   const preparedRef = useRef<PreparedPayment | null>(null)
   const preparingRef = useRef(false)
+  // Whether a "Place order" is already running. The Review block disables its
+  // button while placing, but it re-enables on failure - which is right, a
+  // declined card should be retryable - and that leaves a window where a second
+  // press can land on top of the first. This closes it at the only place that
+  // matters: the path that tokenises a card and asks the server to charge it.
+  const placingRef = useRef(false)
   // The choice the current prepare attempt belongs to. Every attempt creates a
   // real order and a real provider intent, so a choice gets exactly one - a
   // shopper still typing their address must not leave a trail of pending orders.
@@ -434,6 +440,13 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         window.dispatchEvent(new CustomEvent('cactus-shop-order-error', { detail: 'Please choose a payment method first.' }))
         return
       }
+      // Silently, and deliberately so: the first press is still working and the
+      // button already says so. An error here would be a lie about a payment
+      // that has not failed, and - worse - the Review block treats an error as
+      // "that press is over" and re-enables its button, which is precisely the
+      // door this is shutting.
+      if (placingRef.current) return
+      placingRef.current = true
 
       try {
         // A method restored from a previous visit (reload, or off to the bank and
@@ -535,6 +548,12 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         window.location.href = `/shop/checkout/confirmation?orderNumber=${encodeURIComponent(prepared.orderNumber)}&t=${encodeURIComponent(prepared.receiptToken)}`
       } catch (err) {
         window.dispatchEvent(new CustomEvent('cactus-shop-order-error', { detail: err instanceof Error ? err.message : 'Payment failed' }))
+      } finally {
+        // Released on the way out, including the success path: that path
+        // navigates to the confirmation page, so the flag going false a moment
+        // before the browser leaves changes nothing. A failure genuinely is
+        // over, and the shopper must be able to try again with another card.
+        placingRef.current = false
       }
     }
 
