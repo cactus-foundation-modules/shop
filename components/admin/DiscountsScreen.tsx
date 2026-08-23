@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { TabStrip } from '@/components/admin/TabStrip'
+import { useTabParam } from '@/modules/shop/lib/admin/tab-url'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { useConfirm, useAlert } from '@/modules/shop/components/admin/dialogs'
@@ -46,7 +47,7 @@ export function DiscountsScreen() {
   const currencySymbol = useCurrencySymbol()
   const [confirm, confirmNode] = useConfirm()
   const [showAlert, alertNode] = useAlert()
-  const [tab, setTab] = useState<'coupons' | 'automatic'>('coupons')
+  const [tab, setTab] = useTabParam('tab', 'coupons', ['coupons', 'automatic'] as const)
   const [coupons, setCoupons] = useState<Coupon[]>([])
   const [autoDiscounts, setAutoDiscounts] = useState<AutoDiscount[]>([])
   const [couponForm, setCouponForm] = useState<CouponForm | null>(null)

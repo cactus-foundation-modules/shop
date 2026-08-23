@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { TabStrip } from '@/components/admin/TabStrip'
+import { useTabParam } from '@/modules/shop/lib/admin/tab-url'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 
@@ -11,7 +12,7 @@ type TaxRow = { taxRate: string; orderCount: number; taxCollected: string }
 
 export function ReportsScreen() {
   const currencySymbol = useCurrencySymbol()
-  const [tab, setTab] = useState<'revenue' | 'tax'>('revenue')
+  const [tab, setTab] = useTabParam('tab', 'revenue', ['revenue', 'tax'] as const)
   const [revenue, setRevenue] = useState<RevenueDay[]>([])
   const [tax, setTax] = useState<TaxRow[]>([])
 

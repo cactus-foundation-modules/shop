@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { TabStrip } from '@/components/admin/TabStrip'
+import { setTabParams } from '@/modules/shop/lib/admin/tab-url'
 import type { ShpTaxClass, ShpShippingZone, ShpTaxZoneRate, ShpShippingRate, ShpShippingRateType } from '@/modules/shop/lib/types'
 import type { PriceDisplayTax } from '@/modules/shop/lib/tax-display-shared'
 import { useConfirm } from '@/modules/shop/components/admin/dialogs'
@@ -59,6 +60,14 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
     const ids = new Set(extraTabs.map((t) => t.id))
     return initialTab && ids.has(initialTab) ? initialTab : 'tax-shipping'
   })
+
+  // Clicking a tab writes it back into ?tab=, so a refresh stays on the
+  // contributed screen instead of returning to Tax & shipping. The base tab is
+  // the default, so it carries no param.
+  function selectTab(next: string) {
+    setActiveTab(next)
+    setTabParams({ tab: next === 'tax-shipping' ? null : next })
+  }
   const [taxClasses, setTaxClasses] = useState<ShpTaxClass[]>([])
   const [newClassName, setNewClassName] = useState('')
   const [classEdits, setClassEdits] = useState<Record<string, { name: string; code: string }>>({})
@@ -337,8 +346,8 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
       {orderedTabs.length > 0 && (
         <TabStrip
           items={[
-            { key: 'tax-shipping', label: 'Tax & shipping', active: onBase, onClick: () => setActiveTab('tax-shipping') },
-            ...orderedTabs.map((t) => ({ key: t.id, label: t.label, active: activeTab === t.id, onClick: () => setActiveTab(t.id) })),
+            { key: 'tax-shipping', label: 'Tax & shipping', active: onBase, onClick: () => selectTab('tax-shipping') },
+            ...orderedTabs.map((t) => ({ key: t.id, label: t.label, active: activeTab === t.id, onClick: () => selectTab(t.id) })),
           ]}
         />
       )}

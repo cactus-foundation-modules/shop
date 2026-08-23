@@ -8,6 +8,7 @@ import type { ShpConfig } from '@/modules/shop/lib/config'
 import type { ShpAdminPaymentMethod } from '@/modules/shop/lib/payments/admin-methods'
 import { PaymentsSettings, PAYMENT_METHODS_TAB, isHostedPaymentPanelTab } from '@/modules/shop/components/admin/PaymentsSettings'
 import { PRICE_TYPES, PRICE_TYPE_META } from '@/modules/shop/lib/pricing'
+import { setTabParams, readTabParam } from '@/modules/shop/lib/admin/tab-url'
 
 type SubTab = 'general' | 'checkout' | 'payments' | 'invoices' | 'notifications'
 
@@ -92,6 +93,38 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
     })
   }, [])
 
+  // Which sub-tab is open - and, on Payments, which method's own panel - rides in
+  // the URL, so a refresh comes back to it instead of dropping the admin on
+  // General. Read once on mount rather than during render: the core settings page
+  // renders this on the server too, and reading the location mid-render would
+  // have the two disagree.
+  useEffect(() => {
+    const wanted = readTabParam('sub')
+    const known = [
+      ...SUB_TABS.map((t) => t.key as string),
+      ...(hostedSettingsPanels?.[HOSTED_SUB_TAB_SLOT] ?? []).map((p) => p.id),
+    ]
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot read of the URL's tab on mount
+    if (wanted && known.includes(wanted)) setSubTab(wanted)
+    const pane = readTabParam('pane')
+    if (pane) setPaymentTab(pane)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only; the contributed panels are fixed for the render
+  }, [])
+
+  // Clicking a tab writes it back, so the read above has something to find.
+  // General is the default, so it carries no param. The payments panel travels
+  // with the tab strip rather than being cleared: leaving Payments and coming
+  // back has always returned you to the panel you were in.
+  function selectSubTab(next: string) {
+    setSubTab(next)
+    setTabParams({ sub: next === 'general' ? null : next })
+  }
+
+  function selectPaymentTab(next: string) {
+    setPaymentTab(next)
+    setTabParams({ pane: next === PAYMENT_METHODS_TAB ? null : next })
+  }
+
 
   async function save() {
     if (!config) return
@@ -139,7 +172,11 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
   const hostedPaymentPanels = hostedSettingsPanels?.[HOSTED_PAYMENTS_SLOT] ?? []
   // A payment module's own panel is on the Payments tab now, so the same rule
   // that stands the Save button down for a contributed sub-tab applies there.
+  // A panel whose module has since been uninstalled shows the methods list
+  // instead (PaymentsSettings falls back), so the Save button has to come back
+  // with it rather than stay hidden behind a chip that is no longer there.
   const showingHostedPaymentPanel = subTab === 'payments' && isHostedPaymentPanelTab(paymentTab)
+    && hostedPaymentPanels.some((p) => paymentTab === `panel:${p.id}`)
 
   return (
     <div>
@@ -158,7 +195,7 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
         items={[
           ...SUB_TABS.map((t) => ({ key: t.key as string, label: t.label })),
           ...hostedSubTabs.map((p) => ({ key: p.id, label: p.label })),
-        ].map((t) => ({ key: t.key, label: t.label, active: t.key === subTab, onClick: () => setSubTab(t.key) }))}
+        ].map((t) => ({ key: t.key, label: t.label, active: t.key === subTab, onClick: () => selectSubTab(t.key) }))}
       />
 
       {message && <div className="alert alert-success" style={{ marginBottom: '1rem' }}>{message}</div>}
@@ -627,7 +664,7 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
           methods={paymentMethods}
           hostedPanels={hostedPaymentPanels}
           activeTab={paymentTab}
-          onTabChange={setPaymentTab}
+          onTabChange={selectPaymentTab}
         />
       )}
 
