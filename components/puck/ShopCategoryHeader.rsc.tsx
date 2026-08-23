@@ -60,7 +60,15 @@ export async function ShopCategoryHeaderRsc(props: ShopCategoryHeaderProps) {
           cap: the blurb is the page's opening line and stretches the full band,
           sitting above the description's columns. */}
       {props.showBlurb !== 'no' && (category.shortDescription || category.description) && (
-        <p style={{ margin: '0.75rem 0 0', fontSize: '1.0625rem', color: 'var(--color-text-muted)' }}>
+        // `data-shop-blurb` is where the Category Description block's "Read
+        // more" goes to live - see ShopCategoryDescriptionFold. Only a real
+        // blurb is marked: where this line has fallen back to the description
+        // itself, the description is already on the page and a link offering to
+        // open it would be offering nothing.
+        <p
+          {...(category.shortDescription ? { 'data-shop-blurb': '' } : {})}
+          style={{ margin: '0.75rem 0 0', fontSize: '1.0625rem', color: 'var(--color-text-muted)' }}
+        >
           {category.shortDescription || category.description}
         </p>
       )}

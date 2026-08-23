@@ -13,33 +13,19 @@ const render = async (description: string) => {
 }
 
 describe('plain-text description', () => {
-  // The description box takes plain text, and the paragraphs typed into it are
-  // as often separated by one Return as by two. Splitting on blank lines alone
-  // swept a whole visible paragraph into the lead, and the Read more turned up
-  // at the end of the second one.
-  it('treats a single line break as the end of a paragraph', async () => {
-    const html = await render('First paragraph.\nSecond paragraph.')
-    expect(html).toMatch(/First paragraph\.<button/)
-    expect(html).toMatch(/class="shop-cat-desc-fold"[\s\S]*Second paragraph\./)
-  })
-
-  it('treats a blank line the same way', async () => {
+  it('folds every paragraph away - the blurb above is what stays on the page', async () => {
     const html = await render('First paragraph.\n\nSecond paragraph.')
-    expect(html).toMatch(/First paragraph\.<button/)
-  })
-
-  it('leads with the first paragraph and folds the rest', async () => {
-    const html = await render('One.\nTwo.\nThree.')
     const fold = html.indexOf('class="shop-cat-desc-fold"')
-    expect(html.indexOf('One.')).toBeLessThan(fold)
-    expect(html.indexOf('Two.')).toBeGreaterThan(fold)
-    expect(html.indexOf('Three.')).toBeGreaterThan(fold)
+    expect(fold).toBeGreaterThan(-1)
+    expect(html.indexOf('First paragraph.')).toBeGreaterThan(fold)
+    expect(html.indexOf('Second paragraph.')).toBeGreaterThan(fold)
   })
 
-  it('offers no Read more on a description of one paragraph', async () => {
-    const html = await render('The only thing there is to say about it.')
-    expect(html).toContain('The only thing there is to say about it.')
-    expect(html).not.toContain('Read more')
+  it('splits on blank lines and leaves a single line break to pre-line', async () => {
+    const html = await render('One.\nStill one.\n\nTwo.')
+    expect(html).toContain('white-space:pre-line')
+    expect(html).toContain('One.\nStill one.')
+    expect(html).toContain('>Two.<')
   })
 
   it('prints nothing at all when there is no description', async () => {

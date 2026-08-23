@@ -25,6 +25,8 @@ const PARAGRAPH: React.CSSProperties = {
   margin: 0,
   color: 'var(--color-text-muted)',
   lineHeight: 1.6,
+  // Kept, so a single line break inside a paragraph is still honoured.
+  whiteSpace: 'pre-line',
 }
 
 export async function ShopDesignedDescriptionBody({ subject, layoutType, className, style }: {
@@ -54,24 +56,18 @@ export async function ShopDesignedDescriptionBody({ subject, layoutType, classNa
 
   if (!subject.description) return null
 
-  // A plain-text description is written as a couple of paragraphs, of which the
-  // first is always on the page and the rest fold away behind the "Read more"
-  // that sits at the end of it.
+  // A plain-text description is written as a couple of paragraphs, all of which
+  // fold away behind the "Read more" the fold puts at the end of the heading's
+  // blurb. Splitting on blank lines gives us the paragraphs; a single line break
+  // inside one is left to `white-space: pre-line`, which is what the person
+  // typing it into a plain text box would expect.
   //
-  // Split on ANY run of newlines, not on blank lines. The description box takes
-  // plain text and the paragraphs in it are as often separated by one Return as
-  // by two - and with `white-space: pre-line` doing the honours, both look
-  // identical on the page. Splitting on blank lines alone therefore swept a
-  // whole visible paragraph into the lead, and the "Read more" turned up at the
-  // end of the second one. What a reader calls a paragraph is what a line break
-  // ends, so that is what we split on.
-  //
-  // The folded paragraphs flow into as many columns as the band will take, so
-  // an opened description fills the width instead of leaving the right-hand half
-  // of the page empty. `26rem` is the narrowest column worth having, so a phone
-  // gets one column rather than a track wider than the screen, and the
-  // paragraph's own 40rem cap holds the measure at the in-between widths where
-  // only one column fits. Between them no media query is needed.
+  // The paragraphs flow into as many columns as the band will take, so an opened
+  // description fills the width instead of leaving the right-hand half of the
+  // page empty. `26rem` is the narrowest column worth having, so a phone gets
+  // one column rather than a track wider than the screen, and the paragraph's
+  // own 40rem cap holds the measure at the in-between widths where only one
+  // column fits. Between them no media query is needed.
   //
   // Columns, not a grid. A grid gives every cell in a row the height of the
   // tallest one, so a short paragraph sitting beside a long one left a hole
@@ -80,21 +76,16 @@ export async function ShopDesignedDescriptionBody({ subject, layoutType, classNa
   // paragraphs simply carry on down one column and into the next, and the
   // browser balances the columns for us. `break-inside: avoid` keeps a paragraph
   // whole rather than tearing it across the gap mid-sentence.
-  const paragraphs = subject.description.split(/\n+/).map((p) => p.trim()).filter(Boolean)
+  const paragraphs = subject.description.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
 
   return (
     <ShopCategoryDescriptionFold
       className={className}
       style={{ marginTop: '1.25rem', ...style }}
-      // The lead paragraph sits outside the columns - it is the one paragraph
-      // there is, until the fold comes off, and a single column of text needs no
-      // column rules. It keeps its own comfortable measure.
-      leadStyle={{ ...PARAGRAPH, maxWidth: '70ch' }}
-      // The gap goes below each folded paragraph rather than above: a margin on
-      // the paragraph that happens to land at the top of the second column would
-      // push that column out of line with the first. The fold's own top margin
-      // does the job of separating it from the lead paragraph.
-      foldStyle={{ marginTop: '1.25rem', columnWidth: '26rem', columnGap: '3rem' }}
+      foldStyle={{ columnWidth: '26rem', columnGap: '3rem' }}
+      // The gap goes below each paragraph rather than above: a margin on the
+      // paragraph that happens to land at the top of the second column would
+      // push that column out of line with the first.
       paragraphStyle={{ ...PARAGRAPH, maxWidth: '40rem', marginBottom: '1.25rem', breakInside: 'avoid' }}
       paragraphs={paragraphs.length > 0 ? paragraphs : [subject.description]}
     />

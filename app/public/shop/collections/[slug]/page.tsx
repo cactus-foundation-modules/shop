@@ -107,7 +107,9 @@ export default async function ShopCollectionPage({ params }: { params: Promise<{
           page. The long description - designed or plain - gets its own block
           below, so whichever form it takes it never gets printed twice. */}
       {collection.shortDescription && (
-        <p style={{ color: 'var(--color-text-muted)' }}>{collection.shortDescription}</p>
+        // Where the description block's "Read more" goes to live - see
+        // ShopCategoryDescriptionFold.
+        <p data-shop-blurb="" style={{ color: 'var(--color-text-muted)' }}>{collection.shortDescription}</p>
       )}
 
       <ShopCollectionDescriptionBody

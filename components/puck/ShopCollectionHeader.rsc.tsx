@@ -27,7 +27,12 @@ export async function ShopCollectionHeaderRsc(props: ShopCollectionHeaderProps) 
           Falling back to `description` keeps every collection that was written
           up before short descriptions existed looking exactly as it did. */}
       {props.showDescription !== 'no' && (collection.shortDescription || collection.description) && (
-        <p style={{ margin: 0, fontSize: '1.0625rem', color: 'var(--color-text-muted)' }}>
+        // See the note in ShopCategoryHeader.rsc.tsx: this is where the
+        // Collection Description block's "Read more" goes to live.
+        <p
+          {...(collection.shortDescription ? { 'data-shop-blurb': '' } : {})}
+          style={{ margin: 0, fontSize: '1.0625rem', color: 'var(--color-text-muted)' }}
+        >
           {collection.shortDescription || collection.description}
         </p>
       )}

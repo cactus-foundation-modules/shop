@@ -145,7 +145,9 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
           designed or plain - gets its own block below the sub-categories, so
           whichever form it takes it never gets printed twice. */}
       {category.shortDescription && (
-        <p style={{ color: 'var(--color-text-muted)' }}>{category.shortDescription}</p>
+        // Where the description block's "Read more" goes to live - see
+        // ShopCategoryDescriptionFold.
+        <p data-shop-blurb="" style={{ color: 'var(--color-text-muted)' }}>{category.shortDescription}</p>
       )}
 
       {/* Sub-categories first, as cards. A parent category rolling every
