@@ -1,9 +1,9 @@
 {
   "name": "shop",
-  "version": "0.1.297",
+  "version": "0.1.298",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
-  "requiresCoreVersion": "0.5.1123",
+  "requiresCoreVersion": "0.5.1223",
   "publicBasePath": "shop",
   "publicRootSlug": {
     "page": "./app/root/[slug]/page",
@@ -716,6 +716,18 @@
       "id": "shop-orders",
       "import": "./components/public/ShopAccountSection",
       "component": "ShopAccountSection"
+    },
+    {
+      "point": "members.account-section",
+      "id": "shop-orders-full",
+      "import": "./components/public/ShopOrdersSection",
+      "component": "ShopOrdersSection"
+    },
+    {
+      "point": "members.account-section",
+      "id": "shop-addresses-full",
+      "import": "./components/public/ShopAddressesSection",
+      "component": "ShopAddressesSection"
     },
     {
       "point": "members.account-nav",

@@ -207,5 +207,9 @@ export async function GET(request: NextRequest) {
       phone: order.notifyPhone ?? order.customerPhone ?? '',
     },
     currencySymbol: config.currencySymbol,
+    // The ISO code as well as the symbol: the symbol is what a receipt prints,
+    // but anything measuring the sale (see the conversion seam in
+    // OrderConfirmationClient) needs the three letters, and '£' is not them.
+    currency: config.currency,
   })
 }

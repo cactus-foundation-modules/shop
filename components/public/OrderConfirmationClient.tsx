@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { announceConversion } from '@/lib/analytics/conversion'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { sortLinesByGroup } from '@/modules/shop/lib/cart-group'
 import { ORDER_CONFIRMATION_CSS } from '@/modules/shop/components/public/order-confirmation-css'
@@ -72,6 +73,10 @@ type OrderStatusResponse = {
     privacyPolicyUrl?: string | null
   } | null
   currencySymbol: string
+  // ISO code ('GBP'), alongside the symbol. Optional so a response from an older
+  // cached bundle still renders - the sale simply goes unmeasured rather than
+  // being reported in a currency nobody named.
+  currency?: string
 }
 
 // An automated payment sitting at AWAITING_CONFIRMATION settles a few minutes
@@ -105,6 +110,53 @@ function isManualPayment(data: OrderStatusResponse): boolean {
 function isSettling(data: OrderStatusResponse): boolean {
   const status = data.order.paymentStatus
   return (status === 'AWAITING_CONFIRMATION' || status === 'PENDING') && !isManualPayment(data)
+}
+
+// Whether this order is real enough to tell the outside world about.
+//
+// PAID is obvious. A manual method sitting at AWAITING_CONFIRMATION is an order
+// that has genuinely been placed and is waiting on a bank transfer, which is how
+// a good deal of trade ordering works - leaving those out would under-report the
+// shop badly. An AUTOMATED payment at the same status is a different animal: it
+// is still settling, it becomes PAID within the minute, and the poll on this page
+// is already watching for exactly that. PENDING and FAILED are nobody's sale.
+function isCountableSale(data: OrderStatusResponse): boolean {
+  const status = data.order.paymentStatus
+  if (status === 'PAID') return true
+  return status === 'AWAITING_CONFIRMATION' && isManualPayment(data)
+}
+
+// Tell whatever is measuring this site that a sale happened. Core dedupes by
+// order number, across visits as well as within one, so this can be called on
+// every poll tick and on every revisit of a bookmarked confirmation link without
+// counting the same order twice - which is just as well, because this page polls.
+//
+// Nothing here knows what is listening, or whether anything is. That is the
+// point of the seam: the shop reports a sale, and measuring it is somebody
+// else's module's business.
+function announceSale(data: OrderStatusResponse): void {
+  if (!isCountableSale(data)) return
+  const total = Number(data.order.total)
+  if (!data.currency || !Number.isFinite(total)) return
+  const num = (raw: string | null | undefined): number | undefined => {
+    const value = Number(raw)
+    return Number.isFinite(value) ? value : undefined
+  }
+  announceConversion({
+    type: 'purchase',
+    transactionId: data.order.orderNumber,
+    value: total,
+    currency: data.currency,
+    tax: num(data.order.taxAmount),
+    shipping: num(data.order.shippingAmount),
+    coupon: data.order.couponCode ?? undefined,
+    items: data.items.map((item) => ({
+      id: item.productSku ?? undefined,
+      name: item.productName,
+      quantity: item.quantity,
+      price: num(item.unitPrice) ?? 0,
+    })),
+  })
 }
 
 // A shopper who paid off-site (PayPal, open banking, Square) reaches this page
@@ -363,6 +415,7 @@ export function OrderConfirmationClient() {
       loaded = true
       latest = body
       setData(body)
+      announceSale(body)
       await tryClearBasket(body)
       return body
     }
