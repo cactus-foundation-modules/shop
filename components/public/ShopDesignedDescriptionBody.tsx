@@ -1,7 +1,6 @@
 import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
-import { ShopCategoryDescriptionClamp } from '@/modules/shop/components/public/ShopCategoryDescriptionClamp'
-import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
+import { ShopCategoryDescriptionFold } from '@/modules/shop/components/public/ShopCategoryDescriptionFold'
 import type { PuckData } from '@/modules/shop/lib/types'
 
 // A category's or collection's long description, in whichever form the owner has
@@ -38,9 +37,9 @@ export async function ShopDesignedDescriptionBody({ subject, layoutType, classNa
   style?: React.CSSProperties
 }) {
   // Only the plain-text description folds. A designed document is whatever the
-  // owner built - pictures, grids, its own spacing - and line-clamping an
-  // arbitrary layout truncates the wrong things. If a designed description needs
-  // to be shorter on a phone it has the builder's own responsive controls.
+  // owner built - pictures, grids, its own spacing - and hiding all of it behind
+  // a "Read more" would fold away a layout that was placed deliberately. If a
+  // designed description needs to be shorter it has the builder's own controls.
   if (hasContent(subject.descriptionPuck)) {
     // config.rsc pulls in next/headers via other modules' RSC blocks, so it stays
     // a dynamic import here - same reason ShopProductDetail.rsc.tsx does it.
@@ -68,15 +67,13 @@ export async function ShopDesignedDescriptionBody({ subject, layoutType, classNa
   // Between them no media query is needed.
   const paragraphs = subject.description.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
 
-  const breakpoints = await getShopBreakpoints()
-
   // One paragraph has nothing to sit beside it, so it keeps its own measure.
   if (paragraphs.length < 2) {
     return (
       <div className={className} style={{ marginTop: '1.25rem', ...style }}>
-        <ShopCategoryDescriptionClamp breakpoints={breakpoints}>
+        <ShopCategoryDescriptionFold>
           <p style={{ ...PARAGRAPH, maxWidth: '70ch' }}>{paragraphs[0] ?? subject.description}</p>
-        </ShopCategoryDescriptionClamp>
+        </ShopCategoryDescriptionFold>
       </div>
     )
   }
@@ -92,14 +89,14 @@ export async function ShopDesignedDescriptionBody({ subject, layoutType, classNa
     <div className={className} style={{ marginTop: '1.25rem', ...style }}>
       {/* The column rules go on the folded element itself, not this wrapper -
           see the note on `foldStyle`. */}
-      <ShopCategoryDescriptionClamp breakpoints={breakpoints} foldStyle={{ columnWidth: '26rem', columnGap: '3rem' }}>
+      <ShopCategoryDescriptionFold foldStyle={{ columnWidth: '26rem', columnGap: '3rem' }}>
         {paragraphs.map((p, i) => (
           // The gap goes below each paragraph rather than above: a margin on the
           // paragraph that happens to land at the top of the second column would
           // push that column out of line with the first.
           <p key={i} style={{ ...PARAGRAPH, maxWidth: '40rem', marginBottom: '1.25rem', breakInside: 'avoid' }}>{p}</p>
         ))}
-      </ShopCategoryDescriptionClamp>
+      </ShopCategoryDescriptionFold>
     </div>
   )
 }
