@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.300",
+  "version": "0.1.301",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1223",
@@ -230,6 +230,7 @@
       "import": "./components/puck/ShopCheckoutPayment",
       "component": "shopCheckoutPaymentPuckComponent",
       "rscComponent": "shopCheckoutPaymentPuckRscComponent",
+      "rscImport": "./components/puck/ShopCheckoutPayment.rsc",
       "layoutTypes": [
         "shopCheckout"
       ]

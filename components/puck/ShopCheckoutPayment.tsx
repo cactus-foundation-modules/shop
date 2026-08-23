@@ -6,7 +6,8 @@ export type ShopCheckoutPaymentProps = { heading?: string }
 
 // Registered as a SERVER component so Puck's RSC <Render> serialises only plain
 // props (never its renderDropZone function bag, which a client-registered block
-// chokes on). The Stripe Elements form is the CheckoutPaymentClient island.
+// chokes on). The card fields - Stripe's, or a payment module's own - are the
+// CheckoutPaymentClient island.
 //
 // Editor path renders in preview mode - the editor has no real basket, and the
 // island hides itself when the basket is empty, so without the flag every
@@ -25,14 +26,7 @@ export const shopCheckoutPaymentPuckComponent = {
   render: ShopCheckoutPayment,
 }
 
-// RSC half renders live: on the storefront the island stands down when the
-// basket is empty, leaving the order-summary block's empty message on its own.
-// Explicit props only across the client boundary - never a spread of the puck bag.
-export function ShopCheckoutPaymentRsc(props: ShopCheckoutPaymentProps) {
-  return <CheckoutPaymentClient heading={props.heading} />
-}
-
-export const shopCheckoutPaymentPuckRscComponent = {
-  ...shopCheckoutPaymentPuckComponent,
-  render: ShopCheckoutPaymentRsc,
-}
+// RSC half lives in ShopCheckoutPayment.rsc.tsx (manifest `rscImport`): it
+// resolves the 'shop.checkout-payment-fields' extension point, and the
+// generated registry behind that statically imports server-only module code -
+// nothing this editor-bundled file may touch.

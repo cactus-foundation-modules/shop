@@ -114,6 +114,17 @@ export type ShpPaymentIntent = {
   approvalUrl?: string // PayPal
   instructions?: string // Bank transfer / cash
   providerOrderId?: string
+  // Whatever this provider's own on-page card fields need in the browser - a
+  // publishable key, the amount to authorise, which of its environments it is
+  // in. Relayed verbatim to the client component the provider's module
+  // registered on 'shop.checkout-payment-fields' (see
+  // components/public/checkout-payment-fields.ts); shop never reads it.
+  //
+  // It goes over the wire to a public checkout, so a provider puts only
+  // publishable things in it. Nothing secret, and nothing the client could act
+  // on unilaterally - the server still asks the provider whether the money
+  // actually moved.
+  clientFields?: Record<string, unknown>
 }
 
 export type ShpPaymentResult = {

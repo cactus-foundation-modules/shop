@@ -11,6 +11,7 @@ import { CheckoutContactClient } from '@/modules/shop/components/public/Checkout
 import { CheckoutShippingClient } from '@/modules/shop/components/public/CheckoutShippingClient'
 import { resolveCheckoutAddressLookup } from '@/modules/shop/lib/checkout-address-lookup'
 import { CheckoutPaymentClient } from '@/modules/shop/components/public/CheckoutPaymentClient'
+import { resolveCheckoutPaymentFields } from '@/modules/shop/lib/checkout-payment-fields'
 import { CheckoutReviewClient } from '@/modules/shop/components/public/CheckoutReviewClient'
 
 export const metadata = { title: 'Checkout' }
@@ -47,7 +48,7 @@ export default async function ShopCheckoutPage() {
           <CheckoutItemsClient />
           <CheckoutContactClient />
           <CheckoutShippingClient addressLookup={resolveCheckoutAddressLookup()} />
-          <CheckoutPaymentClient />
+          <CheckoutPaymentClient paymentFields={resolveCheckoutPaymentFields()} />
           <CheckoutReviewClient />
         </>
       )}

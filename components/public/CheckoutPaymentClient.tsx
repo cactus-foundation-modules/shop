@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react'
 import { getCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import {
   getCheckoutState, updateCheckoutState, isContactAndShippingComplete, areAgreementsAccepted, subscribeCheckoutState,
@@ -11,6 +11,7 @@ import { formatUkPhone } from '@/modules/shop/lib/phone'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 import { HandoverDarkModeNotice, isDarkTheme } from '@/modules/shop/components/public/HandoverDarkModeNotice'
 import type { ShpPaymentLogo } from '@/modules/shop/lib/payments/provider'
+import type { ShopCheckoutPayer, ShopCheckoutPaymentFieldsProps } from '@/modules/shop/components/public/checkout-payment-fields'
 
 type ShopClientConfig = {
   enabledPaymentMethods: string[]
@@ -48,6 +49,10 @@ type PreparedPayment = {
   receiptToken: string
   approvalUrl?: string
   providerOrderId?: string
+  // What this method's own on-page fields need in the browser, straight from
+  // the provider's intent. Held on the prepared payment rather than in state of
+  // its own so it can never outlive the attempt it belongs to.
+  clientFields?: Record<string, unknown>
 }
 
 // Preferred display names for the built-in methods (kept here so the wording
@@ -73,6 +78,35 @@ function loadStripeJs(): Promise<void> {
     script.onerror = () => reject(new Error('Failed to load Stripe.js'))
     document.head.appendChild(script)
   })
+}
+
+// Who is paying, in the shape a module's card fields are given it in. Built
+// from the checkout state rather than from the order, because the fields exist
+// before the order does - a card SDK needs a name and an address to send with
+// its 3D Secure request, and a bank given neither declines a perfectly good
+// card for no reason the shopper can see.
+//
+// The blank optionals are dropped rather than sent as empty strings: "county:
+// ''" is a claim that the address has no county, and some verification services
+// treat it as one.
+function payerFromState(state: CheckoutState): ShopCheckoutPayer {
+  const a = state.shippingAddress
+  return {
+    email: state.customerEmail,
+    name: state.customerName,
+    address: {
+      firstName: a.firstName,
+      lastName: a.lastName,
+      ...(a.company ? { company: a.company } : {}),
+      line1: a.line1,
+      ...(a.line2 ? { line2: a.line2 } : {}),
+      city: a.city,
+      ...(a.county ? { county: a.county } : {}),
+      postcode: a.postcode,
+      country: a.country || 'GB',
+      ...(a.phone ? { phone: a.phone } : {}),
+    },
+  }
 }
 
 // The height every brand mark is drawn at, whatever shape it is. Marks come in
@@ -105,7 +139,16 @@ function PaymentMethodLogo({ logo }: { logo: ShpPaymentLogo }) {
 // instance). Registered Puck block wrapper (ShopCheckoutPayment) is a server
 // component that renders this, so Puck's RSC <Render> never serialises its
 // renderDropZone function bag into the client.
-export function CheckoutPaymentClient({ preview = false, heading }: { preview?: boolean; heading?: string }) {
+export function CheckoutPaymentClient({ preview = false, paymentFields, heading }: {
+  preview?: boolean
+  // Resolved server-side from the 'shop.checkout-payment-fields' extension
+  // point (see lib/checkout-payment-fields.ts), keyed by payment method id -
+  // empty when no module contributes on-page fields, and always empty in the
+  // editor preview. This is how a card is typed HERE rather than on the
+  // provider's own site; see the contract file for what the component gets.
+  paymentFields?: Record<string, ComponentType<ShopCheckoutPaymentFieldsProps>>
+  heading?: string
+}) {
   const populated = useCartPopulated(preview)
   const [config, setConfig] = useState<ShopClientConfig | null>(null)
   const [method, setMethod] = useState<string | null>(getCheckoutState().paymentMethod)
@@ -124,7 +167,19 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
   // the URL and the method are held; the provider's name is worked out at render
   // time, where the config with the owner's own labels in it is to hand.
   const [handover, setHandover] = useState<{ url: string; method: string } | null>(null)
+  // The intent's clientFields for the method currently showing its own fields.
+  // In state as well as on preparedRef because the fields only render once the
+  // intent exists, and that arrives from a fetch rather than from a render.
+  const [fieldsConfig, setFieldsConfig] = useState<{ method: string; config: Record<string, unknown> } | null>(null)
+  // Who is paying, kept in step with the steps above. Compared before it is
+  // replaced so a keystroke in the contact box does not hand a module's card
+  // fields a brand new object on every render.
+  const [payer, setPayer] = useState<ShopCheckoutPayer>(() => payerFromState(getCheckoutState()))
   const elementsRef = useRef<HTMLDivElement>(null)
+  // "Place order" handed to us by a module's own card fields. A ref rather than
+  // state: it is called from an event handler, and a stale closure here would
+  // submit the fields of a method the shopper has already moved off.
+  const moduleSubmitRef = useRef<(() => Promise<unknown>) | null>(null)
   const stripeInstanceRef = useRef<ReturnType<NonNullable<typeof window.Stripe>> | null>(null)
   const stripeElementsRef = useRef<unknown>(null)
   const preparedRef = useRef<PreparedPayment | null>(null)
@@ -141,6 +196,17 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
 
   useEffect(() => {
     fetch('/api/m/shop/public/config').then((r) => r.json()).then(setConfig)
+  }, [])
+
+  useEffect(() => {
+    function sync() {
+      setPayer((prev) => {
+        const next = payerFromState(getCheckoutState())
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next
+      })
+    }
+    sync()
+    return subscribeCheckoutState(sync)
   }, [])
 
   // Creates the pending order and the provider intent, then gets the on-page
@@ -179,6 +245,7 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
         receiptToken: data.receiptToken,
         approvalUrl: data.approvalUrl,
         providerOrderId: data.providerOrderId,
+        clientFields: data.clientFields && typeof data.clientFields === 'object' ? data.clientFields : undefined,
       }
 
       // The shopper may have switched method while this was in flight. The
@@ -201,6 +268,12 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
         const elements = stripe.elements({ clientSecret: data.clientSecret })
         stripeElementsRef.current = elements
         if (elementsRef.current) elements.create('payment').mount(elementsRef.current)
+      } else if (prepared.clientFields && paymentFields?.[next]) {
+        // A module's own card fields. Nothing is mounted here - handing the
+        // config over is enough, and the component below does its own loading
+        // when it renders. Which keeps the SDK off the page of a shopper who
+        // picked bank transfer.
+        setFieldsConfig({ method: next, config: prepared.clientFields })
       } else if (data.instructions) {
         setInstructions(data.instructions)
       }
@@ -210,7 +283,7 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
     } finally {
       setLoading(false)
     }
-  }, [config])
+  }, [config, paymentFields])
 
   // What the order-creating route insists on before it will hand back an intent:
   // the details above filled in, and every compulsory tickbox on the review step
@@ -233,6 +306,11 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
     // goes for anything a module said about the old method.
     setInstructions(null)
     setNotes([])
+    // Card fields belonging to the method that was showing a moment ago have to
+    // go with it: leaving them up would let "Place order" submit a card to a
+    // provider the shopper is no longer paying with.
+    setFieldsConfig(null)
+    moduleSubmitRef.current = null
     preparedRef.current = null
     attemptedForRef.current = null
     pickedThisMountRef.current = true
@@ -364,6 +442,25 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
           const result = await stripe.confirmPayment({ elements: stripeElementsRef.current, confirmParams: { return_url: window.location.href }, redirect: 'if_required' })
           if (result.error) throw new Error(result.error.message)
           payload = { paymentIntentId: result.paymentIntent?.id }
+        } else if (prepared.clientFields && paymentFields?.[method]) {
+          // A module's own payment fields, filled in on this page. Same
+          // reasoning as the Stripe branch above: fields the line above has only
+          // just created cannot have been filled in, whatever they ask for, so
+          // ask rather than submit them blank. Worded for any of them, since
+          // what they collect is the module's business - not every one of them
+          // is a card.
+          if (freshlyPrepared) throw new Error('Please finish the payment details above, then place your order.')
+          // No submit registered is not a failure. A module whose fields only
+          // record a choice (which bank, say) has nothing to hand over at this
+          // point and says so by never registering one - see the contract file.
+          //
+          // What does come back is whatever the component decided to hand over:
+          // a one-time card token, typically. It goes straight through to the
+          // confirm route, which gives it to the provider's own confirmPayment.
+          // Nothing here reads it, and nothing here treats it as proof of
+          // anything - the server still asks the provider whether money moved.
+          const submit = moduleSubmitRef.current
+          if (submit) payload = await submit()
         }
 
         const res = await fetch('/api/m/shop/public/checkout/confirm', {
@@ -393,7 +490,7 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
 
     window.addEventListener('cactus-shop-place-order', placeOrder)
     return () => window.removeEventListener('cactus-shop-place-order', placeOrder)
-  }, [method, prepareIntent])
+  }, [method, paymentFields, prepareIntent])
 
   // Empty basket: nothing to pay for. Rendering payment methods here invites a
   // click that can only end in an error from the payment-intent route.
@@ -469,6 +566,29 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
           )}
         </div>
       )}
+      {/* A module's own card fields, drawn where Stripe's would be. Rendered
+          only for the chosen method and only once its intent has arrived with
+          something for them to work with, so a shop with two card providers
+          installed still loads exactly one SDK - the one being paid with. */}
+      {(() => {
+        if (!method || fieldsConfig?.method !== method) return null
+        const Fields = paymentFields?.[method]
+        if (!Fields) return null
+        // Deliberately no reassurance line of shop's own underneath. The Stripe
+        // block above can promise the card goes straight to the provider
+        // because shop knows those fields are a card; these it does not. The
+        // same sentence under a list of banks would be talking about a card
+        // nobody is being asked for. A provider that collects card details says
+        // so from inside its own component, where the claim is true.
+        return (
+          <Fields
+            config={fieldsConfig.config}
+            payer={payer}
+            onError={setError}
+            registerSubmit={(submit) => { moduleSubmitRef.current = submit }}
+          />
+        )
+      })()}
       {instructions && <p style={{ whiteSpace: 'pre-wrap', color: 'var(--color-text-muted)' }}>{instructions}</p>}
       {/* Named the same way the radio button above it is named, so the shopper
           is told they are off to the thing they actually picked. */}
