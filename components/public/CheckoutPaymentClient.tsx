@@ -421,6 +421,22 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         // This is the one and only place that hands the shopper over, and it
         // happens on "Place order" - never on picking the radio button.
         if (prepared.approvalUrl) {
+          // A method whose fields were only created by the prepare above has
+          // not had them on screen for so much as a frame, and this branch would
+          // walk the shopper straight past the very thing they were meant to
+          // fill in. It is the same guard the card branches below already carry,
+          // and it matters most to the shopper who changed nothing: a method
+          // restored from a previous visit is never prepared on mount (see
+          // pickedThisMountRef), so without this their first press of "Place
+          // order" was always a silent handover.
+          //
+          // The second press goes through either way. A handover method's own
+          // fields are a shortcut - choosing a bank here rather than on the
+          // provider's page - never a requirement, so nothing here may become
+          // one.
+          if (freshlyPrepared && prepared.clientFields && paymentFields?.[method]) {
+            throw new Error('Please finish the payment details above, then place your order.')
+          }
           if (method === 'PAYPAL') sessionStorage.setItem('cactus_shop_paypal_order_id', prepared.providerOrderId ?? '')
           // A shopper on the dark storefront gets a word of warning first: the
           // provider draws its own site in its own colours, and being handed a
