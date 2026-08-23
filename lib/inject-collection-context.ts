@@ -1,6 +1,17 @@
 import type { PuckData } from '@/modules/shop/lib/types'
 
-const COLLECTION_CONTEXT_BLOCKS = new Set(['ShopCollectionHeader', 'ShopCollectionDescription', 'ShopProductGrid'])
+// Every block in a 'shopCollection' layout that needs to know which collection
+// is being shown. The two filter grids belong to other modules and are named as
+// strings, which is the only way a module may refer to another's block - shop
+// does not import them and does not care whether they are installed. Same
+// arrangement as inject-tag-context.ts beside it.
+const COLLECTION_CONTEXT_BLOCKS = new Set([
+  'ShopCollectionHeader',
+  'ShopCollectionDescription',
+  'ShopProductGrid',
+  'ShopFilterGrid',
+  'ShopAttributeFilterGrid',
+])
 
 type CollectionContext = { collectionSlug: string }
 
