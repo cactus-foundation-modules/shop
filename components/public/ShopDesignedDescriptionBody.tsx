@@ -25,8 +25,6 @@ const PARAGRAPH: React.CSSProperties = {
   margin: 0,
   color: 'var(--color-text-muted)',
   lineHeight: 1.6,
-  // Kept, so a single line break inside a paragraph is still honoured.
-  whiteSpace: 'pre-line',
 }
 
 export async function ShopDesignedDescriptionBody({ subject, layoutType, className, style }: {
@@ -58,8 +56,15 @@ export async function ShopDesignedDescriptionBody({ subject, layoutType, classNa
 
   // A plain-text description is written as a couple of paragraphs, of which the
   // first is always on the page and the rest fold away behind the "Read more"
-  // that sits at the end of it. Splitting on blank lines gives us the paragraph
-  // to lead with and the ones to fold.
+  // that sits at the end of it.
+  //
+  // Split on ANY run of newlines, not on blank lines. The description box takes
+  // plain text and the paragraphs in it are as often separated by one Return as
+  // by two - and with `white-space: pre-line` doing the honours, both look
+  // identical on the page. Splitting on blank lines alone therefore swept a
+  // whole visible paragraph into the lead, and the "Read more" turned up at the
+  // end of the second one. What a reader calls a paragraph is what a line break
+  // ends, so that is what we split on.
   //
   // The folded paragraphs flow into as many columns as the band will take, so
   // an opened description fills the width instead of leaving the right-hand half
@@ -75,7 +80,7 @@ export async function ShopDesignedDescriptionBody({ subject, layoutType, classNa
   // paragraphs simply carry on down one column and into the next, and the
   // browser balances the columns for us. `break-inside: avoid` keeps a paragraph
   // whole rather than tearing it across the gap mid-sentence.
-  const paragraphs = subject.description.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
+  const paragraphs = subject.description.split(/\n+/).map((p) => p.trim()).filter(Boolean)
 
   return (
     <ShopCategoryDescriptionFold

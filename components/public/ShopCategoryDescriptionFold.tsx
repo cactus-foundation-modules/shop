@@ -42,9 +42,8 @@ const FOLD_CSS = `
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
-  /* Inside a paragraph the button inherits the pre-line white-space the
-     paragraph uses, which would let the label break. Two words; keep them
-     together. */
+  /* Two words, at the end of a paragraph that has just wrapped: keep them on
+     the same line as each other. */
   white-space: nowrap;
 }
 .shop-cat-desc-toggle:focus-visible {
