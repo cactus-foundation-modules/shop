@@ -190,7 +190,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
   // "Place order" handed to us by a module's own card fields. A ref rather than
   // state: it is called from an event handler, and a stale closure here would
   // submit the fields of a method the shopper has already moved off.
-  const moduleSubmitRef = useRef<(() => Promise<unknown>) | null>(null)
+  const moduleSubmitRef = useRef<((config: Record<string, unknown>) => Promise<unknown>) | null>(null)
   const stripeInstanceRef = useRef<ReturnType<NonNullable<typeof window.Stripe>> | null>(null)
   const stripeElementsRef = useRef<unknown>(null)
   const preparedRef = useRef<PreparedPayment | null>(null)
@@ -522,8 +522,21 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
           // confirm route, which gives it to the provider's own confirmPayment.
           // Nothing here reads it, and nothing here treats it as proof of
           // anything - the server still asks the provider whether money moved.
+          //
+          // The config is handed over at CALL time, freshly merged from the
+          // intent that resolved a few lines above. The registered function is
+          // whatever the component last registered, which - since nothing has
+          // waited for React to re-render since the intent arrived - is very
+          // often the one from before there was an amount to authorise. Left to
+          // its own closure it asks the provider to verify a payment of
+          // nothing, and the shopper is told their arguments are invalid.
           const submit = moduleSubmitRef.current
-          if (submit) payload = await submit()
+          if (submit) {
+            payload = await submit({
+              ...(config?.paymentMethodClientFields?.[method] ?? {}),
+              ...prepared.clientFields,
+            })
+          }
         }
 
         const res = await fetch('/api/m/shop/public/checkout/confirm', {
@@ -559,7 +572,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
 
     window.addEventListener('cactus-shop-place-order', placeOrder)
     return () => window.removeEventListener('cactus-shop-place-order', placeOrder)
-  }, [method, paymentFields, prepareIntent])
+  }, [config, method, paymentFields, prepareIntent])
 
   // Empty basket: nothing to pay for. Rendering payment methods here invites a
   // click that can only end in an error from the payment-intent route.

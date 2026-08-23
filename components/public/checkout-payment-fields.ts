@@ -49,5 +49,15 @@ export type ShopCheckoutPaymentFieldsProps = {
   // Called on mount and on unmount - a component that never registers one
   // simply has "Place order" confirm with an empty payload, which is what a
   // method with nothing to fill in wants anyway.
-  registerSubmit: (submit: (() => Promise<unknown>) | null) => void
+  //
+  // **It is handed the config again as an argument, and that argument is the
+  // one to trust** - not the `config` prop this component last rendered with.
+  // "Place order" creates the payment intent and then calls submit in the same
+  // breath, without waiting for React to re-render, so the registered function
+  // is very often still the one from before the intent existed and its closure
+  // still has the half of the config that has no amount in it. Square answers a
+  // verification request with no amount with "One or more of the arguments
+  // needed are missing or invalid", which is a puzzling thing for a shopper to
+  // be shown about a card they filled in correctly.
+  registerSubmit: (submit: ((config: Record<string, unknown>) => Promise<unknown>) | null) => void
 }
