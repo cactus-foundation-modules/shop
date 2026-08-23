@@ -13,7 +13,7 @@
 
 const block = (type: string, id: string, props: Record<string, unknown> = {}) => ({ type, props: { id, ...props } })
 
-const split = (id: string, ratio: string) => ({ type: 'Split', props: { id, ratio, align: 'stretch', gap: 'lg', padding: 'none' } })
+const split = (id: string, ratio: string, props: Record<string, unknown> = {}) => ({ type: 'Split', props: { id, ratio, align: 'stretch', gap: 'lg', padding: 'none', ...props } })
 
 const section = (id: string, overrides: Record<string, unknown> = {}) => ({
   type: 'Section',
@@ -329,7 +329,10 @@ export function shopCheckoutStarters() {
         // beside the scrolling steps - a sibling below it in the same zone
         // would be ridden over. Upsells go full-width under the split instead.
         content: [
-          split('columns-1', '40/60'),
+          // On a phone the columns stack, and the summary column would land on
+          // top - burying the first field under the whole basket. 'right-first'
+          // puts the steps above it there; the desktop order is unchanged.
+          split('columns-1', '40/60', { stackOrder: 'right-first' }),
           block('ShopUpsellProducts', 'upsells-1', { heading: 'Add to your order', layout: 'Grid' }),
         ],
         root: { props: {} },
