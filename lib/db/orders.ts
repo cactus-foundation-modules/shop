@@ -416,12 +416,19 @@ const FULFILMENT_CONDITION: Record<OrderFulfilment, Prisma.Sql> = {
 
 export type OrderSort = 'newest' | 'oldest' | 'total-desc' | 'total-asc' | 'customer-asc' | 'status'
 
+// The company an order was placed on behalf of, read exactly the way the screen
+// reads it (orderCompanyName in lib/order-display.ts): billing first because
+// that is the party being invoiced, then delivery, and a blank field counts as
+// not given rather than as a company called "". Kept as one fragment so the
+// search, the sort and the list can never disagree about who the customer is.
+const ORDER_COMPANY_SQL = Prisma.sql`COALESCE(NULLIF(btrim(o."billing_address"->>'company'), ''), NULLIF(btrim(o."shipping_address"->>'company'), ''))`
+
 const SORT_CLAUSE: Record<OrderSort, Prisma.Sql> = {
   newest: Prisma.sql`ORDER BY o."created_at" DESC`,
   oldest: Prisma.sql`ORDER BY o."created_at" ASC`,
   'total-desc': Prisma.sql`ORDER BY o."total" DESC, o."created_at" DESC`,
   'total-asc': Prisma.sql`ORDER BY o."total" ASC, o."created_at" DESC`,
-  'customer-asc': Prisma.sql`ORDER BY lower(o."customer_name") ASC, o."created_at" DESC`,
+  'customer-asc': Prisma.sql`ORDER BY lower(COALESCE(${ORDER_COMPANY_SQL}, o."customer_name")) ASC, o."created_at" DESC`,
   status: Prisma.sql`ORDER BY o."status" ASC, o."created_at" DESC`,
 }
 
@@ -459,7 +466,10 @@ export async function listOrders(filter: ListOrdersFilter): Promise<{ orders: Sh
   if (filter.paymentStatus === 'UNPAID') conditions.push(UNPAID_SQL)
   else if (filter.paymentStatus) conditions.push(Prisma.sql`o."payment_status" = ${filter.paymentStatus}`)
   if (filter.openOnly) conditions.push(OPEN_ONLY_SQL)
-  if (filter.search) conditions.push(Prisma.sql`(o."order_number" ILIKE ${`%${filter.search}%`} OR o."customer_email" ILIKE ${`%${filter.search}%`} OR o."customer_name" ILIKE ${`%${filter.search}%`})`)
+  // Company is searched as well as the person's name: on a trade shop the name
+  // on the order is whoever in the office typed it, and "Acme" is what the
+  // owner actually remembers the order by.
+  if (filter.search) conditions.push(Prisma.sql`(o."order_number" ILIKE ${`%${filter.search}%`} OR o."customer_email" ILIKE ${`%${filter.search}%`} OR o."customer_name" ILIKE ${`%${filter.search}%`} OR ${ORDER_COMPANY_SQL} ILIKE ${`%${filter.search}%`})`)
   if (filter.dateFrom) conditions.push(Prisma.sql`o."created_at" >= ${filter.dateFrom}`)
   if (filter.dateTo) conditions.push(Prisma.sql`o."created_at" <= ${filter.dateTo}`)
   if (filter.preOrder) {

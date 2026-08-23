@@ -12,9 +12,11 @@ import {
   paymentMethodLabel,
   relativeTime,
 } from '@/modules/shop/components/admin/order-labels'
+import { orderCompanyName } from '@/modules/shop/lib/order-display'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { useAlert, useConfirm } from '@/modules/shop/components/admin/dialogs'
+import type { ShpAddress } from '@/modules/shop/lib/types'
 
 type OrderRow = {
   id: string
@@ -24,6 +26,11 @@ type OrderRow = {
   paymentMethod: string
   customerName: string
   customerEmail: string
+  // Carried so the list can lead with the company an order was placed on behalf
+  // of. Only `company` is read here, but the addresses arrive whole from the
+  // list route and picking them apart server-side would buy nothing.
+  shippingAddress?: ShpAddress | null
+  billingAddress?: ShpAddress | null
   memberId: string | null
   total: string
   createdAt: string
@@ -363,7 +370,7 @@ export function OrdersScreen() {
         <input
           className="sox-search"
           aria-label="Search orders"
-          placeholder="Search by order number, name or email…"
+          placeholder="Search by order number, company, name or email…"
           value={searchBox}
           onChange={(e) => setSearchBox(e.target.value)}
         />
@@ -486,6 +493,7 @@ export function OrdersScreen() {
                 const status = badgeFor(ORDER_STATUS_BADGE, o.status)
                 const payment = badgeFor(PAYMENT_STATUS_BADGE, o.paymentStatus)
                 const dispatch = fulfilmentBadge(m)
+                const company = orderCompanyName(o)
                 return (
                   <tr key={o.id} className={selected.has(o.id) ? 'is-selected' : ''}>
                     <td className="sox-check">
@@ -497,13 +505,16 @@ export function OrdersScreen() {
                     </td>
                     <td>
                       <div className="sox-badges">
-                        <span>{o.customerName}</span>
+                        {/* A business orders as the business: the company leads
+                            when there is one, and the person who placed it drops
+                            to the line below rather than disappearing. */}
+                        <span>{company ?? o.customerName}</span>
                         {/* Worth knowing at a glance: a guest cannot look their
                             own order up from an account, so chasing them is a
                             different job. */}
                         {o.memberId && <span className="badge badge-default">Account</span>}
                       </div>
-                      <p className="sox-sub">{o.customerEmail}</p>
+                      <p className="sox-sub">{company ? `${o.customerName} · ${o.customerEmail}` : o.customerEmail}</p>
                     </td>
                     <td className="sox-nowrap">
                       {m ? `${m.unitCount} item${m.unitCount === 1 ? '' : 's'}` : '—'}

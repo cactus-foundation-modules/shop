@@ -60,3 +60,28 @@ export function addressLines(address: ShpAddress): string[] {
 export function formatOrderDate(date: Date): string {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 }
+
+/** The company an order was placed on behalf of, if one was given.
+ *
+ * Billing wins over delivery on the same reasoning the invoice uses (see
+ * lib/invoices.ts): if someone filled a billing address in at all, that is the
+ * party being invoiced, and the delivery company may well be a site office.
+ * Empty strings count as "not given" - the checkout submits the field either
+ * way and an unticked "this is a business" leaves it blank, not absent. */
+export function orderCompanyName(order: {
+  shippingAddress?: ShpAddress | null
+  billingAddress?: ShpAddress | null
+}): string | null {
+  return order.billingAddress?.company?.trim() || order.shippingAddress?.company?.trim() || null
+}
+
+/** Who the order is FROM, for a list that has one line to say it in. A trade
+ * shop knows the order as "Acme Ltd", not as whoever in the office happened to
+ * type the card number, so the company leads whenever there is one. */
+export function orderCustomerLabel(order: {
+  customerName: string
+  shippingAddress?: ShpAddress | null
+  billingAddress?: ShpAddress | null
+}): string {
+  return orderCompanyName(order) ?? order.customerName
+}
