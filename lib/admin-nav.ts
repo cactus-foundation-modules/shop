@@ -1,12 +1,13 @@
 import { resolveExtensionTabs } from '@/lib/modules/extension-tabs'
 import { hasShopPermission, type ShopPermissionKey } from '@/modules/shop/lib/access'
+import { getShopConfigCached, resolveSupplierLabel } from '@/modules/shop/lib/config'
 import type { SessionUser } from '@/lib/auth/session'
 
 // ---------------------------------------------------------------------------
 // The shop's two admin sections and the tabs inside them.
 //
 // The shop used to take nine sidebar links and its companion modules another
-// five on top. It now takes two - Catalogue and Sales - with everything else as
+// five on top. It now takes two - Catalogue and Trading - with everything else as
 // a tab on one of those pages. This module works out which tabs a given user may
 // see, so every page in a section renders the same strip and none of them offers
 // a link the role would be bounced off.
@@ -32,7 +33,7 @@ const CATALOGUE_BUILT_INS: BuiltIn[] = [
   { key: 'tags', label: 'Tags', path: '/m/shop/tags', permission: 'shop.products', allowAccess: true },
 ]
 
-const SALES_BUILT_INS: BuiltIn[] = [
+const TRADING_BUILT_INS: BuiltIn[] = [
   { key: 'orders', label: 'Orders', path: '/m/shop/orders', permission: 'shop.orders', allowAccess: true },
   { key: 'requests', label: 'Cancellations & returns', path: '/m/shop/requests', permission: 'shop.orders', allowAccess: true },
   { key: 'customers', label: 'Customers', path: '/m/shop/customers', permission: 'shop.customers', allowAccess: true },
@@ -42,7 +43,7 @@ const SALES_BUILT_INS: BuiltIn[] = [
   // but it hosts other modules' panels (`shop.tax-shipping-tabs`) which only a
   // server component can resolve - and core's settings page has no business
   // knowing a shop-specific extension point. So it stays a page of its own and
-  // rides the Sales strip instead. Still no sidebar link either way.
+  // rides the Trading strip instead. Still no sidebar link either way.
   { key: 'tax-shipping', label: 'Tax & shipping', path: '/m/shop/tax-shipping', permission: 'shop.manage', allowAccess: true },
 ]
 
@@ -70,7 +71,31 @@ export function resolveCatalogueNavTabs(user: SessionUser | null): Promise<ShopN
   return build(user, CATALOGUE_BUILT_INS, 'shop.products-tabs', '/m/shop/products')
 }
 
-/** Orders through Reports, plus whatever fills `shop.orders-tabs`. */
-export function resolveSalesNavTabs(user: SessionUser | null): Promise<ShopNavTab[]> {
-  return build(user, SALES_BUILT_INS, 'shop.orders-tabs', '/m/shop/orders')
+/**
+ * Orders through Tax & shipping, Suppliers when the shop keeps them, plus
+ * whatever fills `shop.orders-tabs`.
+ *
+ * Suppliers is off by default and is the one tab whose presence turns on a
+ * setting rather than a permission, so it is resolved here instead of sitting in
+ * TRADING_BUILT_INS. It carries the site's own word for a supplier, which is why
+ * it lands after the built-ins are labelled. It sits last of the built-ins:
+ * it is the section's buying-side screen, and everything before it is selling.
+ */
+export async function resolveTradingNavTabs(user: SessionUser | null): Promise<ShopNavTab[]> {
+  const tabs = await build(user, TRADING_BUILT_INS, 'shop.orders-tabs', '/m/shop/orders')
+  if (!user) return tabs
+
+  const config = await getShopConfigCached()
+  if (!config.supplierFieldEnabled) return tabs
+  if (!(await hasShopPermission(user, 'shop.products', { allowAccess: true }))) return tabs
+
+  const label = resolveSupplierLabel(config)
+  // Same pluralisation as the screen's own heading (SuppliersScreen.tsx), which
+  // cannot import this file's config module - it is a client component.
+  const plural = label === 'Supplier' ? 'Suppliers' : `${label}s`
+  // Ahead of any contributed tab, so the built-ins stay together.
+  const at = tabs.findIndex((t) => t.key === 'tax-shipping')
+  const entry = { key: 'suppliers', label: plural, path: '/m/shop/suppliers' }
+  if (at === -1) return [...tabs, entry]
+  return [...tabs.slice(0, at + 1), entry, ...tabs.slice(at + 1)]
 }

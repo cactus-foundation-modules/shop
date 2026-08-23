@@ -3,7 +3,7 @@ import { hasPermission } from '@/lib/permissions/check'
 import { hasShopPermission } from '@/modules/shop/lib/access'
 import { TaxShippingScreen, type TaxShippingTab } from '@/modules/shop/components/admin/TaxShippingScreen'
 import { ShopSectionNav } from '@/modules/shop/components/admin/ShopSectionNav'
-import { resolveSalesNavTabs } from '@/modules/shop/lib/admin-nav'
+import { resolveTradingNavTabs } from '@/modules/shop/lib/admin-nav'
 import { prisma } from '@/lib/db/prisma'
 import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
@@ -50,7 +50,7 @@ export default async function ShopTaxShippingPage({ searchParams }: { searchPara
   if (!canAccess) return <div className="alert alert-danger">You do not have permission to view Shop tax and shipping settings.</div>
 
   const { tab } = await searchParams
-  const [extraTabs, navTabs] = await Promise.all([resolveTaxShippingTabs(user), resolveSalesNavTabs(user)])
+  const [extraTabs, navTabs] = await Promise.all([resolveTaxShippingTabs(user), resolveTradingNavTabs(user)])
   return (
     <div>
       <ShopSectionNav tabs={navTabs} active="tax-shipping" />

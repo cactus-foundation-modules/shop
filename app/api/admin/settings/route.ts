@@ -5,17 +5,12 @@ import { getShopConfig, updateShopConfig, ShpConfigSchema, BUILT_IN_PAYMENT_METH
 import { getAllPaymentProviders, getModuleProviderEntryIds, resolveProviderLabel } from '@/modules/shop/lib/payments/registry'
 import type { ShpAdminPaymentMethod } from '@/modules/shop/lib/payments/admin-methods'
 import { isStripeConfigured, isPayPalConfigured } from '@/modules/shop/lib/env'
-import { syncSupplierNavEntry } from '@/modules/shop/lib/supplier-nav'
 import { getMembersConfig } from '@/lib/members/config'
 
 export async function GET() {
   const gate = await requireShopUser('shop.manage')
   if (gate.error) return gate.error
   const config = await getShopConfig()
-
-  // Self-heal the Suppliers sidebar link, which a module update resets back to
-  // absent - see supplier-nav.ts. No-ops when it already agrees with the setting.
-  await syncSupplierNavEntry(config.supplierFieldEnabled)
 
   // Store email has never been set — prefill (display-only, not yet persisted)
   // with the first admin's address so there's a sane default to send from/reply to.
@@ -78,7 +73,5 @@ export async function PUT(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid config' }, { status: 400 })
 
   const config = await updateShopConfig(parsed.data)
-  // Add or drop the Suppliers sidebar link to match the setting just saved.
-  await syncSupplierNavEntry(config.supplierFieldEnabled)
   return NextResponse.json({ config })
 }

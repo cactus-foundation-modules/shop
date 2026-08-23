@@ -2,12 +2,12 @@ import { getSessionFromCookie } from '@/lib/auth/session'
 import { hasShopPermission } from '@/modules/shop/lib/access'
 import { OrdersScreen } from '@/modules/shop/components/admin/OrdersScreen'
 import { ShopSectionNav } from '@/modules/shop/components/admin/ShopSectionNav'
-import { resolveSalesNavTabs } from '@/modules/shop/lib/admin-nav'
+import { resolveTradingNavTabs } from '@/modules/shop/lib/admin-nav'
 import { resolveExtensionTabs } from '@/lib/modules/extension-tabs'
 
 export const metadata = { title: 'Shop Orders — Admin' }
 
-// The front of the Sales section: the orders list, the tab strip carrying
+// The front of the Trading section: the orders list, the tab strip carrying
 // cancellations, customers, discounts and reports, and the home for whatever a
 // companion module publishes into `shop.orders-tabs` (quotes, today). A
 // contributed tab opens with ?tab=<id> so the strip stays plain links that every
@@ -20,7 +20,7 @@ export default async function ShopOrdersPage({ searchParams }: { searchParams: P
 
   const { tab } = await searchParams
   const [navTabs, contributed] = await Promise.all([
-    resolveSalesNavTabs(user),
+    resolveTradingNavTabs(user),
     resolveExtensionTabs('shop.orders-tabs', user),
   ])
 

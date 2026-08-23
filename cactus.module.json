@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.287",
+  "version": "0.1.288",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1123",
@@ -28,7 +28,7 @@
       "permission": "shop.access"
     },
     {
-      "label": "Sales",
+      "label": "Trading",
       "path": "/m/shop/orders",
       "icon": "<path d=\"M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z\"/><path d=\"M3 6h18M16 10a4 4 0 0 1-8 0\"/>",
       "permission": "shop.access"
