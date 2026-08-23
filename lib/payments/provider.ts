@@ -24,6 +24,24 @@ export interface ShpPaymentProvider {
   // owner can write their own over the top of it on the Payments tab, and a
   // method that offers none simply gets no line unless they write one.
   description?: string
+  // Optional: the publishable, ORDER-INDEPENDENT half of what this provider's
+  // on-page fields need in the browser - a publishable application key, which
+  // of its environments it is in. Resolved once for the whole checkout and put
+  // on the public config, so the fields can be drawn the moment the shopper
+  // picks the method.
+  //
+  // This exists because the per-order `clientFields` on ShpPaymentIntent cannot
+  // do that job on its own. An intent creates a draft order, and the route that
+  // makes one refuses until the contact details are filled in and every
+  // compulsory tickbox is ticked - so fields fed only by the intent stayed
+  // invisible until the shopper had agreed to the terms, which is well past the
+  // point they expect to see a card box. Whatever the intent later hands over
+  // (the amount to authorise, an id for this attempt) is merged over the top.
+  //
+  // It goes over the wire to a public checkout unconditionally, for every
+  // shopper who loads the page, so a provider puts only publishable things in
+  // it. Never a secret, never anything order-specific.
+  getClientFields?(): Promise<Record<string, unknown> | null>
   // Optional: the provider's own brand mark, shown beside its name at checkout.
   // A provider that ships none simply gets a name, which is what every method
   // had before this existed.

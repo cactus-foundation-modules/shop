@@ -23,6 +23,9 @@ type ShopClientConfig = {
   // config route - the owner's wording where they wrote one, the provider's
   // where they did not - so there is nothing to work out here.
   paymentMethodDescriptions?: Record<string, string>
+  // The publishable, order-independent config a method's own on-page fields
+  // draw from. Optional so a response from an older cached bundle still works.
+  paymentMethodClientFields?: Record<string, Record<string, unknown>>
   stripePublishableKey: string | null
   currencySymbol: string
   // Optional so a response from an older cached bundle still works - the
@@ -167,10 +170,18 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
   // the URL and the method are held; the provider's name is worked out at render
   // time, where the config with the owner's own labels in it is to hand.
   const [handover, setHandover] = useState<{ url: string; method: string } | null>(null)
-  // The intent's clientFields for the method currently showing its own fields.
-  // In state as well as on preparedRef because the fields only render once the
-  // intent exists, and that arrives from a fetch rather than from a render.
-  const [fieldsConfig, setFieldsConfig] = useState<{ method: string; config: Record<string, unknown> } | null>(null)
+  // The per-order half of what a method's own fields draw from - whatever its
+  // payment intent handed over (the amount to authorise, an id for this
+  // attempt). In state because it arrives from a fetch rather than a render.
+  //
+  // Only half. The publishable, order-independent half comes off the public
+  // config and is merged with this during render (see activeFieldsConfig), and
+  // that split is the whole point: an intent needs a draft order, and the route
+  // that drafts one refuses until the contact details are filled in AND every
+  // compulsory tickbox is ticked. Fields fed only by the intent therefore
+  // stayed invisible until the shopper had agreed to the terms - by which point
+  // they had every reason to think the shop had forgotten to ask for a card.
+  const [intentFields, setIntentFields] = useState<{ method: string; config: Record<string, unknown> } | null>(null)
   // Who is paying, kept in step with the steps above. Compared before it is
   // replaced so a keystroke in the contact box does not hand a module's card
   // fields a brand new object on every render.
@@ -269,11 +280,15 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         stripeElementsRef.current = elements
         if (elementsRef.current) elements.create('payment').mount(elementsRef.current)
       } else if (prepared.clientFields && paymentFields?.[next]) {
-        // A module's own card fields. Nothing is mounted here - handing the
-        // config over is enough, and the component below does its own loading
-        // when it renders. Which keeps the SDK off the page of a shopper who
+        // A module's own fields. Nothing is mounted here - handing the config
+        // over is enough, and the component below does its own loading when it
+        // renders. Which keeps a payment SDK off the page of a shopper who
         // picked bank transfer.
-        setFieldsConfig({ method: next, config: prepared.clientFields })
+        //
+        // Kept apart from the publishable half rather than folded into it: the
+        // fields are very likely already on screen by now, and the two are
+        // merged during render, so nothing here can tear down a half-typed card.
+        setIntentFields({ method: next, config: { ...prepared.clientFields } })
       } else if (data.instructions) {
         setInstructions(data.instructions)
       }
@@ -309,7 +324,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
     // Card fields belonging to the method that was showing a moment ago have to
     // go with it: leaving them up would let "Place order" submit a card to a
     // provider the shopper is no longer paying with.
-    setFieldsConfig(null)
+    setIntentFields(null)
     moduleSubmitRef.current = null
     preparedRef.current = null
     attemptedForRef.current = null
@@ -356,6 +371,20 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
     sync()
     return subscribeCheckoutState(sync)
   }, [config, method, outstandingRequirement, prepareIntent])
+
+  // What the chosen method's own fields draw from, worked out during render
+  // rather than held in state: the publishable half is a plain function of the
+  // method and the config already in hand, and computing it here is what lets
+  // the fields appear the instant the method is picked with nothing to wait for.
+  //
+  // The intent's half is merged over the top, so the amount to authorise turns
+  // up in the fields the moment there is an order to have one. A fresh object
+  // each render is harmless - the fields key their own mounting on the values
+  // inside it, not on its identity.
+  const staticFields = method ? config?.paymentMethodClientFields?.[method] : undefined
+  const perOrderFields = method && intentFields?.method === method ? intentFields.config : undefined
+  const activeFieldsConfig =
+    staticFields || perOrderFields ? { ...(staticFields ?? {}), ...(perOrderFields ?? {}) } : null
 
   // What the chosen method means for this order, asked for the moment it is
   // chosen. The order-creating route hands back the same sentences, but it
@@ -459,13 +488,18 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
           if (result.error) throw new Error(result.error.message)
           payload = { paymentIntentId: result.paymentIntent?.id }
         } else if (prepared.clientFields && paymentFields?.[method]) {
-          // A module's own payment fields, filled in on this page. Same
-          // reasoning as the Stripe branch above: fields the line above has only
-          // just created cannot have been filled in, whatever they ask for, so
-          // ask rather than submit them blank. Worded for any of them, since
-          // what they collect is the module's business - not every one of them
-          // is a card.
-          if (freshlyPrepared) throw new Error('Please finish the payment details above, then place your order.')
+          // A module's own payment fields, filled in on this page.
+          //
+          // Deliberately NOT gated on freshlyPrepared, unlike the Stripe branch
+          // above. Stripe's fields are built BY the prepare call, so on the
+          // press that created them they are necessarily empty. A module's are
+          // drawn when the method is picked (see the effect that reads
+          // paymentMethodClientFields) and have been sitting there ever since -
+          // so a shopper who typed their card before ticking the terms box has
+          // genuinely filled them in, and sending them round again for a second
+          // press would be the same discourtesy in a new place. Fields that ARE
+          // empty say so themselves, in their own wording.
+          //
           // No submit registered is not a failure. A module whose fields only
           // record a choice (which bank, say) has nothing to hand over at this
           // point and says so by never registering one - see the contract file.
@@ -587,7 +621,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
           something for them to work with, so a shop with two card providers
           installed still loads exactly one SDK - the one being paid with. */}
       {(() => {
-        if (!method || fieldsConfig?.method !== method) return null
+        if (!method || !activeFieldsConfig) return null
         const Fields = paymentFields?.[method]
         if (!Fields) return null
         // Deliberately no reassurance line of shop's own underneath. The Stripe
@@ -598,7 +632,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         // so from inside its own component, where the claim is true.
         return (
           <Fields
-            config={fieldsConfig.config}
+            config={activeFieldsConfig}
             payer={payer}
             onError={setError}
             registerSubmit={(submit) => { moduleSubmitRef.current = submit }}

@@ -109,6 +109,36 @@ export function getPaymentMethodLogos(hidden: readonly string[] = []): Record<st
   return logos
 }
 
+// id -> the publishable, order-independent config each provider's on-page
+// fields need, for the providers that offer any. A provider that offers none is
+// absent from the map entirely, and its fields (if it has any) wait for the
+// intent exactly as they did before.
+//
+// Resolved for every method that is on offer rather than only the chosen one:
+// this is the public checkout config, computed once and cached, and it has no
+// idea which method a given shopper will pick. Which is also why a provider
+// that throws is skipped rather than allowed to take the whole config down - a
+// checkout that will not load is worse than one card box that will not draw.
+export async function getPaymentMethodClientFields(): Promise<Record<string, Record<string, unknown>>> {
+  const providers = getAllPaymentProviders().filter((p) => p.getClientFields)
+  const resolved = await Promise.all(
+    providers.map(async (p) => {
+      try {
+        return await p.getClientFields!()
+      } catch (error) {
+        console.error(`[shop] payment provider "${p.id}" failed to resolve its client fields:`, error)
+        return null
+      }
+    })
+  )
+  const fields: Record<string, Record<string, unknown>> = {}
+  providers.forEach((p, i) => {
+    const own = resolved[i]
+    if (own && Object.keys(own).length > 0) fields[p.id] = own
+  })
+  return fields
+}
+
 // id -> human label for every registered provider, for the checkout UI.
 export async function getPaymentMethodLabels(): Promise<Record<string, string>> {
   const providers = getAllPaymentProviders()

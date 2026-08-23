@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getShopConfigCached, getAvailablePaymentMethods, resolveSupplierLabel, resolveCheckoutAgreements } from '@/modules/shop/lib/config'
-import { getPaymentMethodLabels, getPaymentMethodLogos, resolvePaymentMethodDescriptions } from '@/modules/shop/lib/payments/registry'
+import { getPaymentMethodClientFields, getPaymentMethodLabels, getPaymentMethodLogos, resolvePaymentMethodDescriptions } from '@/modules/shop/lib/payments/registry'
 import { displayTaxMode } from '@/modules/shop/lib/tax-display-shared'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { hasRedeemableCoupons } from '@/modules/shop/lib/db/discounts'
@@ -86,6 +86,13 @@ export async function GET() {
     // The line under each method's name: the owner's wording where they have
     // written one, the provider's where they have not.
     paymentMethodDescriptions: resolvePaymentMethodDescriptions(config.paymentMethodDescriptions),
+    // The publishable, order-independent half of what a method's own on-page
+    // fields need to draw - see getClientFields on ShpPaymentProvider. Here
+    // rather than only on the payment intent because an intent cannot be made
+    // until the checkout is filled in and the compulsory boxes are ticked, and
+    // a card box that appears only after somebody has agreed to the terms is a
+    // card box nobody expected to have to go looking for.
+    paymentMethodClientFields: await getPaymentMethodClientFields(),
     stripePublishableKey: publishableKey,
     // How this shop is transacted with at all: shop's own basket-and-checkout,
     // or an add-on's quote flow, in which case the buttons say something else,
