@@ -135,6 +135,26 @@ export async function getCategoryProductCounts(): Promise<Record<string, number>
   return counts
 }
 
+// Public product count per category: what a shopper would actually find filed
+// there, rather than what the admin tree counts. ACTIVE only (a draft or
+// archived product is not on the shelf) and never the catalogue-hidden variant
+// children, so a range sold as one listing with forty variants counts as one
+// product and not forty. Direct counts again - roll-up over descendants is done
+// in the caller from the category tree it already holds, which costs no second
+// query. Categories with nothing in them are absent from the map.
+export async function getPublicCategoryProductCounts(): Promise<Record<string, number>> {
+  const rows = await prisma.$queryRaw<{ category_id: string; count: bigint }[]>`
+    SELECT pc."category_id", COUNT(*)::bigint AS count
+    FROM "shp_product_categories" pc
+    JOIN "shp_products" p ON p."id" = pc."product_id"
+    WHERE p."status" = 'ACTIVE' AND p."catalogue_hidden" = false
+    GROUP BY pc."category_id"
+  `
+  const counts: Record<string, number> = {}
+  for (const r of rows) counts[r.category_id] = Number(r.count)
+  return counts
+}
+
 // Every category id in the sub-tree rooted at categoryId, inclusive. UNION (not
 // UNION ALL) makes the walk cycle-safe: a stray parent cycle repeats ids, which
 // dedupe away and terminate the recursion rather than looping forever. Used to

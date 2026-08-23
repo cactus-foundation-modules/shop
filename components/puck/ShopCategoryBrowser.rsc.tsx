@@ -1,8 +1,9 @@
 import { connection } from 'next/server'
-import { listCategories } from '@/modules/shop/lib/db'
+import { listCategories, getPublicCategoryProductCounts } from '@/modules/shop/lib/db'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { ShopCategoryCards } from '@/modules/shop/components/public/ShopCategoryCards'
 import { ShopCategoryPills } from '@/modules/shop/components/public/ShopCategoryPills'
+import { rollUpProductCounts } from '@/modules/shop/components/public/ShopCategoryPills.shared'
 import { shopCategoryBrowserPuckComponent, type ShopCategoryBrowserProps } from './ShopCategoryBrowser'
 
 // Server (RSC) half of Shop: Category Browser. Kept out of the client editor
@@ -25,7 +26,16 @@ export async function ShopCategoryBrowserRsc(props: ShopCategoryBrowserProps) {
 
   // The compact strip for pages where the sub-categories are shortcuts, not
   // the main event - a filtered category page keeps its height for products.
-  if (props.display === 'pills') return <ShopCategoryPills categories={categories} breakpoints={breakpoints} />
+  if (props.display === 'pills') {
+    // Counts are only read when the strip is actually capped: an uncapped strip
+    // prints in the shop's own order and has nothing to rank, so a page that
+    // never asked for the fold never pays for the extra query.
+    const limit = Math.max(0, Math.floor(Number(props.pillLimit)) || 0)
+    const counts = limit > 0 && limit < categories.length
+      ? rollUpProductCounts(all, await getPublicCategoryProductCounts())
+      : {}
+    return <ShopCategoryPills categories={categories} breakpoints={breakpoints} counts={counts} limit={limit} />
+  }
 
   return (
     <ShopCategoryCards

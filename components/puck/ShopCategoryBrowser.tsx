@@ -9,20 +9,40 @@ import { DEFAULT_BREAKPOINTS } from '@/modules/shop/lib/breakpoints-shared'
 // viewed (lib/inject-category-context.ts), so the block lists that category's
 // sub-categories without the owner naming one - one layout serves every category
 // page. On the Shop Home layout it is a real, editable field.
-export type ShopCategoryBrowserProps = { parentCategorySlug?: string; columns?: number; ctaLabel?: string; display?: string; showBlurb?: string }
+export type ShopCategoryBrowserProps = { parentCategorySlug?: string; columns?: number; ctaLabel?: string; display?: string; showBlurb?: string; pillLimit?: number }
 
 export function ShopCategoryBrowser(props: ShopCategoryBrowserProps) {
   const columns = props.columns ?? 4
   if (props.display === 'pills') {
     // Sample pills through the real classes and stylesheet, so the canvas
     // shows exactly the chrome the live page will print - only the names are
-    // stand-ins, since the editor half cannot fetch.
+    // stand-ins, since the editor half cannot fetch. A cap set on the block
+    // shows here too, folded exactly as the live strip folds it, so the owner
+    // can see what "show the busiest four" actually leaves on the page.
+    const limit = Math.max(0, Math.floor(Number(props.pillLimit)) || 0)
+    const names = ['Sub-category', 'Another one', 'A third', 'One more', 'A fifth', 'A sixth']
+    const shown = limit > 0 && limit < names.length ? names.slice(0, limit) : names
+    const hidden = limit > 0 && limit < names.length ? names.slice(limit) : []
     return (
       <>
         <style dangerouslySetInnerHTML={{ __html: shopCategoryPillsCss(DEFAULT_BREAKPOINTS) }} />
-        <nav className="shop-cat-pills" aria-label="Sub-categories" style={{ opacity: 0.6, pointerEvents: 'none' }}>
-          {['Sub-category', 'Another one', 'A third', 'One more'].map((name) => (
+        <nav
+          className={hidden.length > 0 ? 'shop-cat-pills shop-cat-pills-limited' : 'shop-cat-pills'}
+          aria-label="Sub-categories"
+          style={{ opacity: 0.6, pointerEvents: 'none' }}
+        >
+          {shown.map((name) => (
             <a key={name} className="shop-cat-pill" href="#">{name}</a>
+          ))}
+          {hidden.length > 0 && (
+            <label className="shop-cat-pill shop-cat-more">
+              <input type="checkbox" className="shop-cat-more-input" readOnly />
+              <span className="shop-cat-more-open">{hidden.length} more</span>
+              <span className="shop-cat-more-close">Show fewer</span>
+            </label>
+          )}
+          {hidden.map((name) => (
+            <a key={name} className="shop-cat-pill shop-cat-pill-extra" href="#">{name}</a>
           ))}
         </nav>
       </>
@@ -55,10 +75,11 @@ export const shopCategoryBrowserPuckComponent = {
         { value: 'pills', label: 'Pills' },
       ],
     },
+    pillLimit: { type: 'number' as const, label: 'Pills: show only this many, busiest first (0 shows all)' },
     columns: { type: 'number' as const, label: 'Columns (cards only)' },
     ctaLabel: { type: 'text' as const, label: 'Link wording (cards only)' },
     showBlurb: { type: 'select' as const, label: 'Show category descriptions (cards only)', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
   },
-  defaultProps: { parentCategorySlug: '', display: 'cards', columns: 4, ctaLabel: 'Browse', showBlurb: 'yes' },
+  defaultProps: { parentCategorySlug: '', display: 'cards', pillLimit: 0, columns: 4, ctaLabel: 'Browse', showBlurb: 'yes' },
   render: ShopCategoryBrowser,
 }
