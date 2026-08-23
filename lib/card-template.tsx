@@ -15,6 +15,7 @@ import type { ShopCardExtra } from '@/modules/shop/lib/card-media'
 import { mergeCardImages } from '@/modules/shop/lib/card-image-order'
 import type { ShopCardFromPrice } from '@/modules/shop/lib/card-price'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
+import { resolveProductAdminEditBase } from '@/modules/shop/lib/admin-edit'
 
 // Server-only helper shared by every product-card surface (grid, related,
 // featured, single). It resolves the one Product Card template - a per-block
@@ -192,6 +193,20 @@ export function buildCardContext(
 
 export type CardItem = { product: ShpProduct; ctx: CardPartContext }
 
+// Hands every card in a grid the shortcut back into its own editor, for the one
+// person entitled to it. Who is looking is asked once for the whole grid rather
+// than once per card (see lib/admin-edit.ts), and a shopper gets the items back
+// untouched - object-identical - so a public page's markup is unchanged and
+// nothing extra is rendered for the 99.9% of visits that are not an admin's.
+// Applied by renderCards below, so shop's own surfaces get it for free; a
+// companion module rendering the card anchor itself (filters-for-shop's grid)
+// calls this on its items first.
+export async function withCardAdminEditHrefs(items: CardItem[]): Promise<CardItem[]> {
+  const base = await resolveProductAdminEditBase()
+  if (!base) return items
+  return items.map((item) => ({ ...item, ctx: { ...item.ctx, adminEditHref: `${base}/${item.product.id}` } }))
+}
+
 // Stamps the template for each product and returns the card anchors. The
 // surface supplies the `.shop-grid` wrapper and emits shopCardCss once.
 // Returns the cards as an ARRAY rather than a bare ReactNode. It always did -
@@ -205,7 +220,8 @@ export async function renderCards(template: PuckData, items: CardItem[]): Promis
   // companion module contributed. They all get the card context injected, so a
   // module's card part renders real data rather than its editor skeleton.
   const partTypes = config.categories.blocks.components
-  return items.map(({ product, ctx }) => {
+  const withEdit = await withCardAdminEditHrefs(items)
+  return withEdit.map(({ product, ctx }) => {
     const data = injectShopProductCardEmbed(template, ctx, partTypes)
     return (
       <div key={product.id} className="shop-card">

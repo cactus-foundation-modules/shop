@@ -223,4 +223,14 @@ export type CardPartContext = {
   // '/<slug>'. Resolved by buildCardContext so every card surface - shop's own
   // grids and companion modules' - agrees without each one reading the config.
   productHref: string
+  // Where this product is edited, for a signed-in admin looking at a grid of
+  // cards - the Name part turns the product name into a link to it, opened in a
+  // new tab so the category page stays put. The same shortcut the product page's
+  // title has had (DetailPartContext.adminEditHref), and the same gate: null for
+  // shoppers and for staff without permission to edit products, so the admin URL
+  // never appears in a public page's markup. Resolved once per grid, not per
+  // card - see lib/card-template.tsx. Optional, so a card surface built before
+  // this existed (a companion module's own grid) still compiles and simply shows
+  // no shortcut.
+  adminEditHref?: string | null
 }

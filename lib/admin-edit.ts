@@ -15,10 +15,20 @@ import { hasShopPermission } from '@/modules/shop/lib/access'
 // The shop.products key (not shop.access) is the gate, so a colleague with
 // read-only shop access is not handed a link to an editor they cannot save in.
 export async function resolveProductAdminEditHref(productId: string): Promise<string | null> {
+  const base = await resolveProductAdminEditBase()
+  return base ? `${base}/${productId}` : null
+}
+
+// The same three doors, answered once for a whole grid of cards rather than
+// once per product: a category page stamping sixty cards asks who is looking
+// once, then builds sixty addresses off the answer. Returns the folder the
+// product editors live in, without a trailing slash, or null for everyone the
+// link is not for. See lib/card-template.tsx (withCardAdminEditHrefs).
+export async function resolveProductAdminEditBase(): Promise<string | null> {
   const user = await getSessionFromCookie()
   if (!user) return null
   if (!(await hasShopPermission(user, 'shop.products'))) return null
   const adminPath = await getAdminPathCached()
   if (!adminPath) return null
-  return `/${adminPath}/m/shop/products/${productId}`
+  return `/${adminPath}/m/shop/products`
 }

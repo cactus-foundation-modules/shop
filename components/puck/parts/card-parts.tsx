@@ -98,6 +98,17 @@ ${shopCardMediaCss}
 [data-theme="dark"] .shop-card-badge-tag{background:var(--shop-tag-bg-dark,var(--shop-tag-bg,var(--color-surface)));color:var(--shop-tag-fg-dark,var(--shop-tag-fg,var(--color-text-muted)))}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .shop-card-badge-tag{background:var(--shop-tag-bg-dark,var(--shop-tag-bg,var(--color-surface)));color:var(--shop-tag-fg-dark,var(--shop-tag-fg,var(--color-text-muted)))}}
 .shop-card-name{margin:.875em 0 0;padding:0 1em;font-size:1em;font-weight:600;color:var(--color-fg);line-height:1.3}
+/* The admin's shortcut into the product editor, on the name (see the Name part
+   below). Positioned with a z-index above .shop-card-link so this small target
+   takes its own click rather than the stretched card link swallowing it - the
+   whole point being to reach the editor without first landing on the product
+   page. Only ever rendered for a signed-in admin, so a shopper's card is
+   byte-identical to what it always was. Colours are currentColor, so the link
+   tracks whatever colour the name has been given. */
+.shop-card-name-edit{position:relative;z-index:2;color:inherit;text-decoration:none}
+.shop-card-name-edit:hover,.shop-card-name-edit:focus-visible{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+.shop-card-name-edit svg{width:.8em;height:.8em;margin-left:.25em;vertical-align:-.08em;opacity:.35;transition:opacity .15s ease}
+.shop-card-name-edit:hover svg,.shop-card-name-edit:focus-visible svg{opacity:.8}
 .shop-card-pricerow{display:flex;gap:.5em;align-items:baseline;margin-top:.5em;padding:0 1em}
 .shop-card-price{font-size:1em;font-weight:600;color:var(--color-primary)}
 .shop-card-compare{font-size:.8125em;color:var(--color-text-muted);text-decoration:line-through}
@@ -383,6 +394,8 @@ function clampStyle(lines?: string): React.CSSProperties | undefined {
 type NameProps = CardPartProps & { lines?: string; size?: number; align?: string }
 
 export function ShopCardName(props: NameProps) {
+  const adminEditHref = props._ctx?.adminEditHref
+  const name = props._ctx?.product.name ?? 'Product name'
   return (
     <>
       <EditorStyle ctx={props._ctx} />
@@ -390,7 +403,29 @@ export function ShopCardName(props: NameProps) {
         className="shop-card-name"
         style={mergeStyle(clampStyle(props.lines), mergeStyle(cardSizeStyle(props.size), cardAlignStyle(props.align)))}
         ref={dragRefOf(props)}
-      >{props._ctx?.product.name ?? 'Product name'}</h3>
+      >{adminEditHref
+        ? (
+          // Only ever rendered for a signed-in admin who may edit products (see
+          // lib/admin-edit.ts), so the admin URL stays off a shopper's page. The
+          // same shortcut the product page's title carries, on the card's name:
+          // new tab, so the category page being checked stays where it was. The
+          // pencil is decorative - the link's accessible name is the product
+          // name, and the title attribute says where it goes.
+          <a
+            className="shop-card-name-edit"
+            href={adminEditHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Edit this product (opens a new tab)"
+          >
+            {name}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+          </a>
+        )
+        : name}</h3>
     </>
   )
 }
