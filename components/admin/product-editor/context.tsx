@@ -39,9 +39,31 @@ type Registry = {
 
 const RegistryContext = createContext<Registry | null>(null)
 const TabScopeContext = createContext<{ tabId: string; tabLabel: string } | null>(null)
+// Bumped once per finished save. Panels stay mounted while the admin moves
+// between tabs, so a panel that loaded its own data on mount would otherwise
+// still be showing what the server said before the Save button was pressed.
+const SaveTickContext = createContext(0)
 
 export function ProductEditorRegistryProvider({ value, children }: { value: Registry; children: ReactNode }) {
   return <RegistryContext.Provider value={value}>{children}</RegistryContext.Provider>
+}
+
+/** Wraps the tabs so a panel can hear that the editor has finished saving. */
+export function ProductEditorSaveTickProvider({ tick, children }: { tick: number; children: ReactNode }) {
+  return <SaveTickContext.Provider value={tick}>{children}</SaveTickContext.Provider>
+}
+
+/**
+ * A counter that goes up by one each time the editor's Save button completes a
+ * save without error - including the saves contributed tabs did themselves.
+ *
+ * Put it in the dependencies of whatever effect loads a panel's own data and
+ * that panel refreshes when a sibling tab has just changed something it reads.
+ * Tabs are hidden, not unmounted, so nothing else would tell it. Zero, and
+ * never moving, outside the product editor.
+ */
+export function useProductEditorSaveTick(): number {
+  return useContext(SaveTickContext)
 }
 
 /** Wraps one tab's panel so anything inside it registers against that tab without naming it. */

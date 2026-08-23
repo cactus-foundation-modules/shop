@@ -8,6 +8,7 @@ import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { useConfirm, useAlert } from '@/modules/shop/components/admin/dialogs'
 import {
   ProductEditorRegistryProvider,
+  ProductEditorSaveTickProvider,
   ProductEditorTabScope,
   type ProductEditorRegistration,
 } from '@/modules/shop/components/admin/product-editor/context'
@@ -85,6 +86,13 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
   // per variation, so the Pricing tab locks its own Price boxes rather than
   // letting an owner set a figure the storefront never shows.
   const [priceManaged, setPriceManaged] = useState(false)
+
+  // Goes up by one on every finished save, and panels that load their own data
+  // watch it. A tab is hidden rather than unmounted when the admin leaves it, so
+  // without this the Images tab would keep drawing what it fetched on mount -
+  // ticking "Image up front" on the Variations tab and coming back showed
+  // nothing until the page was reloaded.
+  const [saveTick, setSaveTick] = useState(0)
 
   // --- Registry for contributed tabs ---------------------------------------
   const register = useCallback((key: string, registration: ProductEditorRegistration) => {
@@ -294,6 +302,7 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
       }
       setSavedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
       setShowErrors(false)
+      setSaveTick((n) => n + 1)
       return true
     } catch {
       setSaveError('Could not reach the server. Check your connection and try again.')
@@ -491,13 +500,15 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
 
             {/* Every panel stays mounted so a half-finished edit on one tab survives
                 a trip to another, and so contributed tabs can report their state. */}
-            {tabs.map((t) => (
-              <div key={t.id} hidden={t.id !== active}>
-                <ProductEditorTabScope tabId={t.id} tabLabel={t.label}>
-                  {t.render()}
-                </ProductEditorTabScope>
-              </div>
-            ))}
+            <ProductEditorSaveTickProvider tick={saveTick}>
+              {tabs.map((t) => (
+                <div key={t.id} hidden={t.id !== active}>
+                  <ProductEditorTabScope tabId={t.id} tabLabel={t.label}>
+                    {t.render()}
+                  </ProductEditorTabScope>
+                </div>
+              ))}
+            </ProductEditorSaveTickProvider>
           </div>
 
           <aside className="spe-side">
