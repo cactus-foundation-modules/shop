@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { MediaPickerModal } from '@/modules/shop/components/admin/MediaPickerModal'
 import { EmptyNote, Section } from '@/modules/shop/components/admin/product-editor/fields'
 import { GalleryExtrasProvider, useGalleryExtras, type GalleryExtraItem } from '@/modules/shop/components/admin/product-editor/gallery-extras'
@@ -59,7 +60,9 @@ export function MediaPanel(props: PanelProps & { productId: string, sections?: R
 }
 
 function MediaPanelInner({ state, patch, productId, sections = [] }: PanelProps & { productId: string, sections?: ReactNode[] }) {
+  const adminPath = useAdminPath()
   const [picking, setPicking] = useState(false)
+  const [browseFolderId, setBrowseFolderId] = useState<string | null>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const media = state.media
@@ -99,6 +102,20 @@ function MediaPanelInner({ state, patch, productId, sections = [] }: PanelProps 
       return null
     }
   }, [productId, masterCategoryId])
+
+  // The same folder the picker opens in, held for the "Open in media library"
+  // link so it is a real href - middle-click and open-in-new-tab work, which a
+  // resolve-on-click button would break. GET only, so looking at the tab still
+  // creates nothing; re-run when the category changes on screen because that is
+  // what decides which folder the images belong in. Null (or not yet resolved)
+  // simply lands on the library root.
+  useEffect(() => {
+    let live = true
+    void resolveBrowseFolderId().then((id) => { if (live) setBrowseFolderId(id) })
+    return () => { live = false }
+  }, [resolveBrowseFolderId])
+
+  const mediaHref = `/${adminPath}/media${browseFolderId ? `?folder=${encodeURIComponent(browseFolderId)}` : ''}`
 
   const rows = mergeGalleryRows(media, extras.items)
 
@@ -144,7 +161,20 @@ function MediaPanelInner({ state, patch, productId, sections = [] }: PanelProps 
       <Section
         title="Images"
         blurb="The first image is the cover: it is what shows on listing cards and in the cart. Drag to reorder, or use the arrows."
-        actions={<button type="button" className="btn btn-primary btn-sm" onClick={() => setPicking(true)}>Add images</button>}
+        actions={(
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <a
+              className="btn btn-secondary btn-sm"
+              href={mediaHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open this product's folder in the media library"
+            >
+              Media library ↗
+            </a>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setPicking(true)}>Add images</button>
+          </div>
+        )}
       >
         {rows.length === 0 ? (
           <EmptyNote>No images yet. A product without a picture rarely sells, so this one is worth doing.</EmptyNote>
