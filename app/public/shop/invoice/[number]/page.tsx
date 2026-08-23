@@ -5,7 +5,7 @@ import { getMemberFromCookie } from '@/lib/members/session'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getInvoiceByNumber } from '@/modules/shop/lib/db/invoices'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
-import { verifyInvoiceToken, signInvoiceToken } from '@/modules/shop/lib/invoice-token'
+import { verifyInvoiceToken, invoicePdfPath } from '@/modules/shop/lib/invoice-token'
 import { invoiceDocContext, renderInvoiceDocument } from '@/modules/shop/lib/invoice-document'
 import PrintButton from '@/modules/shop/components/public/PrintButton'
 
@@ -100,7 +100,7 @@ export default async function ShopInvoicePage({
               {config.invoicePdfEnabled && (
                 <a
                   className="btn btn-secondary"
-                  href={`/api/m/shop/public/invoices/${encodeURIComponent(invoice.invoiceNumber)}/pdf?t=${signInvoiceToken(invoice.invoiceNumber)}`}
+                  href={invoicePdfPath(invoice.invoiceNumber)}
                 >
                   Download PDF
                 </a>

@@ -67,3 +67,15 @@ export function verifyCreditNoteToken(creditNoteNumber: string, token: string | 
 export function creditNotePath(creditNoteNumber: string): string {
   return `/shop/credit-note/${encodeURIComponent(creditNoteNumber)}?t=${signCreditNoteToken(creditNoteNumber)}`
 }
+
+// The PDF of each, which the routes serve as an attachment. A link straight to
+// one saves the file where a link to the page opens a document the reader then
+// has to save for themselves - which is what somebody clicking "Invoice
+// OSR-000004" in their own order history was after in the first place.
+export function invoicePdfPath(invoiceNumber: string): string {
+  return `/api/m/shop/public/invoices/${encodeURIComponent(invoiceNumber)}/pdf?t=${signInvoiceToken(invoiceNumber)}`
+}
+
+export function creditNotePdfPath(creditNoteNumber: string): string {
+  return `/api/m/shop/public/credit-notes/${encodeURIComponent(creditNoteNumber)}/pdf?t=${signCreditNoteToken(creditNoteNumber)}`
+}

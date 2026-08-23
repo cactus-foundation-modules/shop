@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { getMemberFromCookie } from '@/lib/members/session'
+import { getMembersConfig } from '@/lib/members/config'
 import { listOrderSummariesForMember } from '@/modules/shop/lib/member-orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopGate } from '@/modules/shop/lib/access'
@@ -19,6 +20,12 @@ export async function ShopAccountSection() {
 
   const gate = await getShopGate()
   if (gate.blocked) return null
+
+  // On a one-page account the whole order history is already further down the
+  // page (ShopOrdersSection), so a card summarising the top of it is a card
+  // pointing at the thing directly underneath it.
+  const membersConfig = await getMembersConfig()
+  if (membersConfig.accountSinglePage) return null
 
   const [summaries, config] = await Promise.all([listOrderSummariesForMember(member), getShopConfigCached()])
   const latest = summaries[0]

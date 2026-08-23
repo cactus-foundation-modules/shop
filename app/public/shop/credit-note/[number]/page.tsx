@@ -5,7 +5,7 @@ import { getMemberFromCookie } from '@/lib/members/session'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getCreditNoteByNumber } from '@/modules/shop/lib/db/credit-notes'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
-import { verifyCreditNoteToken, signCreditNoteToken } from '@/modules/shop/lib/invoice-token'
+import { verifyCreditNoteToken, creditNotePdfPath } from '@/modules/shop/lib/invoice-token'
 import { creditNoteDocContext } from '@/modules/shop/lib/invoice-doc-context'
 import { renderInvoiceDocument } from '@/modules/shop/lib/invoice-document'
 import PrintButton from '@/modules/shop/components/public/PrintButton'
@@ -92,7 +92,7 @@ export default async function ShopCreditNotePage({
               {config.invoicePdfEnabled && (
                 <a
                   className="btn btn-secondary"
-                  href={`/api/m/shop/public/credit-notes/${encodeURIComponent(note.creditNoteNumber)}/pdf?t=${signCreditNoteToken(note.creditNoteNumber)}`}
+                  href={creditNotePdfPath(note.creditNoteNumber)}
                 >
                   Download PDF
                 </a>

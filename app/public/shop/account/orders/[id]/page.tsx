@@ -3,6 +3,7 @@ import { redirect, notFound } from 'next/navigation'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { getMembersConfig } from '@/lib/members/config'
 import { getMemberAreaPath } from '@/lib/members/paths'
+import { moduleAccountSectionAnchor } from '@/lib/members/account-layout'
 import MemberAccountShell from '@/components/members/account/MemberAccountShell'
 import { getMemberOrderDetail } from '@/modules/shop/lib/member-orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
@@ -21,13 +22,22 @@ import {
 } from '@/modules/shop/lib/order-display'
 import { getInvoiceForOrder } from '@/modules/shop/lib/db/invoices'
 import { listCreditNotesForOrder } from '@/modules/shop/lib/db/credit-notes'
-import { creditNotePath, invoicePath } from '@/modules/shop/lib/invoice-token'
+import { creditNotePath, creditNotePdfPath, invoicePath, invoicePdfPath } from '@/modules/shop/lib/invoice-token'
 import OrderRequestPanel from '@/modules/shop/components/public/OrderRequestPanel'
 import WithdrawRequestButton from '@/modules/shop/components/public/WithdrawRequestButton'
 import BuyAgainButton from '@/modules/shop/components/public/BuyAgainButton'
 
 export const metadata = { title: 'Order detail' }
 export const dynamic = 'force-dynamic'
+
+// When an invoice turns up, in the buyer's words rather than the setting's.
+// MANUAL promises no moment because the shop has not committed to one.
+const INVOICE_WHEN: Record<string, string> = {
+  COMPLETED: 'will be available on completion of your order',
+  PAID: 'will be available once your payment has cleared',
+  DISPATCHED: 'will be available once your order has been despatched',
+  MANUAL: 'will appear here once it has been raised',
+}
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   STRIPE: 'Card',
@@ -119,6 +129,19 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
   // document rather than a line on a card statement. Only read where there is
   // an invoice to credit, so an ordinary shop's order page costs what it did.
   const creditNotes = invoice ? await listCreditNotesForOrder(order.id) : []
+  // Where "back" goes. On a one-page account the order history is a stretch of
+  // the account itself and its own page is not in the tab bar any more, so back
+  // means back to that stretch.
+  const allOrdersHref = membersConfig.accountSinglePage
+    ? `/${getMemberAreaPath()}#${moduleAccountSectionAnchor('orders')}`
+    : '/shop/account/orders'
+  // Whether the paperwork links hand over a file or open the document.
+  const pdfDownloads = config.invoicePdfEnabled
+  // Before one has been raised, say so rather than leaving a gap where the link
+  // will be - "where is my invoice?" is the email this line exists to prevent.
+  // The moment named is the one the shop actually issues on, and the tax label
+  // is the shop's own, so a shop outside the UK is not made to say VAT.
+  const invoicePromise = showPaperwork && !invoice ? INVOICE_WHEN[config.invoiceIssueOn] : null
   const status = ORDER_STATUS_DISPLAY[order.status]
   const completedRefunds = refunds.filter((refund) => refund.status === 'COMPLETED')
   const refundedTotal = completedRefunds.reduce((sum, refund) => sum + Number(refund.amount), 0)
@@ -141,7 +164,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
       {gate.staffPreview && <ShopStaffPreviewBanner />}
 
       <div style={{ marginBottom: 'var(--space-4)' }}>
-        <Link href="/shop/account/orders" prefetch={false} style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', textDecoration: 'none' }}>
+        <Link href={allOrdersHref} prefetch={false} style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', textDecoration: 'none' }}>
           ← All orders
         </Link>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', alignItems: 'center', marginTop: 'var(--space-2)' }}>
@@ -153,25 +176,51 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
         <p style={{ color: 'var(--color-text-muted)', margin: '0.25rem 0 0', fontSize: 'var(--text-sm)' }}>
           Placed {formatOrderDate(order.createdAt)}
           {' · '}
-          <Link href={`/shop/account/orders/${order.id}/receipt`} prefetch={false} style={{ color: 'var(--color-primary)' }}>
+          {/* Its own tab: printing is a detour, and a member who came to look at
+              their order should still have it there when the print dialog has
+              been dealt with. rel="noopener" as ever on a target of _blank. */}
+          <Link
+            href={`/shop/account/orders/${order.id}/receipt`}
+            prefetch={false}
+            target="_blank"
+            rel="noopener"
+            style={{ color: 'var(--color-primary)' }}
+          >
             Printable receipt
           </Link>
           {/* The invoice, once one has been raised and the shop is willing to
-              show it. A plain <a>: the invoice page is signed rather than
-              session-bound, so prefetching it would put the token in the browser's
-              speculation cache for no gain. */}
+              show it. Straight to the PDF where the shop makes them: somebody
+              opening their own paperwork wants the file, not a web page to save
+              it from. Off, it falls back to the on-screen copy.
+              A plain <a>: both are signed rather than session-bound, so
+              prefetching would put the token in the browser's speculation cache
+              for no gain, and an attachment is not a route to prefetch at all. */}
           {invoice && (
             <>
               {' · '}
-              <a href={invoicePath(invoice.invoiceNumber)} style={{ color: 'var(--color-primary)' }}>
+              <a
+                href={pdfDownloads ? invoicePdfPath(invoice.invoiceNumber) : invoicePath(invoice.invoiceNumber)}
+                style={{ color: 'var(--color-primary)' }}
+              >
                 Invoice {invoice.invoiceNumber}
               </a>
+            </>
+          )}
+          {invoicePromise && (
+            <>
+              {' · '}
+              <span>
+                Your {config.invoiceTaxLabel || 'VAT'} invoice {invoicePromise}
+              </span>
             </>
           )}
           {creditNotes.map((note) => (
             <span key={note.id}>
               {' · '}
-              <a href={creditNotePath(note.creditNoteNumber)} style={{ color: 'var(--color-primary)' }}>
+              <a
+                href={pdfDownloads ? creditNotePdfPath(note.creditNoteNumber) : creditNotePath(note.creditNoteNumber)}
+                style={{ color: 'var(--color-primary)' }}
+              >
                 Credit note {note.creditNoteNumber}
               </a>
             </span>

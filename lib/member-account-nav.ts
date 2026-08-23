@@ -22,11 +22,26 @@ export async function shopMemberAccountNav(
   // who has asked for a refund actually wants to see.
   const openRequests = await countOpenRequestsForMember(member.id)
 
+  // Both name a `sectionId`, so on a site with the one-page account switched on
+  // they are drawn into that page and their tabs scroll to them like every other
+  // section. The pages carry on existing for bookmarks, emailed links and
+  // anybody with JavaScript off; core simply stops sending people to them.
   return [
-    { key: 'orders', label: 'Orders', href: '/shop/account/orders', badge: openRequests },
+    {
+      key: 'orders',
+      label: 'Orders',
+      href: '/shop/account/orders',
+      badge: openRequests,
+      sectionId: 'shop-orders-full',
+    },
     // Named for both things it holds: each address keeps its own phone number,
     // since a number is how a courier reaches whoever is at that particular
     // door rather than a detail of the account.
-    { key: 'addresses', label: 'Addresses & Phone Numbers', href: '/shop/account/addresses' },
+    {
+      key: 'addresses',
+      label: 'Addresses & Phone Numbers',
+      href: '/shop/account/addresses',
+      sectionId: 'shop-addresses-full',
+    },
   ]
 }

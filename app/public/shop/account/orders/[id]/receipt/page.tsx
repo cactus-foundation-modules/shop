@@ -17,10 +17,21 @@ export const dynamic = 'force-dynamic'
 // A receipt, deliberately not called a VAT invoice: the shop settings hold no
 // registration number or trading address, so calling it one would be a claim
 // the data cannot back up. It prints on one page with no site chrome.
+//
+// On paper the site header and footer come off too. A module's public pages are
+// always wrapped by core's public layout and cannot opt out of it, so the chrome
+// goes by CSS - the same contract the invoice page relies on: core renders the
+// page inside `<main>`, with the theme header and footer as siblings, so every
+// sibling of `<main>` is hidden and `<main>` loses its own spacing. Keyed on
+// core's structure, never on a theme's markup, so no theme can break it. Print
+// only: on screen the page is an ordinary part of the site.
 const PRINT_CSS = `
 @media print {
+  body > *:not(main) { display: none !important; }
+  body > main { display: block !important; margin: 0 !important; padding: 0 !important; }
   .no-print { display: none !important; }
   body { background: #fff; }
+  .shp-receipt-page { max-width: none !important; margin: 0 !important; padding: 0 !important; }
   .receipt { border: none !important; padding: 0 !important; }
 }
 `
@@ -46,7 +57,7 @@ export default async function ShopAccountOrderReceiptPage({ params }: { params: 
     .reduce((sum, refund) => sum + Number(refund.amount), 0)
 
   return (
-    <div style={{ maxWidth: 720, margin: '3rem auto', padding: '0 1.5rem' }}>
+    <div className="shp-receipt-page" style={{ maxWidth: 720, margin: '3rem auto', padding: '0 1.5rem' }}>
       <style>{PRINT_CSS}</style>
 
       <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
@@ -63,6 +74,12 @@ export default async function ShopAccountOrderReceiptPage({ params }: { params: 
             <p style={{ margin: '0.25rem 0 0', color: 'var(--color-text-muted)' }}>
               {config.shopTitle || 'Shop'}
               {config.storeEmail ? ` · ${config.storeEmail}` : ''}
+            </p>
+            {/* Said on the document itself, not just in the file name: this is a
+                record of what somebody paid, and an accountant handed it in place
+                of the real thing needs to know at a glance that it is not one. */}
+            <p style={{ margin: '0.25rem 0 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+              This is not a {config.invoiceTaxLabel || 'VAT'} invoice.
             </p>
           </div>
           <div style={{ textAlign: 'right' }}>
