@@ -57,6 +57,18 @@ describe('category description fold', () => {
     expect(html).toContain('aria-expanded="false"')
   })
 
+  it('closes the gap above itself while folded', () => {
+    // Folded, the whole block is one "Read more" link, and the caller's margin
+    // was measured for a description under the heading's blurb - left on, it
+    // strands the link in a band of white.
+    const html = renderToStaticMarkup(
+      <ShopCategoryDescriptionFold className="x" style={{ marginTop: '1.25rem' }}>
+        <p>Only paragraph.</p>
+      </ShopCategoryDescriptionFold>,
+    )
+    expect(html).toMatch(/class="x"[^>]*style="margin-top:0\.25rem"/)
+  })
+
   it("puts the caller's column rules on the folded box itself", () => {
     expect(render({ columnWidth: '26rem' })).toMatch(/class="shop-cat-desc-fold"[^>]*style="column-width:26rem"/)
   })

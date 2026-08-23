@@ -70,11 +70,11 @@ export async function ShopDesignedDescriptionBody({ subject, layoutType, classNa
   // One paragraph has nothing to sit beside it, so it keeps its own measure.
   if (paragraphs.length < 2) {
     return (
-      <div className={className} style={{ marginTop: '1.25rem', ...style }}>
-        <ShopCategoryDescriptionFold>
-          <p style={{ ...PARAGRAPH, maxWidth: '70ch' }}>{paragraphs[0] ?? subject.description}</p>
-        </ShopCategoryDescriptionFold>
-      </div>
+      // The wrapper is the fold's to render: folded, the block is one link, and
+      // the margin meant for a description would leave it stranded.
+      <ShopCategoryDescriptionFold className={className} style={{ marginTop: '1.25rem', ...style }}>
+        <p style={{ ...PARAGRAPH, maxWidth: '70ch' }}>{paragraphs[0] ?? subject.description}</p>
+      </ShopCategoryDescriptionFold>
     )
   }
 
@@ -86,17 +86,19 @@ export async function ShopDesignedDescriptionBody({ subject, layoutType, classNa
   // browser balances the columns for us. `break-inside: avoid` keeps a paragraph
   // whole rather than tearing it across the gap mid-sentence.
   return (
-    <div className={className} style={{ marginTop: '1.25rem', ...style }}>
-      {/* The column rules go on the folded element itself, not this wrapper -
-          see the note on `foldStyle`. */}
-      <ShopCategoryDescriptionFold foldStyle={{ columnWidth: '26rem', columnGap: '3rem' }}>
-        {paragraphs.map((p, i) => (
-          // The gap goes below each paragraph rather than above: a margin on the
-          // paragraph that happens to land at the top of the second column would
-          // push that column out of line with the first.
-          <p key={i} style={{ ...PARAGRAPH, maxWidth: '40rem', marginBottom: '1.25rem', breakInside: 'avoid' }}>{p}</p>
-        ))}
-      </ShopCategoryDescriptionFold>
-    </div>
+    // The column rules go on the folded element itself, not the wrapper - see
+    // the note on `foldStyle`.
+    <ShopCategoryDescriptionFold
+      className={className}
+      style={{ marginTop: '1.25rem', ...style }}
+      foldStyle={{ columnWidth: '26rem', columnGap: '3rem' }}
+    >
+      {paragraphs.map((p, i) => (
+        // The gap goes below each paragraph rather than above: a margin on the
+        // paragraph that happens to land at the top of the second column would
+        // push that column out of line with the first.
+        <p key={i} style={{ ...PARAGRAPH, maxWidth: '40rem', marginBottom: '1.25rem', breakInside: 'avoid' }}>{p}</p>
+      ))}
+    </ShopCategoryDescriptionFold>
   )
 }

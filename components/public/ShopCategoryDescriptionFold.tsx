@@ -26,12 +26,16 @@
 
 import { useId, useState } from 'react'
 
+// What the block keeps above itself while it is folded. Enough to sit clear of
+// the line above, and nothing like the gap a whole description wants.
+const FOLDED_MARGIN_TOP = '0.25rem'
+
 const FOLD_CSS = `
 .shop-cat-desc-toggle {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
   padding: 0;
   border: 0;
   background: none;
@@ -59,7 +63,11 @@ const NOSCRIPT_CSS = `
 .shop-cat-desc-toggle { display: none !important; }
 `
 
-export function ShopCategoryDescriptionFold({ foldStyle, children }: {
+export function ShopCategoryDescriptionFold({ className, style, foldStyle, children }: {
+  // The block's own wrapper, so the fold can close the gap above itself - see
+  // FOLDED_MARGIN_TOP.
+  className?: string
+  style?: React.CSSProperties
   // Layout for the folded element itself (the caller's multi-column rules).
   foldStyle?: React.CSSProperties
   children: React.ReactNode
@@ -68,7 +76,15 @@ export function ShopCategoryDescriptionFold({ foldStyle, children }: {
   const bodyId = useId()
 
   return (
-    <>
+    <div
+      className={className}
+      // Folded, the only thing in this block is the "Read more" link, and the
+      // caller's margin was measured for a description sitting under the
+      // heading's blurb - it leaves the link marooned in a band of white with
+      // the blurb a long way above it. The spacing belongs to the description,
+      // so it goes when the description does and comes back when it opens.
+      style={open ? style : { ...style, marginTop: FOLDED_MARGIN_TOP }}
+    >
       <style dangerouslySetInnerHTML={{ __html: FOLD_CSS }} />
       <noscript><style dangerouslySetInnerHTML={{ __html: NOSCRIPT_CSS }} /></noscript>
       <div
@@ -89,6 +105,6 @@ export function ShopCategoryDescriptionFold({ foldStyle, children }: {
       >
         {open ? 'Show less' : 'Read more'}
       </button>
-    </>
+    </div>
   )
 }
