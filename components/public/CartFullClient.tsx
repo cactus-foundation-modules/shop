@@ -88,6 +88,7 @@ export type CartFullOptions = {
   showCoupon?: string
   couponPlaceholder?: string
   couponButtonLabel?: string
+  couponLinkLabel?: string
   showItemCount?: string
   showSubtotal?: string
   subtotalLabel?: string
@@ -179,6 +180,12 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   const [urlStyle, setUrlStyle] = useState<ProductUrlStyle>('SHOP')
   const [couponCode, setCouponCode] = useState('')
   const [couponMessage, setCouponMessage] = useState<string | null>(null)
+  // Most baskets have no code to type, so the field stays behind a link until
+  // somebody says they have one - and the link itself only appears once the
+  // config call says there is a code out there worth typing. False until then:
+  // a shop with no coupons should never flash one up mid-load.
+  const [couponOpen, setCouponOpen] = useState(false)
+  const [couponsAvailable, setCouponsAvailable] = useState(preview ?? false)
   const [hasLoaded, setHasLoaded] = useState(preview ?? false)
   // Whole-basket notes other modules contributed to this validate (a delivery
   // module's "everything by Fri 4 Sep"). Shop displays them, never composes them.
@@ -199,6 +206,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
         // See CartDrawerClient: the product URL style decides whether a line
         // links to /shop/products/<slug> or the bare /<slug>.
         if (data.productUrlStyle === 'ROOT' || data.productUrlStyle === 'SHOP') setUrlStyle(data.productUrlStyle)
+        setCouponsAvailable(data.couponsAvailable === true)
         const mode = data.priceDisplay?.displayTaxMode ?? data.taxMode
         if (mode === 'INCLUSIVE' || mode === 'EXCLUSIVE') setTaxMode(mode)
       })
@@ -961,20 +969,37 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
 
       {withItems && (layoutStyle === 'table' ? renderItemsTable() : renderItemsFlow())}
 
-      {withFooter && showCoupon && (
-        <div style={{ display: 'grid', gap: '0.375rem' }}>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <input
-              placeholder={props.couponPlaceholder || 'Coupon code'} value={couponCode} readOnly={preview}
-              onChange={(e) => setCouponCode(e.target.value)}
-              style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }}
-            />
-            <button type="button" onClick={applyCoupon} style={{ background: 'var(--color-bg-subtle)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 1rem', cursor: preview ? 'default' : 'pointer' }}>
-              {props.couponButtonLabel || 'Apply'}
+      {withFooter && showCoupon && couponsAvailable && (
+        couponOpen ? (
+          <div style={{ display: 'grid', gap: '0.375rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                autoFocus={!preview}
+                placeholder={props.couponPlaceholder || 'Coupon code'} value={couponCode} readOnly={preview}
+                onChange={(e) => setCouponCode(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void applyCoupon() } }}
+                style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }}
+              />
+              <button type="button" onClick={applyCoupon} style={{ background: 'var(--color-bg-subtle)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 1rem', cursor: preview ? 'default' : 'pointer' }}>
+                {props.couponButtonLabel || 'Apply'}
+              </button>
+            </div>
+            {couponMessage && <p style={{ fontSize: '0.875rem', margin: 0 }}>{couponMessage}</p>}
+          </div>
+        ) : (
+          <div>
+            <button
+              type="button" onClick={() => setCouponOpen(true)} disabled={preview}
+              style={{
+                background: 'none', border: 'none', padding: 0, font: 'inherit', fontSize: '0.875rem',
+                color: 'var(--color-text-muted)', textDecoration: 'underline', textUnderlineOffset: 3,
+                cursor: preview ? 'default' : 'pointer',
+              }}
+            >
+              {props.couponLinkLabel || 'Add coupon code'}
             </button>
           </div>
-          {couponMessage && <p style={{ fontSize: '0.875rem', margin: 0 }}>{couponMessage}</p>}
-        </div>
+        )
       )}
 
       {withFooter && showItemCount && (

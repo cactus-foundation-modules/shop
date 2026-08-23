@@ -52,6 +52,9 @@ export function CartPageClient() {
   const [urlStyle, setUrlStyle] = useState<ProductUrlStyle>('SHOP')
   const [couponCode, setCouponCode] = useState('')
   const [couponMessage, setCouponMessage] = useState<string | null>(null)
+  const [couponOpen, setCouponOpen] = useState(false)
+  // No redeemable code on the shop, no coupon box - see CartFullClient.
+  const [couponsAvailable, setCouponsAvailable] = useState(false)
   const [hasLoaded, setHasLoaded] = useState(false)
   // Whole-basket notes contributed by other modules, shown in the sticky bar.
   const [notes, setNotes] = useState<string[]>([])
@@ -66,6 +69,7 @@ export function CartPageClient() {
         if (cancelled || !data) return
         setCurrencySymbol(data.currencySymbol)
         setCommerce(normaliseShopCommerceMode(data.commerce))
+        setCouponsAvailable(data.couponsAvailable === true)
         // See CartDrawerClient: the product URL style decides whether a line
         // links to /shop/products/<slug> or the bare /<slug>.
         if (data.productUrlStyle === 'ROOT' || data.productUrlStyle === 'SHOP') setUrlStyle(data.productUrlStyle)
@@ -205,11 +209,24 @@ export function CartPageClient() {
         ))}
       </ul>
 
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <input aria-label="Coupon code" placeholder="Coupon code" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
-        <button onClick={applyCoupon} style={{ background: 'var(--color-bg-subtle)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 1rem', cursor: 'pointer' }}>Apply</button>
-      </div>
-      {couponMessage && <p style={{ fontSize: '0.875rem' }}>{couponMessage}</p>}
+      {couponsAvailable && (couponOpen ? (
+        <>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <input aria-label="Coupon code" autoFocus placeholder="Coupon code" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void applyCoupon() } }} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
+            <button onClick={applyCoupon} style={{ background: 'var(--color-bg-subtle)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 1rem', cursor: 'pointer' }}>Apply</button>
+          </div>
+          {couponMessage && <p style={{ fontSize: '0.875rem' }}>{couponMessage}</p>}
+        </>
+      ) : (
+        <div>
+          <button
+            type="button" onClick={() => setCouponOpen(true)}
+            style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', fontSize: '0.875rem', color: 'var(--color-text-muted)', textDecoration: 'underline', textUnderlineOffset: 3, cursor: 'pointer' }}
+          >
+            Add coupon code
+          </button>
+        </div>
+      ))}
 
       <div ref={footerRef} style={{ display: 'grid', gap: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '1.125rem' }}>

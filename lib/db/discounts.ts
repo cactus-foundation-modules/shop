@@ -56,6 +56,7 @@ export async function createCoupon(data: {
     VALUES (${data.code}, ${data.type}, ${data.value ?? null}, ${data.minimumOrderValue ?? null}, ${data.usageLimit ?? null}, ${data.perCustomerLimit ?? null}, ${data.startsAt ?? null}, ${data.expiresAt ?? null})
     RETURNING "id"
   `
+  invalidateCouponPresenceCache()
   return rows[0]
 }
 
@@ -76,10 +77,48 @@ export async function updateCoupon(id: string, fields: Partial<{
   if (sets.length === 0) return
   sets.push(Prisma.sql`"updated_at" = CURRENT_TIMESTAMP`)
   await prisma.$executeRaw`UPDATE "shp_coupons" SET ${Prisma.join(sets, ', ')} WHERE "id" = ${id}`
+  invalidateCouponPresenceCache()
 }
 
 export async function deleteCoupon(id: string): Promise<void> {
   await prisma.$executeRaw`DELETE FROM "shp_coupons" WHERE "id" = ${id}`
+  invalidateCouponPresenceCache()
+}
+
+// Is there any code a shopper could actually redeem right now? The basket asks
+// before it offers a coupon box at all - a shop that has never made a code
+// should not invite one. Deliberately the same four conditions resolveDiscounts
+// enforces (live, started, not expired, not exhausted); a minimum-order-value it
+// cannot meet yet still counts, because the shopper can go and meet it.
+//
+// EXISTS, not a count: it stops at the first row. Cached for the same 5 seconds
+// the shop config is, since this rides along on that same call, and cleared
+// outright whenever a coupon is written so a newly created code shows up at once.
+let cachedHasCoupons: boolean | null = null
+let cachedHasCouponsAt = 0
+const COUPON_PRESENCE_TTL_MS = 5_000
+
+export function invalidateCouponPresenceCache(): void {
+  cachedHasCoupons = null
+  cachedHasCouponsAt = 0
+}
+
+export async function hasRedeemableCoupons(): Promise<boolean> {
+  const now = Date.now()
+  if (cachedHasCoupons !== null && now - cachedHasCouponsAt < COUPON_PRESENCE_TTL_MS) return cachedHasCoupons
+  const rows = await prisma.$queryRaw<{ present: boolean }[]>`
+    SELECT EXISTS (
+      SELECT 1 FROM "shp_coupons"
+      WHERE "is_active" = true
+        AND ("starts_at" IS NULL OR "starts_at" <= NOW())
+        AND ("expires_at" IS NULL OR "expires_at" > NOW())
+        AND ("usage_limit" IS NULL OR "usage_count" < "usage_limit")
+    ) AS "present"
+  `
+  const present = rows[0]?.present ?? false
+  cachedHasCoupons = present
+  cachedHasCouponsAt = now
+  return present
 }
 
 // Atomic, limit-guarded increment. The pre-checkout check in resolveDiscounts is
@@ -92,6 +131,9 @@ export async function incrementCouponUsage(id: string): Promise<boolean> {
     UPDATE "shp_coupons" SET "usage_count" = "usage_count" + 1
     WHERE "id" = ${id} AND ("usage_limit" IS NULL OR "usage_count" < "usage_limit")
   `
+  // A redemption can be the one that exhausts the code, which changes the answer
+  // above for everyone else.
+  invalidateCouponPresenceCache()
   return result > 0
 }
 

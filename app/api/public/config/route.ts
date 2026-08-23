@@ -3,12 +3,16 @@ import { getShopConfigCached, getAvailablePaymentMethods, resolveSupplierLabel, 
 import { getPaymentMethodLabels, getPaymentMethodLogos, resolvePaymentMethodDescriptions } from '@/modules/shop/lib/payments/registry'
 import { displayTaxMode } from '@/modules/shop/lib/tax-display-shared'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
+import { hasRedeemableCoupons } from '@/modules/shop/lib/db/discounts'
 
 // Client-safe config slice the storefront needs (spec 8.1 GET /config).
 export async function GET() {
   const config = await getShopConfigCached()
   const enabledPaymentMethods = await getAvailablePaymentMethods()
   const commerce = await resolveShopCommerceMode()
+  // Whether any code exists that a shopper could redeem today. The basket keeps
+  // its coupon box out of sight entirely when there is none - see CartFullClient.
+  const couponsAvailable = await hasRedeemableCoupons()
   const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY ?? null
 
   return NextResponse.json({
@@ -89,6 +93,7 @@ export async function GET() {
     // Every client cart surface reads this from here rather than deciding for
     // itself - see lib/commerce-mode.ts.
     commerce,
+    couponsAvailable,
     shopStatus: config.shopStatus,
     shopClosedMessage: config.shopClosedMessage,
     preOrderMixedCartBehaviour: config.preOrderMixedCartBehaviour,

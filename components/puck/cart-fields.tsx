@@ -58,8 +58,9 @@ export const cartCouponFields = {
   showCoupon: { type: 'select' as const, label: 'Show coupon field', options: yesNo },
   couponPlaceholder: { type: 'text' as const, label: 'Coupon placeholder' },
   couponButtonLabel: { type: 'text' as const, label: 'Coupon button label' },
+  couponLinkLabel: { type: 'text' as const, label: 'Coupon link label' },
 }
-export const cartCouponDefaults = { showCoupon: 'yes', couponPlaceholder: 'Coupon code', couponButtonLabel: 'Apply' }
+export const cartCouponDefaults = { showCoupon: 'yes', couponPlaceholder: 'Coupon code', couponButtonLabel: 'Apply', couponLinkLabel: 'Add coupon code' }
 
 // Any delivery or service charge broken out of the line prices gets its own row,
 // labelled by whichever module priced it - there is nothing to set here.
