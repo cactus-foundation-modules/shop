@@ -5,13 +5,13 @@ import { ShopCategoryDescriptionFold } from '@/modules/shop/components/public/Sh
 // The fold has to be right in the server-rendered markup, before any JavaScript
 // runs: folding after hydration would paint the long description and then
 // snatch the products up the screen. And it has to be releasable without
-// JavaScript, or a reader with it switched off never sees the description.
+// JavaScript, or a reader with it switched off never sees the rest of it.
 
 const render = (foldStyle?: React.CSSProperties) => renderToStaticMarkup(
-  <ShopCategoryDescriptionFold foldStyle={foldStyle}>
-    <p>First paragraph.</p>
-    <p>Second paragraph.</p>
-  </ShopCategoryDescriptionFold>,
+  <ShopCategoryDescriptionFold
+    foldStyle={foldStyle}
+    paragraphs={['First paragraph.', 'Second paragraph.']}
+  />,
 )
 
 describe('category description fold', () => {
@@ -19,6 +19,12 @@ describe('category description fold', () => {
     const html = render()
     expect(html).toContain('data-folded="true"')
     expect(html).toMatch(/class="shop-cat-desc-fold"[^>]*hidden/)
+  })
+
+  it('leaves the opening paragraph on the page', () => {
+    const html = render()
+    const fold = html.indexOf('class="shop-cat-desc-fold"')
+    expect(html.indexOf('First paragraph.')).toBeLessThan(fold)
   })
 
   it('keeps the full text in the markup for crawlers and for Read more', () => {
@@ -35,10 +41,11 @@ describe('category description fold', () => {
     expect(html).not.toContain('-webkit-line-clamp')
   })
 
-  it('shows the toggle at every width', () => {
+  it('puts the toggle inline at the end of the opening paragraph', () => {
     const html = render()
     const css = html.slice(0, html.indexOf('</style>'))
-    expect(css).toContain('.shop-cat-desc-toggle {\n  display: inline-flex;')
+    expect(css).toContain('.shop-cat-desc-toggle {\n  display: inline;')
+    expect(html).toMatch(/First paragraph\.<button[^>]*class="shop-cat-desc-toggle"/)
     expect(html).toContain('Read more')
   })
 
@@ -57,16 +64,13 @@ describe('category description fold', () => {
     expect(html).toContain('aria-expanded="false"')
   })
 
-  it('closes the gap above itself while folded', () => {
-    // Folded, the whole block is one "Read more" link, and the caller's margin
-    // was measured for a description under the heading's blurb - left on, it
-    // strands the link in a band of white.
+  it('offers no Read more when there is nothing behind it', () => {
     const html = renderToStaticMarkup(
-      <ShopCategoryDescriptionFold className="x" style={{ marginTop: '1.25rem' }}>
-        <p>Only paragraph.</p>
-      </ShopCategoryDescriptionFold>,
+      <ShopCategoryDescriptionFold className="x" paragraphs={['Only paragraph.']} />,
     )
-    expect(html).toMatch(/class="x"[^>]*style="margin-top:0\.25rem"/)
+    expect(html).toContain('Only paragraph.')
+    expect(html).not.toContain('Read more')
+    expect(html).not.toContain('shop-cat-desc-fold"')
   })
 
   it("puts the caller's column rules on the folded box itself", () => {

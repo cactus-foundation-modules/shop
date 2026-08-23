@@ -1,18 +1,20 @@
 'use client'
 
-// A category's or collection's long description, folded away behind a "Read
-// more" at every width - phone, tablet and desktop alike.
+// A category's or collection's long description, opened out one paragraph at a
+// time: the first paragraph is always on the page, with a "Read more" sitting
+// inline at the end of it, and the rest is folded away behind that link at
+// every width - phone, tablet and desktop alike.
 //
-// Why: the page already opens with the short blurb in the header, which is the
-// line a shopper actually reads. The long description underneath is for the
-// people (and the crawlers) who want the detail, and printing all of it above
-// the products pushed the first product down the page on a phone and left a
-// wall of prose between the heading and the stock on a desktop. Folded, the
-// page reads blurb, "Read more", products - and the detail is one click away.
+// Why: the page already opens with the short blurb in the header, and printing
+// the whole description above the products pushed the first product down the
+// page on a phone and left a wall of prose between the heading and the stock on
+// a desktop. Folding all of it, though, left the link stranded on a line of its
+// own with nothing to read. One paragraph and an inline link is the middle: the
+// page reads blurb, opening paragraph, "Read more", products.
 //
-// Previously this folded only below the mobile breakpoint, and by line-clamping
-// rather than by hiding the block outright. Both are gone: the fold is the same
-// at every width, so there is no breakpoint to pass in and nothing to measure.
+// The link goes inside the paragraph rather than under it so it lands after the
+// last word, the way a "more" link reads in print. A block-level link below the
+// text is what this replaced.
 //
 // Progressive enhancement, in both directions:
 // - The fold is server-rendered, so the first paint is already the short
@@ -26,16 +28,10 @@
 
 import { useId, useState } from 'react'
 
-// What the block keeps above itself while it is folded. Enough to sit clear of
-// the line above, and nothing like the gap a whole description wants.
-const FOLDED_MARGIN_TOP = '0.25rem'
-
 const FOLD_CSS = `
 .shop-cat-desc-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin-top: 0.25rem;
+  display: inline;
+  margin-left: 0.4rem;
   padding: 0;
   border: 0;
   background: none;
@@ -46,6 +42,10 @@ const FOLD_CSS = `
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
+  /* Inside a paragraph the button inherits the pre-line white-space the
+     paragraph uses, which would let the label break. Two words; keep them
+     together. */
+  white-space: nowrap;
 }
 .shop-cat-desc-toggle:focus-visible {
   outline: 2px solid var(--color-primary);
@@ -55,56 +55,65 @@ const FOLD_CSS = `
 `
 
 // Without scripting the button is inert, so the fold has to come off entirely -
-// otherwise a reader with JavaScript disabled never sees the description at all.
-// `!important` because `[hidden] { display: none }` is a UA rule and the element
-// keeps its `hidden` attribute in the folded server render.
+// otherwise a reader with JavaScript disabled never sees the rest of the
+// description at all. `!important` because `[hidden] { display: none }` is a UA
+// rule and the element keeps its `hidden` attribute in the folded server render.
 const NOSCRIPT_CSS = `
 .shop-cat-desc-fold[hidden] { display: block !important; }
 .shop-cat-desc-toggle { display: none !important; }
 `
 
-export function ShopCategoryDescriptionFold({ className, style, foldStyle, children }: {
-  // The block's own wrapper, so the fold can close the gap above itself - see
-  // FOLDED_MARGIN_TOP.
+export function ShopCategoryDescriptionFold({ className, style, foldStyle, leadStyle, paragraphStyle, paragraphs }: {
   className?: string
   style?: React.CSSProperties
-  // Layout for the folded element itself (the caller's multi-column rules).
+  /** Layout for the folded element itself (the caller's multi-column rules). */
   foldStyle?: React.CSSProperties
-  children: React.ReactNode
+  /** The always-visible opening paragraph, which sits outside the columns. */
+  leadStyle?: React.CSSProperties
+  /** Each folded paragraph. */
+  paragraphStyle?: React.CSSProperties
+  paragraphs: string[]
 }) {
   const [open, setOpen] = useState(false)
   const bodyId = useId()
 
+  const [lead, ...rest] = paragraphs
+  if (!lead) return null
+
   return (
-    <div
-      className={className}
-      // Folded, the only thing in this block is the "Read more" link, and the
-      // caller's margin was measured for a description sitting under the
-      // heading's blurb - it leaves the link marooned in a band of white with
-      // the blurb a long way above it. The spacing belongs to the description,
-      // so it goes when the description does and comes back when it opens.
-      style={open ? style : { ...style, marginTop: FOLDED_MARGIN_TOP }}
-    >
+    <div className={className} style={style}>
       <style dangerouslySetInnerHTML={{ __html: FOLD_CSS }} />
       <noscript><style dangerouslySetInnerHTML={{ __html: NOSCRIPT_CSS }} /></noscript>
-      <div
-        className="shop-cat-desc-fold"
-        data-folded={open ? 'false' : 'true'}
-        id={bodyId}
-        hidden={!open}
-        style={foldStyle}
-      >
-        {children}
-      </div>
-      <button
-        type="button"
-        className="shop-cat-desc-toggle"
-        aria-expanded={open}
-        aria-controls={bodyId}
-        onClick={() => setOpen((v) => !v)}
-      >
-        {open ? 'Show less' : 'Read more'}
-      </button>
+      <p style={leadStyle}>
+        {lead}
+        {/* A one-paragraph description has nothing behind the link, so it gets
+            no link - just the paragraph. */}
+        {rest.length > 0 && (
+          <button
+            type="button"
+            className="shop-cat-desc-toggle"
+            aria-expanded={open}
+            aria-controls={bodyId}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? 'Show less' : 'Read more'}
+          </button>
+        )}
+      </p>
+      {rest.length > 0 && (
+        // The toggle stays where it is when the fold opens rather than hopping
+        // to the bottom of the text: moving it would drop the keyboard focus
+        // that just pressed it.
+        <div
+          className="shop-cat-desc-fold"
+          data-folded={open ? 'false' : 'true'}
+          id={bodyId}
+          hidden={!open}
+          style={foldStyle}
+        >
+          {rest.map((p, i) => <p key={i} style={paragraphStyle}>{p}</p>)}
+        </div>
+      )}
     </div>
   )
 }
