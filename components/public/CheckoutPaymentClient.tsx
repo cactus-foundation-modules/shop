@@ -9,6 +9,7 @@ import {
 } from '@/modules/shop/components/public/checkout-state'
 import { formatUkPhone } from '@/modules/shop/lib/phone'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
+import { HandoverDarkModeNotice, isDarkTheme } from '@/modules/shop/components/public/HandoverDarkModeNotice'
 import type { ShpPaymentLogo } from '@/modules/shop/lib/payments/provider'
 
 type ShopClientConfig = {
@@ -118,6 +119,11 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
   // What the rest of the checkout still owes before this method can be set up.
   // Shown as a note beside the chosen method, never as a refusal to choose it.
   const [awaiting, setAwaiting] = useState<'details' | 'agreements' | null>(null)
+  // The provider's own site, once "Place order" has decided the shopper is
+  // going there and the dark storefront has earned them a warning first. Only
+  // the URL and the method are held; the provider's name is worked out at render
+  // time, where the config with the owner's own labels in it is to hand.
+  const [handover, setHandover] = useState<{ url: string; method: string } | null>(null)
   const elementsRef = useRef<HTMLDivElement>(null)
   const stripeInstanceRef = useRef<ReturnType<NonNullable<typeof window.Stripe>> | null>(null)
   const stripeElementsRef = useRef<unknown>(null)
@@ -338,6 +344,12 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
         // happens on "Place order" - never on picking the radio button.
         if (prepared.approvalUrl) {
           if (method === 'PAYPAL') sessionStorage.setItem('cactus_shop_paypal_order_id', prepared.providerOrderId ?? '')
+          // A shopper on the dark storefront gets a word of warning first: the
+          // provider draws its own site in its own colours, and being handed a
+          // white screen at the moment you approve a payment is a shock nobody
+          // needs. The notice hands them over by itself if they leave it alone,
+          // so this is a pause rather than a stop.
+          if (isDarkTheme()) { setHandover({ url: prepared.approvalUrl, method }); return }
           window.location.href = prepared.approvalUrl
           return
         }
@@ -458,6 +470,14 @@ export function CheckoutPaymentClient({ preview = false, heading }: { preview?: 
         </div>
       )}
       {instructions && <p style={{ whiteSpace: 'pre-wrap', color: 'var(--color-text-muted)' }}>{instructions}</p>}
+      {/* Named the same way the radio button above it is named, so the shopper
+          is told they are off to the thing they actually picked. */}
+      {handover && (
+        <HandoverDarkModeNotice
+          providerName={BUILT_IN_METHOD_LABELS[handover.method] ?? config?.paymentMethodLabels?.[handover.method] ?? handover.method}
+          onContinue={() => { window.location.href = handover.url }}
+        />
+      )}
     </section>
   )
 }
