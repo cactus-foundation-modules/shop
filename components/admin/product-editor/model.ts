@@ -271,7 +271,7 @@ export type ShopTabId = keyof typeof SHOP_TAB_ORDER
 
 /** Which form fields each tab owns, so an unsaved edit dots the tab it came from. */
 const TAB_FIELDS: Record<ShopTabId, ReadonlyArray<keyof ProductForm>> = {
-  details: ['name', 'regenerateSlug', 'status', 'sku', 'barcode', 'supplier', 'shortDescription', 'description'],
+  details: ['name', 'status', 'sku', 'barcode', 'supplier', 'shortDescription', 'description'],
   media: [],
   pricing: ['price', 'salePrice', 'saleSku', 'retailPrice', 'tradePrice', 'costPrice', 'taxClassId'],
   stock: [
@@ -282,7 +282,7 @@ const TAB_FIELDS: Record<ShopTabId, ReadonlyArray<keyof ProductForm>> = {
   digital: ['digitalFileId', 'downloadLimit', 'downloadExpiry'],
   organisation: ['masterCategoryId'],
   recommendations: ['relatedMode', 'relatedLimit', 'upsellMode', 'upsellLimit'],
-  seo: ['metaTitle', 'metaDescription'],
+  seo: ['metaTitle', 'metaDescription', 'regenerateSlug'],
 }
 
 /** The non-form slices each tab owns. */

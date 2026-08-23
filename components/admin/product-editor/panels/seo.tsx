@@ -3,6 +3,7 @@
 import { Control, Field, Grid, Section, TextArea } from '@/modules/shop/components/admin/product-editor/fields'
 import type { PanelProps } from '@/modules/shop/components/admin/product-editor/model'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
+import { generateSlug } from '@/lib/utils'
 
 const TITLE_MAX = 60
 const DESC_MAX = 160
@@ -16,8 +17,13 @@ export function SeoPanel({ state, setField, siteUrl, productUrlStyle }: PanelPro
   // The address the page actually answers on, so the preview matches reality on
   // a shop that has moved its products to the site root. The placeholder stands
   // in before a slug exists; encodeURIComponent would only mangle the ellipsis.
-  const url = f.slug
-    ? `${siteUrl.replace(/\/$/, '')}${productHref(f.slug, productUrlStyle)}`
+  // With a rebuild pending the preview shows where the page is about to move to,
+  // not where it still is. The real answer can pick up a "-2" if another product
+  // already holds that address, which only the save can know.
+  const pendingSlug = f.regenerateSlug ? generateSlug(f.name.trim()) : ''
+  const shownSlug = pendingSlug || f.slug
+  const url = shownSlug
+    ? `${siteUrl.replace(/\/$/, '')}${productHref(shownSlug, productUrlStyle)}`
     : `${siteUrl.replace(/\/$/, '')}${productUrlStyle === 'ROOT' ? '/…' : '/shop/products/…'}`
 
   return (
@@ -27,6 +33,39 @@ export function SeoPanel({ state, setField, siteUrl, productUrlStyle }: PanelPro
           <p className="spe-serp-url">{url}</p>
           <p className="spe-serp-title">{title.length > TITLE_MAX ? `${title.slice(0, TITLE_MAX)}…` : title}</p>
           <p className="spe-serp-desc">{description.length > DESC_MAX ? `${description.slice(0, DESC_MAX)}…` : description}</p>
+        </div>
+
+        {/* The address is left alone by an ordinary save - it is a live link, and
+            quietly moving it every time someone tidies a name would break every
+            share of it. Rebuilding is therefore something you ask for, and when
+            you do it carries the product's variations along too: each one is
+            addressed from this one, and the basket links its lines there. */}
+        <div className="spe-serp-address">
+          {f.regenerateSlug ? (
+            <>
+              <p className="spe-save-note" style={{ margin: 0 }}>
+                The address is rebuilt from the name when you save, and every variation of this product moves with it.
+                The old address stops working.
+              </p>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setField('regenerateSlug', false)}>
+                Leave the address alone
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="spe-save-note" style={{ margin: 0 }}>
+                Renaming a product leaves its address as it was. Rebuild it to match the name.
+              </p>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={f.name.trim() === ''}
+                onClick={() => setField('regenerateSlug', true)}
+              >
+                Rebuild web address
+              </button>
+            </>
+          )}
         </div>
 
         <div style={{ marginTop: '1rem' }}>

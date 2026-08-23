@@ -115,6 +115,7 @@ select.spe-control{cursor:pointer}
 .spe-serp-url{font-size:0.75rem;color:var(--color-success);margin:0 0 0.125rem;word-break:break-all}
 .spe-serp-title{font-size:1.0625rem;color:var(--color-link);margin:0 0 0.125rem;line-height:1.3}
 .spe-serp-desc{font-size:0.8125rem;color:var(--color-text-secondary);margin:0;line-height:1.4}
+.spe-serp-address{display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap;margin-top:0.75rem}
 
 /* --- Margin readout ----------------------------------------------------- */
 .spe-margin{display:flex;flex-wrap:wrap;gap:1.5rem;padding:0.75rem 1rem;border-radius:var(--radius-md);background:var(--color-bg-subtle);border:1px solid var(--color-border)}
