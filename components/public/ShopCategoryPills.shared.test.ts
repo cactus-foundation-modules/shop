@@ -119,3 +119,28 @@ describe('the more toggle', () => {
     expect(css).toContain('.shop-cat-more:has(.shop-cat-more-input:focus-visible)')
   })
 })
+
+describe('the swipe affordance on the scrolling row', () => {
+  it('fades the edge in the page background, not in a grey of its own', () => {
+    expect(css).toContain('.shop-cat-fade-right {')
+    expect(css).toContain('linear-gradient(to left, var(--color-page-bg, var(--color-bg)), transparent)')
+    expect(css).toContain('linear-gradient(to right, var(--color-page-bg, var(--color-bg)), transparent)')
+    // Tokens only - a hardcoded background here would show as a pale smear on a
+    // dark theme, which is exactly the defect the fade is meant to prevent.
+    expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+  })
+
+  it('sits the fade beside the arrow rather than under it', () => {
+    expect(css).toContain('.shop-cat-fade-left {\n  left: 1.5rem;')
+    expect(css).toContain('.shop-cat-arrow-left { left: 0; }')
+  })
+
+  it('needs the wrapper to be a positioning context, or the chrome lands elsewhere', () => {
+    expect(css).toContain('.shop-cat-scroller {\n  position: relative;\n}')
+  })
+
+  it('hides the native scrollbar only where the strip actually scrolls', () => {
+    expect(mobileBlock).toContain('scrollbar-width: none')
+    expect(beforeMediaQuery).not.toContain('scrollbar-width')
+  })
+})

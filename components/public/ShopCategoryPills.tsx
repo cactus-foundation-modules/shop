@@ -1,6 +1,7 @@
 import type { ShopCategoryCardItem } from '@/modules/shop/components/public/ShopCategoryCards'
 import type { Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
 import { shopCategoryPillsCss, splitPillsByPopularity } from '@/modules/shop/components/public/ShopCategoryPills.shared'
+import { ShopCategoryPillsScroller } from '@/modules/shop/components/public/ShopCategoryPillsScroller'
 
 // The pill strip: the compact alternative to the category card grid. Same data,
 // a fraction of the height - a row of wrapping link chips instead of image
@@ -28,21 +29,23 @@ export function ShopCategoryPills({ categories, breakpoints, counts, limit = 0 }
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: shopCategoryPillsCss(breakpoints) }} />
-      <nav className={hidden.length > 0 ? 'shop-cat-pills shop-cat-pills-limited' : 'shop-cat-pills'} aria-label="Sub-categories">
-        {shown.map((c) => (
-          <a key={c.id} className="shop-cat-pill" href={`/shop/categories/${c.slug}`}>{c.name}</a>
-        ))}
-        {hidden.length > 0 && (
-          <label className="shop-cat-pill shop-cat-more">
-            <input type="checkbox" className="shop-cat-more-input" />
-            <span className="shop-cat-more-open">{hidden.length} more</span>
-            <span className="shop-cat-more-close">Show fewer</span>
-          </label>
-        )}
-        {hidden.map((c) => (
-          <a key={c.id} className="shop-cat-pill shop-cat-pill-extra" href={`/shop/categories/${c.slug}`}>{c.name}</a>
-        ))}
-      </nav>
+      <ShopCategoryPillsScroller>
+        <nav className={hidden.length > 0 ? 'shop-cat-pills shop-cat-pills-limited' : 'shop-cat-pills'} aria-label="Sub-categories">
+          {shown.map((c) => (
+            <a key={c.id} className="shop-cat-pill" href={`/shop/categories/${c.slug}`}>{c.name}</a>
+          ))}
+          {hidden.length > 0 && (
+            <label className="shop-cat-pill shop-cat-more">
+              <input type="checkbox" className="shop-cat-more-input" />
+              <span className="shop-cat-more-open">{hidden.length} more</span>
+              <span className="shop-cat-more-close">Show fewer</span>
+            </label>
+          )}
+          {hidden.map((c) => (
+            <a key={c.id} className="shop-cat-pill shop-cat-pill-extra" href={`/shop/categories/${c.slug}`}>{c.name}</a>
+          ))}
+        </nav>
+      </ShopCategoryPillsScroller>
     </>
   )
 }

@@ -26,6 +26,10 @@ export function ShopCategoryBrowser(props: ShopCategoryBrowserProps) {
     return (
       <>
         <style dangerouslySetInnerHTML={{ __html: shopCategoryPillsCss(DEFAULT_BREAKPOINTS) }} />
+        {/* Same wrapper the live strip renders (ShopCategoryPillsScroller), so the
+            canvas measures out the same. Its fades and chevrons only appear once
+            the row actually overflows, which the editor canvas never does. */}
+        <div className="shop-cat-scroller">
         <nav
           className={hidden.length > 0 ? 'shop-cat-pills shop-cat-pills-limited' : 'shop-cat-pills'}
           aria-label="Sub-categories"
@@ -45,6 +49,7 @@ export function ShopCategoryBrowser(props: ShopCategoryBrowserProps) {
             <a key={name} className="shop-cat-pill shop-cat-pill-extra" href="#">{name}</a>
           ))}
         </nav>
+        </div>
       </>
     )
   }

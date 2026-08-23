@@ -137,6 +137,57 @@ export function shopCategoryPillsCss({ mobileBp }: Breakpoints): string {
     outline-offset: 2px;
   }
 }
+/* Swipe affordance on the scrolling row, copied in behaviour from the admin tab
+   bar (core's components/admin/TabStrip.tsx): the edge that has content past it
+   fades out and carries a chevron button. Drawn by the client wrapper
+   (ShopCategoryPillsScroller) once it has measured the overflow, so on a width
+   where the strip wraps instead of scrolling none of it ever appears.
+
+   Both the fade and the button paint in the page's own background, which is
+   what makes the fade read as the row running out rather than as a grey box
+   sitting on it. --color-page-bg is the section's background where a section
+   sets one; --color-bg is the page's, and the fallback covers blocks that are
+   not inside a section. */
+.shop-cat-scroller {
+  position: relative;
+}
+.shop-cat-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2rem;
+  pointer-events: none;
+}
+.shop-cat-fade-left {
+  left: 1.5rem;
+  background: linear-gradient(to right, var(--color-page-bg, var(--color-bg)), transparent);
+}
+.shop-cat-fade-right {
+  right: 1.5rem;
+  background: linear-gradient(to left, var(--color-page-bg, var(--color-bg)), transparent);
+}
+.shop-cat-arrow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: var(--color-page-bg, var(--color-bg));
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.shop-cat-arrow:hover {
+  color: var(--color-text);
+}
+.shop-cat-arrow-left { left: 0; }
+.shop-cat-arrow-right { right: 0; }
 /* On a phone the strip is a single scrolling row rather than a wrapping block.
    Wrapped, a handful of sub-category names stack into four or five full-width
    rows of chrome between the heading and the first product - on a category page
@@ -154,6 +205,14 @@ export function shopCategoryPillsCss({ mobileBp }: Breakpoints): string {
   .shop-cat-pill {
     flex: none;
     scroll-snap-align: start;
+  }
+  /* The fades are the affordance now, and a native bar under them just muddles
+     the edge - the admin tab bar hides its own for the same reason. */
+  .shop-cat-pills {
+    scrollbar-width: none;
+  }
+  .shop-cat-pills::-webkit-scrollbar {
+    display: none;
   }
 }
 `
