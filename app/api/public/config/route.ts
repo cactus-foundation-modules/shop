@@ -6,7 +6,68 @@ import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { hasRedeemableCoupons } from '@/modules/shop/lib/db/discounts'
 
 // Client-safe config slice the storefront needs (spec 8.1 GET /config).
+//
+// This is the busiest route on a shop by a wide margin - every client surface
+// that needs a currency symbol or a product URL asks for it - so it is worth
+// keeping cheap. Three things do that, in order of how much they save:
+//
+//  - the browser side coalesces its callers into one request per page: see
+//    lib/public-config-client.ts, which is what every client surface uses;
+//  - the answer below is built once and held for a few seconds per instance,
+//    because assembling it costs half a dozen database round trips and the
+//    shop-wide settings behind it do not change between one shopper and the
+//    next. Concurrent callers share the one build rather than each starting
+//    their own, which is the case that matters: a burst is exactly when the
+//    database can least afford six queries per request;
+//  - the response carries a short shared-cache lifetime, so a burst is answered
+//    at the edge and never reaches a function at all. Safe to cache publicly
+//    because nothing here varies by shopper: no cookie, no session, no header
+//    is read anywhere in building it, only shop-wide settings.
+//
+// The hold matches the five seconds getShopConfigCached already used, so it
+// makes nothing staler than it was. Anything a browser is told here is enforced
+// again server-side when an order is placed, which is why a settings change
+// taking a moment to reach the storefront costs nothing but the wait.
+const PAYLOAD_TTL_MS = 5_000
+
+let cachedPayload: unknown = null
+let cachedPayloadAt = 0
+let inFlight: Promise<unknown> | null = null
+
 export async function GET() {
+  const now = Date.now()
+  if (cachedPayload === null || now - cachedPayloadAt >= PAYLOAD_TTL_MS) {
+    // Single-flight: whoever arrives while a build is running waits on that one
+    // rather than starting a second. Cleared in `finally` so a failed build is
+    // not left latched as the answer everybody waits on.
+    inFlight ??= buildConfigPayload()
+      .then((payload) => {
+        cachedPayload = payload
+        cachedPayloadAt = Date.now()
+        return payload
+      })
+      .finally(() => {
+        inFlight = null
+      })
+    try {
+      await inFlight
+    } catch (error) {
+      // A shop whose database is refusing connections for a moment should print
+      // the settings it printed a moment ago rather than fall over - a burst
+      // that exhausts the connection pool used to take the storefront's currency
+      // symbol and product links down with it. Only where there is something to
+      // fall back on: a first request with nothing held has no answer to give
+      // and should say so honestly.
+      if (cachedPayload === null) throw error
+    }
+  }
+
+  return NextResponse.json(cachedPayload, {
+    headers: { 'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30' },
+  })
+}
+
+async function buildConfigPayload() {
   const config = await getShopConfigCached()
   const enabledPaymentMethods = await getAvailablePaymentMethods()
   const commerce = await resolveShopCommerceMode()
@@ -15,7 +76,7 @@ export async function GET() {
   const couponsAvailable = await hasRedeemableCoupons()
   const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY ?? null
 
-  return NextResponse.json({
+  return {
     currency: config.currency,
     currencySymbol: config.currencySymbol,
     taxMode: config.taxMode,
@@ -104,5 +165,5 @@ export async function GET() {
     shopStatus: config.shopStatus,
     shopClosedMessage: config.shopClosedMessage,
     preOrderMixedCartBehaviour: config.preOrderMixedCartBehaviour,
-  })
+  }
 }

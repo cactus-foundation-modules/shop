@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { ProductUrlStyle } from '@/modules/shop/lib/product-url'
+import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 // Sibling of use-currency-symbol, same shape and the same reason: admin screens
 // render client-side and don't otherwise load shop config, so a screen linking
@@ -20,8 +21,7 @@ export function useProductUrlStyle(): ProductUrlStyle {
   useEffect(() => {
     if (cached !== null) return
     let active = true
-    fetch('/api/m/shop/public/config')
-      .then((r) => (r.ok ? r.json() : null))
+    fetchShopPublicConfig()
       .then((data) => {
         const next = data?.productUrlStyle
         if (next !== 'ROOT' && next !== 'SHOP') return

@@ -12,6 +12,7 @@ import type { ShopCheckoutWalletButtonsProps } from '@/modules/shop/components/p
 import {
   CHECKOUT_PAYMENT_SLOT_ID, announceCheckoutPaymentSlot,
 } from '@/modules/shop/components/public/checkout-payment-slot'
+import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 type SessionSummary = {
   subtotal: number; discountAmount: number; shippingAmount: number; taxAmount: number; total: number
@@ -137,16 +138,15 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/m/shop/public/config')
-      .then((r) => r.json())
-      .then((d: {
-        checkoutAgreements?: Agreement[]
-        organisation?: { required?: boolean; label?: string }
-        requirePhone?: boolean
-        currency?: string
-        paymentMethodClientFields?: Record<string, Record<string, unknown>>
-      }) => {
-        if (cancelled) return
+    fetchShopPublicConfig<{
+      checkoutAgreements?: Agreement[]
+      organisation?: { required?: boolean; label?: string }
+      requirePhone?: boolean
+      currency?: string
+      paymentMethodClientFields?: Record<string, Record<string, unknown>>
+    }>()
+      .then((d) => {
+        if (cancelled || !d) return
         setAgreements(d.checkoutAgreements ?? [])
         // Both optional so a response from an older cached bundle still renders
         // - a checkout with no wallet buttons on it is what every shop had

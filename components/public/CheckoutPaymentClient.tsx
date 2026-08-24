@@ -17,6 +17,7 @@ import { payerFromState } from '@/modules/shop/components/public/checkout-payer'
 import {
   CHECKOUT_PAYMENT_SLOT_EVENT, findCheckoutPaymentSlot,
 } from '@/modules/shop/components/public/checkout-payment-slot'
+import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 type ShopClientConfig = {
   enabledPaymentMethods: string[]
@@ -194,7 +195,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
   const pickedThisMountRef = useRef(false)
 
   useEffect(() => {
-    fetch('/api/m/shop/public/config').then((r) => r.json()).then(setConfig)
+    void fetchShopPublicConfig<ShopClientConfig>().then(setConfig)
   }, [])
 
   useEffect(() => {

@@ -6,6 +6,7 @@ import { EMPTY_ADDRESS, getCheckoutState, updateCheckoutState, type ShpAddressFo
 import type { ShopCheckoutAddressLookupProps, ShpLookupAddress } from '@/modules/shop/components/public/checkout-address-lookup'
 import { formatUkPhone, isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
+import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 type ShippingRateOption = { id: string; name: string; estimatedDays: string | null }
 
@@ -149,10 +150,9 @@ export function CheckoutShippingClient({
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/m/shop/public/config')
-      .then((r) => r.json())
-      .then((d: { requirePhone?: boolean }) => {
-        if (cancelled) return
+    fetchShopPublicConfig<{ requirePhone?: boolean }>()
+      .then((d) => {
+        if (cancelled || !d) return
         setPhoneRequired(d.requirePhone === true)
       })
       .catch(() => {})

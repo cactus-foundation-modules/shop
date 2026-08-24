@@ -4,6 +4,7 @@ import { useEffect, useState, type ComponentType, type CSSProperties, type Input
 import { EMPTY_ADDRESS, type ShpAddressForm } from '@/modules/shop/components/public/checkout-state'
 import type { ShopCheckoutAddressLookupProps, ShpLookupAddress } from '@/modules/shop/components/public/checkout-address-lookup'
 import { formatUkPhone, isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
+import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 // Stored addresses are all-optional (older rows were filed from orders, and the
 // account form used to ask for fewer fields than checkout does), so nothing here
@@ -66,10 +67,9 @@ export function AddressesClient({ addressLookup = null }: {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/m/shop/public/config')
-      .then((r) => r.json())
-      .then((d: { requirePhone?: boolean }) => {
-        if (cancelled) return
+    fetchShopPublicConfig<{ requirePhone?: boolean }>()
+      .then((d) => {
+        if (cancelled || !d) return
         setPhoneRequired(d.requirePhone === true)
       })
       .catch(() => {})

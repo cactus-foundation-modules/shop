@@ -38,6 +38,7 @@ import type { LineMeta } from '@/modules/shop/lib/types'
 import type { CartLineControl, CartLineGroup, CartLineTitle } from '@/modules/shop/lib/line-meta'
 import { effectiveGroup, groupMemberKeys, sortLinesByGroup } from '@/modules/shop/lib/cart-group'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
+import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 // The cart validate's line shape, as the cart page reads it too. Kept in step
 // with CartFullClient's copy by hand: the response is the module's own, so a
@@ -148,8 +149,7 @@ export function CartDrawerClient({
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/m/shop/public/config')
-      .then((res) => (res.ok ? res.json() : null))
+    fetchShopPublicConfig()
       .then((data) => {
         if (cancelled || !data) return
         setCurrencySymbol(data.currencySymbol)

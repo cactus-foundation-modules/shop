@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { getCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
+import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 type UpsellProduct = { id: string; slug: string; name: string; price: string }
 
@@ -35,8 +36,7 @@ export function UpsellClient({ heading, maxItems = 4 }: { heading?: string; maxI
   useEffect(() => {
     if (getCart().length > 0) {
       let cancelled = false
-      fetch('/api/m/shop/public/config')
-        .then((res) => (res.ok ? res.json() : null))
+      fetchShopPublicConfig()
         .then((data) => {
           if (cancelled || !data) return
           setCurrencySymbol(data.currencySymbol)

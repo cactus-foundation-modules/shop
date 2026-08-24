@@ -6,6 +6,7 @@ import { getCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import { postCartValidate } from '@/modules/shop/components/public/validated-cache'
 import { batchLines } from '@/modules/shop/lib/cart-group'
 import type { LineMeta } from '@/modules/shop/lib/types'
+import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 type ValidatedLine = {
   productId: string
@@ -145,7 +146,7 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
   const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
-    fetch('/api/m/shop/public/config').then((r) => r.json()).then((c: ShopClientConfig) => {
+    fetchShopPublicConfig<ShopClientConfig>().then((c) => {
       if (c?.currencySymbol) setSymbol(c.currencySymbol)
     }).catch(() => {})
   }, [])

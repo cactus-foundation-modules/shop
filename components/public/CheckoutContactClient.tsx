@@ -4,6 +4,7 @@ import { useEffect, useState, type ComponentType } from 'react'
 import type { ShopCheckoutContactExtraProps } from '@/modules/shop/components/public/checkout-contact-extras'
 import { getCheckoutState, updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
+import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 // The organisation box and whether it is compulsory, from shop settings.
 // Fetched here rather than passed down from the RSC wrapper so the editor
@@ -75,10 +76,9 @@ export function CheckoutContactClient({ preview = false, heading, extras = [] }:
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/m/shop/public/config')
-      .then((r) => r.json())
-      .then((d: { organisation?: OrganisationConfig }) => {
-        if (cancelled || !d.organisation) return
+    fetchShopPublicConfig<{ organisation?: OrganisationConfig }>()
+      .then((d) => {
+        if (cancelled || !d?.organisation) return
         setOrganisationConfig(d.organisation)
       })
       .catch(() => {})

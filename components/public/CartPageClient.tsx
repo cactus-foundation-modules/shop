@@ -19,6 +19,7 @@ import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 import { CartStickyBar, CartUndoToast, QuantityStepper, RemoveCross } from '@/modules/shop/components/public/CartChrome'
 import { useCartUndo, useOutOfView } from '@/modules/shop/components/public/use-cart-undo'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
+import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
@@ -63,8 +64,7 @@ export function CartPageClient() {
   // re-validate (it used to ride along with each validate round-trip).
   useEffect(() => {
     let cancelled = false
-    fetch('/api/m/shop/public/config')
-      .then((res) => (res.ok ? res.json() : null))
+    fetchShopPublicConfig()
       .then((data) => {
         if (cancelled || !data) return
         setCurrencySymbol(data.currencySymbol)

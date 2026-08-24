@@ -28,6 +28,7 @@ import { RecommendationsPanel } from '@/modules/shop/components/admin/product-ed
 import { SeoPanel } from '@/modules/shop/components/admin/product-editor/panels/seo'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 import { StockPanel } from '@/modules/shop/components/admin/product-editor/panels/stock'
+import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 /** A tab contributed by another module through `shop.product-editor-sections`. */
 export type ExtraTab = { id: string; label: string; order: number; node: ReactNode }
@@ -193,9 +194,8 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
     void fetch('/api/m/shop/admin/collections').then(async (r) => { if (r.ok) setCollections((await r.json()).collections) }).catch(() => {})
     void fetch('/api/m/shop/admin/tax-classes').then(async (r) => { if (r.ok) setTaxClasses((await r.json()).taxClasses) }).catch(() => {})
     void loadSuppliers()
-    void fetch('/api/m/shop/public/config').then(async (r) => {
-      if (!r.ok) return
-      const config = await r.json()
+    void fetchShopPublicConfig().then((config) => {
+      if (!config) return
       setCurrency(config.currencySymbol ?? '£')
       if (Array.isArray(config.enabledPriceTypes)) setEnabledPriceTypes(config.enabledPriceTypes)
       setWeightBasedShippingEnabled(config.weightBasedShippingEnabled !== false)

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 // Admin screens render client-side and don't otherwise load shop config, so they
 // used to print bare amounts ("7.99") with no currency symbol. This hook hands
@@ -15,8 +16,7 @@ export function useCurrencySymbol(): string {
   useEffect(() => {
     if (cached !== null) return
     let active = true
-    fetch('/api/m/shop/public/config')
-      .then((r) => (r.ok ? r.json() : null))
+    fetchShopPublicConfig()
       .then((data) => {
         const next: string | undefined = data?.currencySymbol
         if (!next) return

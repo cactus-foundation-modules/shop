@@ -19,6 +19,7 @@ import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 import { CartStickyBar, CartUndoToast, QuantityStepper, RemoveCross, TickIcon } from '@/modules/shop/components/public/CartChrome'
 import { useCartUndo, useOutOfView } from '@/modules/shop/components/public/use-cart-undo'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
+import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 // Full cart-display island. ONE render path, shared by the Puck editor preview
 // (seeded with SAMPLE_LINES, no fetch, controls inert) and the live frontend
@@ -197,8 +198,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   useEffect(() => {
     if (preview) return
     let cancelled = false
-    fetch('/api/m/shop/public/config')
-      .then((res) => (res.ok ? res.json() : null))
+    fetchShopPublicConfig()
       .then((data) => {
         if (cancelled || !data) return
         setCurrencySymbol(data.currencySymbol)

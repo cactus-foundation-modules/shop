@@ -12,6 +12,7 @@ import {
   normaliseShopCommerceMode,
   SHOP_DEFAULT_COMMERCE_MODE,
 } from '@/modules/shop/lib/commerce-mode-shared'
+import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 // The panel is a whole cart renderer - lines, delivery pickers, the undo toast
 // and the shared cart stylesheet - and most visitors never open it. Loading it
@@ -141,16 +142,15 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
       // postCartValidate single-flights with any other cart island validating
       // the same cart in the same beat (the full cart page, say), so this badge
       // no longer doubles the server work on every cart event.
-      const [data, configRes] = await Promise.all([
+      const [data, config] = await Promise.all([
         postCartValidate<{ lineSubtotal: number }>(lines),
-        fetch('/api/m/shop/public/config'),
+        fetchShopPublicConfig(),
       ])
       if (cancelled) return
       if (data) {
         setSubtotal(data.lines.reduce((sum: number, l: { lineSubtotal: number }) => sum + l.lineSubtotal, 0))
       }
-      if (configRes.ok) {
-        const config = await configRes.json()
+      if (config) {
         setCurrencySymbol(config.currencySymbol)
         setCommerce(normaliseShopCommerceMode(config.commerce))
       }
