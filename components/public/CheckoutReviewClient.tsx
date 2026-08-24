@@ -475,11 +475,14 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
             surprises on the far side of a click. */}
         {placing ? 'Placing order…' : `${buttonLabel || 'Place order'} - ${money(summary.total)}`}
       </button>
-      {/* Absent prop = the standard line (every layout saved before the block
-          had wording settings); set blank on the block to drop the line. */}
-      {(trustText ?? '🔒 Payment details are encrypted and never stored by this site.') && (
+      {/* Nothing unless the owner writes something. The block used to supply a
+          padlock-and-reassurance line of its own, which said something about
+          card handling on a checkout that might be taking a bank transfer, and
+          read as filler wherever it was true. The field stays: a shop that
+          wants a line under the button writes its own. */}
+      {trustText && (
         <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', margin: 0, textAlign: 'center' }}>
-          {trustText ?? '🔒 Payment details are encrypted and never stored by this site.'}
+          {trustText}
         </p>
       )}
     </section>

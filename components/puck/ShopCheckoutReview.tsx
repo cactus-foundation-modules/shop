@@ -24,7 +24,7 @@ export const shopCheckoutReviewPuckComponent = {
     buttonLabel: { type: 'text' as const, label: 'Place order button (the total is always added)' },
     trustText: { type: 'text' as const, label: 'Reassurance line under the button (blank hides it)' },
   },
-  defaultProps: { heading: 'Order review', buttonLabel: 'Place order', trustText: '🔒 Payment details are encrypted and never stored by this site.' },
+  defaultProps: { heading: 'Order review', buttonLabel: 'Place order', trustText: '' },
   permissions: { delete: false, duplicate: false },
   render: ShopCheckoutReview,
 }

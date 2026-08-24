@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { getOrderById, markOrderPaid, markOrderPaymentFailed, markOrderAwaitingConfirmation, setOrderPaymentReference } from '@/modules/shop/lib/db/orders'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { fulfillPaidOrder } from '@/modules/shop/lib/order-fulfillment'
+import { announceOrderAwaitingPayment } from '@/modules/shop/lib/order-placed-email'
 import { rememberOrderAddress } from '@/modules/shop/lib/order-address-book'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 import { getCheckoutDraft, materialiseDraftOrder } from '@/modules/shop/lib/checkout-draft'
@@ -45,6 +46,12 @@ export async function POST(request: NextRequest) {
     // that confirmation eventually comes; rememberOrderAddress dedupes, so the
     // second attempt is a no-op rather than a duplicate.
     await rememberOrderAddress(order)
+    // And the only email in the shop that is a request for payment: the order
+    // exists, here is where to send the money, and nothing starts moving until
+    // it arrives. Deliberately NOT sent on the `result.pending` branch below -
+    // that is an automated method whose money is already committed and merely
+    // settling, and telling that shopper to go and pay would be wrong twice.
+    await announceOrderAwaitingPayment(order)
     return NextResponse.json({ orderNumber: order.orderNumber, status: 'AWAITING_CONFIRMATION' })
   }
 

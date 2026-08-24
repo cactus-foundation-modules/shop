@@ -68,6 +68,8 @@ type DispatchDetail = {
 
 const EMAIL_TRIGGER_LABEL: Record<string, string> = {
   ORDER_CONFIRMED: 'Order confirmation',
+  ORDER_PLACED_UNPAID: 'Order placed, how to pay',
+  PAYMENT_RECEIVED: 'Payment received',
   STATUS_PROCESSING: 'Status update',
   STATUS_SHIPPED: 'Dispatch notice',
   STATUS_COMPLETED: 'Status update',
@@ -219,14 +221,23 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   }
 
   async function confirmPayment() {
-    if (!(await confirm({
+    const choice = await confirm({
       title: 'Mark this order as paid?',
-      message: 'Only do this once the money has actually landed. It sets the order going: stock comes off, any downloads are released and the customer is emailed.',
+      message: 'Only do this once the money has actually landed. It sets the order going: stock comes off and any downloads are released.',
       confirmLabel: 'Payment received',
       danger: false,
-    }))) return
+      checkbox: {
+        label: 'Email the customer to say the payment has arrived',
+        hint: 'Sends your Payment received email. Untick if you have already told them.',
+        defaultChecked: true,
+      },
+    })
+    if (!choice) return
     setBusy(true)
-    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/confirm-payment`, { method: 'POST' })
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/confirm-payment`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sendEmail: choice.checked }),
+    })
     setBusy(false)
     if (!res.ok) { await alert('That payment could not be confirmed.'); return }
     refresh()

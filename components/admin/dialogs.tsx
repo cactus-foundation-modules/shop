@@ -22,6 +22,14 @@ const actionsStyle: React.CSSProperties = { display: 'flex', justifyContent: 'fl
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)',
 }
+const checkboxRowStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'flex-start', gap: '0.5rem', cursor: 'pointer',
+  padding: '0.625rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)',
+  background: 'var(--color-bg-subtle)',
+}
+const checkboxHintStyle: React.CSSProperties = {
+  display: 'block', marginTop: '0.15rem', fontSize: '0.8125rem', color: 'var(--color-text-secondary)',
+}
 
 function Dialog({ labelledBy, onCancel, children }: { labelledBy: string; onCancel: () => void; children: ReactNode }) {
   useEffect(() => {
@@ -42,22 +50,66 @@ function Dialog({ labelledBy, onCancel, children }: { labelledBy: string; onCanc
 
 type ConfirmOptions = { title?: string; message: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean }
 
-export function useConfirm(): [(opts: ConfirmOptions | string) => Promise<boolean>, ReactNode] {
-  const [state, setState] = useState<{ opts: ConfirmOptions; resolve: (v: boolean) => void } | null>(null)
+/** A single tick box carried on the dialog, for the decisions that come with a
+ *  rider - "and email the customer about it". Kept to one on purpose: a dialog
+ *  with a form on it is a screen, not a confirmation. */
+type ConfirmCheckbox = { label: string; hint?: string; defaultChecked?: boolean }
+type ConfirmOptionsWithCheckbox = ConfirmOptions & { checkbox: ConfirmCheckbox }
 
-  const confirm = useCallback((o: ConfirmOptions | string) => {
-    const opts = typeof o === 'string' ? { message: o } : o
-    return new Promise<boolean>((resolve) => setState({ opts, resolve }))
+/** What a confirmed tick-box dialog resolves to. Cancelling resolves null, so
+ *  the usual `if (!(await confirm(...))) return` guard reads the same either way. */
+export type ConfirmChoice = { checked: boolean }
+
+interface ConfirmFn {
+  (opts: ConfirmOptionsWithCheckbox): Promise<ConfirmChoice | null>
+  (opts: ConfirmOptions | string): Promise<boolean>
+}
+
+export function useConfirm(): [ConfirmFn, ReactNode] {
+  const [state, setState] = useState<{
+    opts: ConfirmOptions & { checkbox?: ConfirmCheckbox }
+    resolve: (v: boolean | ConfirmChoice | null) => void
+  } | null>(null)
+  const [checked, setChecked] = useState(true)
+
+  const openConfirm = useCallback((o: ConfirmOptionsWithCheckbox | ConfirmOptions | string) => {
+    const opts: ConfirmOptions & { checkbox?: ConfirmCheckbox } = typeof o === 'string' ? { message: o } : o
+    setChecked(opts.checkbox?.defaultChecked ?? true)
+    return new Promise<boolean | ConfirmChoice | null>((resolve) => setState({ opts, resolve }))
   }, [])
+  // One implementation, two shapes of answer: a plain dialog resolves the
+  // boolean every existing call site already reads, a tick-box one resolves the
+  // choice (or null when cancelled, so `if (!result) return` still holds).
+  const confirm = openConfirm as ConfirmFn
 
-  function settle(value: boolean) {
-    setState((prev) => { prev?.resolve(value); return null })
+  function settle(confirmed: boolean) {
+    setState((prev) => {
+      if (!prev) return null
+      if (prev.opts.checkbox) prev.resolve(confirmed ? { checked } : null)
+      else prev.resolve(confirmed)
+      return null
+    })
   }
 
+  const checkbox = state?.opts.checkbox
   const node = state ? (
     <Dialog labelledBy="shop-confirm-title" onCancel={() => settle(false)}>
       <h3 id="shop-confirm-title" style={titleStyle}>{state.opts.title ?? 'Are you sure?'}</h3>
       <p style={messageStyle}>{state.opts.message}</p>
+      {checkbox && (
+        <label style={checkboxRowStyle}>
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(e) => setChecked(e.target.checked)}
+            style={{ marginTop: '0.15rem' }}
+          />
+          <span>
+            <span style={{ fontSize: '0.875rem' }}>{checkbox.label}</span>
+            {checkbox.hint && <span style={checkboxHintStyle}>{checkbox.hint}</span>}
+          </span>
+        </label>
+      )}
       <div style={actionsStyle}>
         <button type="button" className="btn btn-secondary" onClick={() => settle(false)}>{state.opts.cancelLabel ?? 'Cancel'}</button>
         <button

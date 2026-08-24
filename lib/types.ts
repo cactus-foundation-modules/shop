@@ -805,6 +805,20 @@ export type ShpEmailTemplateTrigger =
   // STATUS_SHIPPED says the whole order is on its way, so it cannot stand in
   // for this one. See lib/shipment-email.ts.
   | 'PARTIAL_SHIPPED'
+  // Sent at checkout on a method nobody has been paid on yet (bank transfer,
+  // cash): the order is placed, here is how to pay for it, and nothing moves
+  // until it does. Every other method has ORDER_CONFIRMED doing that job
+  // seconds later. See lib/order-placed-email.ts.
+  | 'ORDER_PLACED_UNPAID'
+  // Only for a payment the shop clears by hand (bank transfer, cash): the one
+  // email that says the money actually landed. On those orders it takes the
+  // place of ORDER_CONFIRMED, which until now was doing double duty as both
+  // "we have your order" and "we have your money". See lib/order-fulfillment.ts.
+  | 'PAYMENT_RECEIVED'
+  // The owner's own copy of the above. ADMIN_NEW_ORDER says money has arrived,
+  // which on a manual method it has not, so the two are separate emails rather
+  // than one with a branch in it.
+  | 'ADMIN_NEW_ORDER_UNPAID'
   | 'ADMIN_NEW_ORDER' | 'LOW_STOCK' | 'BACK_IN_STOCK' | 'IMPORT_COMPLETE'
   // Cancel / return requests. See lib/order-request-actions.ts.
   | 'REQUEST_RECEIVED' | 'REQUEST_APPROVED' | 'REQUEST_DECLINED' | 'ADMIN_NEW_REQUEST'

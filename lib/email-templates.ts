@@ -24,6 +24,43 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     transactional: false,
   },
   {
+    // The other half of the manual-payment pair below. A shopper who picks bank
+    // transfer leaves the checkout owing money, and until this existed the only
+    // place the account details appeared was the thank-you page - which nobody
+    // is reading carefully, and nobody can find a week later. Transactional: it
+    // is a request for payment, not marketing.
+    //
+    // The lead-time sentence is in the default wording on purpose. It is the
+    // single most common misunderstanding on a bank transfer - the shopper
+    // counts the days from when they ordered, the shop counts them from when
+    // the money arrived - and an owner who does not want it can delete the line.
+    key: 'shop.order-placed-unpaid',
+    label: 'Order placed (payment still to come)',
+    subject: 'Your order {{orderNumber}} - how to pay',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>Thanks - we have your order <strong>{{orderNumber}}</strong>. It is not on its way yet: we start work on it once your payment reaches us.</p><p>{{orderItems}}</p><p>Total to pay: <strong>{{orderTotal}}</strong></p>{{#if hasPaymentInstructions}}<p><strong>How to pay by {{paymentMethod}}</strong></p><p>{{paymentInstructions}}</p><p>Please quote <strong>{{orderNumber}}</strong> as the reference, so we can match your payment to your order.</p>{{/if}}<p><strong>Delivery times start from the day your payment reaches us</strong>, not the day you ordered - so the sooner it lands, the sooner your order goes out.</p>{{#if hasPreOrderItems}}<p>Your order also contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p><p>We will email you the moment your payment arrives.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'paymentMethod', 'paymentInstructions', 'preOrderItemName', 'preOrderDispatchDate', 'shopName'],
+    // Bank details are typed into a settings box over several lines and are
+    // useless run together, so the sending code escapes them and puts the line
+    // breaks back itself. Nothing else here is pre-built markup.
+    rawTags: ['paymentInstructions'],
+    transactional: true,
+  },
+  {
+    // A bank transfer or a cash payment is cleared by hand, sometimes days
+    // after the order was placed, and until now the only thing the buyer got
+    // at that moment was "your order is confirmed" - which they had already
+    // been told at checkout. This one says the thing they are actually waiting
+    // to hear. Transactional: it is the receipt for money that has moved.
+    key: 'shop.payment-received',
+    label: 'Payment received',
+    subject: 'We have received your payment for order {{orderNumber}}',
+    bodyHtml:
+      "<p>Hi {{customerName}},</p><p>Your payment of <strong>{{orderTotal}}</strong> for order <strong>{{orderNumber}}</strong> has landed with us - thank you.</p>{{#if hasPaymentReference}}<p>Payment reference: {{paymentReference}}</p>{{/if}}<p>{{orderItems}}</p>{{#if hasPreOrderItems}}<p>Your order contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p><p>We are getting it ready now and will be in touch when it is on its way.</p>",
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'paymentMethod', 'paymentReference', 'preOrderItemName', 'preOrderDispatchDate', 'shopName'],
+    transactional: true,
+  },
+  {
     key: 'shop.status-processing',
     label: 'Order processing',
     subject: 'Your order {{orderNumber}} is being processed',
@@ -70,6 +107,19 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     subject: 'New order received: {{orderNumber}}',
     bodyHtml: '<p>New order <strong>{{orderNumber}}</strong> from {{customerName}} ({{customerEmail}}).</p><p>Total: {{orderTotal}}</p>',
     mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'orderTotal', 'shopName'],
+    transactional: false,
+  },
+  {
+    // The owner's alert for an order nobody has been paid for. Separate from
+    // shop.admin-new-order because that one's job is "money is in, get it out
+    // of the door" and this one's is "somebody owes you money" - an owner who
+    // packs the first one on sight would be packing this one too early.
+    key: 'shop.admin-new-order-unpaid',
+    label: 'New order, payment still to come (admin alert)',
+    subject: 'New order awaiting payment: {{orderNumber}}',
+    bodyHtml:
+      '<p>New order <strong>{{orderNumber}}</strong> from {{customerName}} ({{customerEmail}}), placed by {{paymentMethod}}.</p><p>Total: {{orderTotal}} - <strong>not paid yet</strong>. They have been emailed how to pay, and the order sits in Awaiting payment until you mark it received.</p><p>{{orderItems}}</p>',
+    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'orderTotal', 'orderItems', 'paymentMethod', 'shopName'],
     transactional: false,
   },
   {
@@ -159,12 +209,15 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
 export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   CREDIT_NOTE_ISSUED: 'shop.credit-note-issued',
   ORDER_CONFIRMED: 'shop.order-confirmed',
+  ORDER_PLACED_UNPAID: 'shop.order-placed-unpaid',
+  PAYMENT_RECEIVED: 'shop.payment-received',
   STATUS_PROCESSING: 'shop.status-processing',
   STATUS_SHIPPED: 'shop.status-shipped',
   STATUS_COMPLETED: 'shop.status-completed',
   STATUS_CANCELLED: 'shop.status-cancelled',
   PARTIAL_SHIPPED: 'shop.partial-shipped',
   ADMIN_NEW_ORDER: 'shop.admin-new-order',
+  ADMIN_NEW_ORDER_UNPAID: 'shop.admin-new-order-unpaid',
   LOW_STOCK: 'shop.low-stock',
   BACK_IN_STOCK: 'shop.back-in-stock',
   IMPORT_COMPLETE: 'shop.import-complete',

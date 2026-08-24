@@ -28,6 +28,27 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     transactional: false,
   },
   {
+    // Placed but not paid for. No bank details in a text - they are long, they
+    // are exactly the thing somebody mistypes off a phone screen, and the email
+    // has them - so this only points at the email.
+    key: 'shop.order-placed-unpaid',
+    label: 'Order placed (payment still to come)',
+    body: '{{shopName}}: thanks {{customerName}}, we have order {{orderNumber}}. It goes out once your payment of {{orderTotal}} reaches us - see your email for how to pay.',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderTotal'],
+    requiredTags: ['orderNumber'],
+    transactional: true,
+  },
+  {
+    // The bank-transfer and cash counterpart of the one above, for the moment
+    // the money is cleared by hand rather than by a card provider.
+    key: 'shop.payment-received',
+    label: 'Payment received',
+    body: '{{shopName}}: thanks {{customerName}}, we have received your payment of {{orderTotal}} for order {{orderNumber}}. We are getting it ready now.',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderTotal'],
+    requiredTags: ['orderNumber'],
+    transactional: true,
+  },
+  {
     key: 'shop.status-processing',
     label: 'Order processing',
     body: '{{shopName}}: order {{orderNumber}} is being processed. We will let you know as soon as it is dispatched.',
@@ -98,6 +119,8 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
 // the admin alerts, for one.
 export const SHOP_TRIGGER_TO_SMS_KEY: Record<string, string> = {
   ORDER_CONFIRMED: 'shop.order-confirmed',
+  ORDER_PLACED_UNPAID: 'shop.order-placed-unpaid',
+  PAYMENT_RECEIVED: 'shop.payment-received',
   STATUS_PROCESSING: 'shop.status-processing',
   STATUS_SHIPPED: 'shop.status-shipped',
   STATUS_COMPLETED: 'shop.status-completed',
