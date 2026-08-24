@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ComponentType } from 'react'
+import type { ShopCheckoutContactExtraProps } from '@/modules/shop/components/public/checkout-contact-extras'
 import { getCheckoutState, updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
@@ -8,11 +9,21 @@ import { useCartPopulated } from '@/modules/shop/components/public/use-cart-popu
 // (ShopCheckoutContact) is a server component that renders this, so Puck's RSC
 // <Render> never serialises its renderDropZone function bag into the client.
 //
-// Email and name only. The phone number moved to the delivery step, under the
+// Name and email only. The phone number moved to the delivery step, under the
 // names it belongs with: a number is how a courier reaches whoever is at that
 // door, which is not always the person paying, so it travels with the address
 // rather than with the account.
-export function CheckoutContactClient({ preview = false, heading }: { preview?: boolean; heading?: string }) {
+//
+// Name first, then email: it is the order a person expects to be asked in, and
+// it puts the email box last, immediately above anything a module has to say
+// about that address (see the extras below).
+export function CheckoutContactClient({ preview = false, heading, extras = [] }: {
+  preview?: boolean
+  heading?: string
+  // Contributed by modules through 'shop.checkout-contact-extras'. Resolved on
+  // the server and handed down; see lib/checkout-contact-extras.ts.
+  extras?: ComponentType<ShopCheckoutContactExtraProps>[]
+}) {
   const populated = useCartPopulated(preview)
   const initial = getCheckoutState()
   const [email, setEmail] = useState(initial.customerEmail)
@@ -50,18 +61,23 @@ export function CheckoutContactClient({ preview = false, heading }: { preview?: 
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480 }}>
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Contact details'}</h2>
       <label style={{ display: 'grid', gap: '0.25rem' }}>
-        <span>Email</span>
+        <span>Full name</span>
         {/* data-shop-field is how the review step finds this box when it lists
             what is still outstanding - see focusCheckoutField. */}
-        <input type="email" required autoComplete="email" inputMode="email" data-shop-field="customerEmail" value={email} onChange={(e) => { setEmail(e.target.value); updateCheckoutState({ customerEmail: e.target.value }) }}
-          style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
-        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>Your order confirmation goes here.</span>
-      </label>
-      <label style={{ display: 'grid', gap: '0.25rem' }}>
-        <span>Full name</span>
         <input type="text" required autoComplete="name" data-shop-field="customerName" value={name} onChange={(e) => { setName(e.target.value); updateCheckoutState({ customerName: e.target.value }) }}
           style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
       </label>
+      <label style={{ display: 'grid', gap: '0.25rem' }}>
+        <span>Email</span>
+        <input type="email" required autoComplete="email" inputMode="email" data-shop-field="customerEmail" value={email} onChange={(e) => { setEmail(e.target.value); updateCheckoutState({ customerEmail: e.target.value }) }}
+          style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
+      </label>
+      {/* Whatever a module has to ask about that address, directly under it -
+          a question about emails belongs beside the email box, not three steps
+          away at the bottom of the order. */}
+      {extras.map((Extra, index) => (
+        <Extra key={index} customerEmail={email} preview={preview} />
+      ))}
     </section>
   )
 }

@@ -10,6 +10,7 @@ import { CheckoutItemsClient } from '@/modules/shop/components/public/CheckoutIt
 import { CheckoutContactClient } from '@/modules/shop/components/public/CheckoutContactClient'
 import { CheckoutShippingClient } from '@/modules/shop/components/public/CheckoutShippingClient'
 import { resolveCheckoutAddressLookup } from '@/modules/shop/lib/checkout-address-lookup'
+import { resolveCheckoutContactExtras } from '@/modules/shop/lib/checkout-contact-extras'
 import { CheckoutPaymentClient } from '@/modules/shop/components/public/CheckoutPaymentClient'
 import { resolveCheckoutPaymentFields } from '@/modules/shop/lib/checkout-payment-fields'
 import { CheckoutReviewClient } from '@/modules/shop/components/public/CheckoutReviewClient'
@@ -46,7 +47,7 @@ export default async function ShopCheckoutPage() {
         // matching the cart page's own hardcoded fallback.
         <>
           <CheckoutItemsClient />
-          <CheckoutContactClient />
+          <CheckoutContactClient extras={resolveCheckoutContactExtras()} />
           <CheckoutShippingClient addressLookup={resolveCheckoutAddressLookup()} />
           <CheckoutPaymentClient paymentFields={resolveCheckoutPaymentFields()} />
           <CheckoutReviewClient />

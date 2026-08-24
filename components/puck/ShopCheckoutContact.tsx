@@ -27,14 +27,7 @@ export const shopCheckoutContactPuckComponent = {
   render: ShopCheckoutContact,
 }
 
-// RSC half renders live: on the storefront the island stands down when the
-// basket is empty, leaving the order-summary block's empty message on its own.
-// Explicit props only across the client boundary - never a spread of the puck bag.
-export function ShopCheckoutContactRsc(props: ShopCheckoutContactProps) {
-  return <CheckoutContactClient heading={props.heading} />
-}
-
-export const shopCheckoutContactPuckRscComponent = {
-  ...shopCheckoutContactPuckComponent,
-  render: ShopCheckoutContactRsc,
-}
+// RSC half lives in ShopCheckoutContact.rsc.tsx (manifest `rscImport`): it
+// resolves the 'shop.checkout-contact-extras' extension point, and the
+// generated registry behind that statically imports server-only module code -
+// nothing this editor-bundled file may touch.
