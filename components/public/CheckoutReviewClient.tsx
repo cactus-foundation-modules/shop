@@ -1,12 +1,17 @@
 'use client'
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
 import {
   getCheckoutState, subscribeCheckoutState, updateCheckoutState, areAgreementsAccepted,
   missingCheckoutFields, focusCheckoutField, checkoutBlockedSegments, type MissingCheckoutField,
 } from '@/modules/shop/components/public/checkout-state'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
+import { payerFromState } from '@/modules/shop/components/public/checkout-payer'
+import type { ShopCheckoutWalletButtonsProps } from '@/modules/shop/components/public/checkout-wallet-buttons'
+import {
+  CHECKOUT_PAYMENT_SLOT_ID, announceCheckoutPaymentSlot,
+} from '@/modules/shop/components/public/checkout-payment-slot'
 
 type SessionSummary = {
   subtotal: number; discountAmount: number; shippingAmount: number; taxAmount: number; total: number
@@ -56,11 +61,43 @@ function renderStatement(agreement: Agreement) {
   return <>{match[1]}{link(match[2] ?? '')}{match[3]}</>
 }
 
+// Where the payment step draws its card fields (see checkout-payment-slot.ts).
+// `display: contents` on purpose: the fields become items of this step's own
+// grid, so they are spaced like everything else here and an empty slot - no
+// method chosen yet, or a method with nothing to fill in - takes up no room
+// rather than opening a gap above the button.
+//
+// A component of its own so the announcement is tied to the element's real
+// lifetime: this step disappears entirely when the basket is emptied, and the
+// payment step has to be told to take its fields back.
+function CheckoutPaymentFieldsSlot() {
+  useEffect(() => {
+    announceCheckoutPaymentSlot()
+    return () => {
+      // After this render has been committed, so the payment step looks for the
+      // slot when it has actually gone rather than while it is still there.
+      queueMicrotask(announceCheckoutPaymentSlot)
+    }
+  }, [])
+  return <div id={CHECKOUT_PAYMENT_SLOT_ID} style={{ display: 'contents' }} />
+}
+
 // Client island for the checkout review step (order summary + place order).
 // Registered Puck block wrapper (ShopCheckoutReview) is a server component that
 // renders this, so Puck's RSC <Render> never serialises its renderDropZone
 // function bag into the client.
-export function CheckoutReviewClient({ preview = false, heading, buttonLabel, trustText }: { preview?: boolean; heading?: string; buttonLabel?: string; trustText?: string }) {
+export function CheckoutReviewClient({ preview = false, heading, buttonLabel, trustText, walletButtons }: {
+  preview?: boolean
+  heading?: string
+  buttonLabel?: string
+  trustText?: string
+  // Resolved server-side from the 'shop.checkout-wallet-buttons' extension
+  // point (see lib/checkout-wallet-buttons.ts), keyed by payment method id -
+  // so the Apple Pay / Google Pay buttons a payment module contributes are
+  // drawn only when that module's method is the one chosen. Absent on the
+  // editor path, which has no shopper and no basket to pay for.
+  walletButtons?: Record<string, ComponentType<ShopCheckoutWalletButtonsProps>>
+}) {
   const populated = useCartPopulated(preview)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -77,6 +114,13 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
   const [businessNameRequired, setBusinessNameRequired] = useState(false)
   const [businessNameLabel, setBusinessNameLabel] = useState('')
   const [phoneRequired, setPhoneRequired] = useState(false)
+  // The shop's ISO currency code, and the publishable per-method config a
+  // payment module's own components draw from. Both come off the same config
+  // read as everything else here, and both are only of interest to the wallet
+  // buttons: a wallet sheet has to quote a currency, and Square's SDK needs its
+  // Application ID before anybody has pressed anything.
+  const [currency, setCurrency] = useState('GBP')
+  const [methodClientFields, setMethodClientFields] = useState<Record<string, Record<string, unknown>>>({})
   // Which boxes are ticked, mirrored out of checkout state so this block
   // re-renders on a tick. checkout-state stays the source of truth, because the
   // payment block reads it from there when it posts the order.
@@ -95,9 +139,20 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
     let cancelled = false
     fetch('/api/m/shop/public/config')
       .then((r) => r.json())
-      .then((d: { checkoutAgreements?: Agreement[]; businessName?: { required?: boolean; label?: string }; requirePhone?: boolean }) => {
+      .then((d: {
+        checkoutAgreements?: Agreement[]
+        businessName?: { required?: boolean; label?: string }
+        requirePhone?: boolean
+        currency?: string
+        paymentMethodClientFields?: Record<string, Record<string, unknown>>
+      }) => {
         if (cancelled) return
         setAgreements(d.checkoutAgreements ?? [])
+        // Both optional so a response from an older cached bundle still renders
+        // - a checkout with no wallet buttons on it is what every shop had
+        // until now, and sterling is what the shop defaults to anyway.
+        if (d.currency) setCurrency(d.currency)
+        setMethodClientFields(d.paymentMethodClientFields ?? {})
         setBusinessNameRequired(d.businessName?.required === true)
         // The owner's own wording for that box, so the outstanding list calls it
         // what the form above calls it rather than inventing a name for it.
@@ -200,13 +255,23 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
     return parts
   }
 
-  function placeOrder() {
+  // `paymentPayload` is how a wallet button places the order: Apple Pay and
+  // Google Pay approve the payment BEFORE anything is placed (their sheets open
+  // inside the click, and hand back a one-time token there and then), so the
+  // token travels with the event rather than being asked for afterwards. A
+  // press of the button itself passes nothing and the payment block asks the
+  // chosen method's own fields, exactly as it always has.
+  function placeOrder(paymentPayload?: unknown) {
     // The button is disabled while anything is outstanding, so this is a guard
-    // rather than a code path - it exists so a stale render can never post.
+    // rather than a code path - it exists so a stale render can never post. It
+    // guards the wallet buttons too, which are disabled by the same test: a
+    // shopper must not skip the terms tickbox by paying with their watch.
     if (outstandingDecisions().length > 0 || missingCheckoutFields(getCheckoutState(), { businessNameRequired, businessNameLabel, phoneRequired }).length > 0) return
     setPlacing(true)
     setError(null)
-    window.dispatchEvent(new CustomEvent('cactus-shop-place-order'))
+    window.dispatchEvent(new CustomEvent('cactus-shop-place-order', {
+      detail: paymentPayload === undefined ? undefined : { paymentPayload },
+    }))
   }
 
   // Empty basket: no order to review, no total to show, nothing to place - the
@@ -263,6 +328,12 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
           ? <p style={{ color: 'var(--color-danger)', margin: 0 }}>{error}</p>
           : <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>Working out your order total…</p>}
         {notice}
+        {/* Deliberately NO card-field slot in this branch. It is on screen only
+            while the first total is being worked out, which is long before
+            anybody has picked a payment method, so it would gain nothing - and
+            a second slot in a different place in the tree means React tears the
+            fields down and builds them again when this branch swaps for the one
+            below, taking a half-typed card number with it. */}
       </section>
     )
   }
@@ -272,6 +343,11 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
   // Both halves hold the button shut: the boxes above, and the decisions on this
   // block. Neither hides the total any more, and both are said in the one line.
   const blocked = notice !== null
+  // The chosen method's own wallet buttons, if the module that provides that
+  // method contributed any. Nothing is drawn until a method is picked, because
+  // a wallet button belongs to one payment provider and paying by Apple Pay
+  // through a shop that has bank transfer selected means nothing.
+  const WalletButtons = paymentMethod ? walletButtons?.[paymentMethod] : undefined
 
   return (
     // Same top margin as the incomplete state above, so the step does not jump
@@ -349,8 +425,38 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
           click rather than after: what is left to do should be readable in the
           same glance as the button it is holding shut. */}
       {notice}
+      {/* Order from here down is the order the shopper thinks in: what is still
+          missing, then the quick ways to pay, then the card, then the button.
+          The outstanding line comes FIRST on purpose - it explains why the
+          wallet buttons below it are greyed out, and an explanation underneath
+          the thing it explains is no explanation at all. */}
+      {/* Wallet buttons are enabled by exactly the test that enables "Place
+          order", so the shopper who can pay with a thumbprint still cannot skip
+          the address or the tickboxes. The module draws whatever the device can
+          actually offer - often only one of the two - and draws nothing at all
+          where neither is available. */}
+      {WalletButtons && paymentMethod && (
+        <WalletButtons
+          config={methodClientFields[paymentMethod] ?? {}}
+          // Read at click time, not now: the address above is still being typed
+          // into, and a wallet only wants a billing contact at the moment it is
+          // pressed. See the contract file.
+          getPayer={() => payerFromState(getCheckoutState())}
+          amount={summary.total}
+          currency={currency}
+          disabled={placing || blocked}
+          onError={setError}
+          placeOrder={placeOrder}
+        />
+      )}
+      {/* The chosen method's card fields, drawn by the payment step through a
+          portal (see checkout-payment-slot.ts). They belong beside the button
+          that pays: three blocks up the page they were filled in before the
+          shopper had seen the total, and skipped entirely by anyone who
+          scrolled straight to the button. */}
+      <CheckoutPaymentFieldsSlot />
       <button
-        onClick={placeOrder}
+        onClick={() => placeOrder()}
         disabled={placing || blocked}
         aria-describedby={notice ? 'shop-place-order-blocked' : undefined}
         style={{

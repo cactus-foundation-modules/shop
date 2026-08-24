@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react'
+import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { getCart, subscribeCart } from '@/modules/shop/components/public/cart'
 import {
   getCheckoutState, updateCheckoutState, isContactAndShippingComplete, areAgreementsAccepted, subscribeCheckoutState,
@@ -12,6 +13,10 @@ import { useCartPopulated } from '@/modules/shop/components/public/use-cart-popu
 import { HandoverDarkModeNotice, isDarkTheme } from '@/modules/shop/components/public/HandoverDarkModeNotice'
 import type { ShpPaymentLogo } from '@/modules/shop/lib/payments/provider'
 import type { ShopCheckoutPayer, ShopCheckoutPaymentFieldsProps } from '@/modules/shop/components/public/checkout-payment-fields'
+import { payerFromState } from '@/modules/shop/components/public/checkout-payer'
+import {
+  CHECKOUT_PAYMENT_SLOT_EVENT, findCheckoutPaymentSlot,
+} from '@/modules/shop/components/public/checkout-payment-slot'
 
 type ShopClientConfig = {
   enabledPaymentMethods: string[]
@@ -83,35 +88,6 @@ function loadStripeJs(): Promise<void> {
   })
 }
 
-// Who is paying, in the shape a module's card fields are given it in. Built
-// from the checkout state rather than from the order, because the fields exist
-// before the order does - a card SDK needs a name and an address to send with
-// its 3D Secure request, and a bank given neither declines a perfectly good
-// card for no reason the shopper can see.
-//
-// The blank optionals are dropped rather than sent as empty strings: "county:
-// ''" is a claim that the address has no county, and some verification services
-// treat it as one.
-function payerFromState(state: CheckoutState): ShopCheckoutPayer {
-  const a = state.shippingAddress
-  return {
-    email: state.customerEmail,
-    name: state.customerName,
-    address: {
-      firstName: a.firstName,
-      lastName: a.lastName,
-      ...(a.company ? { company: a.company } : {}),
-      line1: a.line1,
-      ...(a.line2 ? { line2: a.line2 } : {}),
-      city: a.city,
-      ...(a.county ? { county: a.county } : {}),
-      postcode: a.postcode,
-      country: a.country || 'GB',
-      ...(a.phone ? { phone: a.phone } : {}),
-    },
-  }
-}
-
 // The height every brand mark is drawn at, whatever shape it is. Marks come in
 // all proportions, so matching their heights is the only thing that makes a
 // column of them look deliberate.
@@ -170,6 +146,12 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
   // the URL and the method are held; the provider's name is worked out at render
   // time, where the config with the owner's own labels in it is to hand.
   const [handover, setHandover] = useState<{ url: string; method: string } | null>(null)
+  // Where the card fields are drawn: the review step's slot when there is one,
+  // in place here when there is not. Looked up during the first render rather
+  // than in an effect, because the slot is server-rendered and already in the
+  // document by the time this island hydrates - resolving it a frame later
+  // would draw the fields here and then move them, in front of the shopper.
+  const [fieldsSlot, setFieldsSlot] = useState<HTMLElement | null>(findCheckoutPaymentSlot)
   // The per-order half of what a method's own fields draw from - whatever its
   // payment intent handed over (the amount to authorise, an id for this
   // attempt). In state because it arrives from a fetch rather than a render.
@@ -435,7 +417,13 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
   // Stripe/manual confirmation logic lives here since this is the block that
   // holds the mounted Elements instance (Puck blocks don't share React state).
   useEffect(() => {
-    async function placeOrder() {
+    async function placeOrder(event: Event) {
+      // A wallet button above "Place order" has already opened its sheet, had
+      // the shopper approve it, and tokenised - all of it inside the click, as
+      // Apple Pay insists. What arrives here is that token, and it stands in
+      // for whatever the method's on-page fields would have produced.
+      const walletPayload = (event as CustomEvent<{ paymentPayload?: unknown } | undefined>).detail?.paymentPayload
+
       if (!method) {
         window.dispatchEvent(new CustomEvent('cactus-shop-order-error', { detail: 'Please choose a payment method first.' }))
         return
@@ -491,7 +479,13 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         }
 
         let payload: unknown = {}
-        if (method === 'STRIPE') {
+        if (walletPayload !== undefined) {
+          // Straight through. The card fields are not asked for anything - they
+          // may not even be on the page - and nothing here reads the token: the
+          // confirm route hands it to the provider, which re-checks the amount
+          // and the currency against the order the prepare above just created.
+          payload = walletPayload
+        } else if (method === 'STRIPE') {
           // A card form that was only just mounted is necessarily empty, so ask
           // rather than submit a blank card and relay Stripe's error for it.
           if (freshlyPrepared) throw new Error('Please enter your card details, then place your order.')
@@ -574,6 +568,69 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
     return () => window.removeEventListener('cactus-shop-place-order', placeOrder)
   }, [config, method, paymentFields, prepareIntent])
 
+  // The review step says when its slot appears or disappears. An empty basket
+  // takes the whole step off the page, and a layout may have no review step at
+  // all - both land the fields back here, which is where they were before any
+  // of this and is a perfectly good place for them.
+  useEffect(() => {
+    function sync() { setFieldsSlot(findCheckoutPaymentSlot()) }
+    sync()
+    window.addEventListener(CHECKOUT_PAYMENT_SLOT_EVENT, sync)
+    return () => window.removeEventListener(CHECKOUT_PAYMENT_SLOT_EVENT, sync)
+  }, [])
+
+  // The card fields, whoever's they are. Built here and drawn wherever the
+  // portal below puts them - see checkout-payment-slot.ts. Everything that
+  // makes them work stays in this block: the intent that feeds them, the
+  // submit handle "Place order" calls, and the withdrawal of that handle the
+  // moment the shopper switches method.
+  //
+  // null when there is nothing to draw, so neither home is left with an empty
+  // box opening a gap in a grid that has spacing of its own.
+  const moduleFieldsComponent = method && activeFieldsConfig ? paymentFields?.[method] : undefined
+  const cardFields: ReactNode = (method !== 'STRIPE' && !moduleFieldsComponent) ? null : (
+    // Keeps its own spacing, because it is drawn in two different grids.
+    <div style={{ display: 'grid', gap: '0.75rem' }}>
+      {method === 'STRIPE' && (
+        <div style={{ display: 'grid', gap: '0.5rem' }}>
+          {/* Mounted whether or not the card fields have been created yet: the
+              Stripe Elements instance needs this node to already exist when it
+              arrives, so it must not wait on a render of its own. */}
+          <div ref={elementsRef} />
+          {/* Reassurance sits with the card fields - the point of anxiety - not
+              in a footer nobody reads. */}
+          {!awaiting && (
+            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', margin: 0 }}>
+              🔒 Card details go straight to the payment provider, encrypted - they never touch this site.
+            </p>
+          )}
+        </div>
+      )}
+      {/* A module's own card fields, drawn where Stripe's would be. Rendered
+          only for the chosen method and only once its intent has arrived with
+          something for them to work with, so a shop with two card providers
+          installed still loads exactly one SDK - the one being paid with. */}
+      {(() => {
+        const Fields = moduleFieldsComponent
+        if (!Fields || !activeFieldsConfig) return null
+        // Deliberately no reassurance line of shop's own underneath. The Stripe
+        // block above can promise the card goes straight to the provider
+        // because shop knows those fields are a card; these it does not. The
+        // same sentence under a list of banks would be talking about a card
+        // nobody is being asked for. A provider that collects card details says
+        // so from inside its own component, where the claim is true.
+        return (
+          <Fields
+            config={activeFieldsConfig}
+            payer={payer}
+            onError={setError}
+            registerSubmit={(submit) => { moduleSubmitRef.current = submit }}
+          />
+        )
+      })()}
+    </div>
+  )
+
   // Empty basket: nothing to pay for. Rendering payment methods here invites a
   // click that can only end in an error from the payment-intent route.
   if (!populated) return null
@@ -633,44 +690,11 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
           Fill in your contact and delivery details above and this payment method will be set up for you.
         </p>
       )}
-      {method === 'STRIPE' && (
-        <div style={{ display: 'grid', gap: '0.5rem' }}>
-          {/* Mounted whether or not the card fields have been created yet: the
-              Stripe Elements instance needs this node to already exist when it
-              arrives, so it must not wait on a render of its own. */}
-          <div ref={elementsRef} />
-          {/* Reassurance sits with the card fields - the point of anxiety - not
-              in a footer nobody reads. */}
-          {!awaiting && (
-            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem', margin: 0 }}>
-              🔒 Card details go straight to the payment provider, encrypted - they never touch this site.
-            </p>
-          )}
-        </div>
-      )}
-      {/* A module's own card fields, drawn where Stripe's would be. Rendered
-          only for the chosen method and only once its intent has arrived with
-          something for them to work with, so a shop with two card providers
-          installed still loads exactly one SDK - the one being paid with. */}
-      {(() => {
-        if (!method || !activeFieldsConfig) return null
-        const Fields = paymentFields?.[method]
-        if (!Fields) return null
-        // Deliberately no reassurance line of shop's own underneath. The Stripe
-        // block above can promise the card goes straight to the provider
-        // because shop knows those fields are a card; these it does not. The
-        // same sentence under a list of banks would be talking about a card
-        // nobody is being asked for. A provider that collects card details says
-        // so from inside its own component, where the claim is true.
-        return (
-          <Fields
-            config={activeFieldsConfig}
-            payer={payer}
-            onError={setError}
-            registerSubmit={(submit) => { moduleSubmitRef.current = submit }}
-          />
-        )
-      })()}
+      {/* Drawn in the review step, beside the button that pays - or here, when
+          a layout has no review step to lend a slot. Either way these are this
+          block's own React tree, so nothing remounts and nothing the shopper
+          has typed is lost when the slot comes or goes. */}
+      {cardFields && (fieldsSlot ? createPortal(cardFields, fieldsSlot) : cardFields)}
       {instructions && <p style={{ whiteSpace: 'pre-wrap', color: 'var(--color-text-muted)' }}>{instructions}</p>}
       {/* Named the same way the radio button above it is named, so the shopper
           is told they are off to the thing they actually picked. */}

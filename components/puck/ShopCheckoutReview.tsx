@@ -29,14 +29,7 @@ export const shopCheckoutReviewPuckComponent = {
   render: ShopCheckoutReview,
 }
 
-// RSC half renders live: on the storefront the island stands down when the
-// basket is empty, leaving the order-summary block's empty message on its own.
-// Explicit props only across the client boundary - never a spread of the puck bag.
-export function ShopCheckoutReviewRsc(props: ShopCheckoutReviewProps) {
-  return <CheckoutReviewClient heading={props.heading} buttonLabel={props.buttonLabel} trustText={props.trustText} />
-}
-
-export const shopCheckoutReviewPuckRscComponent = {
-  ...shopCheckoutReviewPuckComponent,
-  render: ShopCheckoutReviewRsc,
-}
+// RSC half lives in ShopCheckoutReview.rsc.tsx (manifest `rscImport`): it
+// resolves the 'shop.checkout-wallet-buttons' extension point, and the
+// generated registry behind that statically imports server-only module code -
+// nothing this editor-bundled file may touch.
