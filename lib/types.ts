@@ -780,6 +780,15 @@ export type ShpMemberCart = {
   updatedAt: Date
 }
 
+/** The same basket, for a shopper who is not signed in. Keyed on the id in the
+ *  shop's own basket cookie rather than on a person, and holding lines and
+ *  nothing else - see migrations/026_guest_carts.sql. */
+export type ShpGuestCart = {
+  cartId: string
+  lines: ShpMemberCartLine[]
+  updatedAt: Date
+}
+
 export type ShpEmailTemplateTrigger =
   | 'ORDER_CONFIRMED' | 'STATUS_PROCESSING' | 'STATUS_SHIPPED' | 'STATUS_COMPLETED' | 'STATUS_CANCELLED'
   // Sent per shipment when only some of an order's lines have gone out.

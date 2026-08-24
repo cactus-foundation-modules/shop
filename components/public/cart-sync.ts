@@ -1,13 +1,26 @@
 'use client'
 
-// Cross-device basket for signed-in shoppers.
+// The basket, kept on the server as well as in the browser.
 //
 // The cart itself stays exactly where it was - localStorage, read synchronously,
-// rendered with no round-trip, guests included (see cart.ts). This layer sits
-// beside it and, for a signed-in member only, keeps that local copy and the
-// server's row in step: merge on sign-in, push on every change, pull when the
-// tab comes back to the front. Add something on the phone, open the laptop, and
-// the basket is already there.
+// rendered with no round-trip (see cart.ts). This layer sits beside it and keeps
+// that local copy and the server's row in step: push on every change, pull when
+// the tab comes back to the front, merge when the two are genuinely different
+// baskets. Add something on the phone, open the laptop, and the basket is
+// already there.
+//
+// Both kinds of shopper are synced, to different endpoints:
+//
+//   signed in - /api/m/shop/member/cart, keyed on their account, which is what
+//               carries a basket from one device to another.
+//   guest     - /api/m/shop/public/cart/store, keyed on the id in the shop's own
+//               basket cookie. Same device only, by design: the cookie is the
+//               strictly-necessary shopping-basket one and it identifies a
+//               basket, not a person.
+//
+// Guest rows hold lines and nothing else. Anything typed into the checkout stays
+// in this browser until an order is placed, so nothing here needs a banner and
+// nothing here is any use for remembering a shopper.
 //
 // Everything here fails silently. A basket that cannot reach the server is a
 // basket that behaves exactly as it did before this file existed, which is the
@@ -15,10 +28,17 @@
 
 import { applyServerCart, getCart, subscribeCart, type CartLine } from '@/modules/shop/components/public/cart'
 
-const ENDPOINT = '/api/m/shop/member/cart'
-// Which member the local copy belongs to. '' (or absent) means a guest basket.
+const MEMBER_ENDPOINT = '/api/m/shop/member/cart'
+const GUEST_ENDPOINT = '/api/m/shop/public/cart/store'
+// Whose the local copy is: a member id, or this for a basket held under the
+// shop's basket cookie. '' (or absent) means it has never synced.
+//
 // Without it, signing out would leave one shopper's basket sitting in the next
-// one's browser, and signing in on a shared laptop would quietly adopt it.
+// one's browser, and signing in on a shared laptop would quietly adopt it. The
+// guest side deliberately stores this word rather than the cart id: the browser
+// only needs to spot the handover at sign-in, and the id itself is httpOnly and
+// stays that way.
+const GUEST_OWNER = 'guest'
 const OWNER_KEY = 'cactus_shop_cart_owner'
 // The server stamp the local copy is level with. A different stamp coming back
 // means the other device has moved on.
@@ -91,25 +111,39 @@ function adopt(lines: CartLine[], stamp: string): void {
   writeLocal(STAMP_KEY, stamp)
 }
 
+function endpointFor(m: Mode): string {
+  return m === 'member' ? MEMBER_ENDPOINT : GUEST_ENDPOINT
+}
+
+/** The word written into OWNER_KEY for whatever this browser is currently
+ *  syncing as. */
+function ownerFor(m: Mode): string {
+  return m === 'member' ? memberId : GUEST_OWNER
+}
+
 async function push(): Promise<void> {
-  if (mode !== 'member') return
+  if (mode === 'unknown') return
+  const at = mode
   const lines = getCart()
   try {
-    const res = await fetch(ENDPOINT, {
+    const res = await fetch(endpointFor(at), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lines }),
     })
-    if (res.status === 401) {
-      // Signed out mid-session. Leave the basket alone - the shopper is looking
-      // at it - and stop syncing until the next page load says otherwise.
-      mode = 'guest'
+    // 401 from the member endpoint is a session that ended mid-visit; 409 from
+    // the guest one is a sign-in that landed between the decision and the
+    // request. Either way this basket is now somebody else's business: leave it
+    // alone - the shopper is looking at it - and let the next pull sort out who
+    // owns it.
+    if (res.status === 401 || res.status === 409) {
+      mode = 'unknown'
       return
     }
     if (!res.ok) return
     const data = (await res.json()) as { updatedAt?: string }
     if (data?.updatedAt) writeLocal(STAMP_KEY, data.updatedAt)
-    writeLocal(OWNER_KEY, memberId)
+    writeLocal(OWNER_KEY, ownerFor(at))
     pending = false
   } catch {
     // Offline or blocked. `pending` stays set, so the next change or the next
@@ -121,7 +155,6 @@ function schedulePush(): void {
   if (applying) return
   pending = true
   if (mode === 'unknown') return
-  if (mode === 'guest') return
   if (pushTimer) clearTimeout(pushTimer)
   pushTimer = setTimeout(() => {
     pushTimer = null
@@ -129,30 +162,117 @@ function schedulePush(): void {
   }, PUSH_DEBOUNCE_MS)
 }
 
+// The half of a pull that is the same whoever the shopper is: this browser is
+// holding one basket, the server has just handed back another, and something has
+// to decide which survives.
+//
+// Returns true when a guest basket was folded into an account, because that is
+// the one outcome with tidying up left to do.
+async function reconcile(now: string, serverLines: CartLine[], serverStamp: string): Promise<boolean> {
+  const held = readLocal(OWNER_KEY)
+  const local = getCart()
+
+  // A guest basket meeting the account it has just signed into. Two genuinely
+  // different baskets belonging to the same person, so they become one - this is
+  // the shopper who filled a basket, then remembered they had an account.
+  const signingIn = held === GUEST_OWNER && now !== GUEST_OWNER
+
+  // Somebody else's basket in this browser: a second account, or the one left
+  // behind by whoever has just signed out. Theirs is on the server where they
+  // left it; ours is the one to show.
+  if (held && held !== now && !signingIn) {
+    adopt(serverLines, serverStamp)
+    writeLocal(OWNER_KEY, now)
+    pending = false
+    return false
+  }
+
+  // Signing in with a basket built as a guest, the very first sync this browser
+  // has ever done, or a server that has no row for us yet: the two become one,
+  // and the result goes up.
+  if (!held || signingIn || !serverStamp) {
+    const merged = mergeCarts(local, serverLines)
+    adopt(merged, serverStamp)
+    writeLocal(OWNER_KEY, now)
+    // Even when the merge changed nothing locally, the server may not have this
+    // basket yet, so the push is unconditional.
+    pending = true
+    await push()
+    return signingIn
+  }
+
+  // Same owner, same device. A stamp we have not seen means the basket moved on
+  // somewhere else; an unpushed local change here outranks it, because this is
+  // the tab the shopper is actually holding.
+  if (serverStamp !== readLocal(STAMP_KEY)) {
+    if (pending) await push()
+    else {
+      adopt(serverLines, serverStamp)
+      writeLocal(OWNER_KEY, now)
+    }
+    return false
+  }
+
+  writeLocal(OWNER_KEY, now)
+  if (pending) await push()
+  return false
+}
+
 async function pull(): Promise<void> {
   lastPullAt = Date.now()
+
+  // The guest endpoint first, even though the member one is the richer answer.
+  // Most shoppers are guests, and that endpoint says so in the same breath as
+  // handing back the basket - a signed-in shopper gets 409 and we go and ask
+  // properly. Asking the member endpoint first would have cost every guest on
+  // every page load a 401 they were always going to get.
+  //
+  // Nothing is decided about this browser until the answer comes back. In
+  // particular the basket on screen is left exactly as it is: a shopper who has
+  // signed out since the last sync gets their local copy replaced by the guest
+  // row in reconcile, which is the same clearing-out the old 401 branch did and
+  // happens at the point we actually know it applies.
   let res: Response
   try {
-    res = await fetch(ENDPOINT, { headers: { Accept: 'application/json' } })
+    res = await fetch(GUEST_ENDPOINT, { headers: { Accept: 'application/json' } })
+  } catch {
+    mode = 'unknown'
+    return
+  }
+
+  if (res.status === 409) return pullMember()
+  if (!res.ok) {
+    mode = 'unknown'
+    return
+  }
+
+  mode = 'guest'
+  memberId = ''
+
+  let data: { lines?: CartLine[]; updatedAt?: string | null }
+  try {
+    data = await res.json()
   } catch {
     return
   }
 
-  if (res.status === 401) {
-    const previousOwner = readLocal(OWNER_KEY)
-    mode = 'guest'
-    memberId = ''
-    // The basket in this browser belongs to a member who is no longer signed
-    // in. It is safe on the server; leaving a copy behind on what may well be a
-    // shared machine is not.
-    if (previousOwner) {
-      adopt([], '')
-      writeLocal(OWNER_KEY, '')
-      writeLocal(STAMP_KEY, '')
-    }
+  await reconcile(GUEST_OWNER, Array.isArray(data.lines) ? data.lines : [], data.updatedAt ?? '')
+}
+
+async function pullMember(): Promise<void> {
+  let res: Response
+  try {
+    res = await fetch(MEMBER_ENDPOINT, { headers: { Accept: 'application/json' } })
+  } catch {
+    mode = 'unknown'
     return
   }
-  if (!res.ok) return
+  // Signed out between the two requests. Nothing to do: the next pull starts
+  // over as a guest, and the basket on screen is left alone in the meantime.
+  if (!res.ok) {
+    mode = 'unknown'
+    return
+  }
 
   let data: { memberId?: string; lines?: CartLine[]; updatedAt?: string | null }
   try {
@@ -164,47 +284,25 @@ async function pull(): Promise<void> {
 
   mode = 'member'
   memberId = data.memberId
-  const serverLines = Array.isArray(data.lines) ? data.lines : []
-  const serverStamp = data.updatedAt ?? ''
-  const owner = readLocal(OWNER_KEY)
-  const local = getCart()
+  const foldedIn = await reconcile(
+    memberId,
+    Array.isArray(data.lines) ? data.lines : [],
+    data.updatedAt ?? '',
+  )
 
-  // Somebody else's basket in this browser (a shared machine, a second account).
-  // Theirs is on the server where they left it; ours is the one to show.
-  if (owner && owner !== memberId) {
-    adopt(serverLines, serverStamp)
-    writeLocal(OWNER_KEY, memberId)
-    pending = false
-    return
+  // The guest copy is now part of the account. Drop it, and the cookie with it,
+  // so signing out on a shared machine leaves the next person nothing and a
+  // later sign-in cannot merge the same lines back in.
+  if (foldedIn) await discardGuestCart()
+}
+
+async function discardGuestCart(): Promise<void> {
+  try {
+    await fetch(GUEST_ENDPOINT, { method: 'DELETE' })
+  } catch {
+    // The row is swept on age anyway, and the worst a survivor costs is one
+    // extra merge if this browser signs in again.
   }
-
-  // Signing in with a basket built as a guest, or the very first sign-in on
-  // this device: the two baskets become one, and the result goes up.
-  if (!owner || !serverStamp) {
-    const merged = mergeCarts(local, serverLines)
-    adopt(merged, serverStamp)
-    writeLocal(OWNER_KEY, memberId)
-    // Even when the merge changed nothing locally, the server may not have this
-    // basket yet, so the push is unconditional.
-    pending = true
-    await push()
-    return
-  }
-
-  // Same member, same device. A stamp we have not seen means the basket moved
-  // on somewhere else; an unpushed local change here outranks it, because this
-  // is the tab the shopper is actually holding.
-  if (serverStamp !== readLocal(STAMP_KEY)) {
-    if (pending) await push()
-    else {
-      adopt(serverLines, serverStamp)
-      writeLocal(OWNER_KEY, memberId)
-    }
-    return
-  }
-
-  writeLocal(OWNER_KEY, memberId)
-  if (pending) await push()
 }
 
 function pullOnce(): void {
@@ -226,7 +324,6 @@ export function ensureCartSync(): void {
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return
-    if (mode === 'guest') return
     if (Date.now() - lastPullAt < PULL_THROTTLE_MS) return
     pullOnce()
   })
@@ -235,14 +332,14 @@ export function ensureCartSync(): void {
   // debounce is short-circuited on the way out. keepalive lets the request
   // outlive the page.
   window.addEventListener('pagehide', () => {
-    if (mode !== 'member' || !pending) return
+    if (mode === 'unknown' || !pending) return
     if (pushTimer) {
       clearTimeout(pushTimer)
       pushTimer = null
     }
     try {
       const blob = new Blob([JSON.stringify({ lines: getCart() })], { type: 'application/json' })
-      void fetch(ENDPOINT, { method: 'PUT', body: blob, keepalive: true })
+      void fetch(endpointFor(mode), { method: 'PUT', body: blob, keepalive: true })
     } catch {
       // Nothing else to try at this point in a page's life.
     }
