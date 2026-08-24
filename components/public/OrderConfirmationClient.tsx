@@ -204,7 +204,9 @@ function greetingName(customerName: string, address: ShpAddress): string | null 
 }
 
 // The address as an envelope would carry it: blank lines dropped, no trailing
-// commas, business name above the street where a business address puts it.
+// commas. The company line is only ever there on an order placed while the
+// organisation lived in the delivery address - it is a contact detail now, and
+// anyone who wants it on the label puts it in line 1.
 function addressLines(address: ShpAddress): string[] {
   return [
     [address.firstName, address.lastName].filter(Boolean).join(' '),

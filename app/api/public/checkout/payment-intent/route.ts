@@ -16,8 +16,12 @@ import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/l
 import { isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
 import type { ShpAddress } from '@/modules/shop/lib/types'
 
+// No company field: the organisation is a contact detail on the order now, not
+// part of an address. Older clients that still send one are simply ignored - zod
+// strips unknown keys - which is what keeps a shopper mid-checkout on a cached
+// page from being turned away by the deploy that moved the box.
 const AddressSchema = z.object({
-  firstName: z.string().min(1), lastName: z.string().min(1), company: z.string().optional(),
+  firstName: z.string().min(1), lastName: z.string().min(1),
   line1: z.string().min(1), line2: z.string().optional(), city: z.string().min(1), county: z.string().optional(),
   postcode: z.string().min(1), country: z.string().min(2).default('GB'), phone: z.string().optional(),
 })
@@ -31,6 +35,7 @@ const Body = z.object({
   })),
   customerEmail: z.string().email(),
   customerName: z.string().min(1),
+  customerOrganisation: z.string().optional(),
   customerPhone: z.string().optional(),
   shippingAddress: AddressSchema,
   billingAddress: AddressSchema.nullable().optional(),
@@ -79,12 +84,12 @@ export async function POST(request: NextRequest) {
   const available = await getAvailablePaymentMethods()
   if (!available.includes(data.paymentMethod)) return NextResponse.json({ error: 'Selected payment method is not available.' }, { status: 400 })
 
-  // A business name the owner has made compulsory has to be enforced where the
-  // order is actually made, not only in the form: the shipping step's `required`
+  // An organisation the owner has made compulsory has to be enforced where the
+  // order is actually made, not only in the form: the contact step's `required`
   // attribute is a courtesy to the shopper, and this route is reachable without
-  // it. Checked against the trimmed value, so a space is not a business name.
-  if (config.businessNameFieldEnabled && config.businessNameRequired && !data.shippingAddress.company?.trim()) {
-    const label = config.businessNameLabel.trim() || 'Business name'
+  // it. Checked against the trimmed value, so a space is not an organisation.
+  if (config.organisationFieldEnabled && config.organisationRequired && !data.customerOrganisation?.trim()) {
+    const label = config.organisationLabel.trim() || 'Organisation name'
     return NextResponse.json({ error: `${label} is required.` }, { status: 400 })
   }
 
@@ -187,6 +192,9 @@ export async function POST(request: NextRequest) {
     memberId: member?.id ?? null,
     customerEmail: data.customerEmail,
     customerName: data.customerName,
+    // Only kept when the shop actually asks for one, so switching the box off
+    // stops orders carrying whatever a stale page still had in it.
+    customerOrganisation: config.organisationFieldEnabled ? (data.customerOrganisation?.trim() || null) : null,
     customerPhone: data.customerPhone ?? null,
     shippingAddress: data.shippingAddress as ShpAddress,
     billingAddress: (data.billingAddress as ShpAddress | null) ?? null,

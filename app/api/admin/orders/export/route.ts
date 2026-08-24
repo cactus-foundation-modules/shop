@@ -3,6 +3,7 @@ import { requireShopUser } from '@/modules/shop/lib/access'
 import { toCsvRow } from '@/modules/shop/lib/csv'
 import { getOrderRowMetrics, listOrders } from '@/modules/shop/lib/db/orders'
 import { parseOrderListFilter } from '@/modules/shop/lib/order-filters'
+import { orderCompanyName } from '@/modules/shop/lib/order-display'
 import type { ShpAddress } from '@/modules/shop/lib/types'
 
 // A download of whatever the orders screen is currently showing - same filters,
@@ -16,10 +17,10 @@ import type { ShpAddress } from '@/modules/shop/lib/types'
 
 const COLUMNS = [
   'order_number', 'placed_at', 'status', 'payment_status', 'payment_method', 'payment_reference', 'paid_at',
-  'customer_name', 'customer_email', 'customer_phone', 'account_holder',
+  'customer_name', 'customer_organisation', 'customer_email', 'customer_phone', 'account_holder',
   'items', 'units', 'dispatched_units', 'refunded_units', 'outstanding_units',
   'subtotal', 'discount', 'coupon_code', 'shipping', 'shipping_method', 'tax', 'tax_mode', 'total', 'currency',
-  'delivery_company', 'delivery_line1', 'delivery_line2', 'delivery_city', 'delivery_county', 'delivery_postcode', 'delivery_country',
+  'delivery_line1', 'delivery_line2', 'delivery_city', 'delivery_county', 'delivery_postcode', 'delivery_country',
 ] as const
 
 function iso(date: Date | null): string {
@@ -53,6 +54,10 @@ export async function GET(request: NextRequest) {
       order.paymentReference ?? '',
       iso(order.paidAt),
       order.customerName,
+      // One column, not two: an order placed before the organisation moved off
+      // the delivery address still exports what it was given - see
+      // orderCompanyName.
+      orderCompanyName(order) ?? '',
       order.customerEmail,
       order.customerPhone ?? '',
       order.memberId ? 'yes' : 'no',
@@ -70,7 +75,6 @@ export async function GET(request: NextRequest) {
       order.taxMode,
       order.total,
       order.currency,
-      addressPart(address, 'company'),
       addressPart(address, 'line1'),
       addressPart(address, 'line2'),
       addressPart(address, 'city'),

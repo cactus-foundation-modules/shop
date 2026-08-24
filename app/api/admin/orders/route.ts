@@ -28,8 +28,10 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ orders, total, metrics, overview })
 }
 
+// No company field: the organisation is a contact detail on the order now
+// (customerOrganisation below), not part of an address.
 const AddressSchema = z.object({
-  firstName: z.string().min(1), lastName: z.string().min(1), company: z.string().optional(),
+  firstName: z.string().min(1), lastName: z.string().min(1),
   line1: z.string().min(1), line2: z.string().optional(), city: z.string().min(1), county: z.string().optional(),
   postcode: z.string().min(1), country: z.string().min(2).default('GB'), phone: z.string().optional(),
 })
@@ -38,6 +40,7 @@ const Body = z.object({
   lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1) })),
   customerEmail: z.string().email(),
   customerName: z.string().min(1),
+  customerOrganisation: z.string().optional(),
   customerPhone: z.string().optional(),
   shippingAddress: AddressSchema,
   paymentMethod: z.enum(['STRIPE', 'PAYPAL', 'BANK_TRANSFER', 'CASH']),
@@ -65,6 +68,7 @@ export async function POST(request: NextRequest) {
     orderNumber,
     customerEmail: data.customerEmail,
     customerName: data.customerName,
+    customerOrganisation: data.customerOrganisation?.trim() || null,
     customerPhone: data.customerPhone ?? null,
     shippingAddress: data.shippingAddress,
     subtotal: totals.subtotal,

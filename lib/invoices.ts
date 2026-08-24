@@ -20,7 +20,7 @@ import {
   type ShopInvoiceVoidedPayload,
 } from '@/modules/shop/lib/invoice-sinks'
 import { invoicePath, signInvoiceToken } from '@/modules/shop/lib/invoice-token'
-import { addressLines } from '@/modules/shop/lib/order-display'
+import { addressLines, orderCompanyName } from '@/modules/shop/lib/order-display'
 import type { ShpInvoice, ShpInvoiceSeller, ShpInvoiceCustomer, ShpInvoiceWording, ShpOrder } from '@/modules/shop/lib/types'
 
 // Issuing an invoice: the one place it happens, for the same reason
@@ -95,7 +95,10 @@ function buildCustomer(order: ShpOrder): ShpInvoiceCustomer {
   const billing = order.billingAddress ?? order.shippingAddress
   return {
     name: order.customerName,
-    company: billing?.company?.trim() || order.shippingAddress?.company?.trim() || '',
+    // One answer, shared with the orders list and the search - see
+    // orderCompanyName for why the order's own field comes before the two
+    // address fallbacks.
+    company: orderCompanyName(order) ?? '',
     email: order.customerEmail,
     phone: order.customerPhone ?? '',
     billingAddress: billing ? addressLines(billing) : [],

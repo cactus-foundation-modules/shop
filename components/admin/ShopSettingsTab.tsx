@@ -498,23 +498,25 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
           </div>
 
           <hr style={hr} />
-          <h3 style={sectionHeading}>Business name</h3>
+          <h3 style={sectionHeading}>Organisation name</h3>
           <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-            Adds a box above the first line of the delivery address. Worth switching on if you sell to businesses and they need it on the paperwork.
+            Adds a box directly under the customer&apos;s own name, because it says who they are rather than where the parcel goes. Worth switching
+            on if you sell to businesses and they need it on the paperwork. Anyone who wants the company on the delivery label puts it in the first
+            line of the address, which is where a courier reads it.
           </p>
           <label style={checkboxRow}>
-            <input type="checkbox" checked={config.businessNameFieldEnabled} onChange={(e) => set('businessNameFieldEnabled', e.target.checked)} />
-            Ask for a business name at checkout
+            <input type="checkbox" checked={config.organisationFieldEnabled} onChange={(e) => set('organisationFieldEnabled', e.target.checked)} />
+            Ask for an organisation name at checkout
           </label>
-          {config.businessNameFieldEnabled && (
+          {config.organisationFieldEnabled && (
             <>
               <label style={checkboxRow}>
-                <input type="checkbox" checked={config.businessNameRequired} onChange={(e) => set('businessNameRequired', e.target.checked)} />
+                <input type="checkbox" checked={config.organisationRequired} onChange={(e) => set('organisationRequired', e.target.checked)} />
                 Orders can&apos;t be placed without one
               </label>
               <div className="field">
                 <label>What to call it</label>
-                <input type="text" value={config.businessNameLabel} onChange={(e) => set('businessNameLabel', e.target.value)} placeholder="Business name" />
+                <input type="text" value={config.organisationLabel} onChange={(e) => set('organisationLabel', e.target.value)} placeholder="Organisation name" />
                 <p className="field-hint">Company name, practice name, school - whatever your customers would call themselves.</p>
               </div>
             </>

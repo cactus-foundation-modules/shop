@@ -14,9 +14,10 @@ const FILLED: CheckoutState = {
   ...EMPTY_CHECKOUT_STATE,
   customerEmail: 'shopper@example.com',
   customerName: 'A Shopper',
+  customerOrganisation: 'Shopper Ltd',
   customerPhone: '01234 567890',
   shippingAddress: {
-    firstName: 'A', lastName: 'Shopper', company: 'Shopper Ltd',
+    firstName: 'A', lastName: 'Shopper',
     line1: '1 High Street', line2: '', city: 'Leeds', county: '',
     postcode: 'LS1 1AA', country: 'GB', phone: '',
   },
@@ -34,31 +35,31 @@ describe('missingCheckoutFields', () => {
 
   it('says nothing about the optional boxes unless the shop asks for them', () => {
     expect(labels(EMPTY_CHECKOUT_STATE)).not.toContain('Phone')
-    expect(labels(EMPTY_CHECKOUT_STATE)).not.toContain('Business name')
+    expect(labels(EMPTY_CHECKOUT_STATE)).not.toContain('Organisation name')
   })
 
   it('asks for the phone number when the shop requires one', () => {
     expect(labels(EMPTY_CHECKOUT_STATE, { phoneRequired: true })).toContain('Phone')
   })
 
-  it('calls the business-name box whatever the owner calls it', () => {
-    expect(labels(EMPTY_CHECKOUT_STATE, { businessNameRequired: true, businessNameLabel: ' Delivery depot ' }))
-      .toContain('Delivery depot')
+  it('calls the organisation box whatever the owner calls it', () => {
+    expect(labels(EMPTY_CHECKOUT_STATE, { organisationRequired: true, organisationLabel: ' Practice name ' }))
+      .toContain('Practice name')
   })
 
-  it('falls back to a sensible name for the business-name box when config has not arrived', () => {
-    expect(labels(EMPTY_CHECKOUT_STATE, { businessNameRequired: true })).toContain('Business name')
+  it('falls back to a sensible name for the organisation box when config has not arrived', () => {
+    expect(labels(EMPTY_CHECKOUT_STATE, { organisationRequired: true })).toContain('Organisation name')
   })
 
-  it('puts the business name where the form puts it, above address line 1', () => {
-    const asked = labels(EMPTY_CHECKOUT_STATE, { businessNameRequired: true })
-    expect(asked.indexOf('Business name')).toBeLessThan(asked.indexOf('Address line 1'))
-    expect(asked.indexOf('Business name')).toBeGreaterThan(asked.indexOf('Last name'))
+  it('puts the organisation where the form puts it, under the full name and out of the address', () => {
+    const asked = labels(EMPTY_CHECKOUT_STATE, { organisationRequired: true })
+    expect(asked.indexOf('Organisation name')).toBeGreaterThan(asked.indexOf('Full name'))
+    expect(asked.indexOf('Organisation name')).toBeLessThan(asked.indexOf('First name'))
   })
 
   it('is empty once everything is filled in', () => {
-    expect(missingCheckoutFields(FILLED, { businessNameRequired: true, phoneRequired: true })).toEqual([])
-    expect(isContactAndShippingComplete(FILLED, { businessNameRequired: true, phoneRequired: true })).toBe(true)
+    expect(missingCheckoutFields(FILLED, { organisationRequired: true, phoneRequired: true })).toEqual([])
+    expect(isContactAndShippingComplete(FILLED, { organisationRequired: true, phoneRequired: true })).toBe(true)
   })
 
   it('tells a typed-but-wrong email apart from a blank one', () => {
@@ -103,19 +104,19 @@ describe('missingCheckoutFields', () => {
   it('hands back a key matching the box the shopper has to go and fix', () => {
     // The keys are the inputs' data-shop-field values; if these drift, the list
     // still reads correctly but clicking a row stops taking anyone anywhere.
-    expect(missingCheckoutFields(EMPTY_CHECKOUT_STATE, { phoneRequired: true, businessNameRequired: true })
+    expect(missingCheckoutFields(EMPTY_CHECKOUT_STATE, { phoneRequired: true, organisationRequired: true })
       .map((f) => f.key)).toEqual([
-      'customerEmail', 'customerName',
-      'firstName', 'lastName', 'customerPhone', 'company', 'line1', 'city', 'postcode',
+      'customerEmail', 'customerName', 'customerOrganisation',
+      'firstName', 'lastName', 'customerPhone', 'line1', 'city', 'postcode',
     ])
   })
 
   it('puts the phone number where the form puts it, under the names', () => {
     // It moved off the contact step and onto the delivery one, since the number
     // belongs to the address a parcel is going to rather than to the account.
-    const asked = labels(EMPTY_CHECKOUT_STATE, { phoneRequired: true, businessNameRequired: true })
+    const asked = labels(EMPTY_CHECKOUT_STATE, { phoneRequired: true, organisationRequired: true })
     expect(asked.indexOf('Phone')).toBeGreaterThan(asked.indexOf('Last name'))
-    expect(asked.indexOf('Phone')).toBeLessThan(asked.indexOf('Business name'))
+    expect(asked.indexOf('Phone')).toBeLessThan(asked.indexOf('Address line 1'))
   })
 })
 

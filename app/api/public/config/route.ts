@@ -63,14 +63,14 @@ export async function GET() {
     minimumOrderValue: config.minimumOrderValue,
     maximumOrderValue: config.maximumOrderValue,
     requirePhone: config.requirePhone,
-    // The business-name box above address line 1, and whether an order can be
-    // placed without one. The shipping step draws the box from this; the route
-    // that creates the order enforces the same rule again, because a setting
-    // the browser is told about is a setting the browser can ignore.
-    businessName: {
-      enabled: config.businessNameFieldEnabled,
-      required: config.businessNameRequired,
-      label: config.businessNameLabel.trim() || 'Business name',
+    // The organisation-name box under the shopper's own name, and whether an
+    // order can be placed without one. The contact step draws the box from this;
+    // the route that creates the order enforces the same rule again, because a
+    // setting the browser is told about is a setting the browser can ignore.
+    organisation: {
+      enabled: config.organisationFieldEnabled,
+      required: config.organisationRequired,
+      label: config.organisationLabel.trim() || 'Organisation name',
     },
     // Checkout tickboxes, already resolved: disabled and blank ones dropped,
     // and the terms link filled in from the site's own terms page where the

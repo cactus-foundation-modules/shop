@@ -91,14 +91,20 @@ export const ShpConfigSchema = z.object({
   requirePhone: z.boolean().default(false),
   checkoutSteps: z.array(CheckoutStepSchema).default(DEFAULT_CHECKOUT_STEPS),
 
-  // Business name at checkout. Off by default: a shop selling to the public has
-  // no use for it, and an empty box above the address is one more thing to skip.
-  // Enabling it shows the box above address line 1 (where a business address is
-  // actually read); requiring it refuses the order without one, both in the
-  // browser and at the route that creates the order.
-  businessNameFieldEnabled: z.boolean().default(false),
-  businessNameRequired: z.boolean().default(false),
-  businessNameLabel: z.string().default('Business name'),
+  // Organisation name at checkout. Off by default: a shop selling to the public
+  // has no use for it, and an empty box is one more thing to skip. Enabling it
+  // shows the box directly under the shopper's name on the contact step, because
+  // it says who they are rather than where the parcel goes; requiring it refuses
+  // the order without one, both in the browser and at the route that creates the
+  // order.
+  //
+  // It used to live in the delivery address, above line 1. That put it in the
+  // wrong place twice over: repeated on every saved address, and describing the
+  // buyer rather than the door. Anyone who wants the company on the delivery
+  // label puts it in address line 1, where a courier reads it.
+  organisationFieldEnabled: z.boolean().default(false),
+  organisationRequired: z.boolean().default(false),
+  organisationLabel: z.string().default('Organisation name'),
 
   // Terms and conditions tickbox at checkout. Kept apart from the owner's own
   // tickboxes below because it is the one nearly every shop wants and it can
@@ -403,8 +409,38 @@ export async function resolveCheckoutAgreements(config: ShpConfig): Promise<ShpC
 
 export const SHP_CONFIG_DEFAULTS: ShpConfig = ShpConfigSchema.parse({})
 
+// Rows written while the organisation box was called the business name. The
+// three keys were renamed rather than kept, so a stored row has to be read
+// through this on its way to the schema or a shop that had the box switched on
+// would quietly lose it. Nothing is written back: the derived value feeds the
+// parse, and the first save from the settings screen persists the new shape
+// (zod drops the old keys).
+//
+// The old default label is treated as never-customised. It said "Business name",
+// which is precisely the wording this change exists to be rid of - carrying it
+// across verbatim would rename the field everywhere except the one shop that had
+// been using it. A label the owner actually typed is kept exactly as typed.
+const LEGACY_ORGANISATION_LABEL = 'business name'
+
+function withLegacyOrganisationKeys(raw: unknown): unknown {
+  if (raw === null || typeof raw !== 'object') return raw
+  const row = raw as Record<string, unknown>
+  if (row.organisationFieldEnabled !== undefined) return row
+  if (row.businessNameFieldEnabled === undefined && row.businessNameLabel === undefined) return row
+
+  const legacyLabel = typeof row.businessNameLabel === 'string' ? row.businessNameLabel.trim() : ''
+  return {
+    ...row,
+    organisationFieldEnabled: row.businessNameFieldEnabled,
+    organisationRequired: row.businessNameRequired,
+    ...(legacyLabel && legacyLabel.toLowerCase() !== LEGACY_ORGANISATION_LABEL
+      ? { organisationLabel: legacyLabel }
+      : {}),
+  }
+}
+
 export function parseShpConfig(raw: unknown): ShpConfig {
-  const result = ShpConfigSchema.safeParse(raw ?? {})
+  const result = ShpConfigSchema.safeParse(withLegacyOrganisationKeys(raw ?? {}))
   return result.success ? result.data : SHP_CONFIG_DEFAULTS
 }
 

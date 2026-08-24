@@ -35,7 +35,7 @@ type ShopClientConfig = {
   currencySymbol: string
   // Optional so a response from an older cached bundle still works - the
   // fallback is the rule as it was before the business-name box existed.
-  businessName?: { required?: boolean }
+  organisation?: { required?: boolean }
   // Whether the contact step's phone number is compulsory. Same reason as
   // above: the order-creating route refuses without one, so this block has to
   // know before it is worth calling.
@@ -226,6 +226,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
           // storage by an older visit that never went through the contact box's
           // own tidy-up. The route normalises it again regardless.
           lines, customerEmail: state.customerEmail, customerName: state.customerName,
+          customerOrganisation: state.customerOrganisation.trim() || undefined,
           customerPhone: (formatUkPhone(state.customerPhone) ?? state.customerPhone) || undefined,
           shippingAddress: state.shippingAddress, shippingRateId: state.shippingRateId, couponCode: state.couponCode, paymentMethod: next,
           // Which tickboxes the shopper ticked on the review step. Sent as ids,
@@ -294,7 +295,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
   // call behind the choice is, and only until the shopper has finished.
   const outstandingRequirement = useCallback((state: CheckoutState): 'details' | 'agreements' | null => {
     if (!isContactAndShippingComplete(state, {
-      businessNameRequired: config?.businessName?.required === true,
+      organisationRequired: config?.organisation?.required === true,
       phoneRequired: config?.requirePhone === true,
     })) return 'details'
     if (!areAgreementsAccepted(state.agreements, config?.checkoutAgreements ?? [])) return 'agreements'

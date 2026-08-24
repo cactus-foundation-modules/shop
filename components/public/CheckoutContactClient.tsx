@@ -5,14 +5,25 @@ import type { ShopCheckoutContactExtraProps } from '@/modules/shop/components/pu
 import { getCheckoutState, updateCheckoutState } from '@/modules/shop/components/public/checkout-state'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 
+// The organisation box and whether it is compulsory, from shop settings.
+// Fetched here rather than passed down from the RSC wrapper so the editor
+// preview draws the same form the storefront does.
+type OrganisationConfig = { enabled: boolean; required: boolean; label: string }
+
 // Client island for the checkout contact step. Registered Puck block wrapper
 // (ShopCheckoutContact) is a server component that renders this, so Puck's RSC
 // <Render> never serialises its renderDropZone function bag into the client.
 //
-// Name and email only. The phone number moved to the delivery step, under the
-// names it belongs with: a number is how a courier reaches whoever is at that
-// door, which is not always the person paying, so it travels with the address
-// rather than with the account.
+// Name, organisation, email. The phone number moved to the delivery step, under
+// the names it belongs with: a number is how a courier reaches whoever is at
+// that door, which is not always the person paying, so it travels with the
+// address rather than with the account.
+//
+// The organisation went the other way. It used to be asked for as part of the
+// delivery address, above line 1, which repeated it on every saved address and
+// described the buyer rather than the door. It sits under the name now, with the
+// rest of who-you-are. A company that has to appear on the delivery label goes
+// in address line 1, where a courier actually reads it.
 //
 // Name first, then email: it is the order a person expects to be asked in, and
 // it puts the email box last, immediately above anything a module has to say
@@ -28,9 +39,13 @@ export function CheckoutContactClient({ preview = false, heading, extras = [] }:
   const initial = getCheckoutState()
   const [email, setEmail] = useState(initial.customerEmail)
   const [name, setName] = useState(initial.customerName)
+  const [organisation, setOrganisation] = useState(initial.customerOrganisation)
+  const [organisationConfig, setOrganisationConfig] = useState<OrganisationConfig | null>(null)
+  const [organisationTouched, setOrganisationTouched] = useState(false)
 
-  // The name the shopper keeps on their account, if they are signed in and have
-  // filled it in. A signed-out shopper gets a 401 and nothing changes.
+  // The name and organisation the shopper keeps on their account, if they are
+  // signed in and have filled them in. A signed-out shopper gets a 401 and
+  // nothing changes.
   //
   // Only ever fills a box that is empty: somebody who has typed a different name
   // for this one order, or who has stepped back to this block mid-checkout,
@@ -42,15 +57,42 @@ export function CheckoutContactClient({ preview = false, heading, extras = [] }:
     let cancelled = false
     fetch('/api/members/contact')
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { fullName?: string | null } | null) => {
-        if (cancelled || !d?.fullName) return
-        if (getCheckoutState().customerName.trim().length > 0) return
-        setName(d.fullName)
-        updateCheckoutState({ customerName: d.fullName })
+      .then((d: { fullName?: string | null; organisation?: string | null } | null) => {
+        if (cancelled || !d) return
+        const stored = getCheckoutState()
+        if (d.fullName && stored.customerName.trim().length === 0) {
+          setName(d.fullName)
+          updateCheckoutState({ customerName: d.fullName })
+        }
+        if (d.organisation && stored.customerOrganisation.trim().length === 0) {
+          setOrganisation(d.organisation)
+          updateCheckoutState({ customerOrganisation: d.organisation })
+        }
       })
       .catch(() => {})
     return () => { cancelled = true }
   }, [preview])
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/m/shop/public/config')
+      .then((r) => r.json())
+      .then((d: { organisation?: OrganisationConfig }) => {
+        if (cancelled || !d.organisation) return
+        setOrganisationConfig(d.organisation)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  // Specific and fix-stating, never a bare "required", and built from the
+  // owner's own label - "Enter your practice name." reads properly where
+  // "Enter your organisation name." would be a lie on that shop. Only once the
+  // shopper has left the box: nothing is told off before it is reached.
+  const organisationError = organisationConfig?.enabled && organisationConfig.required
+    && organisationTouched && organisation.trim().length === 0
+    ? `Enter your ${organisationConfig.label.trim().toLowerCase() || 'organisation name'}.`
+    : null
 
   // Empty basket: the order-summary block owns the "your basket is empty"
   // message; a contact form under it would suggest there is still an order to
@@ -67,6 +109,26 @@ export function CheckoutContactClient({ preview = false, heading, extras = [] }:
         <input type="text" required autoComplete="name" data-shop-field="customerName" value={name} onChange={(e) => { setName(e.target.value); updateCheckoutState({ customerName: e.target.value }) }}
           style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)' }} />
       </label>
+      {/* Under the name, above the email: it belongs with who the shopper is.
+          Optional by default, so the label says so out loud rather than leaving
+          somebody wondering whether a blank box will stop them. */}
+      {organisationConfig?.enabled && (
+        <label style={{ display: 'grid', gap: '0.25rem' }}>
+          <span>{organisationConfig.required ? organisationConfig.label : `${organisationConfig.label} (optional)`}</span>
+          <input
+            type="text"
+            required={organisationConfig.required}
+            autoComplete="organization"
+            data-shop-field="customerOrganisation"
+            value={organisation}
+            onChange={(e) => { setOrganisation(e.target.value); updateCheckoutState({ customerOrganisation: e.target.value }) }}
+            onBlur={() => setOrganisationTouched(true)}
+            aria-invalid={organisationError ? true : undefined}
+            style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: `1px solid ${organisationError ? 'var(--color-danger)' : 'var(--color-border)'}` }}
+          />
+          {organisationError && <span role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{organisationError}</span>}
+        </label>
+      )}
       <label style={{ display: 'grid', gap: '0.25rem' }}>
         <span>Email</span>
         <input type="email" required autoComplete="email" inputMode="email" data-shop-field="customerEmail" value={email} onChange={(e) => { setEmail(e.target.value); updateCheckoutState({ customerEmail: e.target.value }) }}

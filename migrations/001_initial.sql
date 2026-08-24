@@ -433,6 +433,10 @@ CREATE TABLE IF NOT EXISTS "shp_orders" (
     -- Customer snapshot (captured at order time, not a live relation)
     "customer_email" TEXT NOT NULL,
     "customer_name" TEXT NOT NULL,
+    -- The organisation the order was placed on behalf of, where the shop asks
+    -- for one. A contact detail beside the name, not part of an address: it says
+    -- who the customer is rather than where the parcel goes.
+    "customer_organisation" TEXT,
     "customer_phone" TEXT,
 
     -- Addresses (ShpAddress shape)

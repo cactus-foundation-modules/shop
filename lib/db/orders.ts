@@ -12,6 +12,7 @@ function mapOrder(r: Record<string, unknown>): ShpOrder {
     memberId: (r.member_id as string | null) ?? null,
     customerEmail: r.customer_email as string,
     customerName: r.customer_name as string,
+    customerOrganisation: (r.customer_organisation as string | null) ?? null,
     customerPhone: (r.customer_phone as string | null) ?? null,
     shippingAddress: r.shipping_address as ShpAddress,
     billingAddress: (r.billing_address as ShpAddress | null) ?? null,
@@ -113,6 +114,7 @@ export type CreateOrderInput = {
   memberId?: string | null
   customerEmail: string
   customerName: string
+  customerOrganisation?: string | null
   customerPhone?: string | null
   shippingAddress: ShpAddress
   billingAddress?: ShpAddress | null
@@ -161,7 +163,7 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
   const rows = await tx.$queryRaw<[{ id: string }]>`
     INSERT INTO "shp_orders" (
       "id",
-      "order_number", "member_id", "customer_email", "customer_name", "customer_phone",
+      "order_number", "member_id", "customer_email", "customer_name", "customer_organisation", "customer_phone",
       "shipping_address", "billing_address", "subtotal", "discount_amount", "shipping_amount",
       "tax_amount", "total", "tax_mode", "currency", "coupon_id", "coupon_code",
       "payment_method", "shipping_rate_id", "shipping_rate_name", "agreements"
@@ -170,7 +172,8 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
       -- given it anyway. Written as a value rather than left to the default
       -- so both cases go through one statement.
       COALESCE(${data.id ?? null}::text, gen_random_uuid()::text),
-      ${data.orderNumber}, ${data.memberId ?? null}, ${data.customerEmail}, ${data.customerName}, ${normaliseStoredPhone(data.customerPhone)},
+      ${data.orderNumber}, ${data.memberId ?? null}, ${data.customerEmail}, ${data.customerName},
+      ${data.customerOrganisation?.trim() || null}, ${normaliseStoredPhone(data.customerPhone)},
       ${JSON.stringify(data.shippingAddress)}::jsonb, ${data.billingAddress ? JSON.stringify(data.billingAddress) : null}::jsonb,
       ${data.subtotal}, ${data.discountAmount}, ${data.shippingAmount}, ${data.taxAmount}, ${data.total},
       ${data.taxMode}, ${data.currency}, ${data.couponId ?? null}, ${data.couponCode ?? null},
@@ -421,7 +424,12 @@ export type OrderSort = 'newest' | 'oldest' | 'total-desc' | 'total-asc' | 'cust
 // that is the party being invoiced, then delivery, and a blank field counts as
 // not given rather than as a company called "". Kept as one fragment so the
 // search, the sort and the list can never disagree about who the customer is.
-const ORDER_COMPANY_SQL = Prisma.sql`COALESCE(NULLIF(btrim(o."billing_address"->>'company'), ''), NULLIF(btrim(o."shipping_address"->>'company'), ''))`
+//
+// The order's own column comes first: that is where a new order keeps it, since
+// the organisation is who the customer is rather than where the parcel goes. The
+// two address fallbacks are for orders placed while it lived in the delivery
+// address, and for modules that still write one there (a converted quote, say).
+const ORDER_COMPANY_SQL = Prisma.sql`COALESCE(NULLIF(btrim(o."customer_organisation"), ''), NULLIF(btrim(o."billing_address"->>'company'), ''), NULLIF(btrim(o."shipping_address"->>'company'), ''))`
 
 const SORT_CLAUSE: Record<OrderSort, Prisma.Sql> = {
   newest: Prisma.sql`ORDER BY o."created_at" DESC`,

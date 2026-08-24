@@ -7,10 +7,13 @@ import { isValidUkPhone } from '@/modules/shop/lib/phone'
 // half-finished checkout shouldn't survive across browser sessions the way
 // the cart itself does.
 
+// Deliberately no company/organisation here. It used to sit above line 1, which
+// repeated it on every saved address and described the buyer rather than the
+// door a parcel goes to. It is a contact detail now (customerOrganisation
+// below); a company that has to appear on the delivery label goes in line 1.
 export type ShpAddressForm = {
   firstName: string
   lastName: string
-  company: string
   line1: string
   line2: string
   city: string
@@ -23,6 +26,10 @@ export type ShpAddressForm = {
 export type CheckoutState = {
   customerEmail: string
   customerName: string
+  // The organisation the shopper is buying on behalf of, where the shop asks for
+  // one. A contact detail, alongside the name and email - not part of any
+  // address. Signed-in shoppers have theirs filled in from their account.
+  customerOrganisation: string
   customerPhone: string
   shippingAddress: ShpAddressForm
   shippingRateId: string | null
@@ -42,11 +49,11 @@ const STORAGE_KEY = 'cactus_shop_checkout'
 const EVENT = 'cactus-shop-checkout-changed'
 
 export const EMPTY_ADDRESS: ShpAddressForm = {
-  firstName: '', lastName: '', company: '', line1: '', line2: '', city: '', county: '', postcode: '', country: 'GB', phone: '',
+  firstName: '', lastName: '', line1: '', line2: '', city: '', county: '', postcode: '', country: 'GB', phone: '',
 }
 
 export const EMPTY_CHECKOUT_STATE: CheckoutState = {
-  customerEmail: '', customerName: '', customerPhone: '',
+  customerEmail: '', customerName: '', customerOrganisation: '', customerPhone: '',
   shippingAddress: EMPTY_ADDRESS, shippingRateId: null, couponCode: null, paymentMethod: null,
   agreements: {},
 }
@@ -162,7 +169,7 @@ export function forgetPlacedOrder(): void {
 // so Payment/Review can mount (and fire their network calls) before those fields
 // are filled in. Both check this before hitting an endpoint that requires them.
 //
-// `businessNameRequired` and `phoneRequired` come from shop settings and have to
+// `organisationRequired` and `phoneRequired` come from shop settings and have to
 // be passed in: this file is shared by blocks that each fetch config at their own
 // pace, and a caller that has not got it yet is better off omitting it than
 // guessing. The order-creating route enforces the same rules server-side
@@ -186,11 +193,11 @@ export function isContactAndShippingComplete(
 export type MissingCheckoutField = { key: string; label: string; reason: 'empty' | 'invalid'; hint?: string }
 
 export type CheckoutFieldRules = {
-  businessNameRequired?: boolean
-  // The owner's own wording for the business-name box ("Delivery depot", say).
+  organisationRequired?: boolean
+  // The owner's own wording for the organisation box ("Practice name", say).
   // Only used for the label, so a caller without it yet still gets the right
   // list, just with the default name on that one row.
-  businessNameLabel?: string
+  organisationLabel?: string
   phoneRequired?: boolean
 }
 
@@ -216,6 +223,13 @@ export function missingCheckoutFields(
 
   if (state.customerName.trim().length === 0) add('customerName', 'Full name')
 
+  // Directly after the name, because that is where the box is: it says who the
+  // shopper is, not where the parcel goes, so it belongs with the contact
+  // details rather than in the address below.
+  if (opts?.organisationRequired && state.customerOrganisation.trim().length === 0) {
+    add('customerOrganisation', opts.organisationLabel?.trim() || 'Organisation name')
+  }
+
   if (a.firstName.trim().length === 0) add('firstName', 'First name')
   if (a.lastName.trim().length === 0) add('lastName', 'Last name')
   // Listed here because that is where the box now sits: under the names on the
@@ -232,9 +246,6 @@ export function missingCheckoutFields(
     add('customerPhone', 'Phone', 'invalid', 'that does not look like a UK phone number.')
   }
 
-  if (opts?.businessNameRequired && a.company.trim().length === 0) {
-    add('company', opts.businessNameLabel?.trim() || 'Business name')
-  }
   if (a.line1.trim().length === 0) add('line1', 'Address line 1')
   if (a.city.trim().length === 0) add('city', 'Town or city')
   if (a.postcode.trim().length === 0) add('postcode', 'Postcode')

@@ -10,13 +10,9 @@ import { formatUkPhone, isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/
 // may assume a field is present.
 type SavedAddress = { id: string; label: string | null; isDefault: boolean; address: Partial<ShpAddressForm> }
 
-// The business-name box and whether it is compulsory, from shop settings - the
-// same answer checkout asks for, so the two forms ask for the same things.
-type BusinessNameConfig = { enabled: boolean; required: boolean; label: string }
-
 function toAddressForm(a: Partial<ShpAddressForm>): ShpAddressForm {
   return {
-    firstName: a.firstName ?? '', lastName: a.lastName ?? '', company: a.company ?? '',
+    firstName: a.firstName ?? '', lastName: a.lastName ?? '',
     line1: a.line1 ?? '', line2: a.line2 ?? '', city: a.city ?? '', county: a.county ?? '',
     postcode: a.postcode ?? '', country: a.country || 'GB', phone: a.phone ?? '',
   }
@@ -54,7 +50,6 @@ export function AddressesClient({ addressLookup = null }: {
   // time: two open forms is two half-typed addresses and no way to tell which
   // one the Save button belongs to.
   const [editing, setEditing] = useState<string | null>(null)
-  const [businessName, setBusinessName] = useState<BusinessNameConfig | null>(null)
   // Assumed optional until the answer arrives: labelling a box compulsory and
   // then relenting is the worse of the two wrong guesses.
   const [phoneRequired, setPhoneRequired] = useState(false)
@@ -73,9 +68,8 @@ export function AddressesClient({ addressLookup = null }: {
     let cancelled = false
     fetch('/api/m/shop/public/config')
       .then((r) => r.json())
-      .then((d: { businessName?: BusinessNameConfig; requirePhone?: boolean }) => {
+      .then((d: { requirePhone?: boolean }) => {
         if (cancelled) return
-        if (d.businessName) setBusinessName(d.businessName)
         setPhoneRequired(d.requirePhone === true)
       })
       .catch(() => {})
@@ -122,7 +116,6 @@ export function AddressesClient({ addressLookup = null }: {
                 initialLabel={a.label ?? ''}
                 initialAddress={toAddressForm(a.address)}
                 addressLookup={addressLookup}
-                businessName={businessName}
                 phoneRequired={phoneRequired}
                 onCancel={() => setEditing(null)}
                 onSave={(label, address) => saveAddress(a.id, label, address)}
@@ -131,7 +124,7 @@ export function AddressesClient({ addressLookup = null }: {
               <>
                 <div style={{ fontWeight: 600 }}>{addressTitle(a)}{a.isDefault && ' (default)'}</div>
                 <div style={{ color: 'var(--color-text-muted)', fontSize: '0.9375rem' }}>
-                  {[a.address.company, a.address.line1, a.address.line2, a.address.city, a.address.county, a.address.postcode]
+                  {[a.address.line1, a.address.line2, a.address.city, a.address.county, a.address.postcode]
                     .filter((part) => (part ?? '').trim().length > 0)
                     .join(', ')}
                 </div>
@@ -164,7 +157,6 @@ export function AddressesClient({ addressLookup = null }: {
             initialLabel=""
             initialAddress={EMPTY_ADDRESS}
             addressLookup={addressLookup}
-            businessName={businessName}
             phoneRequired={phoneRequired}
             onCancel={() => setEditing(null)}
             onSave={(label, address) => saveAddress(null, label, address)}
@@ -180,13 +172,12 @@ export function AddressesClient({ addressLookup = null }: {
 }
 
 function AddressForm({
-  heading, initialLabel, initialAddress, addressLookup, businessName, phoneRequired, onCancel, onSave,
+  heading, initialLabel, initialAddress, addressLookup, phoneRequired, onCancel, onSave,
 }: {
   heading: string
   initialLabel: string
   initialAddress: ShpAddressForm
   addressLookup: ComponentType<ShopCheckoutAddressLookupProps> | null
-  businessName: BusinessNameConfig | null
   phoneRequired: boolean
   onCancel: () => void
   onSave: (label: string, address: ShpAddressForm) => Promise<string | null>
@@ -209,12 +200,7 @@ function AddressForm({
   }
 
   function fieldError(key: keyof ShpAddressForm): string | null {
-    // The business name's message is built from the owner's own label, so it
-    // can't live in the fixed map above - "Enter your delivery depot." reads
-    // properly, "Enter your business name." would be a lie on that shop.
-    const message = key === 'company' && businessName?.required
-      ? `Enter the ${businessName.label.trim().toLowerCase() || 'business name'}.`
-      : REQUIRED_MESSAGES[key]
+    const message = REQUIRED_MESSAGES[key]
     if (!message || !touched[key]) return null
     return form[key].trim().length === 0 ? message : null
   }
@@ -260,7 +246,6 @@ function AddressForm({
     // Everything gets marked touched first, so a shopper who reaches straight
     // for Save is told which box is short rather than nothing happening.
     const required: Array<keyof ShpAddressForm> = ['firstName', 'lastName', 'line1', 'city', 'postcode']
-    if (businessName?.enabled && businessName.required) required.push('company')
     setTouched(Object.fromEntries(required.map((k) => [k, true])))
     setPhoneTouched(true)
 
@@ -295,7 +280,7 @@ function AddressForm({
         {field('firstName', 'First name', 'given-name', true)}
         {field('lastName', 'Last name', 'family-name', true)}
       </div>
-      {/* Under the names, above the business name: the number belongs to
+      {/* Under the names: the number belongs to
           whoever is at this door rather than to the account, which is why it is
           kept with the address and not on the member's own details. */}
       <label style={{ display: 'grid', gap: '0.25rem' }}>
@@ -324,12 +309,6 @@ function AddressForm({
           Only ever used about a delivery to this address - a slot, or a question on the day.
         </span>
       </label>
-      {businessName?.enabled && field(
-        'company',
-        businessName.required ? businessName.label : `${businessName.label} (optional)`,
-        'organization',
-        businessName.required,
-      )}
       {AddressLookup ? (
         <AddressLookup
           value={form.line1}

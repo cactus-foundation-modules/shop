@@ -26,9 +26,11 @@ type OrderRow = {
   paymentMethod: string
   customerName: string
   customerEmail: string
-  // Carried so the list can lead with the company an order was placed on behalf
-  // of. Only `company` is read here, but the addresses arrive whole from the
-  // list route and picking them apart server-side would buy nothing.
+  // Carried so the list can lead with the organisation an order was placed on
+  // behalf of. The addresses come too, for orders placed while it lived in the
+  // delivery address - they arrive whole from the list route and picking them
+  // apart server-side would buy nothing.
+  customerOrganisation?: string | null
   shippingAddress?: ShpAddress | null
   billingAddress?: ShpAddress | null
   memberId: string | null
@@ -370,7 +372,7 @@ export function OrdersScreen() {
         <input
           className="sox-search"
           aria-label="Search orders"
-          placeholder="Search by order number, company, name or email…"
+          placeholder="Search by order number, organisation, name or email…"
           value={searchBox}
           onChange={(e) => setSearchBox(e.target.value)}
         />

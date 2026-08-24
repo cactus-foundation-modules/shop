@@ -61,18 +61,26 @@ export function formatOrderDate(date: Date): string {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
-/** The company an order was placed on behalf of, if one was given.
+/** The organisation an order was placed on behalf of, if one was given.
  *
- * Billing wins over delivery on the same reasoning the invoice uses (see
- * lib/invoices.ts): if someone filled a billing address in at all, that is the
- * party being invoiced, and the delivery company may well be a site office.
- * Empty strings count as "not given" - the checkout submits the field either
- * way and an unticked "this is a business" leaves it blank, not absent. */
+ * The order's own field first: that is where the checkout puts it now, since it
+ * says who the customer is rather than where the parcel goes. The two address
+ * fallbacks are for orders placed while it lived in the delivery address, and
+ * for modules that still write one there (a converted quote, say). Billing wins
+ * over delivery on the same reasoning the invoice uses (see lib/invoices.ts): if
+ * someone filled a billing address in at all, that is the party being invoiced,
+ * and a delivery company may well be a site office. Empty strings count as "not
+ * given" - the field is submitted either way and a blank one is not a company
+ * called "". */
 export function orderCompanyName(order: {
+  customerOrganisation?: string | null
   shippingAddress?: ShpAddress | null
   billingAddress?: ShpAddress | null
 }): string | null {
-  return order.billingAddress?.company?.trim() || order.shippingAddress?.company?.trim() || null
+  return order.customerOrganisation?.trim()
+    || order.billingAddress?.company?.trim()
+    || order.shippingAddress?.company?.trim()
+    || null
 }
 
 /** Who the order is FROM, for a list that has one line to say it in. A trade
@@ -80,6 +88,7 @@ export function orderCompanyName(order: {
  * type the card number, so the company leads whenever there is one. */
 export function orderCustomerLabel(order: {
   customerName: string
+  customerOrganisation?: string | null
   shippingAddress?: ShpAddress | null
   billingAddress?: ShpAddress | null
 }): string {

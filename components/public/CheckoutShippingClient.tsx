@@ -23,11 +23,6 @@ const REQUIRED_MESSAGES: Partial<Record<keyof ShpAddressForm, string>> = {
   postcode: 'Enter your postcode.',
 }
 
-// The business-name box and whether it is compulsory, from shop settings.
-// Fetched here rather than passed down from the RSC wrapper so the editor
-// preview draws the same form the storefront does.
-type BusinessNameConfig = { enabled: boolean; required: boolean; label: string }
-
 // An address the shopper has ordered to before. Stored fields are all optional
 // (the account page's own form asks for fewer than checkout does), so nothing
 // here may assume a field is present.
@@ -35,7 +30,7 @@ type SavedAddress = { id: string; label: string | null; isDefault: boolean; addr
 
 function toAddressForm(a: Partial<ShpAddressForm>): ShpAddressForm {
   return {
-    firstName: a.firstName ?? '', lastName: a.lastName ?? '', company: a.company ?? '',
+    firstName: a.firstName ?? '', lastName: a.lastName ?? '',
     line1: a.line1 ?? '', line2: a.line2 ?? '', city: a.city ?? '', county: a.county ?? '',
     postcode: a.postcode ?? '', country: a.country || 'GB', phone: a.phone ?? '',
   }
@@ -73,9 +68,8 @@ function sameAddress(a: ShpAddressForm, b: ShpAddressForm): boolean {
 // allowed to stand in for the form when it actually answers all of them - the
 // account page asks for fewer fields than checkout does, so an address saved
 // there can be perfectly good and still be short of a postcode.
-function missingFromSaved(a: ShpAddressForm, opts: { businessNameRequired: boolean; phoneRequired: boolean }): boolean {
+function missingFromSaved(a: ShpAddressForm, opts: { phoneRequired: boolean }): boolean {
   const required: Array<keyof ShpAddressForm> = ['firstName', 'lastName', 'line1', 'city', 'postcode']
-  if (opts.businessNameRequired) required.push('company')
   // A shop that insists on a number counts an address saved without one as
   // short: otherwise picking it hides the only box the shopper could put one in,
   // and the order is refused two steps later with nowhere to go and fix it.
@@ -108,7 +102,6 @@ export function CheckoutShippingClient({
   const [rates, setRates] = useState<ShippingRateOption[]>([])
   const [selectedRateId, setSelectedRateId] = useState<string | null>(initial.shippingRateId)
   const [touched, setTouched] = useState<Partial<Record<keyof ShpAddressForm, boolean>>>({})
-  const [businessName, setBusinessName] = useState<BusinessNameConfig | null>(null)
   // Whether the owner has made a phone number compulsory, from shop settings.
   // Assumed optional until the answer arrives: labelling a field compulsory and
   // then relenting is the worse of the two wrong guesses, and the completeness
@@ -158,9 +151,8 @@ export function CheckoutShippingClient({
     let cancelled = false
     fetch('/api/m/shop/public/config')
       .then((r) => r.json())
-      .then((d: { businessName?: BusinessNameConfig; requirePhone?: boolean }) => {
+      .then((d: { requirePhone?: boolean }) => {
         if (cancelled) return
-        if (d.businessName) setBusinessName(d.businessName)
         setPhoneRequired(d.requirePhone === true)
       })
       .catch(() => {})
@@ -212,12 +204,7 @@ export function CheckoutShippingClient({
   }
 
   function fieldError(key: keyof ShpAddressForm): string | null {
-    // The business name's message is built from the owner's own label, so it
-    // can't live in the fixed map above - "Enter your delivery depot." reads
-    // properly, "Enter your business name." would be a lie on that shop.
-    const message = key === 'company' && businessName?.required
-      ? `Enter your ${businessName.label.trim().toLowerCase() || 'business name'}.`
-      : REQUIRED_MESSAGES[key]
+    const message = REQUIRED_MESSAGES[key]
     if (!message || !touched[key]) return null
     return address[key].trim().length === 0 ? message : null
   }
@@ -309,10 +296,7 @@ export function CheckoutShippingClient({
     ? savedAddresses.find((a) => a.id === choice.id) ?? null
     : null
   const savedIsShort = chosenSaved != null
-    && missingFromSaved(toAddressForm(chosenSaved.address), {
-      businessNameRequired: businessName?.enabled === true && businessName.required,
-      phoneRequired,
-    })
+    && missingFromSaved(toAddressForm(chosenSaved.address), { phoneRequired })
 
   // The form is the "different address" form, so it is only on screen when that
   // is what the shopper has asked for. A picked saved address collapses it
@@ -391,7 +375,7 @@ export function CheckoutShippingClient({
             {field('firstName', 'First name', 'given-name', true)}
             {field('lastName', 'Last name', 'family-name', true)}
           </div>
-          {/* Under the names, above the business name: the number belongs to
+          {/* Under the names: the number belongs to
               whoever is at this door rather than to the account, which is why it
               is kept with the address and not on the member's own details.
               Checked as the shopper types rather than only when they leave the
@@ -423,16 +407,6 @@ export function CheckoutShippingClient({
             />
             {phoneError && <span role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{phoneError}</span>}
           </label>
-          {/* Above line 1, which is where a business address puts it and where the
-              browser's own autofill expects to find it. Optional by default, so the
-              label says so out loud rather than leaving a shopper wondering whether
-              a blank box will stop them. */}
-          {businessName?.enabled && field(
-            'company',
-            businessName.required ? businessName.label : `${businessName.label} (optional)`,
-            'organization',
-            businessName.required,
-          )}
           {AddressLookup ? (
             <AddressLookup
               value={address.line1}

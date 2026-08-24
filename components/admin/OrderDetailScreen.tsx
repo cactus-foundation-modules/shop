@@ -32,7 +32,7 @@ type Address = { firstName?: string; lastName?: string; company?: string; line1:
 type OrderDetail = {
   order: {
     id: string; orderNumber: string; status: string; paymentStatus: string; paymentMethod: string; paymentReference: string | null
-    memberId: string | null; customerName: string; customerEmail: string; customerPhone: string | null
+    memberId: string | null; customerName: string; customerOrganisation: string | null; customerEmail: string; customerPhone: string | null
     subtotal: string; discountAmount: string; shippingAmount: string; taxAmount: string; total: string
     taxMode: string; currency: string; couponCode: string | null; shippingRateName: string | null
     shippingAddress: Address; billingAddress: Address | null
@@ -174,6 +174,14 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   if (!data) return <div className="sox-loading">Loading order…</div>
 
   const { order } = data
+
+  // Who the order was placed on behalf of. The order's own field first, then the
+  // two address fallbacks for orders placed while it lived in the delivery
+  // address - the same answer the orders list and the invoice give.
+  const organisation = order.customerOrganisation?.trim()
+    || order.billingAddress?.company?.trim()
+    || order.shippingAddress?.company?.trim()
+    || null
 
   // Settled refunds with no credit note against them. Worked out here rather
   // than on the server so the panel does not need a second round trip after
@@ -665,6 +673,12 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                     {order.memberId ? <span className="badge badge-default" style={{ marginLeft: '0.375rem' }}>Has an account</span> : <span className="badge badge-default" style={{ marginLeft: '0.375rem' }}>Guest</span>}
                   </dd>
                 </div>
+                {organisation && (
+                  <div className="sox-detail-row">
+                    <dt>Organisation</dt>
+                    <dd>{organisation}</dd>
+                  </div>
+                )}
                 <div className="sox-detail-row">
                   <dt>Email</dt>
                   <dd>
