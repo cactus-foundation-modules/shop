@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Render } from '@puckeditor/core/rsc'
 import { getCategoryBySlug, getCategoryAncestorPath, listCategories, resolveCategoryProductFilter, listTags } from '@/modules/shop/lib/db/catalogue'
-import { listProducts, getProductMediaForProducts, getProductTagIds, HARD_MAX_PER_PAGE } from '@/modules/shop/lib/db/products'
+import { listProducts, getProductMediaForProducts, getProductTagIdsForProducts, HARD_MAX_PER_PAGE } from '@/modules/shop/lib/db/products'
 import { ShopGridPager } from '@/modules/shop/components/public/ShopGridPager'
 
 // What the un-designed category page shows at once. 60 is what it used to cap
@@ -105,8 +105,9 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
   // template - image carousel, 3D badge, hover and all - rather than a separate
   // hand-rolled tile. Editing that single layout restyles every card surface.
   const productIds = products.map((p) => p.id)
-  const [mediaByProduct, fromPrices, cardExtras, taxDisplay] = await Promise.all([
+  const [mediaByProduct, tagIdsByProduct, fromPrices, cardExtras, taxDisplay] = await Promise.all([
     getProductMediaForProducts(productIds),
+    getProductTagIdsForProducts(productIds),
     resolveCardFromPrices(productIds),
     resolveShopCardExtras(productIds),
     resolveTaxDisplay(),
@@ -117,12 +118,10 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
   // shop withholds every figure on every card, not some of them. Cached, so this
   // costs nothing per surface. See lib/commerce-mode.ts.
   const pricing = { ...config, taxDisplay, commerce: await resolveShopCommerceMode() }
-  const items: CardItem[] = await Promise.all(
-    products.map(async (p) => {
-      const tagIds = await getProductTagIds(p.id)
-      return { product: p, ctx: buildCardContext(p, mediaByProduct.get(p.id) ?? [], tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id), tagsById) }
-    }),
-  )
+  const items: CardItem[] = products.map((p) => ({
+    product: p,
+    ctx: buildCardContext(p, mediaByProduct.get(p.id) ?? [], tagById, tagIdsByProduct.get(p.id) ?? [], config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id), tagsById),
+  }))
   const cards = template ? await renderCards(template, items) : items.map((i) => <MinimalCard key={i.product.id} {...i} />)
 
   return (

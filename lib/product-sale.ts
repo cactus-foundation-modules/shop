@@ -17,8 +17,7 @@
 // that disagrees with the rows above it. The product row is aliased `p` in every
 // query this is spliced into.
 import { Prisma } from '@prisma/client'
-import { prisma } from '@/lib/db/prisma'
-import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
+import { getInstalledManifests } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { isPriceTypeEnabled } from '@/modules/shop/lib/pricing'
@@ -36,10 +35,7 @@ async function saleProviders(): Promise<ShopProductSaleProvider[]> {
   const registered = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(registered).length === 0) return []
 
-  const modules = await prisma.module.findMany({
-    where: { ...INSTALLED_MODULE_WHERE },
-    select: { manifest: true },
-  })
+  const modules = await getInstalledManifests()
 
   const out: ShopProductSaleProvider[] = []
   for (const mod of modules) {

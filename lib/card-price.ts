@@ -7,8 +7,7 @@
 // provider is discovered through the active modules' manifests and stored in the
 // generated moduleExtensionPointComponents map. Batched deliberately: a grid
 // renders many cards at once, so a per-product call would be one query per card.
-import { prisma } from '@/lib/db/prisma'
-import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
+import { getInstalledManifests } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 
 // What a companion module says a product costs when it, not shop, owns the
@@ -51,10 +50,7 @@ export async function resolveCardFromPrices(productIds: string[]): Promise<Map<s
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return out
 
-  const modules = await prisma.module.findMany({
-    where: { ...INSTALLED_MODULE_WHERE },
-    select: { manifest: true },
-  })
+  const modules = await getInstalledManifests()
 
   for (const mod of modules) {
     const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null

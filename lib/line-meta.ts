@@ -7,8 +7,7 @@
 // that one, the provider is a plain server function stored in the generated
 // moduleExtensionPointComponents map, discovered via the active modules'
 // manifests. It MUST be server-safe (this file runs inside lib/checkout.ts).
-import { prisma } from '@/lib/db/prisma'
-import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
+import { getInstalledManifests } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 import type { LineMeta, LineMetaBatch, ShpProduct } from '@/modules/shop/lib/types'
 
@@ -199,25 +198,12 @@ type ExtensionPointEntry = { point: string; id: string; permission?: string }
 const POINT = 'shop.cart-line-resolver'
 const PREFETCH_POINT = 'shop.cart-line-resolver-prefetch'
 
-// Installed modules' manifests, shared by both gatherers below and memoised
-// across requests for a short window. This used to be a separate
-// Module.findMany per gatherer per validate - two identical queries per cart
-// interaction for a list that changes only when a module is installed or
-// removed. A rejected read clears the slot so the next call retries.
-const REGISTRY_TTL_MS = 30_000
-let manifestSlot: { promise: Promise<{ manifest: unknown }[]>; at: number } | null = null
-function getInstalledManifests(): Promise<{ manifest: unknown }[]> {
-  const now = Date.now()
-  if (manifestSlot && now - manifestSlot.at < REGISTRY_TTL_MS) return manifestSlot.promise
-  const promise = prisma.module.findMany({
-    where: { ...INSTALLED_MODULE_WHERE },
-    select: { manifest: true },
-  })
-  const mine = { promise, at: now }
-  manifestSlot = mine
-  promise.catch(() => { if (manifestSlot === mine) manifestSlot = null })
-  return promise
-}
+// Installed modules' manifests, shared by both gatherers below. The memo now
+// lives in core (lib/modules/live-status) because every other extension point
+// wanted exactly this and was each running its own Module.findMany - a dozen
+// identical round trips on a single product page render. The window, the
+// retry-on-rejection behaviour and the reasoning are unchanged; they simply
+// moved to where everyone can reach them.
 
 // Extension-point functions declared by installed modules' manifests for one
 // point, in manifest order. Exported as `gatherCartExtensionPoint` for the other

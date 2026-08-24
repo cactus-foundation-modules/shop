@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { getProductsByIds, getProductMedia, getProductTagIds } from '@/modules/shop/lib/db'
+import { getProductsByIds, getProductMediaForProducts, getProductTagIdsForProducts } from '@/modules/shop/lib/db'
 import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
@@ -45,22 +45,21 @@ export const shopSearchCardProvider = {
 
     const { tagById, tagsById } = buildTagMaps(tags)
     const ids = products.map((p) => p.id)
-    const [fromPrices, cardExtras, taxDisplay] = await Promise.all([
+    const [mediaByProduct, tagIdsByProduct, fromPrices, cardExtras, taxDisplay] = await Promise.all([
+      getProductMediaForProducts(ids),
+      getProductTagIdsForProducts(ids),
       resolveCardFromPrices(ids),
       resolveShopCardExtras(ids),
       resolveTaxDisplay(),
     ])
     const pricing = { ...config, taxDisplay, commerce: await resolveShopCommerceMode() }
     const still = opts?.media === 'still'
-    const items: CardItem[] = await Promise.all(
-      products.map(async (product) => {
-        const [media, tagIds] = await Promise.all([getProductMedia(product.id), getProductTagIds(product.id)])
-        const ctx = buildCardContext(product, media, tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(product.id) ?? null, cardExtras.get(product.id), tagsById)
-        // Facts (e.g. the variation swatch row) survive a still card - they are
-        // plain server-rendered markup, unlike the carousel and its overlays.
-        return { product, ctx: still ? { ...ctx, images: ctx.images.slice(0, 1), overlays: [] } : ctx }
-      }),
-    )
+    const items: CardItem[] = products.map((product) => {
+      const ctx = buildCardContext(product, mediaByProduct.get(product.id) ?? [], tagById, tagIdsByProduct.get(product.id) ?? [], config.currencySymbol, pricing, fromPrices.get(product.id) ?? null, cardExtras.get(product.id), tagsById)
+      // Facts (e.g. the variation swatch row) survive a still card - they are
+      // plain server-rendered markup, unlike the carousel and its overlays.
+      return { product, ctx: still ? { ...ctx, images: ctx.images.slice(0, 1), overlays: [] } : ctx }
+    })
 
     const cards = template ? await renderCards(template, items) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)
     const columns = Math.max(2, Math.min(4, opts?.columns ?? 3))

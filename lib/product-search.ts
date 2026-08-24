@@ -18,8 +18,7 @@
 // spliced into; a provider writes `p."id"` into its own SQL and interpolates
 // nothing from the request into it by hand (Prisma.sql parameterises the term).
 import { Prisma } from '@prisma/client'
-import { prisma } from '@/lib/db/prisma'
-import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
+import { getInstalledManifests } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 
 export type ShopProductSearchProvider = {
@@ -37,10 +36,7 @@ async function searchProviders(): Promise<ShopProductSearchProvider[]> {
   const registered = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(registered).length === 0) return []
 
-  const modules = await prisma.module.findMany({
-    where: { ...INSTALLED_MODULE_WHERE },
-    select: { manifest: true },
-  })
+  const modules = await getInstalledManifests()
 
   const out: ShopProductSearchProvider[] = []
   for (const mod of modules) {

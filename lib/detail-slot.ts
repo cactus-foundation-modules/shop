@@ -14,8 +14,7 @@
 // Rendering both shop's static part and the provider's live one would show the
 // shopper two prices and two buttons.
 import type { ComponentType } from 'react'
-import { prisma } from '@/lib/db/prisma'
-import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
+import { getInstalledManifests } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 import type { PuckData, ShpProduct } from '@/modules/shop/lib/types'
@@ -241,10 +240,7 @@ export async function resolveShopDetailProvider(product: ShpProduct): Promise<Sh
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return null
 
-  const modules = await prisma.module.findMany({
-    where: { ...INSTALLED_MODULE_WHERE },
-    select: { manifest: true },
-  })
+  const modules = await getInstalledManifests()
 
   let unclaimed: ShopDetailPartsProvider | null = null
   for (const mod of modules) {

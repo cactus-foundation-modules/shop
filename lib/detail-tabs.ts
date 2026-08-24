@@ -12,8 +12,7 @@
 // means several more tabs, and every provider is resolved rather than only the
 // first.
 import type { ComponentType } from 'react'
-import { prisma } from '@/lib/db/prisma'
-import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
+import { getInstalledManifests } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 
 // What the strip hands the provider's panel. Rendered inside shop's own
@@ -100,10 +99,7 @@ export async function resolveShopDetailTabs(productId: string): Promise<ShopDeta
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return []
 
-  const modules = await prisma.module.findMany({
-    where: { ...INSTALLED_MODULE_WHERE },
-    select: { manifest: true },
-  })
+  const modules = await getInstalledManifests()
 
   const resolved: ShopDetailTabExtra[] = []
   for (const mod of modules) {

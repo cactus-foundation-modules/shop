@@ -1,5 +1,5 @@
 import { connection } from 'next/server'
-import { getProductBySlug, getProductMedia, getProductTagIds } from '@/modules/shop/lib/db'
+import { getProductBySlugCached, getProductMediaForProducts, getProductTagIdsForProducts } from '@/modules/shop/lib/db'
 import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { resolveRelatedProducts } from '@/modules/shop/lib/db/recommendations'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
@@ -18,7 +18,7 @@ import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 export async function ShopRelatedProductsRsc(props: ShopRelatedProductsProps) {
   await connection()
   if (!props.productSlug) return null
-  const product = await getProductBySlug(props.productSlug)
+  const product = await getProductBySlugCached(props.productSlug)
   if (!product) return null
   const related = await resolveRelatedProducts(product)
   if (related.length === 0) return null
@@ -32,7 +32,9 @@ export async function ShopRelatedProductsRsc(props: ShopRelatedProductsProps) {
   const { tagById, tagsById } = buildTagMaps(tags)
 
   const relatedIds = related.map((p) => p.id)
-  const [fromPrices, cardExtras, taxDisplay] = await Promise.all([
+  const [mediaByProduct, tagIdsByProduct, fromPrices, cardExtras, taxDisplay] = await Promise.all([
+    getProductMediaForProducts(relatedIds),
+    getProductTagIdsForProducts(relatedIds),
     resolveCardFromPrices(relatedIds),
     resolveShopCardExtras(relatedIds),
     resolveTaxDisplay(),
@@ -43,12 +45,10 @@ export async function ShopRelatedProductsRsc(props: ShopRelatedProductsProps) {
   // shop withholds every figure on every card, not some of them. Cached, so this
   // costs nothing per surface. See lib/commerce-mode.ts.
   const pricing = { ...config, taxDisplay, commerce: await resolveShopCommerceMode() }
-  const items: CardItem[] = await Promise.all(
-    related.map(async (p) => {
-      const [media, tagIds] = await Promise.all([getProductMedia(p.id), getProductTagIds(p.id)])
-      return { product: p, ctx: buildCardContext(p, media, tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id), tagsById) }
-    }),
-  )
+  const items: CardItem[] = related.map((p) => ({
+    product: p,
+    ctx: buildCardContext(p, mediaByProduct.get(p.id) ?? [], tagById, tagIdsByProduct.get(p.id) ?? [], config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id), tagsById),
+  }))
 
   const columns = Math.min(items.length, 4)
   const cards = template ? await renderCards(template, items) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)

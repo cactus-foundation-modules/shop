@@ -6,7 +6,7 @@ import type { Metadata } from 'next'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getSiteUrlOrNull } from '@/lib/config/env'
-import { getProductBySlug } from '@/modules/shop/lib/db/products'
+import { getProductBySlugCached } from '@/modules/shop/lib/db/products'
 import { getProductMedia } from '@/modules/shop/lib/db'
 import { resolveAliasedProduct } from '@/modules/shop/lib/product-page-resolver'
 import { resolveProductSocialImage } from '@/modules/shop/lib/product-social-image'
@@ -30,7 +30,7 @@ type Props = {
 // cache() that is one query per request instead of two. Wrapped here rather
 // than in the db layer: other callers there read back rows they have just
 // written, and a request-scoped memo would hand them the pre-write row.
-const getProduct = cache(getProductBySlug)
+const getProduct = getProductBySlugCached
 
 // The social preview block (og:image and friends) for a product page. The
 // image is whatever the page itself leads with: a companion module's answer

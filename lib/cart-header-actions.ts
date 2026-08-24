@@ -13,8 +13,7 @@
 // heading row in manifest order and owns nothing but the row. Providers are
 // rendered into the RSC tree, so each carries its own 'use client' boundary.
 import type { ComponentType } from 'react'
-import { prisma } from '@/lib/db/prisma'
-import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
+import { getInstalledManifests } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 
 /** Reserved prop bag. Empty today; declared so adding a field later is not a
@@ -39,10 +38,7 @@ export async function getShopCartHeaderActions(): Promise<ShopCartHeaderAction[]
   const components = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(components).length === 0) return []
 
-  const modules = await prisma.module.findMany({
-    where: { ...INSTALLED_MODULE_WHERE },
-    select: { manifest: true },
-  })
+  const modules = await getInstalledManifests()
 
   const actions: ShopCartHeaderAction[] = []
   for (const mod of modules) {

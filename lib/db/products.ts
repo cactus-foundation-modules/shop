@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import { notifyProductSaved } from '@/modules/shop/lib/product-saved'
@@ -98,6 +99,26 @@ export async function getProductBySlug(slug: string): Promise<ShpProduct | null>
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_products" WHERE "slug" = ${slug} LIMIT 1`
   return rows[0] ? mapProduct(rows[0]) : null
 }
+
+/**
+ * The same read, memoised for the life of one request.
+ *
+ * A product page is not one lookup of the product - it is the route's own (for
+ * the metadata and the visibility gate), the detail block's, the related-products
+ * block's, and one more from every companion module's block on the page (add-ons,
+ * the add-on showcase, product checks). Each of those blocks is handed a slug and
+ * nothing else, by design: they are Puck blocks the owner can drag anywhere, so
+ * none of them can be passed the row another one already fetched. Behind
+ * `cache()` they all share a single query instead of firing half a dozen
+ * identical ones.
+ *
+ * Deliberately a SEPARATE export rather than memoising `getProductBySlug`
+ * itself. Several callers in this file's own neighbourhood read a row straight
+ * back after writing it - the CSV importer, the variations service - and a
+ * request-scoped memo would hand them the pre-write row. Read paths take this
+ * one; anything that writes keeps the uncached original.
+ */
+export const getProductBySlugCached = cache(getProductBySlug)
 
 // Bulk match for the CSV importer: one query for every SKU the sheet carries,
 // keyed by SKU, so a re-import doesn't fire a lookup per row. First row wins on

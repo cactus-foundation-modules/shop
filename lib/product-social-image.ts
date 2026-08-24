@@ -14,8 +14,7 @@
 // generated moduleExtensionPointComponents map, and `resolve` MUST be
 // server-safe - it runs inside generateMetadata. A provider that needs the
 // request's query string reads it from lib/product-page-params.ts.
-import { prisma } from '@/lib/db/prisma'
-import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
+import { getInstalledManifests } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
@@ -33,10 +32,7 @@ export async function resolveProductSocialImage(product: ShpProduct): Promise<st
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return null
 
-  const modules = await prisma.module.findMany({
-    where: { ...INSTALLED_MODULE_WHERE },
-    select: { manifest: true },
-  })
+  const modules = await getInstalledManifests()
 
   for (const mod of modules) {
     const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null

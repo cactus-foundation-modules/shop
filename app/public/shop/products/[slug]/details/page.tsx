@@ -2,7 +2,7 @@ import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
-import { getProductBySlug, getProductMediaForProducts } from '@/modules/shop/lib/db/products'
+import { getProductBySlugCached, getProductMediaForProducts } from '@/modules/shop/lib/db/products'
 import { resolveAliasedProduct } from '@/modules/shop/lib/product-page-resolver'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { getProductPageStockGate } from '@/modules/shop/lib/stock-visibility'
@@ -50,7 +50,7 @@ main { padding: 0 !important; }
 
 const MAX_IMAGES = 24
 
-const getProduct = cache(getProductBySlug)
+const getProduct = getProductBySlugCached
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params

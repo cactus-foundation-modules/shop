@@ -15,8 +15,7 @@
 // table untouched, which is what makes installing a provider module change
 // nothing until an attribute is actually put on the page.
 import type { ComponentType } from 'react'
-import { prisma } from '@/lib/db/prisma'
-import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
+import { getInstalledManifests } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 
 // What shop hands the provider's panel. Rendered inside shop's own Specification
@@ -82,10 +81,7 @@ export async function resolveShopDetailSpec(productId: string): Promise<ShopDeta
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return null
 
-  const modules = await prisma.module.findMany({
-    where: { ...INSTALLED_MODULE_WHERE },
-    select: { manifest: true },
-  })
+  const modules = await getInstalledManifests()
 
   for (const mod of modules) {
     const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null

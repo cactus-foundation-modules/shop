@@ -1,5 +1,4 @@
-import { prisma } from '@/lib/db/prisma'
-import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
+import { getInstalledManifests } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 import type { ShopCollectionIndexSource } from '@/modules/shop/lib/collection-index-sources-shared'
 
@@ -32,10 +31,7 @@ export async function resolveCollectionIndexSources(): Promise<Array<{
   label: string
   source: ShopCollectionIndexSource
 }>> {
-  const modules = await prisma.module.findMany({
-    where: { ...INSTALLED_MODULE_WHERE },
-    select: { manifest: true },
-  })
+  const modules = await getInstalledManifests()
   const components = moduleExtensionPointComponents[COLLECTION_INDEX_SOURCE_POINT] ?? {}
   const out: Array<{ id: string; label: string; source: ShopCollectionIndexSource }> = []
   const seen = new Set<string>()

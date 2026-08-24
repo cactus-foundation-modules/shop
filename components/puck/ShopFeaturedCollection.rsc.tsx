@@ -1,5 +1,5 @@
 import { connection } from 'next/server'
-import { getCollectionBySlug, listProducts, getProductMedia, getProductTagIds, type ProductSort } from '@/modules/shop/lib/db'
+import { getCollectionBySlug, listProducts, getProductMediaForProducts, getProductTagIdsForProducts, type ProductSort } from '@/modules/shop/lib/db'
 import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
@@ -32,7 +32,9 @@ export async function ShopFeaturedCollectionRsc(props: ShopFeaturedCollectionPro
   const { tagById, tagsById } = buildTagMaps(tags)
 
   const productIds = products.map((p) => p.id)
-  const [fromPrices, cardExtras, taxDisplay] = await Promise.all([
+  const [mediaByProduct, tagIdsByProduct, fromPrices, cardExtras, taxDisplay] = await Promise.all([
+    getProductMediaForProducts(productIds),
+    getProductTagIdsForProducts(productIds),
     resolveCardFromPrices(productIds),
     resolveShopCardExtras(productIds),
     resolveTaxDisplay(),
@@ -43,12 +45,10 @@ export async function ShopFeaturedCollectionRsc(props: ShopFeaturedCollectionPro
   // shop withholds every figure on every card, not some of them. Cached, so this
   // costs nothing per surface. See lib/commerce-mode.ts.
   const pricing = { ...config, taxDisplay, commerce: await resolveShopCommerceMode() }
-  const items: CardItem[] = await Promise.all(
-    products.map(async (p) => {
-      const [media, tagIds] = await Promise.all([getProductMedia(p.id), getProductTagIds(p.id)])
-      return { product: p, ctx: buildCardContext(p, media, tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id), tagsById) }
-    }),
-  )
+  const items: CardItem[] = products.map((p) => ({
+    product: p,
+    ctx: buildCardContext(p, mediaByProduct.get(p.id) ?? [], tagById, tagIdsByProduct.get(p.id) ?? [], config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id), tagsById),
+  }))
 
   const carousel = (props.layout ?? 'Grid') === 'Carousel'
   const columns = Math.min(products.length, 4)

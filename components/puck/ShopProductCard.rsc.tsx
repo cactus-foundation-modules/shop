@@ -1,5 +1,5 @@
 import { connection } from 'next/server'
-import { getProductBySlug, getProductMedia, getProductTagIds } from '@/modules/shop/lib/db'
+import { getProductBySlugCached, getProductMedia, getProductTagIds } from '@/modules/shop/lib/db'
 import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
@@ -17,7 +17,7 @@ import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 export async function ShopProductCardRsc(props: ShopProductCardProps) {
   await connection()
   if (!props.productSlug) return null
-  const product = await getProductBySlug(props.productSlug)
+  const product = await getProductBySlugCached(props.productSlug)
   if (!product || product.status !== 'ACTIVE') return null
 
   const [media, tagIds, config, bp, tags, template] = await Promise.all([

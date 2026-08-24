@@ -1,5 +1,5 @@
 import { connection } from 'next/server'
-import { listProducts, getProductMedia, getProductTagIds, HARD_MAX_PER_PAGE, type ProductSort } from '@/modules/shop/lib/db'
+import { listProducts, getProductMediaForProducts, getProductTagIdsForProducts, HARD_MAX_PER_PAGE, type ProductSort } from '@/modules/shop/lib/db'
 import { ShopGridPager } from '@/modules/shop/components/public/ShopGridPager'
 import { listTags, resolveCategoryProductFilter } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
@@ -63,7 +63,9 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
   // carries them into the card so no part re-queries. The "From £…" figure for
   // any variation-priced product is resolved for the whole grid in one go.
   const productIds = products.map((p) => p.id)
-  const [fromPrices, cardExtras, taxDisplay] = await Promise.all([
+  const [mediaByProduct, tagIdsByProduct, fromPrices, cardExtras, taxDisplay] = await Promise.all([
+    getProductMediaForProducts(productIds),
+    getProductTagIdsForProducts(productIds),
     resolveCardFromPrices(productIds),
     resolveShopCardExtras(productIds),
     resolveTaxDisplay(),
@@ -74,12 +76,10 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
   // shop withholds every figure on every card, not some of them. Cached, so this
   // costs nothing per surface. See lib/commerce-mode.ts.
   const pricing = { ...config, taxDisplay, commerce: await resolveShopCommerceMode() }
-  const items: CardItem[] = await Promise.all(
-    products.map(async (product) => {
-      const [media, tagIds] = await Promise.all([getProductMedia(product.id), getProductTagIds(product.id)])
-      return { product, ctx: buildCardContext(product, media, tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(product.id) ?? null, cardExtras.get(product.id), tagsById) }
-    }),
-  )
+  const items: CardItem[] = products.map((product) => ({
+    product,
+    ctx: buildCardContext(product, mediaByProduct.get(product.id) ?? [], tagById, tagIdsByProduct.get(product.id) ?? [], config.currencySymbol, pricing, fromPrices.get(product.id) ?? null, cardExtras.get(product.id), tagsById),
+  }))
 
   const cards = template ? await renderCards(template, items) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)
 

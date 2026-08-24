@@ -4,7 +4,7 @@ import type { Data } from '@puckeditor/core'
 import { prisma } from '@/lib/db/prisma'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import type { LayoutRef } from '@/lib/puck/LayoutPickerField'
-import { getProductBySlug, getProductMedia, getProductTagIds, getDigitalFileById } from '@/modules/shop/lib/db'
+import { getProductBySlugCached, getProductMedia, getProductTagIds, getDigitalFileById } from '@/modules/shop/lib/db'
 import { listTags } from '@/modules/shop/lib/db/catalogue'
 import { getShopConfigCached, resolveSupplierLabel } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
@@ -47,7 +47,7 @@ async function resolveDetailTemplate(layoutRef: LayoutRef | null | undefined, sl
 export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   await connection()
   if (!props.productSlug) return null
-  const product = await getProductBySlug(props.productSlug)
+  const product = await getProductBySlugCached(props.productSlug)
   if (!product) return null
 
   // The claim needs only the product, so it still resolves alongside the

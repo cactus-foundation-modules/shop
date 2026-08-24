@@ -24,7 +24,7 @@
 //     admin never has anything hidden from it.
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
-import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
+import { getInstalledManifests } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 import { canSeeHiddenOutOfStock } from '@/modules/shop/lib/access'
 import { getShopConfigCached, type ShpConfig } from '@/modules/shop/lib/config'
@@ -73,10 +73,7 @@ async function availabilityProviders(): Promise<ShopAvailabilityProvider[]> {
   const registered = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(registered).length === 0) return []
 
-  const modules = await prisma.module.findMany({
-    where: { ...INSTALLED_MODULE_WHERE },
-    select: { manifest: true },
-  })
+  const modules = await getInstalledManifests()
 
   const out: ShopAvailabilityProvider[] = []
   for (const mod of modules) {

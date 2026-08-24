@@ -17,8 +17,7 @@
 // Providers MUST be server-safe (this runs inside lib/db) and MUST NOT throw the
 // caller's save away: anything raised here is logged and swallowed, because a
 // listener falling over is never a good enough reason to fail the owner's edit.
-import { prisma } from '@/lib/db/prisma'
-import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
+import { getInstalledManifests } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 
 /** `changed` names only the fields the write actually carried, so a hook can do
@@ -29,24 +28,10 @@ const POINT = 'shop.product-saved'
 
 type ExtensionPointEntry = { point: string; id: string }
 
-// Memoised for the same reason the cart's registry is (see lib/line-meta): a
-// bulk import calls updateProduct once per row, and an installed-module read per
-// row is a query fan for a list that changes only when a module is installed.
-const REGISTRY_TTL_MS = 30_000
-let manifestSlot: { promise: Promise<{ manifest: unknown }[]>; at: number } | null = null
-
-function getInstalledManifests(): Promise<{ manifest: unknown }[]> {
-  const now = Date.now()
-  if (manifestSlot && now - manifestSlot.at < REGISTRY_TTL_MS) return manifestSlot.promise
-  const promise = prisma.module.findMany({
-    where: { ...INSTALLED_MODULE_WHERE },
-    select: { manifest: true },
-  })
-  const mine = { promise, at: now }
-  manifestSlot = mine
-  promise.catch(() => { if (manifestSlot === mine) manifestSlot = null })
-  return promise
-}
+// The installed-module read is memoised in core (lib/modules/live-status), for
+// the reason this file needed it first: a bulk import calls updateProduct once
+// per row, and a Module.findMany per row is a query fan for a list that changes
+// only when a module is installed or removed.
 
 /** The hooks installed modules contribute, in manifest order. [] on a shop-only
  *  site - and, crucially, [] with no query at all when the build contains no

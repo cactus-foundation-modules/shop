@@ -23,7 +23,7 @@
 // lib/card-price.ts.
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
-import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
+import { getInstalledManifests } from '@/lib/modules/live-status'
 import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
 
 // How much one sold unit is worth against the seed. Any figure comfortably above
@@ -58,10 +58,7 @@ export async function resolveSalesParents(productIds: string[]): Promise<Map<str
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return out
 
-  const modules = await prisma.module.findMany({
-    where: { ...INSTALLED_MODULE_WHERE },
-    select: { manifest: true },
-  })
+  const modules = await getInstalledManifests()
 
   for (const mod of modules) {
     const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null

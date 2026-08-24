@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Render } from '@puckeditor/core/rsc'
 import { getTagBySlug, listTags } from '@/modules/shop/lib/db/catalogue'
-import { listProducts, getProductMediaForProducts, getProductTagIds } from '@/modules/shop/lib/db/products'
+import { listProducts, getProductMediaForProducts, getProductTagIdsForProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { getShopGate } from '@/modules/shop/lib/access'
@@ -74,8 +74,9 @@ export default async function ShopTagPage({ params }: { params: Promise<{ slug: 
   const { tagById, tagsById } = buildTagMaps(tags)
 
   const productIds = products.map((p) => p.id)
-  const [mediaByProduct, fromPrices, cardExtras, taxDisplay] = await Promise.all([
+  const [mediaByProduct, tagIdsByProduct, fromPrices, cardExtras, taxDisplay] = await Promise.all([
     getProductMediaForProducts(productIds),
+    getProductTagIdsForProducts(productIds),
     resolveCardFromPrices(productIds),
     resolveShopCardExtras(productIds),
     resolveTaxDisplay(),
@@ -83,12 +84,10 @@ export default async function ShopTagPage({ params }: { params: Promise<{ slug: 
   // Resolved once for the whole page and handed to every card, so no two cards
   // can disagree about net/gross or about whether prices show at all.
   const pricing = { ...config, taxDisplay, commerce: await resolveShopCommerceMode() }
-  const items: CardItem[] = await Promise.all(
-    products.map(async (p) => {
-      const tagIds = await getProductTagIds(p.id)
-      return { product: p, ctx: buildCardContext(p, mediaByProduct.get(p.id) ?? [], tagById, tagIds, config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id), tagsById) }
-    }),
-  )
+  const items: CardItem[] = products.map((p) => ({
+    product: p,
+    ctx: buildCardContext(p, mediaByProduct.get(p.id) ?? [], tagById, tagIdsByProduct.get(p.id) ?? [], config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id), tagsById),
+  }))
   const cards = template ? await renderCards(template, items) : items.map((i) => <MinimalCard key={i.product.id} {...i} />)
 
   return (
