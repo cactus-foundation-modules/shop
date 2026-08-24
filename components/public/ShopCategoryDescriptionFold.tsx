@@ -68,6 +68,18 @@ const FOLD_CSS = `
      the same line as each other. */
   white-space: nowrap;
 }
+.shop-cat-desc-toggle:hover {
+  /* The site's Styles > Buttons settings emit a blanket main button:hover rule
+     carrying !important on both background and colour. The !important is there to
+     beat Puck's inline styles on the site's own Button block, and the rule cannot
+     tell a call to action from two words at the end of a sentence - so left alone
+     it drops a coloured pill behind "Read more" mid-paragraph and flips the words
+     to the button's hover colour with it. Nothing weaker than !important gets out
+     of the way of !important, so the toggle owns the state: no fill, and the same
+     colour it wears at rest. */
+  background: none !important;
+  color: var(--color-primary) !important;
+}
 .shop-cat-desc-toggle:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
