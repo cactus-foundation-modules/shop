@@ -43,6 +43,13 @@ export function shopCollectionLinksCss(id: string | undefined, props: ShopCollec
   // margin is what keeps the column tops level - every column carries it, so
   // every heading starts on the same line) and the same 1.75 line-height +
   // per-item margin rhythm down the list.
+  //
+  // The li margin is 1em, NOT the 1.25em it looks like it should be. Rich text
+  // gives `li` 0.25em and the `<p>` the editor puts inside it `0 0 1em`, and
+  // those two bottom margins COLLAPSE rather than add - the li has no padding
+  // or border, so its used bottom margin is max(1em, 0.25em) = 1em. This block
+  // has no inner `<p>`, so the li carries that 1em directly. Summing them gave
+  // a list a quarter-em looser per row than the columns either side of it.
   const rules: string[] = [`
 .shop-collection-links h3 {
   margin: 1.25em 0 0.5em;
@@ -58,7 +65,7 @@ export function shopCollectionLinksCss(id: string | undefined, props: ShopCollec
   list-style-type: "›  ";
 }
 .shop-collection-links li {
-  margin-bottom: 1.25em;
+  margin-bottom: 1em;
 }
 .shop-collection-links a {
   color: inherit;
