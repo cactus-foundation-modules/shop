@@ -1,3 +1,4 @@
+import { SiteColourField } from '@/lib/puck/SiteColourField'
 import {
   COLLECTION_LINK_SAMPLES,
   shopCollectionLinksCss,
@@ -41,6 +42,28 @@ export function ShopCollectionLinks(props: EditorProps) {
   )
 }
 
+// The four colour fields are the core Rich Text block's, to the swatch: the
+// site's own Appearance palette, a light arm and a dark arm per colour, and a
+// free-text box for anything the palette does not cover. The value is stored
+// as `light-dark(<light>, <dark>)` when a dark arm is picked, which the CSS in
+// the shared half prints verbatim - the browser resolves the arm from the
+// site's `color-scheme`, so a footer painted here follows the theme toggle
+// without either render path knowing which mode it is in.
+const colourField = (label: string) => ({
+  type: 'custom' as const,
+  label,
+  render: ({ value, onChange, field }: { value: string; onChange: (v: string) => void; field: { label?: string } }) => (
+    <SiteColourField value={value} onChange={onChange} label={field.label} allowManual />
+  ),
+})
+
+const colourFields = {
+  textColor: colourField('Text colour'),
+  linkColor: colourField('Link colour'),
+  linkHoverColor: colourField('Link hover colour'),
+  bulletColor: colourField('Bullet colour (stacked only)'),
+}
+
 export const shopCollectionLinksPuckComponent = {
   label: 'Shop: Collection Links',
   fields: {
@@ -55,10 +78,7 @@ export const shopCollectionLinksPuckComponent = {
       ],
     },
     allLabel: { type: 'text' as const, label: '"View all" link wording (blank for none)' },
-    textColor: { type: 'text' as const, label: 'Heading colour (blank inherits)' },
-    linkColor: { type: 'text' as const, label: 'Link colour (blank inherits)' },
-    linkHoverColor: { type: 'text' as const, label: 'Link hover colour' },
-    bulletColor: { type: 'text' as const, label: 'Bullet colour (stacked only)' },
+    ...colourFields,
   },
   defaultProps: { title: 'Collections', count: 6, layout: 'stacked', allLabel: 'View all collections', textColor: '', linkColor: '', linkHoverColor: '', bulletColor: '' },
   render: ShopCollectionLinks,
