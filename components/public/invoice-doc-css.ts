@@ -19,7 +19,13 @@ export const INVOICE_DOC_CSS = `
 
 .shp-inv-head { display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: space-between; align-items: flex-start; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border); }
 .shp-inv-brand { display: flex; align-items: center; gap: 0.75rem; }
-.shp-inv-logo { max-height: 56px; max-width: 220px; width: auto; height: auto; }
+/* The height here is definite on purpose. An SVG logo carries a viewBox and no
+   width or height of its own, and a picture with no size of its own sizes to
+   nothing at all inside a flex item, which is how a perfectly good logo went
+   missing from the document and from the PDF with it. Sizing by height and
+   letting the width follow is what the site header does too. object-fit keeps
+   the shape of anything wider than the box. */
+.shp-inv-logo { height: 56px; width: auto; max-width: 220px; object-fit: contain; object-position: left center; }
 .shp-inv-site { font-weight: 600; font-size: 1.0625rem; color: var(--color-text); }
 .shp-inv-meta { text-align: right; margin-left: auto; }
 .shp-inv-h1 { font-size: 1.5rem; margin: 0 0 0.5rem; color: var(--color-text); }
