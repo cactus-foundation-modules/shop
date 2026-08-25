@@ -7,6 +7,8 @@ import { postCartValidate } from '@/modules/shop/components/public/validated-cac
 import { batchLines } from '@/modules/shop/lib/cart-group'
 import type { LineMeta } from '@/modules/shop/lib/types'
 import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
+import { CartNotes } from '@/modules/shop/components/public/CartNotes'
+import { CHECKOUT_NOTE_DEFAULTS, pickCartNoteOptions, type CartNoteOptions } from '@/modules/shop/components/public/cart-note-options'
 
 type ValidatedLine = {
   productId: string
@@ -79,7 +81,8 @@ export type CheckoutItemsOptions = {
   // Wording overrides; absent = the historical strings.
   heading?: string
   editLabel?: string
-}
+  // Look of the whole-basket note - see components/public/cart-note-options.ts.
+} & Partial<CartNoteOptions>
 
 // Sticky only above the cart breakpoint: below it the layout collapses to one
 // column, where a sticky summary would ride down over the checkout fields.
@@ -135,12 +138,14 @@ const SCI_CSS = `
 // Registered Puck block wrapper (ShopCheckoutItems) is a server component that
 // renders this, so Puck's RSC <Render> never serialises its renderDropZone
 // function bag into the client.
-export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOffset = '1rem', scroll = 'auto', scrollHeight, heading, editLabel }: CheckoutItemsOptions) {
+export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOffset = '1rem', scroll = 'auto', scrollHeight, heading, editLabel, ...noteProps }: CheckoutItemsOptions) {
   const headingText = heading || 'Your order'
   const scrolls = scroll === 'on'
   const sectionRef = useRef<HTMLElement | null>(null)
   const [lines, setLines] = useState<ValidatedLine[] | null>(null)
-  const [notes, setNotes] = useState<Note[]>([])
+  // Seeded in the editor so an author can see the note they are styling - the
+  // sample basket never reaches a validate, so no module contributes one.
+  const [notes, setNotes] = useState<Note[]>(preview ? [{ id: 'sample', text: 'everything by Tue 12 Aug' }] : [])
   const [symbol, setSymbol] = useState('£')
   const [empty, setEmpty] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
@@ -334,9 +339,10 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
             </ul>
           </div>
         ))}
-        {notes.map((note) => (
-          <p key={note.id} style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', margin: 0 }}>{note.text}</p>
-        ))}
+        {/* Whole-basket notes another module contributed to this validate.
+            Shop displays them, it never composes them - only how they look is
+            the block's business. */}
+        <CartNotes notes={notes.map((note) => note.text)} options={{ ...CHECKOUT_NOTE_DEFAULTS, ...pickCartNoteOptions(noteProps) }} />
       </div>
     </section>
   )

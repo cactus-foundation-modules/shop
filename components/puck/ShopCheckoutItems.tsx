@@ -1,23 +1,26 @@
 import { CheckoutItemsClient, type CheckoutItemsOptions } from '@/modules/shop/components/public/CheckoutItemsClient'
+import { CHECKOUT_NOTE_DEFAULTS, type CartNoteOptions } from '@/modules/shop/components/public/cart-note-options'
+import { cartNoteFields } from '@/modules/shop/components/puck/cart-fields'
 
 // [ANCHOR] - checkout order summary: every basket line with its quantity, price
 // and per-line choices (chosen delivery service and promised date included), so
 // the shopper sees exactly what they are paying for without leaving checkout.
-export type ShopCheckoutItemsProps = Pick<CheckoutItemsOptions, 'sticky' | 'stickyOffset' | 'scroll' | 'scrollHeight' | 'heading' | 'editLabel'>
+export type ShopCheckoutItemsProps = Pick<CheckoutItemsOptions, 'sticky' | 'stickyOffset' | 'scroll' | 'scrollHeight' | 'heading' | 'editLabel'> & Partial<CartNoteOptions>
 
 // Editor path renders the island in preview mode (sample lines when the editor
 // has no basket); the RSC path renders it live. Registered as SERVER components
 // so Puck's RSC <Render> never serialises its function bag into the client.
-export function ShopCheckoutItems(props: ShopCheckoutItemsProps) {
+export function ShopCheckoutItems({ sticky, stickyOffset, scroll, scrollHeight, heading, editLabel, ...note }: ShopCheckoutItemsProps) {
   return (
     <CheckoutItemsClient
       preview
-      sticky={props.sticky}
-      stickyOffset={props.stickyOffset}
-      scroll={props.scroll}
-      scrollHeight={props.scrollHeight}
-      heading={props.heading}
-      editLabel={props.editLabel}
+      sticky={sticky}
+      stickyOffset={stickyOffset}
+      scroll={scroll}
+      scrollHeight={scrollHeight}
+      heading={heading}
+      editLabel={editLabel}
+      {...note}
     />
   )
 }
@@ -43,8 +46,12 @@ export const shopCheckoutItemsPuckComponent = {
       ],
     },
     scrollHeight: { type: 'text' as const, label: 'Scrolling list height (CSS length; empty = as tall as the window allows)' },
+    ...cartNoteFields(),
   },
-  defaultProps: { sticky: 'off', stickyOffset: '1rem', scroll: 'auto', scrollHeight: '', heading: 'Your order', editLabel: 'Edit basket' } as ShopCheckoutItemsProps,
+  defaultProps: {
+    sticky: 'off', stickyOffset: '1rem', scroll: 'auto', scrollHeight: '', heading: 'Your order', editLabel: 'Edit basket',
+    ...CHECKOUT_NOTE_DEFAULTS,
+  } as ShopCheckoutItemsProps,
   permissions: { delete: false, duplicate: false },
   render: ShopCheckoutItems,
 }
@@ -56,7 +63,7 @@ export function ShopCheckoutItemsRsc(props: ShopCheckoutItemsProps) {
   const options = { ...props } as Record<string, unknown>
   delete options.puck
   delete options.editMode
-  const { sticky, stickyOffset, scroll, scrollHeight, heading, editLabel } = options as ShopCheckoutItemsProps
+  const { sticky, stickyOffset, scroll, scrollHeight, heading, editLabel, ...note } = options as ShopCheckoutItemsProps
   return (
     <CheckoutItemsClient
       sticky={sticky}
@@ -65,6 +72,7 @@ export function ShopCheckoutItemsRsc(props: ShopCheckoutItemsProps) {
       scrollHeight={scrollHeight}
       heading={heading}
       editLabel={editLabel}
+      {...note}
     />
   )
 }

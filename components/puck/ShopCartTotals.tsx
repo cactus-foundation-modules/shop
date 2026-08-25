@@ -4,9 +4,11 @@ import {
   cartCheckoutDefaults, cartCheckoutFields,
   cartCouponDefaults, cartCouponFields,
   cartHeadingDefaults, cartHeadingFields,
+  cartNoteFields,
   cartTotalsDefaults, cartTotalsFields,
   cartWidthDefaults, cartWidthFields,
 } from '@/modules/shop/components/puck/cart-fields'
+import { CART_PAGE_NOTE_DEFAULTS } from '@/modules/shop/components/public/cart-note-options'
 
 // The money end of the basket on its own - the bottom half of Shop: Cart: the
 // coupon field, the item count, the Subtotal / charges / tax / Total table, the
@@ -33,6 +35,7 @@ export const shopCartTotalsPuckComponent = {
     ...cartTotalsFields,
     ...cartCheckoutFields,
     ...cartAccentFields,
+    ...cartNoteFields(),
   },
   defaultProps: {
     ...cartWidthDefaults,
@@ -41,6 +44,7 @@ export const shopCartTotalsPuckComponent = {
     ...cartTotalsDefaults,
     ...cartCheckoutDefaults,
     ...cartAccentDefaults,
+    ...CART_PAGE_NOTE_DEFAULTS,
   } as ShopCartTotalsProps,
   render: ShopCartTotals,
 }

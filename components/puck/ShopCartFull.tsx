@@ -6,11 +6,13 @@ import {
   cartEmptyDefaults, cartEmptyFields,
   cartHeadingDefaults, cartHeadingFields,
   cartItemDefaults, cartItemFields,
+  cartNoteFields,
   cartPanelDefaults, cartPanelFields,
   cartStructureDefaults, cartStructureFields,
   cartTotalsDefaults, cartTotalsFields,
   cartUndoDefaults, cartUndoFields,
 } from '@/modules/shop/components/puck/cart-fields'
+import { CART_PAGE_NOTE_DEFAULTS } from '@/modules/shop/components/public/cart-note-options'
 
 // Full, configurable cart-display block: the basket lines AND the totals in one
 // piece. A page that wants something of its own between the two uses the split
@@ -44,6 +46,7 @@ export const shopCartFullPuckComponent = {
     ...cartEmptyFields,
     ...cartAccentFields,
     ...cartPanelFields,
+    ...cartNoteFields(),
   },
   defaultProps: {
     ...cartStructureDefaults,
@@ -56,6 +59,7 @@ export const shopCartFullPuckComponent = {
     ...cartEmptyDefaults,
     ...cartAccentDefaults,
     ...cartPanelDefaults,
+    ...CART_PAGE_NOTE_DEFAULTS,
   } as ShopCartFullProps,
   render: ShopCartFull,
 }

@@ -1,5 +1,6 @@
 import { CartSummaryClient, type CartSummaryOptions } from '@/modules/shop/components/public/CartSummaryClient'
 import { DRAWER_DEFAULTS } from '@/modules/shop/components/public/cart-drawer-options'
+import { cartNoteFields } from '@/modules/shop/components/puck/cart-fields'
 import { SiteColourField } from '@/lib/puck/SiteColourField'
 
 export type ShopCartSummaryProps = CartSummaryOptions
@@ -99,6 +100,11 @@ export const shopCartSummaryPuckComponent = {
     drawerViewCartHoverBorder: colourField('View full basket button: border on hover'),
     drawerViewCartHoverText: colourField('View full basket button: text on hover'),
     drawerRadius: { type: 'number' as const, label: 'Slide-out: button corner radius (px)' },
+    // The whole-basket note the panel prints above the subtotal - another
+    // module's sentence ("everything by Fri 4 Sep"), dressed here. Its own set,
+    // held separately from the cart page's and the checkout's, so the panel can
+    // show a plain ticked line where checkout shows a picture, or nothing at all.
+    ...cartNoteFields('Slide-out: basket note'),
     // Audience. NB: keep this key as `audience`, never `visibility` - core owns a
     // responsive-visibility field of that exact name on every block and strips it
     // from render props, which would silently disable this gate.

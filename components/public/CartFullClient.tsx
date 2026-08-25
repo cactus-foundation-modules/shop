@@ -17,6 +17,8 @@ import {
 } from '@/modules/shop/lib/commerce-mode-shared'
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 import { CartStickyBar, CartUndoToast, QuantityStepper, RemoveCross, TickIcon } from '@/modules/shop/components/public/CartChrome'
+import { CartNotes } from '@/modules/shop/components/public/CartNotes'
+import { CART_PAGE_NOTE_DEFAULTS, pickCartNoteOptions, type CartNoteOptions } from '@/modules/shop/components/public/cart-note-options'
 import { useCartUndo, useOutOfView } from '@/modules/shop/components/public/use-cart-undo'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
@@ -108,7 +110,11 @@ export type CartFullOptions = {
   accentColour?: string       // price emphasis; '' = inherit
   panelBg?: string            // cards/table background
   borderRadius?: number       // panel radius (cards)
-}
+  // Look of the whole-basket note - see components/public/cart-note-options.ts.
+  // Hidden by default here: the note has always ridden in the sticky bar's meta
+  // line on this page and still does, so drawing one in the body is an addition
+  // an author asks for rather than one they inherit.
+} & Partial<CartNoteOptions>
 
 // Visually-hidden but present for assistive tech (screen-reader-only).
 const SR_ONLY: CSSProperties = { position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0 }
@@ -1005,6 +1011,11 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
       {withFooter && showItemCount && (
         <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{itemCount} item{itemCount === 1 ? '' : 's'} in your basket</p>
       )}
+
+      {/* Whole-basket notes, under the lines and above the money - they speak
+          about the order as a whole, so they belong with neither one line nor
+          one figure. Shop displays them, it never composes them. */}
+      {withFooter && <CartNotes notes={notes} options={{ ...CART_PAGE_NOTE_DEFAULTS, ...pickCartNoteOptions(props) }} />}
 
       {/* The totals and the checkout button together: once this block leaves the
           viewport the sticky bar takes over, and it steps aside the moment the

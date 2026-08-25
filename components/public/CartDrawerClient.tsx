@@ -23,7 +23,8 @@ import { minOrderQuantity } from '@/modules/shop/lib/min-order'
 import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } from '@/modules/shop/components/public/validated-cache'
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 import { CART_DRAWER_CSS } from '@/modules/shop/components/public/cart-drawer-css'
-import { CartUndoToast, QuantityStepper, TickIcon } from '@/modules/shop/components/public/CartChrome'
+import { CartUndoToast, QuantityStepper } from '@/modules/shop/components/public/CartChrome'
+import { CartNotes } from '@/modules/shop/components/public/CartNotes'
 import { useCartUndo } from '@/modules/shop/components/public/use-cart-undo'
 import { CartLineControlView, LineMetaList, productMetaFields } from '@/modules/shop/components/public/CartLineControlView'
 import { useFitLines } from '@/modules/shop/components/public/fit-line'
@@ -434,13 +435,7 @@ export function CartDrawerClient({
             {/* Whole-basket lines other modules contributed to this validate (a
                 delivery module's "everything by Fri 4 Sep"). Shop displays them,
                 it never composes them. */}
-            {notes.length > 0 && (
-              <ul className="scd-notes">
-                {notes.map((note, i) => (
-                  <li key={i}><TickIcon />{note}</li>
-                ))}
-              </ul>
-            )}
+            <CartNotes notes={notes} options={o} />
             <Link href={commerce.cartCtaHref} className="scd-btn" style={checkoutStyle} onClick={onClose}>
               {commerceModeButtonLabel(commerce.cartCtaLabel, o.drawerCheckoutLabel, DRAWER_DEFAULTS.drawerCheckoutLabel)}
             </Link>

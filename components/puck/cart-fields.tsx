@@ -1,3 +1,4 @@
+import { ImageUrlPickerField } from '@/lib/puck/MediaPickerField'
 import { SiteColourField } from '@/lib/puck/SiteColourField'
 import type { CartFullOptions } from '@/modules/shop/components/public/CartFullClient'
 
@@ -123,3 +124,35 @@ export const cartPanelDefaults = { panelBg: 'var(--color-surface)', borderRadius
 // cart option is optional on CartFullOptions, so the grouped defaults compose
 // into whichever subset a block offers.
 export type CartBlockDefaults = CartFullOptions
+
+// Whole-basket note (the "everything by Friday 4th" line another module
+// contributes - see components/public/cart-note-options.ts). Every surface that
+// draws one offers the same set, and each holds its own values, so a shop can
+// dress the note one way in the slide-out, another at checkout, and hide it on
+// the cart page without any of the three knowing about the others.
+//
+// `prefix` only labels the rows: the slide-out's options live on the same block
+// as the header widget's, and "Background colour" twice in one sidebar tells an
+// author nothing about which is which.
+export const cartNoteFields = (prefix = 'Basket note') => ({
+  noteStyle: { type: 'select' as const, label: `${prefix}: style`, options: [
+    { value: 'plain', label: 'Plain line' },
+    { value: 'box', label: 'Coloured box' },
+    { value: 'bubble', label: 'Image and speech bubble' },
+    { value: 'hidden', label: 'Hidden' },
+  ] },
+  noteTick: { type: 'select' as const, label: `${prefix}: tick in front (plain line only)`, options: yesNo },
+  noteBold: { type: 'select' as const, label: `${prefix}: bold text`, options: yesNo },
+  noteBg: colourField(`${prefix}: background (box and bubble)`),
+  noteTextColour: colourField(`${prefix}: text colour`),
+  noteBorderColour: colourField(`${prefix}: border colour (box and bubble)`),
+  noteRadius: { type: 'number' as const, label: `${prefix}: corner radius (px)` },
+  noteTextSize: { type: 'number' as const, label: `${prefix}: text size (px, shrinks in a narrow column)` },
+  noteImageUrl: { type: 'custom' as const, label: `${prefix}: picture (speech bubble style)`, render: ImageUrlPickerField },
+  noteImageWidth: { type: 'number' as const, label: `${prefix}: picture width (px, shrinks in a narrow column)` },
+  noteImageSide: { type: 'select' as const, label: `${prefix}: picture side`, options: [
+    { value: 'left', label: 'Left of the bubble' },
+    { value: 'right', label: 'Right of the bubble' },
+  ] },
+  noteTailSize: { type: 'number' as const, label: `${prefix}: speech bubble point size (px)` },
+})

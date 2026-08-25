@@ -138,11 +138,11 @@ export const CART_DRAWER_CSS = `
 /* ---- Empty state ---- */
 .scd-empty{display:grid;gap:0.75rem;justify-items:start;color:var(--color-text-muted)}
 
-/* ---- Footer: notes, subtotal, actions ---- */
+/* ---- Footer: subtotal, actions ---- */
+/* The whole-basket note is drawn by CartNotes now (cart-note-css.ts), which the
+   block's own style fields dress - the panel no longer hardcodes it green. */
 .scd-foot{flex:none;display:grid;gap:0.75rem;padding:1.25rem;border-top:1px solid var(--color-border);
   background:var(--color-surface)}
-.scd-notes{list-style:none;margin:0;padding:0;display:grid;gap:0.25rem}
-.scd-notes li{display:flex;align-items:baseline;gap:0.4375rem;font-size:0.9063rem;color:var(--color-success);font-weight:600}
 .scd-sub{display:flex;align-items:baseline;justify-content:space-between;font-size:1.125rem;font-weight:700}
 /* Both buttons paint from custom properties rather than plain inline colours.
    An inline background/colour outranks any stylesheet rule, so a hover
