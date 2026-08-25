@@ -155,3 +155,32 @@ describe('missingSpan', () => {
     expect(missingSpan(withHole(30, 0), 20, 10)).toBeNull()
   })
 })
+
+describe('visibleRange - a growing window that starts part way down', () => {
+  // ?page=3 on a scrolling shelf: a crawler follows the link and must land on
+  // products 25-36, not back at the top. A shopper who shares that link gets the
+  // same thing, and carries on scrolling from there.
+  it('starts at the page asked for', () => {
+    expect(visibleRange('scroll', { shown: 36, page: 3, size: 12, total: 217 })).toEqual([24, 36])
+    expect(visibleRange('more', { shown: 36, page: 3, size: 12, total: 217 })).toEqual([24, 36])
+  })
+
+  it('grows downward from there, never back up', () => {
+    expect(visibleRange('scroll', { shown: 60, page: 3, size: 12, total: 217 })).toEqual([24, 60])
+  })
+
+  it('is the old behaviour exactly on page one', () => {
+    expect(visibleRange('scroll', { shown: 24, page: 1, size: 24, total: 217 }))
+      .toEqual([0, 24])
+  })
+
+  it('shows at least one page even if `shown` has not caught up', () => {
+    expect(visibleRange('scroll', { shown: 0, page: 5, size: 12, total: 217 })).toEqual([48, 60])
+  })
+
+  it('clamps a page past the end rather than inventing products', () => {
+    const [from, to] = visibleRange('scroll', { shown: 0, page: 99, size: 12, total: 30 })
+    expect(from).toBe(30)
+    expect(to).toBe(30)
+  })
+})

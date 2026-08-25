@@ -13,7 +13,10 @@ const COLLECTION_CONTEXT_BLOCKS = new Set([
   'ShopAttributeFilterGrid',
 ])
 
-type CollectionContext = { collectionSlug: string }
+type CollectionContext = {
+  /** Which page of a paged grid to render, from `?page=` (1 unless asked). */
+  page?: number
+  collectionSlug: string }
 
 // The 'shopCollection' layout's blocks have no per-instance collection slug
 // of their own (they're a shared template rendered for every collection) -
@@ -26,6 +29,9 @@ function injectBlocks(blocks: unknown[], ctx: CollectionContext): void {
     const block = item as { type?: string; props?: Record<string, unknown> }
     if (block.type && COLLECTION_CONTEXT_BLOCKS.has(block.type) && block.props) {
       block.props.collectionSlug = ctx.collectionSlug
+    }
+    if ((block.type === 'ShopProductGrid' || block.type === 'ShopFilterGrid') && block.props && ctx.page != null) {
+      block.props.page = ctx.page
     }
     if (block.props) {
       for (const value of Object.values(block.props)) {

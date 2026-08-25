@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ShopGridCardLoader } from '@/modules/shop/lib/grid-page-types'
+import { pageHref } from '@/modules/shop/lib/page-href'
 
 // Paging for the shop's product grids.
 //
@@ -69,6 +70,11 @@ export type ShopGridPagerProps = {
    *
    *  Absent means every card is already here - the original behaviour. */
   loadMore?: ShopGridCardLoader
+  /** Which page the SERVER rendered, from `?page=` on the address. 1 unless a
+   *  crawler or a shared link asked for another. Only meaningful beside
+   *  `loadMore` - with every card already on the page there is nothing to page
+   *  to, and every product is linked from page one anyway. */
+  page?: number
 }
 
 /** The one contiguous run of missing cards inside [from, to), or null when the
@@ -103,7 +109,15 @@ export function visibleRange(
 ): [number, number] {
   const size = Math.max(1, Math.floor(state.size) || 1)
   // 'scroll' and 'more' share one window - they differ only in what grows it.
-  if (mode === 'more' || mode === 'scroll') return [0, Math.min(Math.max(size, state.shown), state.total)]
+  //
+  // It starts at `page` rather than always at the top, which is what lets a
+  // crawler's ?page=3 and a shared link to it show products 25-36 instead of
+  // silently starting over at 1. Page one is a start of 0, i.e. exactly what
+  // this did before the parameter existed.
+  if (mode === 'more' || mode === 'scroll') {
+    const start = (Math.max(1, Math.floor(state.page) || 1) - 1) * size
+    return [Math.min(start, state.total), Math.min(Math.max(start + size, state.shown), state.total)]
+  }
   const last = Math.max(1, Math.ceil(state.total / size))
   const page = Math.min(Math.max(1, state.page), last)
   const start = (page - 1) * size
@@ -130,9 +144,11 @@ const pagerCss = `
 .shop-pager-status{font-size:13px;color:var(--color-text-muted);margin:0}
 .shop-pager-retry{appearance:none;background:none;border:0;padding:0;font:inherit;color:var(--color-primary);text-decoration:underline;cursor:pointer}
 .shop-pager-retry:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
-.shop-pager-more{min-height:44px;padding:0 26px;border:1px solid var(--color-border);border-radius:9999px;background:var(--color-surface);color:var(--color-fg);font:inherit;font-weight:600;font-size:15px;cursor:pointer;transition:background .12s ease}
+.shop-pager-more{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;min-height:44px;padding:0 26px;border:1px solid var(--color-border);border-radius:9999px;background:var(--color-surface);color:var(--color-fg);font:inherit;font-weight:600;font-size:15px;cursor:pointer;transition:background .12s ease}
 .shop-pager-more:hover{background:var(--color-bg-subtle)}
 .shop-pager-more:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
+.shop-pager-prev{font-size:14px;color:var(--color-text-muted);text-decoration:underline}
+.shop-pager-prev:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
 .shop-pager-pages{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;list-style:none;margin:0;padding:0}
 .shop-pager-pages button{min-width:44px;min-height:44px;padding:0 10px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-fg);font:inherit;font-size:14px;cursor:pointer}
 .shop-pager-pages button:hover:not(:disabled){background:var(--color-bg-subtle)}
@@ -152,20 +168,30 @@ export function ShopGridPager({
   countTemplate,
   total: totalProp,
   loadMore,
+  page: serverPage,
 }: ShopGridPagerProps) {
   const total = Math.max(cards.length, Math.floor(Number(totalProp)) || 0)
   const size = Math.max(1, Math.floor(perPage) || 1)
   const lastPage = Math.max(1, Math.ceil(total / size))
+  const startPage = Math.min(Math.max(1, Math.floor(Number(serverPage)) || 1), lastPage)
   // 'more' grows a window from the top; 'pages' moves a window of fixed size.
-  const [shown, setShown] = useState(size)
-  const [page, setPage] = useState(1)
+  // Both open on whichever page the server rendered.
+  const [shown, setShown] = useState(startPage * size)
+  const [page, setPage] = useState(startPage)
   const countId = useId()
 
   // One slot per product, the server's cards already in theirs. `undefined` is
   // "not fetched yet" and only ever occurs when `loadMore` was handed over.
-  const [slots, setSlots] = useState<(ReactNode | undefined)[]>(() =>
-    Array.from({ length: total }, (_, i) => cards[i]),
-  )
+  //
+  // Seeded at the OFFSET the server rendered from, not at zero: on ?page=3 those
+  // cards are products 25-36, and dropping them in at 1-12 would show the right
+  // products in the wrong places and then fetch them all over again.
+  const [slots, setSlots] = useState<(ReactNode | undefined)[]>(() => {
+    const seeded: (ReactNode | undefined)[] = Array.from({ length: total }, () => undefined)
+    const offset = (startPage - 1) * size
+    cards.forEach((card, i) => { seeded[offset + i] = card })
+    return seeded
+  })
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
   // Bumped by the retry button. The fetch effect keys off the window and what is
@@ -243,6 +269,28 @@ export function ShopGridPager({
     setShown((n) => Math.min(n + size, total))
   }, [size, total])
 
+  // The server renders `?page=N` on its own, because a block has no idea what
+  // address it is being served at. Once mounted we know, so the hrefs are rebuilt
+  // against the real query string - which is what keeps a shopper's ticked
+  // filters on the link they see in the status bar, and on a middle-click.
+  const [query, setQuery] = useState('')
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the query string is only readable post-mount, and reading it during render would mismatch the server's markup on hydration
+    setQuery(window.location.search)
+  }, [])
+  const nextPage = Math.min(lastPage, Math.floor(to / size) + 1)
+  const hrefNext = pageHref(query, nextPage)
+  const hrefPrev = pageHref(query, Math.max(1, startPage - 1))
+
+  // A real link, intercepted. Modifier clicks, middle clicks and "open in new
+  // tab" are deliberately NOT intercepted: the address is genuine and a shopper
+  // asking for it in a new tab should get it.
+  const takeOverClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>, run: () => void) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+    e.preventDefault()
+    run()
+  }, [])
+
   const sentinelRef = useRef<HTMLDivElement>(null)
   const moreToShow = growing && shown < total
   useEffect(() => {
@@ -295,13 +343,30 @@ export function ShopGridPager({
               </button>
             </p>
           )}
+          {/* Only ever rendered past page one, and only for a growing shelf -
+              numbered pages have their own way back. Without it a crawler (or a
+              shopper with a shared link) can walk forward through the shelf and
+              never back, which reads as a chain of orphans. */}
+          {growing && startPage > 1 && (
+            <a className="shop-pager-prev" href={hrefPrev} rel="prev">
+              &lsaquo; Previous
+            </a>
+          )}
           {growing ? (
             moreToShow && (
               <>
-                <button
-                  type="button"
+                {/* An anchor, not a button, and that is the whole trick. A
+                    shopper's click is intercepted and the next products arrive in
+                    place - infinite scroll, unchanged. A crawler has no
+                    JavaScript to intercept anything, so it sees a plain link to
+                    the next page and follows it, and the one after that, until
+                    the shelf runs out. Every product stays reachable from the
+                    shelf it belongs to without a shopper ever seeing a page
+                    boundary. */}
+                <a
                   className="shop-pager-more"
-                  onClick={showMore}
+                  href={hrefNext}
+                  onClick={(e) => takeOverClick(e, showMore)}
                   aria-describedby={countText ? countId : undefined}
                   // Not disabled while a page is on its way: disabling moves the
                   // focus ring off the control the shopper is standing on, and
@@ -310,7 +375,7 @@ export function ShopGridPager({
                   aria-busy={loading || undefined}
                 >
                   {moreLabel || 'Show more'}
-                </button>
+                </a>
                 {/* What the observer watches. Empty, unfocusable and invisible
                     to assistive tech - it is a scroll position, not content. */}
                 {mode === 'scroll' && <div ref={sentinelRef} aria-hidden="true" style={{ width: '100%', height: 1 }} />}

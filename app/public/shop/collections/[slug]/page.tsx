@@ -4,6 +4,7 @@ import { Render } from '@puckeditor/core/rsc'
 import { getCollectionBySlug, listTags } from '@/modules/shop/lib/db/catalogue'
 import { listProducts, getProductMediaForProducts, getProductTagIdsForProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { pageFromParams } from '@/modules/shop/lib/page-href'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
@@ -46,7 +47,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   }
 }
 
-export default async function ShopCollectionPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ShopCollectionPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  // Which page of the shelf was asked for. A grid block cannot read the
+  // address it is served at, so the route reads it and writes it into the
+  // block's props - the same journey categorySlug already makes.
+  const page = pageFromParams(await searchParams)
   const { slug } = await params
   const gate = await getShopGate()
   if (gate.blocked) return <ShopClosedNotice message={gate.message} />
@@ -56,7 +61,7 @@ export default async function ShopCollectionPage({ params }: { params: Promise<{
 
   const layout = await resolveThemeLayout('shopCollection', { moduleName: 'shop', slug: collection.slug })
   if (layout?.builderData) {
-    const data = injectCollectionContext(layout.builderData as PuckData, { collectionSlug: collection.slug })
+    const data = injectCollectionContext(layout.builderData as PuckData, { collectionSlug: collection.slug, page })
     return (
       <>
         {gate.staffPreview && <ShopStaffPreviewBanner />}

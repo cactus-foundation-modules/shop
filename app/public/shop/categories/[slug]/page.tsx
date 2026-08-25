@@ -11,6 +11,7 @@ import { ShopGridPager } from '@/modules/shop/components/public/ShopGridPager'
 // simply gains pages when it would previously have lost products.
 const CATEGORY_PAGE_SIZE = 60
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { pageFromParams, pageTitleSuffix } from '@/modules/shop/lib/page-href'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
@@ -29,14 +30,15 @@ import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { getSiteUrlOrNull } from '@/lib/config/env'
 import { absoluteSocialImageUrl, resolveCategorySocialImage } from '@/modules/shop/lib/catalogue-social-image'
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }): Promise<Metadata> {
   const { slug } = await params
+  const page = pageFromParams(await searchParams)
   if ((await getShopGate()).blocked) return {}
   const category = await getCategoryBySlug(slug)
   if (!category) return {}
   // The short blurb before the long one: a meta description is a one-liner, and
   // the long description may now be a builder document with no plain text at all.
-  const title = category.metaTitle || category.name
+  const title = (category.metaTitle || category.name) + pageTitleSuffix(page)
   const description = category.metaDescription || category.shortDescription || category.description || undefined
   // A category page is a landing page like any other, so it publishes a social
   // image the same way a product page does - see lib/catalogue-social-image.ts
@@ -57,7 +59,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   }
 }
 
-export default async function ShopCategoryPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ShopCategoryPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  // Which page of the shelf was asked for. A grid block cannot read the
+  // address it is served at, so the route reads it and writes it into the
+  // block's props - the same journey categorySlug already makes.
+  const page = pageFromParams(await searchParams)
   const { slug } = await params
   const gate = await getShopGate()
   if (gate.blocked) return <ShopClosedNotice message={gate.message} />
@@ -67,7 +73,7 @@ export default async function ShopCategoryPage({ params }: { params: Promise<{ s
 
   const layout = await resolveThemeLayout('shopCategory', { moduleName: 'shop', slug: category.slug })
   if (layout?.builderData) {
-    const data = injectCategoryContext(layout.builderData as PuckData, { categorySlug: category.slug })
+    const data = injectCategoryContext(layout.builderData as PuckData, { categorySlug: category.slug, page })
     return (
       <>
         {gate.staffPreview && <ShopStaffPreviewBanner />}

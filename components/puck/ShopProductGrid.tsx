@@ -36,6 +36,12 @@ export type ShopProductGridProps = {
   // browser. 'ondemand' renders the first page only and fetches the rest from
   // the server as the shopper reaches them. Only read when `paginate` is on.
   pageLoad?: string
+  // Which page of the shelf to render. NOT a Puck field - it is per-request
+  // context written into the block's props by the page route, the same way
+  // categorySlug is, because a block cannot read the address it is served at.
+  // 1 unless `?page=` says otherwise. See lib/page-href.ts for why the link a
+  // crawler follows and the scroll a shopper does are the same control.
+  page?: number
 }
 
 // Section heading above the grid - shared by both halves so the editor canvas

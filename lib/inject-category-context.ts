@@ -2,7 +2,10 @@ import type { PuckData } from '@/modules/shop/lib/types'
 
 const CATEGORY_CONTEXT_BLOCKS = new Set(['ShopCategoryHeader', 'ShopCategoryDescription', 'ShopProductGrid'])
 
-type CategoryContext = { categorySlug: string }
+type CategoryContext = {
+  /** Which page of a paged grid to render, from `?page=` (1 unless asked). */
+  page?: number
+  categorySlug: string }
 
 // The 'shopCategory' layout's blocks have no per-instance category slug of
 // their own (they're a shared template rendered for every category) - the
@@ -20,6 +23,9 @@ function injectBlocks(blocks: unknown[], ctx: CategoryContext): void {
     // category's direct children (its sub-categories) - inject as its parent.
     if (block.type === 'ShopCategoryBrowser' && block.props) {
       block.props.parentCategorySlug = ctx.categorySlug
+    }
+    if ((block.type === 'ShopProductGrid' || block.type === 'ShopFilterGrid') && block.props && ctx.page != null) {
+      block.props.page = ctx.page
     }
     if (block.props) {
       for (const value of Object.values(block.props)) {

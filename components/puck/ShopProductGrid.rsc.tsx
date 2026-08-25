@@ -59,7 +59,18 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
   // per-product media, price and contributed-photo loads inside
   // buildGridCardItems are most of the cost, and slicing afterwards would still
   // have paid all of it.
-  const wanted = onDemand ? products.slice(0, pageSize) : products
+  // Which window of the shelf this render is. Page one unless the address said
+  // otherwise; ignored entirely when every card is going into the page anyway,
+  // because then every product is already linked from page one.
+  const page = onDemand ? Math.max(1, Math.floor(Number(props.page)) || 1) : 1
+  const from = (page - 1) * pageSize
+  const wanted = onDemand ? products.slice(from, from + pageSize) : products
+  // A page number past the end of the shelf. Nothing links to one - the pager
+  // clamps at the last page - so this is somebody inventing an address, and the
+  // honest answer is the same "nothing here" the empty shelf gives.
+  if (wanted.length === 0) {
+    return <p style={{ color: 'var(--color-text-muted)' }}>{props.emptyText || 'No products to show yet.'}</p>
+  }
   const items = await buildGridCardItems(wanted)
   const cards = template ? await renderCards(template, items) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)
 
@@ -82,6 +93,7 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
           moreLabel={props.moreLabel}
           countTemplate={props.countTemplate}
           total={products.length}
+          page={page}
           // Bound here, so what the browser may ask for is a window and nothing
           // else - which products, which card design and how many at a time are
           // decided in this render and encrypted by Next on the way out. The

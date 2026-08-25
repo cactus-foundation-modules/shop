@@ -4,6 +4,7 @@ import { Render } from '@puckeditor/core/rsc'
 import { getTagBySlug, listTags } from '@/modules/shop/lib/db/catalogue'
 import { listProducts, getProductMediaForProducts, getProductTagIdsForProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { pageFromParams } from '@/modules/shop/lib/page-href'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
@@ -45,7 +46,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   }
 }
 
-export default async function ShopTagPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ShopTagPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  // Which page of the shelf was asked for. A grid block cannot read the
+  // address it is served at, so the route reads it and writes it into the
+  // block's props - the same journey categorySlug already makes.
+  const page = pageFromParams(await searchParams)
   const { slug } = await params
   const gate = await getShopGate()
   if (gate.blocked) return <ShopClosedNotice message={gate.message} />
@@ -55,7 +60,7 @@ export default async function ShopTagPage({ params }: { params: Promise<{ slug: 
 
   const layout = await resolveThemeLayout('shopTag', { moduleName: 'shop', slug: tag.slug })
   if (layout?.builderData) {
-    const data = injectTagContext(layout.builderData as PuckData, { tagSlug: tag.slug })
+    const data = injectTagContext(layout.builderData as PuckData, { tagSlug: tag.slug, page })
     return (
       <>
         {gate.staffPreview && <ShopStaffPreviewBanner />}

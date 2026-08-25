@@ -13,7 +13,10 @@ const TAG_CONTEXT_BLOCKS = new Set([
   'ShopAttributeFilterGrid',
 ])
 
-type TagContext = { tagSlug: string }
+type TagContext = {
+  /** Which page of a paged grid to render, from `?page=` (1 unless asked). */
+  page?: number
+  tagSlug: string }
 
 // The 'shopTag' layout's blocks have no per-instance tag of their own (they're a
 // shared template rendered for every tag) - the tag page injects the current
@@ -25,6 +28,9 @@ function injectBlocks(blocks: unknown[], ctx: TagContext): void {
     const block = item as { type?: string; props?: Record<string, unknown> }
     if (block.type && TAG_CONTEXT_BLOCKS.has(block.type) && block.props) {
       block.props.tagSlug = ctx.tagSlug
+    }
+    if ((block.type === 'ShopProductGrid' || block.type === 'ShopFilterGrid') && block.props && ctx.page != null) {
+      block.props.page = ctx.page
     }
     if (block.props) {
       for (const value of Object.values(block.props)) {
