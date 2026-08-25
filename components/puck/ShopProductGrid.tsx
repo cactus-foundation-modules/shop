@@ -31,6 +31,11 @@ export type ShopProductGridProps = {
   pageSize?: number
   moreLabel?: string
   countTemplate?: string
+  // Where the pages after the first come from. Blank or 'upfront' is what paging
+  // has always done - every card rendered into the page, shown and hidden in the
+  // browser. 'ondemand' renders the first page only and fetches the rest from
+  // the server as the shopper reaches them. Only read when `paginate` is on.
+  pageLoad?: string
 }
 
 // Section heading above the grid - shared by both halves so the editor canvas
@@ -119,11 +124,18 @@ export const shopProductGridPuckComponent = {
       { value: 'pages', label: 'Numbered pages' },
     ] },
     pageSize: { type: 'number' as const, label: 'Products per page (blank uses the number above)', min: 1, max: 100 },
+    // The default is deliberately the old behaviour: a layout saved before this
+    // existed keeps rendering every card into the page, because that is what its
+    // owner has been looking at and nothing about it has stopped working.
+    pageLoad: { type: 'select' as const, label: 'Where the later pages come from', options: [
+      { value: 'upfront', label: 'Sent with the page - instant to flick through, heavier to load' },
+      { value: 'ondemand', label: 'Fetched as the shopper reaches them - much lighter page' },
+    ] },
     moreLabel: { type: 'text' as const, label: '"Show more" button label' },
     countTemplate: { type: 'text' as const, label: 'Count wording ({shown} and {total}, blank for none)' },
     emptyText: { type: 'text' as const, label: 'Wording when there are no products' },
     layoutRef: layoutField,
   },
-  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', emptyText: 'No products to show yet.', layoutRef: null },
+  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, pageLoad: 'upfront', moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', emptyText: 'No products to show yet.', layoutRef: null },
   render: ShopProductGrid,
 }

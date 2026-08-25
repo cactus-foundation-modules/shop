@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pageNumbers, visibleRange } from '@/modules/shop/components/public/ShopGridPager'
+import { missingSpan, pageNumbers, visibleRange } from '@/modules/shop/components/public/ShopGridPager'
 
 // The windowing behind the product grid's pager. Worth pinning because the bug
 // it exists to fix was silent: a category of 217 products rendered 100 of them
@@ -112,5 +112,46 @@ describe('pageNumbers', () => {
         expect(new Set(nums).size).toBe(nums.length)
       }
     }
+  })
+})
+
+describe('missingSpan', () => {
+  // What the pager asks the server for. A hole it fails to spot is a grid that
+  // stops growing with no error anywhere; a span that overshoots is a round trip
+  // spent re-fetching cards already on the page.
+  const filled = (n: number) => Array.from({ length: n }, (_, i) => `card${i}`)
+  const withHole = (total: number, from: number) =>
+    Array.from({ length: total }, (_, i) => (i < from ? `card${i}` : undefined))
+
+  it('asks for nothing when the window is already complete', () => {
+    expect(missingSpan(filled(24), 0, 24)).toBeNull()
+    expect(missingSpan(withHole(217, 48), 0, 48)).toBeNull()
+  })
+
+  it('asks for exactly the run the window is short of', () => {
+    expect(missingSpan(withHole(217, 24), 0, 48)).toEqual({ offset: 24, count: 24 })
+  })
+
+  it('asks only for what is inside the window, not everything unfetched', () => {
+    expect(missingSpan(withHole(217, 24), 24, 48)).toEqual({ offset: 24, count: 24 })
+    expect(missingSpan(withHole(217, 24), 96, 120)).toEqual({ offset: 96, count: 24 })
+  })
+
+  it('covers a hole with something already fetched sitting inside it', () => {
+    // A shopper who jumped to page 5 and then scrolled up leaves gaps either
+    // side of what they fetched. One span covering the lot is one round trip;
+    // the caller drops what it already has when the answer lands.
+    const slots: (string | undefined)[] = withHole(120, 24)
+    slots[60] = 'card60'
+    expect(missingSpan(slots, 48, 72)).toEqual({ offset: 48, count: 24 })
+  })
+
+  it('never asks past the end of the grid', () => {
+    expect(missingSpan(withHole(30, 24), 24, 48)).toEqual({ offset: 24, count: 6 })
+  })
+
+  it('is null for an empty or backwards window', () => {
+    expect(missingSpan(withHole(30, 0), 10, 10)).toBeNull()
+    expect(missingSpan(withHole(30, 0), 20, 10)).toBeNull()
   })
 })

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import type { ShopGridCardLoader } from '@/modules/shop/lib/grid-page-types'
 
 // Paging for the shop's product grids.
 //
@@ -18,8 +19,16 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNod
 //
 // The trade is payload. A category of 217 products ships 217 cards whether the
 // shopper looks at page 1 or page 9, which is why the grid blocks only reach
-// for this when the shop owner asks - see the `paginate` prop. A catalogue that
-// outgrows that wants a server-paged grid, and that is a different block.
+// for this when the shop owner asks - see the `paginate` prop.
+//
+// UNLESS the block hands over a `loadMore`. Then the server renders the first
+// page only and this asks for the rest as the shopper reaches them - the same
+// cards, built by the same helpers on the same server, arriving as React nodes
+// down the same flight channel rather than as markup. That is what keeps the
+// one-render-path promise above intact while a 432-product page stops shipping
+// 14.6 MB to a shopper who was going to look at twenty-four of them. Everything
+// below still works exactly as it did when `loadMore` is absent: the two modes
+// differ in where the later cards come from, not in what they are.
 
 // 'scroll' is 'more' that presses its own button: the same window, grown by the
 // same handler, triggered by a sentinel coming into view instead of a click.
@@ -48,6 +57,42 @@ export type ShopGridPagerProps = {
   moreLabel?: string
   /** Printed above the pager: "Showing 24 of 217". Blank to leave it out. */
   countTemplate?: string
+  /** How many products the grid holds altogether. Only differs from
+   *  `cards.length` when the server rendered a window of them and left the rest
+   *  to `loadMore`; absent, it IS cards.length, which is every caller that
+   *  predates on-demand paging. */
+  total?: number
+  /** Fetches the cards for a window of the grid, rendered on the server. A
+   *  server function handed down as a prop rather than imported: a client file
+   *  that imports its way to the database fails the build-time graph check, and
+   *  a reference passed across the RSC boundary is not an import.
+   *
+   *  Absent means every card is already here - the original behaviour. */
+  loadMore?: ShopGridCardLoader
+}
+
+/** The one contiguous run of missing cards inside [from, to), or null when the
+ *  window is already complete. One run rather than several because a grid is
+ *  only ever filled front-to-back or a page at a time, so a hole is always a
+ *  block - and asking for one span is one round trip instead of several.
+ *
+ *  Pure and exported so the fetch arithmetic is testable without a DOM or a
+ *  server, which matters here: getting it wrong shows up as a grid that quietly
+ *  stops growing, and that is precisely the kind of bug that reaches a customer. */
+export function missingSpan(
+  slots: readonly unknown[],
+  from: number,
+  to: number,
+): { offset: number; count: number } | null {
+  let first = -1
+  let last = -1
+  for (let i = Math.max(0, from); i < Math.min(to, slots.length); i++) {
+    if (slots[i] !== undefined) continue
+    if (first === -1) first = i
+    last = i
+  }
+  if (first === -1) return null
+  return { offset: first, count: last - first + 1 }
 }
 
 /** Which slice of the card list is on screen, as [start, end) indices. Pure and
@@ -82,6 +127,9 @@ export function pageNumbers(current: number, last: number): (number | '…')[] {
 const pagerCss = `
 .shop-pager{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:28px}
 .shop-pager-count{font-size:13px;color:var(--color-text-muted)}
+.shop-pager-status{font-size:13px;color:var(--color-text-muted);margin:0}
+.shop-pager-retry{appearance:none;background:none;border:0;padding:0;font:inherit;color:var(--color-primary);text-decoration:underline;cursor:pointer}
+.shop-pager-retry:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
 .shop-pager-more{min-height:44px;padding:0 26px;border:1px solid var(--color-border);border-radius:9999px;background:var(--color-surface);color:var(--color-fg);font:inherit;font-weight:600;font-size:15px;cursor:pointer;transition:background .12s ease}
 .shop-pager-more:hover{background:var(--color-bg-subtle)}
 .shop-pager-more:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
@@ -102,8 +150,10 @@ export function ShopGridPager({
   gridStyle,
   moreLabel,
   countTemplate,
+  total: totalProp,
+  loadMore,
 }: ShopGridPagerProps) {
-  const total = cards.length
+  const total = Math.max(cards.length, Math.floor(Number(totalProp)) || 0)
   const size = Math.max(1, Math.floor(perPage) || 1)
   const lastPage = Math.max(1, Math.ceil(total / size))
   // 'more' grows a window from the top; 'pages' moves a window of fixed size.
@@ -111,11 +161,81 @@ export function ShopGridPager({
   const [page, setPage] = useState(1)
   const countId = useId()
 
+  // One slot per product, the server's cards already in theirs. `undefined` is
+  // "not fetched yet" and only ever occurs when `loadMore` was handed over.
+  const [slots, setSlots] = useState<(ReactNode | undefined)[]>(() =>
+    Array.from({ length: total }, (_, i) => cards[i]),
+  )
+  const [loading, setLoading] = useState(false)
+  const [failed, setFailed] = useState(false)
+  // Bumped by the retry button. The fetch effect keys off the window and what is
+  // already in hand, neither of which a failure changes - so without this a
+  // second press would ask nothing of anybody.
+  const [retryNonce, setRetryNonce] = useState(0)
+  // Which span is in flight, so a scroll observer firing four times in one
+  // second asks once. A ref rather than state: it must be true the instant the
+  // effect decides to fetch, not on the next render.
+  const inFlight = useRef<string | null>(null)
+
   const [from, to] = useMemo(
     () => visibleRange(mode, { shown, page, size, total }),
     [mode, page, shown, size, total],
   )
-  const visible = useMemo(() => cards.slice(from, to), [cards, from, to])
+
+  // Fetch whatever the current window is missing. Runs on every window change,
+  // which is exactly right: a click on page 9 needs page 9's cards as much as a
+  // scroll to the bottom needs the next twenty-four.
+  useEffect(() => {
+    if (!loadMore) return
+    const span = missingSpan(slots, from, to)
+    if (!span) return
+    const key = `${span.offset}:${span.count}`
+    if (inFlight.current === key) return
+    inFlight.current = key
+    setLoading(true)
+    setFailed(false)
+    // Deliberately NOT cancelled when the window moves on. The slots are fixed
+    // positions in the grid, so a batch that arrives after the shopper has
+    // clicked elsewhere still belongs exactly where it was going - and throwing
+    // it away while the in-flight guard refuses to ask for the same span again
+    // leaves that part of the grid permanently empty.
+    loadMore({ offset: span.offset, count: span.count })
+      .then((fetched) => {
+        setSlots((prev) => {
+          const next = [...prev]
+          fetched.forEach((card, i) => { next[span.offset + i] = card })
+          // Anything in the span the server did not send back is marked ANSWERED
+          // rather than left empty. `false` renders nothing and is not
+          // `undefined`, so missingSpan stops seeing a hole there.
+          //
+          // Without this a span that legitimately comes back short - a product
+          // unpublished between the page loading and the shopper scrolling to it
+          // - is a hole the next render asks for again, and again, forever. The
+          // effect re-runs on every change to `slots`, which is exactly what
+          // makes a short answer self-draining and an empty one a spin.
+          for (let i = fetched.length; i < span.count; i++) {
+            if (next[span.offset + i] === undefined) next[span.offset + i] = false
+          }
+          return next
+        })
+      })
+      // Loudly enough to be recoverable, quietly enough not to be a crash: the
+      // retry line appears and the shopper presses it. Swallowing this would
+      // leave a grid that has simply stopped growing.
+      .catch(() => setFailed(true))
+      .finally(() => {
+        // Only if it is still ours - a later span may have claimed the slot.
+        if (inFlight.current === key) inFlight.current = null
+        setLoading(false)
+      })
+    // retryNonce is in the list on purpose and read nowhere: it is how the retry
+    // button asks again for a window that has not otherwise changed.
+  }, [loadMore, slots, from, to, retryNonce])
+
+  const visible = useMemo(
+    () => slots.slice(from, to).filter((card): card is ReactNode => card !== undefined),
+    [slots, from, to],
+  )
 
   // One way to grow the window, whether a thumb or an observer asked for it.
   const growing = mode === 'more' || mode === 'scroll'
@@ -155,12 +275,24 @@ export function ShopGridPager({
         {visible}
       </div>
       {total > size && (
-        <nav className="shop-pager" aria-label="Product pages">
+        <nav className="shop-pager" aria-label="Product pages" aria-busy={loading || undefined}>
           {countText && (
             // Polite, not assertive: the shopper asked for more products, so the
             // new count is a confirmation rather than an interruption.
             <p className="shop-pager-count" id={countId} aria-live="polite">
               {countText}
+            </p>
+          )}
+          {failed && (
+            // A grid that has simply stopped growing looks like a grid that has
+            // run out of products, so say what happened and offer the way back.
+            // Rendered for numbered pages too, where there is no "Show more"
+            // button to carry the retry and an empty page otherwise says nothing.
+            <p className="shop-pager-status" role="status">
+              Those didn&rsquo;t load.{' '}
+              <button type="button" className="shop-pager-retry" onClick={() => setRetryNonce((n) => n + 1)}>
+                Try again
+              </button>
             </p>
           )}
           {growing ? (
@@ -171,6 +303,11 @@ export function ShopGridPager({
                   className="shop-pager-more"
                   onClick={showMore}
                   aria-describedby={countText ? countId : undefined}
+                  // Not disabled while a page is on its way: disabling moves the
+                  // focus ring off the control the shopper is standing on, and
+                  // pressing it again is a reasonable thing to want - it grows
+                  // the window further, which asks for the next span too.
+                  aria-busy={loading || undefined}
                 >
                   {moreLabel || 'Show more'}
                 </button>

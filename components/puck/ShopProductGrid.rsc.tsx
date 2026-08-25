@@ -1,16 +1,13 @@
 import { connection } from 'next/server'
-import { listProducts, getProductMediaForProducts, getProductTagIdsForProducts, HARD_MAX_PER_PAGE, type ProductSort } from '@/modules/shop/lib/db'
+import { HARD_MAX_PER_PAGE } from '@/modules/shop/lib/db'
 import { ShopGridPager } from '@/modules/shop/components/public/ShopGridPager'
-import { listTags, resolveCategoryProductFilter } from '@/modules/shop/lib/db/catalogue'
-import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
-import { resolveCardTemplate, buildCardContext, buildTagMaps, renderCards, MinimalCard, type CardItem } from '@/modules/shop/lib/card-template'
-import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
-import { resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
-import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
+import { resolveCardTemplate, renderCards, MinimalCard } from '@/modules/shop/lib/card-template'
+import { listGridProducts, buildGridCardItems } from '@/modules/shop/lib/grid-page'
+import { loadShopGridCards } from '@/modules/shop/lib/grid-cards-action'
+import type { ShopGridScope } from '@/modules/shop/lib/grid-page-types'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { shopProductGridPuckComponent, GridSectionHead, type ShopProductGridProps } from './ShopProductGrid'
-import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 
 // Server (RSC) half of Shop: Product Grid. Kept out of the client editor bundle
 // - lib/card-template dynamically imports lib/puck/config.rsc, which depends on
@@ -28,59 +25,38 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
   // Only a paging grid asks for more than the default ceiling, and only because
   // it has somewhere to put the extra rows. See listProducts' maxPerPage.
   const fetchCount = paginate ? HARD_MAX_PER_PAGE : limit
-  // Resolve the category filter first - a category page's grid rolls up over the
-  // sub-tree (or not) per the category's own mode / the shop default.
-  const config = await getShopConfigCached()
-  const categoryFilter = props.categorySlug
-    ? await resolveCategoryProductFilter(props.categorySlug, config.categoryProductDisplayMode)
-    : {}
-  const [bp, tags, listed, template] = await Promise.all([
+  // Where the pages after the first come from. Meaningless without paging, and
+  // 'upfront' either way is the behaviour every saved layout already has.
+  const onDemand = Boolean(paginate) && props.pageLoad === 'ondemand'
+
+  const scope: ShopGridScope = {
+    categorySlug: props.categorySlug || undefined,
+    collectionSlug: props.collectionSlug || undefined,
+    tagSlug: props.tagSlug || undefined,
+    // listProducts whitelists the sort key itself (unknown values fall back to
+    // newest), so the block prop can pass straight through.
+    sort: props.sort || 'newest',
+    fetchCount,
+  }
+
+  const [bp, products, template] = await Promise.all([
     getShopBreakpoints(),
-    listTags(),
-    listProducts({
-      status: 'ACTIVE',
-      ...categoryFilter,
-      collectionSlug: props.collectionSlug || undefined,
-      tagSlug: props.tagSlug || undefined,
-      perPage: fetchCount,
-      maxPerPage: fetchCount,
-      // listProducts whitelists the sort key itself (unknown values fall back
-      // to newest), so the block prop can pass straight through.
-      sort: (props.sort || 'newest') as ProductSort,
-      excludeHidden: true,
-      storefront: true,
-    }),
+    listGridProducts(scope),
     resolveCardTemplate(props.layoutRef),
   ])
-  const { products } = listed
-  const { tagById, tagsById } = buildTagMaps(tags)
 
   if (products.length === 0) {
     return <p style={{ color: 'var(--color-text-muted)' }}>{props.emptyText || 'No products to show yet.'}</p>
   }
 
-  // Load each product's media + tags once, up front - the injected context
-  // carries them into the card so no part re-queries. The "From £…" figure for
-  // any variation-priced product is resolved for the whole grid in one go.
-  const productIds = products.map((p) => p.id)
-  const [mediaByProduct, tagIdsByProduct, fromPrices, cardExtras, taxDisplay] = await Promise.all([
-    getProductMediaForProducts(productIds),
-    getProductTagIdsForProducts(productIds),
-    resolveCardFromPrices(productIds),
-    resolveShopCardExtras(productIds),
-    resolveTaxDisplay(),
-  ])
-  // What the shop prints prices as (net or gross) is a per-shop answer, not a
-  // per-card one, so it is resolved once here and handed to every card.
-  // Whether prices may be shown at all is a per-shop answer too - a quote-only
-  // shop withholds every figure on every card, not some of them. Cached, so this
-  // costs nothing per surface. See lib/commerce-mode.ts.
-  const pricing = { ...config, taxDisplay, commerce: await resolveShopCommerceMode() }
-  const items: CardItem[] = products.map((product) => ({
-    product,
-    ctx: buildCardContext(product, mediaByProduct.get(product.id) ?? [], tagById, tagIdsByProduct.get(product.id) ?? [], config.currencySymbol, pricing, fromPrices.get(product.id) ?? null, cardExtras.get(product.id), tagsById),
-  }))
-
+  // THE line that decides how heavy this page is. On-demand builds cards for the
+  // first window only; every other mode builds them for the lot, exactly as this
+  // block always has. Note it slices the PRODUCTS, not the finished cards - the
+  // per-product media, price and contributed-photo loads inside
+  // buildGridCardItems are most of the cost, and slicing afterwards would still
+  // have paid all of it.
+  const wanted = onDemand ? products.slice(0, pageSize) : products
+  const items = await buildGridCardItems(wanted)
   const cards = template ? await renderCards(template, items) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)
 
   // Same div, same class, same custom property either way - the pager renders
@@ -101,6 +77,12 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
           gridStyle={gridStyle}
           moreLabel={props.moreLabel}
           countTemplate={props.countTemplate}
+          total={products.length}
+          // Bound here, so what the browser may ask for is a window and nothing
+          // else - which products, which card design and how many at a time are
+          // decided in this render and encrypted by Next on the way out. The
+          // whole binding is re-validated server-side regardless; see the action.
+          loadMore={onDemand ? loadShopGridCards.bind(null, { scope, layoutRef: props.layoutRef, maxCards: pageSize }) : undefined}
         />
       ) : (
         <div className="shop-grid" style={gridStyle}>
