@@ -183,8 +183,19 @@ export async function ShopProductPageView({ params, searchParams }: Props) {
   const inStock = !product.trackInventory || (product.stockCount ?? 0) > 0 || product.outOfStockBehaviour === 'BACKORDER' || product.isPreOrder
   const data = injectProductContext(layout.builderData as PuckData, product.slug, product.id, inStock)
 
+  // No top padding: the layout's first block owns the space above itself. Every
+  // block already carries its own top padding control (the Tabs strip has
+  // "Padding above tabs"), so a fixed 2rem here was counted twice - the gap over
+  // the first block came out at 2rem PLUS whatever the block was set to, which
+  // is why it never matched the gap underneath. It also stopped a sticky Tabs
+  // strip resting where it pins: the strip sat 2rem lower than its own sticky
+  // offset and jumped up to meet it on the first scroll. The editor canvas has
+  // no wrapper padding either (shopProduct declares no `editorPreview`), so
+  // dropping it lines the frontend up with what the author sees while editing.
+  // Sides and bottom stay: the gutter and the page's closing space are the
+  // wrapper's to give.
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 1.5rem 2rem' }}>
       {gate.staffPreview && <ShopStaffPreviewBanner />}
       {stock.staffPreview && <ShopStockHiddenBanner />}
       <Render config={getModuleLayoutPuckRscConfig('shopProduct') as any} data={data as Data} />
