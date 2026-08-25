@@ -114,7 +114,6 @@ function SummaryControl({ control, groupName, preview, summaryLayout, onChange }
           <span className="scl-s-date">{chosen.summary!.headline}</span>
           {secondary}
           {!stacked && fee}
-          {alts.length === 0 && <span className="scl-s-only">Only option</span>}
         </span>
         {stacked ? (
           // Stacked: the free-text description and the price share the foot
