@@ -451,6 +451,14 @@ export const shopCardNamePuckRscComponent = { ...shopCardNamePuckComponent, rend
 
 type CardPriceProps = PuckPart & { _ctx?: CardPartContext; showCompare?: string; showRrp?: string; showSave?: string; size?: number; align?: string }
 
+// The one place a card's RRP is spelt out. Both branches of the price row - a
+// single price and a variations range's "From £…" - print it through here, so
+// the wording, the class and therefore the styling are the same figure to a
+// shopper whichever kind of listing they are looking at.
+function CardRrp({ amount, symbol }: { amount: string; symbol: string }) {
+  return <span className="shop-card-rrp">RRP {formatMoney(amount, symbol)}</span>
+}
+
 export function ShopCardPrice(props: CardPriceProps) {
   const ctx = props._ctx
   const showCompare = props.showCompare !== 'no'
@@ -467,10 +475,16 @@ export function ShopCardPrice(props: CardPriceProps) {
   // A product priced as a range (variations) shows its cheapest as "From £…" -
   // but only where the choices actually differ in price. All the same money and
   // it is a single price like any other, so the prefix goes. There is no single
-  // "was" to strike or RRP to sit against either way, so those stand down; the
-  // shopper sees the exact figures on the product page once they choose.
+  // "was" to strike, so that stands down; the shopper sees the exact figures on
+  // the product page once they choose.
   const fromPrice = ctx?.fromPrice ?? null
   const fromVaries = ctx?.fromPriceVaries ?? false
+  // The RRP does not stand down with it. A range has a cheapest RRP just as it
+  // has a cheapest price, and a shopper reading a grid must not have to guess
+  // why the listing next door quotes one and this one does not. Same gate, same
+  // class, same wording as the single-price branch below - the two are printed
+  // by one CardRrp precisely so they cannot drift apart.
+  const fromRrp = ctx && ctx.showRetailPrice ? ctx.fromPriceRrp : null
   return (
     <>
       <EditorStyle ctx={ctx} />
@@ -486,7 +500,10 @@ export function ShopCardPrice(props: CardPriceProps) {
         {ctx?.commerce.hidePrices ? (
           <span className="shop-card-price">{ctx.commerce.hiddenPriceLabel}</span>
         ) : fromPrice != null ? (
-          <span className="shop-card-price">{fromVaries ? 'From ' : ''}{formatMoney(fromPrice, symbol)}</span>
+          <>
+            <span className="shop-card-price">{fromVaries ? 'From ' : ''}{formatMoney(fromPrice, symbol)}</span>
+            {showRrp && fromRrp && <CardRrp amount={fromRrp} symbol={symbol} />}
+          </>
         ) : (
           <>
             <span className="shop-card-price">{formatMoney(now, symbol)}</span>
@@ -496,9 +513,7 @@ export function ShopCardPrice(props: CardPriceProps) {
             {showSave && ctx?.prices.savePct != null && (
               <span className="shop-card-save">Save {ctx.prices.savePct}%</span>
             )}
-            {showRrp && rrp && (
-              <span className="shop-card-rrp">RRP {formatMoney(rrp, symbol)}</span>
-            )}
+            {showRrp && rrp && <CardRrp amount={rrp} symbol={symbol} />}
           </>
         )}
         {/* Says which side of tax the figure beside it sits on, where the shop

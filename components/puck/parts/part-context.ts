@@ -218,6 +218,12 @@ export type CardPartContext = {
   // costs the same, in which case the price part drops the "From £…" prefix:
   // there is nothing to count up from.
   fromPriceVaries: boolean
+  // The RRP to sit beside `fromPrice`: the cheapest one the choices carry, so
+  // the two figures on the card are both the bottom of the range. Null where
+  // the module pricing this product says nothing about RRPs, where none of the
+  // choices carries one worth quoting, or where the shop keeps retail prices to
+  // itself - `showRetailPrice` gates this exactly as it gates `prices.rrp`.
+  fromPriceRrp: string | null
   // Where the card links to, in the shop's chosen product URL style
   // (lib/product-url.ts): '/shop/products/<slug>' or, on the ROOT style,
   // '/<slug>'. Resolved by buildCardContext so every card surface - shop's own

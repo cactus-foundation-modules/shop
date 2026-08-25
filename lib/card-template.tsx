@@ -187,6 +187,9 @@ export function buildCardContext(
     badge: badges[0] ?? null,
     fromPrice: fromPrice ? (adjust ? adjust(Number(fromPrice.price)).toFixed(2) : fromPrice.price) : null,
     fromPriceVaries: fromPrice?.varies ?? false,
+    // Converted the same way as the "from" price beside it, so a card can never
+    // print one of the pair net and the other gross.
+    fromPriceRrp: fromPrice?.rrp ? (adjust ? adjust(Number(fromPrice.rrp)).toFixed(2) : fromPrice.rrp) : null,
     productHref: productHref(product.slug, pricing?.productUrlStyle ?? 'SHOP'),
   }
 }

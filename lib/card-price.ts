@@ -26,6 +26,13 @@ export type ShopCardFromPrice = {
   // back to shop's own sale columns - which for a variations listing means it is
   // never counted, exactly as it was not before.
   onSale?: boolean
+  // The lowest RRP among the choices that carry one above their own price, as a
+  // decimal-pound string - the "from" figure's opposite number, so a card
+  // showing "From £92.00" can sit an RRP beside it exactly as a single-priced
+  // card does. Null where no choice has a retail price worth quoting. Optional
+  // for the same reason as `onSale`: a provider built before this simply says
+  // nothing and the card carries on printing the "from" price on its own.
+  rrp?: string | null
 }
 
 export type ShopCardPriceProvider = {
