@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { addToCart } from '@/modules/shop/components/public/cart'
+import { publishPurchaseQuantity } from '@/modules/shop/components/public/purchase-quantity'
 import { minOrderSentence } from '@/modules/shop/lib/min-order'
 
 // Quantity stepper + primary add button. Styling comes from the scoped
@@ -16,6 +17,14 @@ export function AddToCartButton({ productId, label, showStepper = true, minQuant
   const min = Number.isFinite(minQuantity) && minQuantity > 1 ? Math.floor(minQuantity) : 1
   const [quantity, setQuantity] = useState(min)
   const [added, setAdded] = useState(false)
+
+  // Tell the rest of the page how many are in hand, for a block that has to do
+  // arithmetic with it - an accessories box offering one screen per desk needs
+  // to know four desks are being bought. See lib purchase-quantity.ts for the
+  // seam; with nothing listening this is a window event nobody hears.
+  useEffect(() => {
+    publishPurchaseQuantity({ productId, quantity: Math.max(min, quantity) })
+  }, [productId, quantity, min])
 
   return (
     <>
