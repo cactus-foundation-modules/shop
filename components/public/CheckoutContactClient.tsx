@@ -45,8 +45,11 @@ export function CheckoutContactClient({ preview = false, heading, extras = [] }:
   const [organisationTouched, setOrganisationTouched] = useState(false)
 
   // The name and organisation the shopper keeps on their account, if they are
-  // signed in and have filled them in. A signed-out shopper gets a 401 and
-  // nothing changes.
+  // signed in and have filled them in. A signed-out shopper gets an empty 204
+  // and nothing changes - an ordinary answer, deliberately not an error status,
+  // because otherwise every guest checkout opened with a red line in the
+  // console. The `r.ok` arm still covers a 401 from a shop whose server half has
+  // not been updated yet.
   //
   // Only ever fills a box that is empty: somebody who has typed a different name
   // for this one order, or who has stepped back to this block mid-checkout,
@@ -57,7 +60,9 @@ export function CheckoutContactClient({ preview = false, heading, extras = [] }:
     if (preview) return
     let cancelled = false
     fetch('/api/members/contact')
-      .then((r) => (r.ok ? r.json() : null))
+      // 204 has no body to parse, so it is answered as "nothing" before json()
+      // is ever reached rather than being left to throw into the catch below.
+      .then((r) => (r.ok && r.status !== 204 ? r.json() : null))
       .then((d: { fullName?: string | null; organisation?: string | null } | null) => {
         if (cancelled || !d) return
         const stored = getCheckoutState()

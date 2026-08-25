@@ -121,7 +121,12 @@ export function CheckoutShippingClient({
     if (preview) return
     let cancelled = false
     fetch('/api/m/shop/member/addresses')
-      .then((r) => (r.ok ? r.json() : null))
+      // A guest gets an empty 204 - the ordinary answer to "is there an address
+      // book?", and quiet on purpose, because as a 401 it put a red line in the
+      // console of every checkout. No body to parse, so it is answered as
+      // "nothing" before json() is reached; the `r.ok` arm still covers a 401
+      // from a shop whose server half has not been updated yet.
+      .then((r) => (r.ok && r.status !== 204 ? r.json() : null))
       .then((d: { addresses?: SavedAddress[] } | null) => {
         const list = d?.addresses ?? []
         if (cancelled || list.length === 0) return

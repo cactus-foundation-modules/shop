@@ -57,7 +57,9 @@ export function AddressesClient({ addressLookup = null }: {
 
   function refresh() {
     fetch('/api/m/shop/member/addresses').then(async (r) => {
-      if (!r.ok) return
+      // 204 is a signed-out browser and carries no body, so it has to be turned
+      // away here: json() on it throws, and this call has nothing to catch it.
+      if (!r.ok || r.status === 204) return
       setAddresses((await r.json()).addresses)
       setLoaded(true)
     })

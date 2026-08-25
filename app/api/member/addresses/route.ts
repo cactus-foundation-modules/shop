@@ -18,7 +18,13 @@ const Body = z.object({ label: z.string().max(60).nullable().optional(), address
 
 export async function GET() {
   const member = await getMemberFromCookie()
-  if (!member) return errorResponse('Not authenticated', 401)
+  // Quiet, for the same reason the members contact route is: the checkout's
+  // delivery block asks this on the way in to find out whether there is an
+  // address book to offer, and "no, they are a guest" is the ordinary answer to
+  // that question rather than a failure. As a 401 it put a red line in the
+  // console of every checkout a shopper ever opened. The writes below keep
+  // their 401 - a stranger saving an address IS an error.
+  if (!member) return new NextResponse(null, { status: 204 })
   const addresses = await listSavedAddresses(member.id)
   return NextResponse.json({ addresses })
 }
