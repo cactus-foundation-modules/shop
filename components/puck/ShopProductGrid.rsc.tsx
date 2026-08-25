@@ -72,7 +72,9 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
     return <p style={{ color: 'var(--color-text-muted)' }}>{props.emptyText || 'No products to show yet.'}</p>
   }
   const items = await buildGridCardItems(wanted)
-  const cards = template ? await renderCards(template, items) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)
+  // The opening row eagerly, the rest of the shelf lazily - and only on page
+  // one, since a later page is one the shopper has already scrolled to.
+  const cards = template ? await renderCards(template, items, page === 1 ? columns : 0) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)
 
   // Same div, same class, same custom property either way - the pager renders
   // the grid wrapper itself so a paged grid and an unpaged one are the same

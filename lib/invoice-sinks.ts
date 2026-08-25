@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { INSTALLED_MODULE_WHERE } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { ShpInvoiceSinkResult, ShpInvoiceTaxRow, ShpLedgerItem } from '@/modules/shop/lib/types'
 
 // `shop.invoice-issued` and `shop.invoice-voided` - the seam a bookkeeping

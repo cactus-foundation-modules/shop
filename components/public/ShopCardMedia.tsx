@@ -39,7 +39,7 @@
 // The attribute is the single source of truth; the event just says "re-read it".
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { PartImage } from '@/modules/shop/components/puck/parts/part-context'
+import { unpackCardImages, type PackedImages } from '@/modules/shop/lib/card-media-pack'
 import type { CardOverlay } from '@/modules/shop/lib/card-media'
 
 function Chevron({ dir }: { dir: 'left' | 'right' }) {
@@ -53,14 +53,23 @@ function Chevron({ dir }: { dir: 'left' | 'right' }) {
 }
 
 export function ShopCardMedia({
-  images,
+  images: packed,
   overlays,
   productId,
+  eager = false,
 }: {
-  images: PartImage[]
+  // Arrives folded rather than spelled out - see lib/card-media-pack.ts for what
+  // that shape is and the payload it exists to stop. Unfolded once here, and
+  // every line below works on the list it always did.
+  images: PackedImages
   overlays: CardOverlay[]
   productId: string
+  // Whether this card sits in the handful at the top of a grid - see
+  // CardPartContext.eager. Only ever applies to the picture the card OPENS on:
+  // once the shopper has flicked, the rest load on demand as they always did.
+  eager?: boolean
 }) {
+  const images = useMemo(() => unpackCardImages(packed), [packed])
   const [index, setIndex] = useState(0)
   // Allowed sourceIds pushed in by a filtering module via the data attribute /
   // event contract described up top; null means unconstrained.
@@ -145,7 +154,14 @@ export function ShopCardMedia({
     <div className="shop-card-media" ref={rootRef}>
       {current && (
         // eslint-disable-next-line @next/next/no-img-element -- media library URLs are arbitrary remote hosts, not a configured next/image loader
-        <img className="shop-card-media-img" src={current.url} alt={current.alt} loading="lazy" decoding="async" />
+        <img
+          className="shop-card-media-img"
+          src={current.url}
+          alt={current.alt}
+          loading={eager && at === 0 ? 'eager' : 'lazy'}
+          fetchPriority={eager && at === 0 ? 'high' : undefined}
+          decoding="async"
+        />
       )}
 
       {count > 1 && (

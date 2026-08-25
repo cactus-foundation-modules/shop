@@ -191,6 +191,15 @@ export type CardPartContext = {
   // here by id. Empty on a shop-only site and for any product no module had
   // anything to say about.
   facts: CardFact[]
+  // Whether this card's picture is one of the handful at the very top of a grid,
+  // i.e. one the shopper is looking at before they scroll. Those load eagerly and
+  // at high priority; every other card on the page stays lazy, because a grid is
+  // the one place a card is drawn hundreds of times over.
+  //
+  // Only a surface that IS a page's main grid sets it - see renderCards. A
+  // related-products strip or an upsell row is below the fold by construction and
+  // leaves every card lazy, whatever its position within the strip.
+  eager?: boolean
   currencySymbol: string
   // As DetailPartContext.commerce, resolved once per grid rather than per card.
   commerce: ResolvedShopCommerceMode

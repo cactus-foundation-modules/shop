@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 //  - staff exemption never survives being switched off, in either direction.
 vi.mock('@/lib/db/prisma', () => ({ prisma: { module: { findMany: vi.fn(async () => []) } } }))
 vi.mock('@/lib/modules/live-status', () => ({ INSTALLED_MODULE_WHERE: {} }))
-vi.mock('@/lib/modules/extension-points', () => ({ moduleExtensionPointComponents: {} }))
+vi.mock('@/lib/modules/extension-points.public', () => ({ modulePublicExtensionPointComponents: {} }))
 vi.mock('@/modules/shop/lib/config', () => ({ getShopConfigCached: vi.fn() }))
 vi.mock('@/modules/shop/lib/access', () => ({ canSeeHiddenOutOfStock: vi.fn() }))
 

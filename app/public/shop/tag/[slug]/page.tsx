@@ -93,7 +93,9 @@ export default async function ShopTagPage({ params, searchParams }: { params: Pr
     product: p,
     ctx: buildCardContext(p, mediaByProduct.get(p.id) ?? [], tagById, tagIdsByProduct.get(p.id) ?? [], config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id), tagsById),
   }))
-  const cards = template ? await renderCards(template, items) : items.map((i) => <MinimalCard key={i.product.id} {...i} />)
+  // The opening row loads eagerly, the rest of the shelf lazily. This page's
+  // grid is always the top of the page, so page one's first row is the fold.
+  const cards = template ? await renderCards(template, items, page === 1 ? 4 : 0) : items.map((i) => <MinimalCard key={i.product.id} {...i} />)
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>

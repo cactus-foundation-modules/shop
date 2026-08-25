@@ -216,7 +216,13 @@ export async function withCardAdminEditHrefs(items: CardItem[]): Promise<CardIte
 // the body is one items.map - but the looser type meant a caller wanting to
 // slice the list (the pager) could not, and every caller that just drops it into
 // JSX is unaffected either way.
-export async function renderCards(template: PuckData, items: CardItem[]): Promise<React.ReactNode[]> {
+//
+// `eagerCount` is how many of the cards at the front of this list are above the
+// fold. Those load their picture eagerly and at high priority; everything after
+// them stays lazy. It defaults to none, so a surface that has not thought about
+// it - a related-products strip, an upsell row, page nine of a pager - keeps
+// every card lazy, which is the safe answer for anything below the fold.
+export async function renderCards(template: PuckData, items: CardItem[], eagerCount = 0): Promise<React.ReactNode[]> {
   const { getModuleLayoutPuckRscConfig } = await import('@/lib/puck/config.rsc')
   const config = getModuleLayoutPuckRscConfig('shopProductCard')
   // Every block registered for this layout type, shop's own parts and any a
@@ -224,8 +230,8 @@ export async function renderCards(template: PuckData, items: CardItem[]): Promis
   // module's card part renders real data rather than its editor skeleton.
   const partTypes = config.categories.blocks.components
   const withEdit = await withCardAdminEditHrefs(items)
-  return withEdit.map(({ product, ctx }) => {
-    const data = injectShopProductCardEmbed(template, ctx, partTypes)
+  return withEdit.map(({ product, ctx }, at) => {
+    const data = injectShopProductCardEmbed(template, at < eagerCount ? { ...ctx, eager: true } : ctx, partTypes)
     return (
       <div key={product.id} className="shop-card">
         {/* Stretched link: the whole card still navigates, but the anchor is a

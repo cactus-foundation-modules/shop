@@ -3,6 +3,7 @@
 import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { ShopCardMedia } from '@/modules/shop/components/public/ShopCardMedia'
+import { packCardImages } from '@/modules/shop/lib/card-media-pack'
 import { ShopCardFillBlurb } from '@/modules/shop/components/public/ShopCardFillBlurb'
 import type { CardBadge, CardPartContext } from '@/modules/shop/components/puck/parts/part-context'
 
@@ -247,15 +248,26 @@ export function ShopCardImage(props: ImageProps) {
           a card saved before these existed keeps exactly the shape it had. */}
       <div className={imgClass(props)} style={imageShapeStyle(props)} ref={dragRefOf(props)}>
         {interactive ? (
-          <ShopCardMedia images={ctx.images} overlays={ctx.overlays} productId={ctx.product.id} />
+          <ShopCardMedia images={packCardImages(ctx.images)} overlays={ctx.overlays} productId={ctx.product.id} eager={ctx.eager} />
         ) : (
           ctx?.image && (
             // Lazy, like the carousel island's picture and every other public
             // content image: a category grid is dozens of cards, and eagerly
             // fetching the lot pulled the whole catalogue's photography down
             // before the first row had painted.
+            //
+            // Except the first row itself, which the shopper is looking at before
+            // they scroll: lazy defers it until layout has been worked out, so the
+            // one picture most likely to BE the largest paint was the last to be
+            // asked for. See CardPartContext.eager for who sets it.
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={ctx.image.url} alt={ctx.image.alt} loading="lazy" decoding="async" />
+            <img
+              src={ctx.image.url}
+              alt={ctx.image.alt}
+              loading={ctx.eager ? 'eager' : 'lazy'}
+              fetchPriority={ctx.eager ? 'high' : undefined}
+              decoding="async"
+            />
           )
         )}
         {fill && <div className="shop-card-scrim" />}

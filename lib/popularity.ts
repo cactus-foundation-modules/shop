@@ -24,7 +24,7 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 
 // How much one sold unit is worth against the seed. Any figure comfortably above
 // the largest seed a catalogue will carry makes "sold beats unsold" true without

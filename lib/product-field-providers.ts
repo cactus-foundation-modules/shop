@@ -1,7 +1,7 @@
 import { getInstalledManifests } from '@/lib/modules/live-status'
 import { getSessionFromCookie } from '@/lib/auth/session'
 import { hasPermission } from '@/lib/permissions/check'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 
 // A generic, attribute-agnostic way for another module to hang extra per-PRODUCT
 // fields on the shop. The product-level twin of shop-variations'
