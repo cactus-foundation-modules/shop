@@ -25,9 +25,13 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
   // Only a paging grid asks for more than the default ceiling, and only because
   // it has somewhere to put the extra rows. See listProducts' maxPerPage.
   const fetchCount = paginate ? HARD_MAX_PER_PAGE : limit
-  // Where the pages after the first come from. Meaningless without paging, and
-  // 'upfront' either way is the behaviour every saved layout already has.
-  const onDemand = Boolean(paginate) && props.pageLoad === 'ondemand'
+  // Where the pages after the first come from. Meaningless without paging.
+  //
+  // ABSENT means the owner never chose, and since 0.1.328 that means on-demand:
+  // a grid with paging switched on has already said there are more products than
+  // fit, and building all of them in anyway is what makes such a page
+  // unloadable. Only an explicit 'upfront' keeps the old behaviour.
+  const onDemand = Boolean(paginate) && props.pageLoad !== 'upfront'
 
   const scope: ShopGridScope = {
     categorySlug: props.categorySlug || undefined,
