@@ -83,6 +83,14 @@ export function shopCategoryPillsCss({ mobileBp }: Breakpoints): string {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  /* The strip sits directly under the category or collection blurb, and the
+     blurb's paragraph carries no bottom margin of its own - so with nothing
+     here the first pill's border ran flush against the last line of prose.
+     The strip owns the gap rather than the blurb, because the blurb is the
+     header block's last line and a margin there would push everything that
+     ever follows it, pills or not. Collapses through the scroller wrapper, so
+     the swipe chevrons still line up with the pills and not the space above. */
+  margin-top: 0.75rem;
 }
 .shop-cat-pill {
   display: inline-flex;
