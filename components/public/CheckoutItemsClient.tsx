@@ -145,7 +145,7 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
   const [lines, setLines] = useState<ValidatedLine[] | null>(null)
   // Seeded in the editor so an author can see the note they are styling - the
   // sample basket never reaches a validate, so no module contributes one.
-  const [notes, setNotes] = useState<Note[]>(preview ? [{ id: 'sample', text: 'everything by Tue 12 Aug' }] : [])
+  const [notes, setNotes] = useState<Note[]>(preview ? [{ id: 'sample', text: 'Everything gets to you by Tue 12 Aug' }] : [])
   const [symbol, setSymbol] = useState('£')
   const [empty, setEmpty] = useState(false)
   const [collapsed, setCollapsed] = useState(false)

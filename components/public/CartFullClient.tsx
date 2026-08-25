@@ -196,7 +196,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   const [hasLoaded, setHasLoaded] = useState(preview ?? false)
   // Whole-basket notes other modules contributed to this validate (a delivery
   // module's "everything by Fri 4 Sep"). Shop displays them, never composes them.
-  const [notes, setNotes] = useState<string[]>(preview ? ['everything by Tue 12 Aug'] : [])
+  const [notes, setNotes] = useState<string[]>(preview ? ['Everything gets to you by Tue 12 Aug'] : [])
 
   // The currency symbol is fixed for the shop, so fetch it once rather than on
   // every cart re-validate - changing the delivery picker used to re-fetch it

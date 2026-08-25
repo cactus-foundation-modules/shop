@@ -55,17 +55,23 @@ export const CART_NOTE_CSS = `
 
 /* Below roughly a phone column the two cannot sit side by side and stay
    readable - the bubble narrows to one word a line while the picture keeps its
-   width. Stack them instead and swing the point up at the picture. Every rule
-   here repeats the selector shape of the one it overrides: a two-class rule
-   outranks a one-class rule wherever it sits, container query or not. */
+   width. Stack them instead, bubble ON TOP with its point swung down at the
+   picture: the sentence is the thing being read, so it takes the top of the
+   block and the picture answers underneath. A reversed column does it without
+   touching the markup, which keeps the reading order (note, then decoration)
+   the same for a screen reader as it is for the eye.
+
+   Every rule here repeats the selector shape of the one it overrides: a
+   two-class rule outranks a one-class rule wherever it sits, container query or
+   not. */
 @container (max-width: 300px){
-  .scn-bub{flex-direction:column;align-items:stretch}
-  .scn-bub-r{flex-direction:column}
+  .scn-bub{flex-direction:column-reverse;align-items:stretch}
+  .scn-bub-r{flex-direction:column-reverse}
   .scn-bub-img{width:min(var(--scn-img),45cqw)}
   .scn-bub-r .scn-bub-img{align-self:flex-end}
   .scn-bub-l .scn-bub-body::before,
-  .scn-bub-r .scn-bub-body::before{top:calc(-1 * var(--scn-tail));left:auto;right:auto;transform:none;
-    border-width:0 var(--scn-tail) var(--scn-tail);border-color:transparent transparent var(--scn-bg)}
+  .scn-bub-r .scn-bub-body::before{top:auto;bottom:calc(-1 * var(--scn-tail));left:auto;right:auto;transform:none;
+    border-width:var(--scn-tail) var(--scn-tail) 0;border-color:var(--scn-bg) transparent transparent}
   .scn-bub-l .scn-bub-body::before{left:calc(var(--scn-tail) * 1.5)}
   .scn-bub-r .scn-bub-body::before{right:calc(var(--scn-tail) * 1.5)}
 }
