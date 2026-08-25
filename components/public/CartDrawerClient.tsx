@@ -231,15 +231,53 @@ export function CartDrawerClient({
   const showImage = o.drawerShowImage !== 'no'
   const showDelivery = o.drawerShowDelivery !== 'no'
 
-  const checkoutStyle: CSSProperties = {
-    background: o.drawerCheckoutBg || 'var(--color-primary)',
-    color: o.drawerCheckoutText || 'var(--color-on-primary)',
-    borderRadius: o.drawerRadius,
-  }
-  const ghostStyle: CSSProperties = {
-    color: o.drawerCheckoutBg || 'var(--color-primary)',
-    borderRadius: o.drawerRadius,
-  }
+  // Button colours travel as CSS custom properties, not as inline background /
+  // colour: an inline property beats a stylesheet rule, so a :hover arm could
+  // never win against a resting colour written straight onto the element. Every
+  // fallback below is the panel's previous hardcoded value, so a basket that
+  // sets none of the new fields is pixel-identical to before. A blank hover arm
+  // reuses its resting arm - the panel had no hover styling until now, and an
+  // author who wants none should keep none.
+  const buttonVars = (prefix: string, c: {
+    bg: string; fg: string; bd: string
+    hoverBg: string; hoverFg: string; hoverBd: string
+  }): Record<string, string> => ({
+    [`--scd-${prefix}-bg`]: c.bg,
+    [`--scd-${prefix}-fg`]: c.fg,
+    [`--scd-${prefix}-bd`]: c.bd,
+    [`--scd-${prefix}-bg-h`]: c.hoverBg || c.bg,
+    [`--scd-${prefix}-fg-h`]: c.hoverFg || c.fg,
+    [`--scd-${prefix}-bd-h`]: c.hoverBd || c.bd,
+  })
+
+  const checkoutBg = o.drawerCheckoutBg || 'var(--color-primary)'
+  const checkoutStyle = {
+    ...buttonVars('btn', {
+      bg: checkoutBg,
+      fg: o.drawerCheckoutText || 'var(--color-on-primary)',
+      // No border at all until one is asked for: the 1.5px the stylesheet now
+      // reserves is transparent, and the padding gives its width back.
+      bd: o.drawerCheckoutBorder || 'transparent',
+      hoverBg: o.drawerCheckoutHoverBg,
+      hoverFg: o.drawerCheckoutHoverText,
+      hoverBd: o.drawerCheckoutHoverBorder,
+    }),
+    borderRadius: `${o.drawerRadius}px`,
+  } as CSSProperties
+
+  const ghostStyle = {
+    ...buttonVars('gh', {
+      bg: o.drawerViewCartBg || 'transparent',
+      // Historically the cart-page button borrowed the checkout button's colour
+      // for its lettering, and its outline followed that. Unset keeps both.
+      fg: o.drawerViewCartText || checkoutBg,
+      bd: o.drawerViewCartBorder || 'currentColor',
+      hoverBg: o.drawerViewCartHoverBg,
+      hoverFg: o.drawerViewCartHoverText,
+      hoverBd: o.drawerViewCartHoverBorder,
+    }),
+    borderRadius: `${o.drawerRadius}px`,
+  } as CSSProperties
 
   const body = (() => {
     if (!hasLoaded) {

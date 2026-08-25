@@ -1496,7 +1496,10 @@ export const shopDetailTabsPuckComponent = {
     bgColour: {
       type: 'custom' as const,
       label: 'Background colour',
-      render: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => <SiteColourField value={value} onChange={onChange} />,
+      // Puck prints no label above a custom field - the swatch grid carries it.
+      render: ({ value, onChange, field }: { value: string; onChange: (v: string) => void; field: { label?: string } }) => (
+        <SiteColourField value={value} onChange={onChange} label={field?.label ?? 'Background colour'} />
+      ),
     },
     // Custom clearable field: Puck's built-in number field turns a cleared box
     // into Number('') = 0, so the author could never get back to "default".

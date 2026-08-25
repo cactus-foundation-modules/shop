@@ -5,10 +5,16 @@ import { SiteColourField } from '@/lib/puck/SiteColourField'
 export type ShopCartSummaryProps = CartSummaryOptions
 
 const yesNo = [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]
+// Puck prints no label of its own above a custom field, so the swatch grid has
+// to carry it - without `label` passed through, the sidebar showed rows of
+// unexplained colours with only "Dark mode colour" to go on. Same wiring core's
+// own colour fields use (lib/puck/config.core.tsx).
 const colourField = (label: string) => ({
   type: 'custom' as const,
   label,
-  render: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => <SiteColourField value={value} onChange={onChange} />,
+  render: ({ value, onChange, field }: { value: string; onChange: (v: string) => void; field: { label?: string } }) => (
+    <SiteColourField value={value} onChange={onChange} label={field?.label ?? label} />
+  ),
 })
 
 // Editor render: seed a sample cart so the widget previews populated (no fetch).
@@ -76,8 +82,22 @@ export const shopCartSummaryPuckComponent = {
     drawerViewCartLabel: { type: 'text' as const, label: 'Slide-out: cart page button (empty hides it)' },
     drawerEmptyText: { type: 'text' as const, label: 'Slide-out: empty basket text' },
     drawerContinueLabel: { type: 'text' as const, label: 'Slide-out: keep shopping link' },
-    drawerCheckoutBg: colourField('Slide-out: button colour'),
-    drawerCheckoutText: colourField('Slide-out: button text colour'),
+    // Both footer buttons, fully dressed. Each swatch row carries its own
+    // dark-mode row underneath, so there is no separate set of dark fields to
+    // keep in step. Leave a hover colour blank and that arm simply does not
+    // change on hover.
+    drawerCheckoutBg: colourField('Checkout button: background'),
+    drawerCheckoutBorder: colourField('Checkout button: border'),
+    drawerCheckoutText: colourField('Checkout button: text'),
+    drawerCheckoutHoverBg: colourField('Checkout button: background on hover'),
+    drawerCheckoutHoverBorder: colourField('Checkout button: border on hover'),
+    drawerCheckoutHoverText: colourField('Checkout button: text on hover'),
+    drawerViewCartBg: colourField('View full basket button: background'),
+    drawerViewCartBorder: colourField('View full basket button: border'),
+    drawerViewCartText: colourField('View full basket button: text'),
+    drawerViewCartHoverBg: colourField('View full basket button: background on hover'),
+    drawerViewCartHoverBorder: colourField('View full basket button: border on hover'),
+    drawerViewCartHoverText: colourField('View full basket button: text on hover'),
     drawerRadius: { type: 'number' as const, label: 'Slide-out: button corner radius (px)' },
     // Audience. NB: keep this key as `audience`, never `visibility` - core owns a
     // responsive-visibility field of that exact name on every block and strips it

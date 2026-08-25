@@ -144,11 +144,31 @@ export const CART_DRAWER_CSS = `
 .scd-notes{list-style:none;margin:0;padding:0;display:grid;gap:0.25rem}
 .scd-notes li{display:flex;align-items:baseline;gap:0.4375rem;font-size:0.9063rem;color:var(--color-success);font-weight:600}
 .scd-sub{display:flex;align-items:baseline;justify-content:space-between;font-size:1.125rem;font-weight:700}
-.scd-btn{display:block;width:100%;box-sizing:border-box;padding:0.875rem 1.25rem;text-align:center;
-  font-family:inherit;font-size:1rem;font-weight:700;text-decoration:none;border:0;cursor:pointer}
+/* Both buttons paint from custom properties rather than plain inline colours.
+   An inline background/colour outranks any stylesheet rule, so a hover
+   colour set on the block could never take effect while the resting colour was
+   written straight onto the element. CartDrawerClient resolves every arm (with
+   the panel's historical fallbacks) and sets the vars instead. The checkout
+   button gained a 1.5px border it never used to have, so its padding gives the
+   same 1.5px back - the button is the exact size it always was when no border
+   colour is set. */
+.scd-btn{display:block;width:100%;box-sizing:border-box;
+  padding:calc(0.875rem - 1.5px) calc(1.25rem - 1.5px);text-align:center;
+  font-family:inherit;font-size:1rem;font-weight:700;text-decoration:none;cursor:pointer;
+  border:1.5px solid var(--scd-btn-bd,transparent);background:var(--scd-btn-bg,var(--color-primary));
+  color:var(--scd-btn-fg,var(--color-on-primary));
+  transition:background-color 0.15s ease,border-color 0.15s ease,color 0.15s ease}
+.scd-btn:hover,.scd-btn:focus-visible{background:var(--scd-btn-bg-h,var(--scd-btn-bg,var(--color-primary)));
+  border-color:var(--scd-btn-bd-h,var(--scd-btn-bd,transparent));
+  color:var(--scd-btn-fg-h,var(--scd-btn-fg,var(--color-on-primary)))}
 .scd-ghost{display:block;width:100%;box-sizing:border-box;padding:0.8125rem 1.25rem;text-align:center;
   font-family:inherit;font-size:1rem;font-weight:600;text-decoration:none;cursor:pointer;
-  border:1.5px solid currentColor;background:none}
+  border:1.5px solid var(--scd-gh-bd,currentColor);background:var(--scd-gh-bg,transparent);
+  color:var(--scd-gh-fg,var(--color-primary));
+  transition:background-color 0.15s ease,border-color 0.15s ease,color 0.15s ease}
+.scd-ghost:hover,.scd-ghost:focus-visible{background:var(--scd-gh-bg-h,var(--scd-gh-bg,transparent));
+  border-color:var(--scd-gh-bd-h,var(--scd-gh-bd,currentColor));
+  color:var(--scd-gh-fg-h,var(--scd-gh-fg,var(--color-primary)))}
 
 @media (pointer:coarse){
   .scd-close{width:44px;height:44px}
@@ -164,7 +184,7 @@ export const CART_DRAWER_CSS = `
   .scd-deliv .scl-hint{padding:0.45rem 0.7875rem}
 }
 @media (prefers-reduced-motion:reduce){
-  .scd-overlay,.scd-panel{transition:none}
+  .scd-overlay,.scd-panel,.scd-btn,.scd-ghost{transition:none}
   .scd-right.scd-in,.scd-left.scd-in,.scd-overlay.scd-in{animation:none}
 }
 `

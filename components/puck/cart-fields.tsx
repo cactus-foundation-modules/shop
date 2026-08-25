@@ -9,10 +9,14 @@ import type { CartFullOptions } from '@/modules/shop/components/public/CartFullC
 
 export const yesNo = [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]
 
+// Puck prints no label above a custom field, so the swatch grid carries its own
+// or the author is left guessing which row is which.
 export const colourField = (label: string) => ({
   type: 'custom' as const,
   label,
-  render: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => <SiteColourField value={value} onChange={onChange} />,
+  render: ({ value, onChange, field }: { value: string; onChange: (v: string) => void; field: { label?: string } }) => (
+    <SiteColourField value={value} onChange={onChange} label={field?.label ?? label} />
+  ),
 })
 
 // A block that only prints the totals still wants its own width, so the width
