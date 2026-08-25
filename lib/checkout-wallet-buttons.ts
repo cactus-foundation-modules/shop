@@ -12,7 +12,7 @@
 // registers under 'SQUARE' because that is what its provider's `id` is, and the
 // review step only mounts the entry for the method the shopper has picked.
 import type { ComponentType } from 'react'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { ShopCheckoutWalletButtonsProps } from '@/modules/shop/components/public/checkout-wallet-buttons'
 
 export type ShopCheckoutWalletButtonsMap = Record<string, ComponentType<ShopCheckoutWalletButtonsProps>>

@@ -8,7 +8,7 @@
 // a prop; the editor path passes nothing, so the editor preview shows shop's
 // own fields on their own.
 import type { ComponentType } from 'react'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { ShopCheckoutContactExtraProps } from '@/modules/shop/components/public/checkout-contact-extras'
 
 export function resolveCheckoutContactExtras(): ComponentType<ShopCheckoutContactExtraProps>[] {

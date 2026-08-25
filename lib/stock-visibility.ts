@@ -25,7 +25,7 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import { canSeeHiddenOutOfStock } from '@/modules/shop/lib/access'
 import { getShopConfigCached, type ShpConfig } from '@/modules/shop/lib/config'
 

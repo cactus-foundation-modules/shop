@@ -18,7 +18,7 @@
 // caller's save away: anything raised here is logged and swallowed, because a
 // listener falling over is never a good enough reason to fail the owner's edit.
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 
 /** `changed` names only the fields the write actually carried, so a hook can do
  *  nothing at all on the overwhelming majority of saves. */

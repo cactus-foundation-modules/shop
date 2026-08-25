@@ -15,7 +15,7 @@
 // shopper two prices and two buttons.
 import type { ComponentType } from 'react'
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 import type { PuckData, ShpProduct } from '@/modules/shop/lib/types'
 

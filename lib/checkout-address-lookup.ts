@@ -9,7 +9,7 @@
 // field (identical at-rest markup, since the provider renders shop's own input
 // via renderInput).
 import type { ComponentType } from 'react'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { ShopCheckoutAddressLookupProps } from '@/modules/shop/components/public/checkout-address-lookup'
 
 export function resolveCheckoutAddressLookup(): ComponentType<ShopCheckoutAddressLookupProps> | null {

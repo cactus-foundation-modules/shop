@@ -18,7 +18,7 @@
 // query this is spliced into.
 import { Prisma } from '@prisma/client'
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { isPriceTypeEnabled } from '@/modules/shop/lib/pricing'
 

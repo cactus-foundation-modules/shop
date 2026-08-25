@@ -13,7 +13,7 @@
 // id IS the method id - a module registers under 'SQUARE' because that is what
 // its provider's `id` is - so a mistyped id is inert rather than wrong.
 import type { ComponentType } from 'react'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { ShopCheckoutPaymentFieldsProps } from '@/modules/shop/components/public/checkout-payment-fields'
 
 export type ShopCheckoutPaymentFieldsMap = Record<string, ComponentType<ShopCheckoutPaymentFieldsProps>>

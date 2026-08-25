@@ -13,7 +13,7 @@
 // first.
 import type { ComponentType } from 'react'
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 
 // What the strip hands the provider's panel. Rendered inside shop's own
 // `.spd-panel`, so a contributed tab is dressed by the layout it sits in rather

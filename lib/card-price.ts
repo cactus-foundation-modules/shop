@@ -8,7 +8,7 @@
 // generated moduleExtensionPointComponents map. Batched deliberately: a grid
 // renders many cards at once, so a per-product call would be one query per card.
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 
 // What a companion module says a product costs when it, not shop, owns the
 // pricing. `varies` is the difference between a range and a set of equally

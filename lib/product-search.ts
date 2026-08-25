@@ -19,7 +19,7 @@
 // nothing from the request into it by hand (Prisma.sql parameterises the term).
 import { Prisma } from '@prisma/client'
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 
 export type ShopProductSearchProvider = {
   // True when this provider considers the product a match for one search word.

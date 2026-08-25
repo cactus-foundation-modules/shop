@@ -16,7 +16,7 @@
 // nothing until an attribute is actually put on the page.
 import type { ComponentType } from 'react'
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 
 // What shop hands the provider's panel. Rendered inside shop's own Specification
 // panel, so a replaced body is dressed by the layout it sits in rather than by

@@ -128,14 +128,19 @@ export const shopProductGridPuckComponent = {
     // existed keeps rendering every card into the page, because that is what its
     // owner has been looking at and nothing about it has stopped working.
     pageLoad: { type: 'select' as const, label: 'Where the later pages come from', options: [
-      { value: 'upfront', label: 'Sent with the page - instant to flick through, heavier to load' },
       { value: 'ondemand', label: 'Fetched as the shopper reaches them - much lighter page' },
+      { value: 'upfront', label: 'Sent with the page - instant to flick through, heavier to load' },
     ] },
     moreLabel: { type: 'text' as const, label: '"Show more" button label' },
     countTemplate: { type: 'text' as const, label: 'Count wording ({shown} and {total}, blank for none)' },
     emptyText: { type: 'text' as const, label: 'Wording when there are no products' },
     layoutRef: layoutField,
   },
-  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, pageLoad: 'upfront', moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', emptyText: 'No products to show yet.', layoutRef: null },
+  // `pageLoad: 'ondemand'` is deliberate: a NEW grid switched to paging fetches
+  // its later pages rather than building them all in, so it is light without
+  // anybody having to find the setting. `limit: 12` is the opening screenful for
+  // the same reason. Neither touches a layout already saved - defaults apply to
+  // a block being added, not to one already on a page.
+  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, pageLoad: 'ondemand', moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', emptyText: 'No products to show yet.', layoutRef: null },
   render: ShopProductGrid,
 }

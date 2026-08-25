@@ -8,7 +8,7 @@
 // moduleExtensionPointComponents map, discovered via the active modules'
 // manifests. It MUST be server-safe (this file runs inside lib/checkout.ts).
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { LineMeta, LineMetaBatch, ShpProduct } from '@/modules/shop/lib/types'
 
 // A declarative per-line picker a resolver can offer for display in the cart.

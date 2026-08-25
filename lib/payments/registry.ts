@@ -2,7 +2,7 @@ import { stripeProvider } from '@/modules/shop/lib/payments/stripe'
 import { paypalProvider } from '@/modules/shop/lib/payments/paypal'
 import { bankTransferProvider } from '@/modules/shop/lib/payments/bank-transfer'
 import { cashProvider } from '@/modules/shop/lib/payments/cash'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { ShpPaymentLogo, ShpPaymentProvider } from '@/modules/shop/lib/payments/provider'
 
 // Providers that ship with shop. Additional providers (e.g. an open-banking

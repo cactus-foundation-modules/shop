@@ -28,7 +28,7 @@
 // overlay icons. Every provider is asked and their answers merged.
 import type { ComponentType } from 'react'
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { PartImage } from '@/modules/shop/components/puck/parts/part-context'
 
 // What a mounted overlay is handed. `payload` is whatever the provider's `load`
