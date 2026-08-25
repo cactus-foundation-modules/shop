@@ -19,7 +19,7 @@
 // moduleExtensionPointComponents map, and `resolve` MUST be server-safe (it runs
 // inside the Product page's server component).
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
 export type ShopProductPageResolver = {

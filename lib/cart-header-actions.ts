@@ -14,7 +14,7 @@
 // rendered into the RSC tree, so each carries its own 'use client' boundary.
 import type { ComponentType } from 'react'
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 
 /** Reserved prop bag. Empty today; declared so adding a field later is not a
  *  breaking change for a provider built against this contract. */

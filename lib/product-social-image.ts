@@ -15,7 +15,7 @@
 // server-safe - it runs inside generateMetadata. A provider that needs the
 // request's query string reads it from lib/product-page-params.ts.
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
 export type ShopProductSocialImageProvider = {

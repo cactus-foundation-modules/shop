@@ -15,7 +15,7 @@
 // product's own, because that is the owner's arrangement on the product's Images
 // tab and shop has no way to know it.
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { moduleExtensionPointComponents } from '@/lib/modules/extension-points'
+import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { ShopDetailSlotImage } from '@/modules/shop/lib/detail-slot'
 
 // A contributed picture, and where it sits in the finished strip: `position` is
