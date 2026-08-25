@@ -23,9 +23,16 @@ import {
 // route that quietly widened what "basket" meant would be spending an exemption
 // it had not earned.
 //
-// A signed-in shopper gets 409 rather than a row: their basket belongs to their
-// account, and writing it here as well would give the shop two answers to the
-// same question and a stale one to hand back on sign-out.
+// A signed-in shopper gets nothing back rather than a row: their basket belongs
+// to their account, and writing it here as well would give the shop two answers
+// to the same question and a stale one to hand back on sign-out.
+//
+// The read says so with 204 and the write with 409, and the difference matters.
+// Every signed-in shopper's FIRST sync reads this endpoint - that is how the
+// browser finds out which of the two baskets it owns - so answering an ordinary
+// question with an error status put a red line in the console of every page a
+// member ever loaded. A write landing here is a genuine conflict (they signed in
+// between the decision and the request), is rare, and keeps its 409.
 
 const MAX_META_BYTES = 4000
 
@@ -43,13 +50,18 @@ const Body = z.object({ lines: z.array(LineSchema).max(GUEST_CART_MAX_LINES) })
 export const dynamic = 'force-dynamic'
 
 /** Signed in? Then this is not the endpoint they want. Kept as one helper so
- *  every verb answers identically, including the one that deletes. */
+ *  every verb asks the same question, even though they answer it differently. */
 async function signedIn(): Promise<boolean> {
   return Boolean(await getMemberFromCookie().catch(() => null))
 }
 
 export async function GET(request: NextRequest) {
-  if (await signedIn()) return errorResponse('Signed in', 409)
+  // Nothing to say, said quietly. An older browser holding a cached bundle reads
+  // this as ok, fails to parse the empty body and gives up before it decides
+  // anything - which is the whole reason it is 204 and not a 200 carrying
+  // "owner: member": that shape would have looked to the old code like somebody
+  // else's empty basket and emptied the one on screen.
+  if (await signedIn()) return new NextResponse(null, { status: 204 })
 
   const cartId = readGuestCartId(request)
   // No cookie yet means no basket yet, and no reason to mint an id for a

@@ -18,6 +18,10 @@
 //               strictly-necessary shopping-basket one and it identifies a
 //               basket, not a person.
 //
+// Which of the two applies is worked out once, by asking the guest endpoint: it
+// answers an empty 204 to anybody signed in. After that the answer is
+// remembered, so a member's later pulls go straight to their account.
+//
 // Guest rows hold lines and nothing else. Anything typed into the checkout stays
 // in this browser until an order is placed, so nothing here needs a banner and
 // nothing here is any use for remembering a shopper.
@@ -133,9 +137,9 @@ async function push(): Promise<void> {
     })
     // 401 from the member endpoint is a session that ended mid-visit; 409 from
     // the guest one is a sign-in that landed between the decision and the
-    // request. Either way this basket is now somebody else's business: leave it
-    // alone - the shopper is looking at it - and let the next pull sort out who
-    // owns it.
+    // request - the write keeps its error status precisely because it is one.
+    // Either way this basket is now somebody else's business: leave it alone -
+    // the shopper is looking at it - and let the next pull sort out who owns it.
     if (res.status === 401 || res.status === 409) {
       mode = 'unknown'
       return
@@ -221,11 +225,22 @@ async function reconcile(now: string, serverLines: CartLine[], serverStamp: stri
 async function pull(): Promise<void> {
   lastPullAt = Date.now()
 
+  // Once this browser is known to be signed in, ask the account's endpoint and
+  // nothing else. The probe below is how we found that out in the first place,
+  // and repeating it on every pull spent a wasted round-trip per visit to the
+  // tab telling us what we already knew.
+  //
+  // A false answer means the account is no longer there - signed out in this
+  // very tab, without a page load. That falls straight through to the probe
+  // below rather than waiting for the next pull, so the basket left behind is
+  // cleared in the same pass it always was.
+  if (mode === 'member' && (await pullMember())) return
+
   // The guest endpoint first, even though the member one is the richer answer.
   // Most shoppers are guests, and that endpoint says so in the same breath as
-  // handing back the basket - a signed-in shopper gets 409 and we go and ask
-  // properly. Asking the member endpoint first would have cost every guest on
-  // every page load a 401 they were always going to get.
+  // handing back the basket - a signed-in shopper gets an empty 204 and we go
+  // and ask properly. Asking the member endpoint first would have cost every
+  // guest on every page load a 401 they were always going to get.
   //
   // Nothing is decided about this browser until the answer comes back. In
   // particular the basket on screen is left exactly as it is: a shopper who has
@@ -240,7 +255,15 @@ async function pull(): Promise<void> {
     return
   }
 
-  if (res.status === 409) return pullMember()
+  // 204 is a signed-in shopper. 409 is the same news from a shop whose server
+  // half has not been updated yet, and is kept for exactly as long as a browser
+  // might still be holding the older bundle. Nothing to fall through to here:
+  // signing out between these two requests is the next pull's business, and the
+  // basket on screen is left alone in the meantime.
+  if (res.status === 204 || res.status === 409) {
+    await pullMember()
+    return
+  }
   if (!res.ok) {
     mode = 'unknown'
     return
@@ -259,28 +282,34 @@ async function pull(): Promise<void> {
   await reconcile(GUEST_OWNER, Array.isArray(data.lines) ? data.lines : [], data.updatedAt ?? '')
 }
 
-async function pullMember(): Promise<void> {
+/** True when there really is an account behind this browser, whatever came of
+ *  the sync itself. False is the one answer the caller acts on: nobody is signed
+ *  in, so whoever asked should go and ask the guest endpoint instead. */
+async function pullMember(): Promise<boolean> {
   let res: Response
   try {
     res = await fetch(MEMBER_ENDPOINT, { headers: { Accept: 'application/json' } })
   } catch {
     mode = 'unknown'
-    return
+    return false
   }
-  // Signed out between the two requests. Nothing to do: the next pull starts
-  // over as a guest, and the basket on screen is left alone in the meantime.
+  // Signed out - either between the two requests, or in this tab since the last
+  // pull. Either way this browser is a guest now.
   if (!res.ok) {
     mode = 'unknown'
-    return
+    return false
   }
 
   let data: { memberId?: string; lines?: CartLine[]; updatedAt?: string | null }
   try {
     data = await res.json()
   } catch {
-    return
+    // The session is real, the answer was not readable. Nothing is decided and
+    // nothing is re-asked: a guest read here would be answering a question
+    // nobody has established applies.
+    return true
   }
-  if (!data?.memberId) return
+  if (!data?.memberId) return true
 
   mode = 'member'
   memberId = data.memberId
@@ -294,6 +323,7 @@ async function pullMember(): Promise<void> {
   // so signing out on a shared machine leaves the next person nothing and a
   // later sign-in cannot merge the same lines back in.
   if (foldedIn) await discardGuestCart()
+  return true
 }
 
 async function discardGuestCart(): Promise<void> {
