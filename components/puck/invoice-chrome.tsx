@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import {
   Style, FontLink, fontStyle, fontField, colourField, yesNo,
   fillTokens, invoiceTokens, paragraphs, useCtx, TOKEN_HINT,
@@ -342,12 +343,17 @@ export function ShopInvoiceDivider(props: DividerProps) {
         className={`shp-inv-rule${width}`}
         style={{
           borderTopWidth: RULE_WEIGHTS[props.weight ?? 'hairline'] ?? '1px',
-          // Left off entirely when blank, so the stylesheet's own token colour
-          // stands rather than being overridden with an empty string.
-          borderTopColor: colour || undefined,
           marginTop: SPACES[props.spaceAbove ?? 'medium'] ?? SPACES.medium,
           marginBottom: SPACES[props.spaceBelow ?? 'medium'] ?? SPACES.medium,
-        }}
+          // The colour goes on the custom property the stylesheet reads, NOT on
+          // border-top-color. The print rules have to say !important to force a
+          // dark-mode page back to ink on paper, and !important beats an inline
+          // declaration - so a coloured rule set inline came out grey in the PDF,
+          // which is the one place the colour was the whole point. Set as a
+          // property, both the screen rule and the print rule pick it up.
+          // Omitted entirely when blank, so the token fallback stands.
+          ...(colour ? { '--shp-inv-rule-ink': colour } : {}),
+        } as CSSProperties}
       />
     </>
   )
