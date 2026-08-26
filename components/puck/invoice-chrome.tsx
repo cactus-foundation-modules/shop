@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import {
-  Style, FontLink, fontStyle, fontField, colourField, yesNo,
+  Style, FontLink, fontStyle, fontField, ptField, sizeVars, colourField, yesNo,
   fillTokens, invoiceTokens, paragraphs, useCtx, TOKEN_HINT,
   type DocProps,
 } from '@/modules/shop/components/puck/invoice-shared'
@@ -187,7 +187,10 @@ const NOTICE_STYLES = [
   { value: 'quiet', label: 'Small print' },
 ]
 
-type NoticeProps = DocProps & { lead?: string; body?: string; panelStyle?: string; hideWhenEmpty?: string }
+type NoticeProps = DocProps & {
+  lead?: string; body?: string; panelStyle?: string; hideWhenEmpty?: string
+  bodyPt?: number
+}
 
 export function ShopInvoiceNotice(props: NoticeProps) {
   const ctx = useCtx(props)
@@ -205,7 +208,10 @@ export function ShopInvoiceNotice(props: NoticeProps) {
     <>
       <Style />
       <FontLink family={props.fontFamily} />
-      <section className={`shp-inv-notice shp-inv-notice-${variant}`} style={font}>
+      <section
+        className={`shp-inv-notice shp-inv-notice-${variant}`}
+        style={{ ...font, ...sizeVars({ '--shp-inv-notice-size': props.bodyPt }) }}
+      >
         {/* The lead runs into the first paragraph rather than sitting above it -
             "Payment is due on 6 May. Order ORD-000142, placed 6 April." is one
             sentence with a bold opening, not a heading and a body. */}
@@ -235,6 +241,7 @@ export const shopInvoiceNoticePuckComponent = {
       { value: 'no', label: 'Print the empty panel' },
     ] },
     fontFamily: fontField,
+    bodyPt: ptField('Text size in points'),
   },
   defaultProps: {
     lead: 'Payment is due by {{DUE_DATE}}.',
@@ -257,6 +264,7 @@ export const shopInvoiceNoticePuckRscComponent = { ...shopInvoiceNoticePuckCompo
 
 type FooterProps = DocProps & {
   contact?: string; smallPrint?: string; align?: string; rule?: string
+  contactPt?: number; smallPrintPt?: number
 }
 
 export function ShopInvoiceFooter(props: FooterProps) {
@@ -273,7 +281,16 @@ export function ShopInvoiceFooter(props: FooterProps) {
     <>
       <Style />
       <FontLink family={props.fontFamily} />
-      <footer className={`shp-inv-footer${align}${bare}`} style={font}>
+      <footer
+        className={`shp-inv-footer${align}${bare}`}
+        style={{
+          ...font,
+          ...sizeVars({
+            '--shp-inv-footer-contact-size': props.contactPt,
+            '--shp-inv-footer-small-size': props.smallPrintPt,
+          }),
+        }}
+      >
         {contact && <p className="shp-inv-contact">{contact}</p>}
         {/* Single newlines, not blank lines: registration small print is a run of
             short lines that belong to one another, not separate paragraphs. */}
@@ -304,6 +321,8 @@ export const shopInvoiceFooterPuckComponent = {
     ] },
     rule: { type: 'select' as const, label: 'Rule above it', options: yesNo },
     fontFamily: fontField,
+    contactPt: ptField('Contact line size in points'),
+    smallPrintPt: ptField('Small print size in points'),
   },
   defaultProps: {
     contact: '{{SITE_URL}} · {{BUSINESS_EMAIL}}',

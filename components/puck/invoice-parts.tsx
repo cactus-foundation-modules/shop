@@ -1,6 +1,6 @@
 import { formatMoney } from '@/modules/shop/lib/money'
 import {
-  Style, FontLink, fontStyle, fontField, yesNo, formatDay, paragraphs, useCtx,
+  Style, FontLink, fontStyle, fontField, ptField, sizeVars, yesNo, formatDay, paragraphs, useCtx,
   type DocProps,
 } from '@/modules/shop/components/puck/invoice-shared'
 
@@ -25,15 +25,28 @@ import {
 // the old behaviour, never `=== 'yes'` for something that used to be on.
 
 // ---------------------------------------------------------------------------
-// Header: whose invoice, which invoice, and when
+// Header: which invoice, and when
 // ---------------------------------------------------------------------------
+//
+// The letterhead is NOT here. The picture at the top of the document is core's
+// own Site Logo block, dropped on the layout above this one, so it can be sized,
+// nudged and moved without going through a field on the heading - and so the
+// invoice, the quote and every other document draw the same logo the same way
+// rather than each keeping a copy of the question.
+//
+// A layout published before that change carries `showLogo` and `showName` props
+// this block no longer reads. They are ignored, which means the letterhead is
+// gone from that document until somebody adds the Site Logo block to it. Said
+// plainly in the release notes, because it is the one thing an owner has to do
+// by hand.
 
 type HeaderProps = DocProps & {
-  heading?: string; showLogo?: string; showName?: string
+  heading?: string
   showOrderNumber?: string; showTaxPoint?: string; taxPointLabel?: string
-  titleSize?: string; logoSize?: string; sides?: string; rule?: string
+  titleSize?: string; sides?: string; rule?: string
   factsLayout?: string; numberStyle?: string
   dateLabel?: string; dueLabel?: string; orderLabel?: string; invoiceLabel?: string
+  titlePt?: number; numberPt?: number; factsPt?: number; introPt?: number
 }
 
 const TITLE_SIZES: Record<string, string> = {
@@ -41,13 +54,6 @@ const TITLE_SIZES: Record<string, string> = {
   medium: '',
   large: ' shp-inv-title-lg',
   display: ' shp-inv-title-xl',
-}
-
-const LOGO_SIZES: Record<string, string> = {
-  small: ' shp-inv-logo-sm',
-  medium: '',
-  large: ' shp-inv-logo-lg',
-  huge: ' shp-inv-logo-xl',
 }
 
 const HEAD_RULES: Record<string, string> = {
@@ -60,15 +66,11 @@ export function ShopInvoiceHeader(props: HeaderProps) {
   const { invoice, credit } = useCtx(props)
   const heading = props.heading?.trim() || invoice.wording?.heading || 'Invoice'
   const font = fontStyle(props)
-  const showLogo = props.showLogo !== 'no' && Boolean(invoice.seller?.logoUrl)
-  // Plenty of logos have the business name drawn into them, and printing it
-  // again beside the picture just says everything twice - so the default is to
-  // print the name only where there is no logo to say it. 'yes' and 'no' are
-  // still honoured outright, which is what a layout saved before this existed
-  // carries.
-  const nameSetting = props.showName?.trim() || 'auto'
-  const nameWanted = nameSetting === 'yes' || (nameSetting !== 'no' && !showLogo)
-  const showName = nameWanted && Boolean(invoice.seller?.siteName || invoice.seller?.name)
+  const sizes = sizeVars({
+    '--shp-inv-title-size': props.titlePt,
+    '--shp-inv-lead-size': props.numberPt,
+    '--shp-inv-facts-size': props.factsPt,
+  })
 
   const headClass = [
     'shp-inv-head',
@@ -89,20 +91,7 @@ export function ShopInvoiceHeader(props: HeaderProps) {
     <>
       <Style />
       <FontLink family={props.fontFamily} />
-      <header className={headClass} style={font}>
-        {(showLogo || showName) && (
-          <div className="shp-inv-brand">
-            {showLogo && (
-              // eslint-disable-next-line @next/next/no-img-element -- the PDF renderer loads this straight from the URL; next/image's optimiser adds nothing to a one-off print
-              <img
-                className={`shp-inv-logo${LOGO_SIZES[props.logoSize ?? 'medium'] ?? ''}`}
-                src={invoice.seller.logoUrl!}
-                alt={invoice.seller.name}
-              />
-            )}
-            {showName && <span className="shp-inv-site">{invoice.seller.name || invoice.seller.siteName}</span>}
-          </div>
-        )}
+      <header className={headClass} style={{ ...font, ...sizes }}>
         <div className="shp-inv-meta">
           <h1 className={`shp-inv-h1${TITLE_SIZES[props.titleSize ?? 'medium'] ?? ''}`} style={font}>{heading}</h1>
           {leadNumber && documentNumber && <p className="shp-inv-lead">{documentNumber}</p>}
@@ -156,7 +145,14 @@ export function ShopInvoiceHeader(props: HeaderProps) {
           {invoice.status === 'VOID' && <span className="shp-inv-void">Void</span>}
         </div>
       </header>
-      {invoice.wording?.intro && <p className="shp-inv-intro" style={font}>{invoice.wording.intro}</p>}
+      {/* A sibling of the header rather than a child of it, so it carries its
+          own size property - a custom property reaches its own subtree and
+          nothing else. */}
+      {invoice.wording?.intro && (
+        <p className="shp-inv-intro" style={{ ...font, ...sizeVars({ '--shp-inv-intro-size': props.introPt }) }}>
+          {invoice.wording.intro}
+        </p>
+      )}
     </>
   )
 }
@@ -172,26 +168,17 @@ export const shopInvoiceHeaderPuckComponent = {
       { value: 'large', label: 'Large' },
       { value: 'display', label: 'Very large' },
     ] },
-    sides: { type: 'select' as const, label: 'Which way round', options: [
-      { value: 'logo-left', label: 'Logo left, heading right' },
-      { value: 'title-left', label: 'Heading left, logo right' },
+    titlePt: ptField('Heading size in points (overrides the box above)'),
+    sides: { type: 'select' as const, label: 'The heading sits', options: [
+      // Values kept as they were: a layout saved when this also flipped the logo
+      // keeps the side it was set to, without a data migration.
+      { value: 'logo-left', label: 'At the right' },
+      { value: 'title-left', label: 'At the left' },
     ] },
     rule: { type: 'select' as const, label: 'Rule underneath', options: [
       { value: 'hairline', label: 'Hairline' },
       { value: 'accent', label: 'Thick, in the accent colour' },
       { value: 'none', label: 'None' },
-    ] },
-    showLogo: { type: 'select' as const, label: 'Site logo', options: yesNo },
-    logoSize: { type: 'select' as const, label: 'Logo size', options: [
-      { value: 'small', label: 'Small' },
-      { value: 'medium', label: 'Medium' },
-      { value: 'large', label: 'Large' },
-      { value: 'huge', label: 'Very large' },
-    ] },
-    showName: { type: 'select' as const, label: 'Business name in words', options: [
-      { value: 'auto', label: 'Only when there is no logo' },
-      { value: 'yes', label: 'Always' },
-      { value: 'no', label: 'Never' },
     ] },
     factsLayout: { type: 'select' as const, label: 'Dates and numbers', options: [
       { value: 'columns', label: 'Labels and values in two columns' },
@@ -208,10 +195,14 @@ export const shopInvoiceHeaderPuckComponent = {
     dueLabel: { type: 'text' as const, label: '"Due by" row label' },
     showTaxPoint: { type: 'select' as const, label: 'Tax point date as its own row', options: yesNo },
     taxPointLabel: { type: 'text' as const, label: 'Tax point row label' },
+    numberPt: ptField('Invoice number size in points'),
+    factsPt: ptField('Dates and numbers size in points'),
+    introPt: ptField('Opening line size in points'),
   },
+  // No defaults for the point sizes on purpose: blank is "leave it as it is",
+  // and a default would set every document's sizes the moment the field shipped.
   defaultProps: {
     heading: '', fontFamily: '', titleSize: 'medium', sides: 'logo-left', rule: 'hairline',
-    showLogo: 'yes', logoSize: 'medium', showName: 'auto',
     factsLayout: 'columns', numberStyle: 'row',
     invoiceLabel: 'Invoice', showOrderNumber: 'yes', orderLabel: 'Order',
     dateLabel: 'Date', dueLabel: 'Due by',
@@ -229,6 +220,7 @@ type PartiesProps = DocProps & {
   fromLabel?: string; toLabel?: string; deliverLabel?: string
   showFrom?: string; showDelivery?: string; showRegistration?: string
   order?: string; columns?: string; showEmail?: string
+  headingPt?: number; addressPt?: number; registrationPt?: number
 }
 
 export function ShopInvoiceParties(props: PartiesProps) {
@@ -294,7 +286,17 @@ export function ShopInvoiceParties(props: PartiesProps) {
     <>
       <Style />
       <FontLink family={props.fontFamily} />
-      <section className={`shp-inv-parties${width}`} style={font}>
+      <section
+        className={`shp-inv-parties${width}`}
+        style={{
+          ...font,
+          ...sizeVars({
+            '--shp-inv-h2-size': props.headingPt,
+            '--shp-inv-party-size': props.addressPt,
+            '--shp-inv-reg-size': props.registrationPt,
+          }),
+        }}
+      >
         {columns.filter(Boolean)}
       </section>
     </>
@@ -321,6 +323,9 @@ export const shopInvoicePartiesPuckComponent = {
     deliverLabel: { type: 'text' as const, label: '"Delivered to" heading' },
     showEmail: { type: 'select' as const, label: 'Email addresses', options: yesNo },
     showRegistration: { type: 'select' as const, label: 'VAT and company numbers', options: yesNo },
+    headingPt: ptField('Heading size in points'),
+    addressPt: ptField('Address size in points'),
+    registrationPt: ptField('VAT and company number size in points'),
   },
   defaultProps: {
     fontFamily: '', order: 'from-first', columns: 'auto',
@@ -339,6 +344,7 @@ type LinesProps = DocProps & {
   showSku?: string; showDetail?: string; showTaxRate?: string
   itemLabel?: string; qtyLabel?: string; priceLabel?: string; rateLabel?: string; totalLabel?: string
   headStyle?: string; rowRules?: string; zebra?: string
+  headPt?: number; rowPt?: number; skuPt?: number; detailPt?: number
 }
 
 export function ShopInvoiceLines(props: LinesProps) {
@@ -366,7 +372,18 @@ export function ShopInvoiceLines(props: LinesProps) {
     <>
       <Style />
       <FontLink family={props.fontFamily} />
-      <table className={table} style={font}>
+      <table
+        className={table}
+        style={{
+          ...font,
+          ...sizeVars({
+            '--shp-inv-thead-size': props.headPt,
+            '--shp-inv-row-size': props.rowPt,
+            '--shp-inv-sku-size': props.skuPt,
+            '--shp-inv-detail-size': props.detailPt,
+          }),
+        }}
+      >
         <thead>
           <tr>
             <th>{props.itemLabel?.trim() || 'Description'}</th>
@@ -428,6 +445,10 @@ export const shopInvoiceLinesPuckComponent = {
     priceLabel: { type: 'text' as const, label: 'Unit price column' },
     rateLabel: { type: 'text' as const, label: 'Rate column' },
     totalLabel: { type: 'text' as const, label: 'Amount column' },
+    headPt: ptField('Column heading size in points'),
+    rowPt: ptField('Item row size in points'),
+    skuPt: ptField('Product code size in points'),
+    detailPt: ptField('Options and personalisation size in points'),
   },
   defaultProps: {
     fontFamily: '', headStyle: 'rule', rowRules: 'every', zebra: 'no',
@@ -447,6 +468,7 @@ type TotalsProps = DocProps & {
   taxLabel?: string; totalLabel?: string; showPaid?: string; paidWording?: string
   emphasis?: string; showTaxRate?: string; width?: string
   showDeliveryRow?: string; zeroDelivery?: string
+  rowPt?: number; totalPt?: number; paidPt?: number
 }
 
 const TOTALS_WIDTHS: Record<string, string> = { narrow: '18rem', normal: '22rem', wide: '28rem' }
@@ -480,7 +502,14 @@ export function ShopInvoiceTotals(props: TotalsProps) {
     <>
       <Style />
       <FontLink family={props.fontFamily} />
-      <dl className={listClass} style={{ ...font, maxWidth: width }}>
+      <dl
+        className={listClass}
+        style={{
+          ...font,
+          maxWidth: width,
+          ...sizeVars({ '--shp-inv-totals-size': props.rowPt, '--shp-inv-grand-size': props.totalPt }),
+        }}
+      >
         <dt>{props.subtotalLabel?.trim() || 'Subtotal'}</dt>
         <dd>{formatMoney(invoice.subtotal, symbol)}</dd>
         {discount > 0 && (
@@ -508,7 +537,7 @@ export function ShopInvoiceTotals(props: TotalsProps) {
         <dd className="shp-inv-grand">{formatMoney(invoice.total, symbol)}</dd>
       </dl>
       {props.showPaid !== 'no' && (
-        <p className="shp-inv-paid" style={font}>
+        <p className="shp-inv-paid" style={{ ...font, ...sizeVars({ '--shp-inv-paid-size': props.paidPt }) }}>
           {/* "Paid in full - thank you" on a refund would be quite the insult.
               The credit note's own wording was snapshotted onto it when it was
               raised, so a later edit in settings does not rewrite paperwork
@@ -549,6 +578,9 @@ export const shopInvoiceTotalsPuckComponent = {
     totalLabel: { type: 'text' as const, label: 'Total row' },
     showPaid: { type: 'select' as const, label: 'Line under the total', options: yesNo },
     paidWording: { type: 'text' as const, label: 'What that line says' },
+    rowPt: ptField('Row size in points'),
+    totalPt: ptField('Total size in points'),
+    paidPt: ptField('Size in points of the line under the total'),
   },
   defaultProps: {
     fontFamily: '', emphasis: 'rule', width: 'normal',
@@ -573,6 +605,7 @@ export const shopInvoiceTotalsPuckRscComponent = { ...shopInvoiceTotalsPuckCompo
 type TaxProps = DocProps & {
   heading?: string; rateLabel?: string; netLabel?: string; taxLabel?: string; grossLabel?: string
   hideWhenSingleZero?: string; headStyle?: string; align?: string
+  headingPt?: number; headPt?: number; rowPt?: number
 }
 
 export function ShopInvoiceTaxSummary(props: TaxProps) {
@@ -597,7 +630,17 @@ export function ShopInvoiceTaxSummary(props: TaxProps) {
     <>
       <Style />
       <FontLink family={props.fontFamily} />
-      <section className="shp-inv-vat" style={font}>
+      <section
+        className="shp-inv-vat"
+        style={{
+          ...font,
+          ...sizeVars({
+            '--shp-inv-h2-size': props.headingPt,
+            '--shp-inv-vat-head-size': props.headPt,
+            '--shp-inv-vat-size': props.rowPt,
+          }),
+        }}
+      >
         <h2 className="shp-inv-h2" style={font}>
           {props.heading?.trim() || `${invoice.wording?.taxLabel || 'VAT'} summary`}
         </h2>
@@ -648,6 +691,9 @@ export const shopInvoiceTaxSummaryPuckComponent = {
       { value: 'yes', label: 'Unless no tax was charged' },
       { value: 'single', label: 'Only when there is more than one rate' },
     ] },
+    headingPt: ptField('Heading size in points'),
+    headPt: ptField('Column heading size in points'),
+    rowPt: ptField('Row size in points'),
   },
   defaultProps: {
     fontFamily: '', heading: '', headStyle: 'rule', align: 'right',
@@ -666,6 +712,7 @@ type PaymentProps = DocProps & {
   showPaymentDetails?: string; paymentHeading?: string
   showTerms?: string; termsHeading?: string; showFooter?: string; footerAlign?: string
   columns?: string; paymentExtra?: string; termsExtra?: string
+  headingPt?: number; bodyPt?: number; footerPt?: number
 }
 
 export function ShopInvoicePayment(props: PaymentProps) {
@@ -690,7 +737,13 @@ export function ShopInvoicePayment(props: PaymentProps) {
     <>
       <Style />
       <FontLink family={props.fontFamily} />
-      <section className={`shp-inv-pay${cols}`} style={font}>
+      <section
+        className={`shp-inv-pay${cols}`}
+        style={{
+          ...font,
+          ...sizeVars({ '--shp-inv-h2-size': props.headingPt, '--shp-inv-pay-size': props.bodyPt }),
+        }}
+      >
         {showPayment && (
           <div className="shp-inv-block">
             <h2 className="shp-inv-h2" style={font}>{props.paymentHeading?.trim() || 'Payment'}</h2>
@@ -707,7 +760,12 @@ export function ShopInvoicePayment(props: PaymentProps) {
         )}
       </section>
       {showFooter && (
-        <p className="shp-inv-foot" style={{ ...font, textAlign: footerAlign }}>{wording.footer}</p>
+        <p
+          className="shp-inv-foot"
+          style={{ ...font, textAlign: footerAlign, ...sizeVars({ '--shp-inv-foot-size': props.footerPt }) }}
+        >
+          {wording.footer}
+        </p>
       )}
     </>
   )
@@ -733,6 +791,9 @@ export const shopInvoicePaymentPuckComponent = {
       { value: 'left', label: 'Left' },
       { value: 'right', label: 'Right' },
     ] },
+    headingPt: ptField('Heading size in points'),
+    bodyPt: ptField('Body size in points'),
+    footerPt: ptField('Footer line size in points'),
   },
   defaultProps: {
     fontFamily: '', columns: '1', showPaymentDetails: 'yes', paymentHeading: 'Payment', paymentExtra: '',

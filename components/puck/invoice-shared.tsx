@@ -55,6 +55,43 @@ export const fontField = {
   ),
 }
 
+// ---------------------------------------------------------------------------
+// Text sizes
+// ---------------------------------------------------------------------------
+//
+// Every run of text on the document - the dates, the addresses, the column
+// headings, the small print - has a size box of its own, in POINTS, because a
+// point is the unit the thing this ends up as is measured in. An invoice is
+// printed, filed and read on paper; "11pt" is what an owner's accountant asks
+// for and what their old paperwork was set in.
+//
+// Blank means untouched. Nothing is emitted at all for an empty box, so the
+// stylesheet's own fallback stands and a layout saved before any of these fields
+// existed renders byte-for-byte what it rendered then - which matters here more
+// than anywhere, because these documents are already in customers' hands.
+//
+// The size lands as a `--shp-inv-*-size` custom property set INLINE on the
+// block's root element, and the stylesheet reads it with the old hard-coded
+// value as its fallback. Inline rather than a class because the size is a number
+// an owner typed, and a property rather than `font-size` because several of
+// these sizes belong to a descendant (a table's column headings, a footer's
+// small print) rather than to the root itself.
+
+export function ptField(label: string) {
+  return { type: 'number' as const, label, min: 4, max: 96 }
+}
+
+/** The `--shp-inv-*-size` properties for the boxes an owner actually filled in.
+ *  An empty box, a zero and anything that is not a number emit nothing. */
+export function sizeVars(sizes: Record<string, number | string | undefined>): CSSProperties {
+  const out: Record<string, string> = {}
+  for (const [name, raw] of Object.entries(sizes)) {
+    const pt = typeof raw === 'string' ? Number(raw.trim()) : raw
+    if (typeof pt === 'number' && Number.isFinite(pt) && pt > 0) out[name] = `${pt}pt`
+  }
+  return out as CSSProperties
+}
+
 /** A colour picked from the site's own palette, or typed in. Blank everywhere
  *  means "leave it as it was", which is how a document that has never been
  *  styled keeps the look it had before any of these fields existed. */

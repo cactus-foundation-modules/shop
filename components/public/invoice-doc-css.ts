@@ -41,31 +41,20 @@ export const INVOICE_DOC_CSS = `
    notice panel. */
 .shp-inv-head.shp-inv-head-accent { padding-bottom: 1.25rem; border-bottom: var(--shp-inv-rule-w, 3px) solid var(--shp-inv-accent, var(--color-border)); }
 .shp-inv-head.shp-inv-head-flat { padding-bottom: 0.5rem; border-bottom: 0; }
-/* Brand and meta sit in source order by default. 'Title on the left' flips them
-   without touching the markup, so the RSC path and the editor cannot disagree. */
+/* Which side the heading sits on. The letterhead is a Site Logo block of its
+   own now, so this only moves the heading and its dates - but it stays a class
+   on the same markup, so the RSC path and the editor cannot disagree, and a
+   layout saved when this also flipped a logo keeps the side it was set to. */
 .shp-inv-head.shp-inv-swap { flex-direction: row-reverse; }
 .shp-inv-head.shp-inv-swap .shp-inv-meta { text-align: left; margin-left: 0; margin-right: auto; }
 .shp-inv-head.shp-inv-swap .shp-inv-facts { justify-content: start; }
-.shp-inv-head.shp-inv-swap .shp-inv-brand { margin-left: auto; }
-.shp-inv-brand { display: flex; align-items: center; gap: 0.75rem; }
-/* The height here is definite on purpose. An SVG logo carries a viewBox and no
-   width or height of its own, and a picture with no size of its own sizes to
-   nothing at all inside a flex item, which is how a perfectly good logo went
-   missing from the document and from the PDF with it. Sizing by height and
-   letting the width follow is what the site header does too. object-fit keeps
-   the shape of anything wider than the box. */
-.shp-inv-logo { height: 56px; width: auto; max-width: 220px; object-fit: contain; object-position: left center; }
-.shp-inv-logo-sm { height: 36px; max-width: 160px; }
-.shp-inv-logo-lg { height: 76px; max-width: 300px; }
-.shp-inv-logo-xl { height: 96px; max-width: 380px; }
-.shp-inv-site { font-weight: 600; font-size: 1.0625rem; color: var(--color-text); }
 .shp-inv-meta { text-align: right; margin-left: auto; }
-.shp-inv-h1 { font-size: 1.5rem; line-height: 1.1; margin: 0 0 0.5rem; color: var(--shp-inv-title-ink, var(--color-text)); }
-.shp-inv-h1.shp-inv-title-sm { font-size: 1.25rem; }
-.shp-inv-h1.shp-inv-title-lg { font-size: 2rem; }
-.shp-inv-h1.shp-inv-title-xl { font-size: 2.75rem; }
-.shp-inv-h2 { font-size: 0.8125rem; margin: 0 0 0.375rem; color: var(--shp-inv-label, var(--color-text-muted)); text-transform: uppercase; letter-spacing: 0.04em; }
-.shp-inv-facts { display: grid; grid-template-columns: auto auto; gap: 0.125rem 0.75rem; margin: 0; font-size: 0.875rem; justify-content: end; }
+.shp-inv-h1 { font-size: var(--shp-inv-title-size, 1.5rem); line-height: 1.1; margin: 0 0 0.5rem; color: var(--shp-inv-title-ink, var(--color-text)); }
+.shp-inv-h1.shp-inv-title-sm { font-size: var(--shp-inv-title-size, 1.25rem); }
+.shp-inv-h1.shp-inv-title-lg { font-size: var(--shp-inv-title-size, 2rem); }
+.shp-inv-h1.shp-inv-title-xl { font-size: var(--shp-inv-title-size, 2.75rem); }
+.shp-inv-h2 { font-size: var(--shp-inv-h2-size, 0.8125rem); margin: 0 0 0.375rem; color: var(--shp-inv-label, var(--color-text-muted)); text-transform: uppercase; letter-spacing: 0.04em; }
+.shp-inv-facts { display: grid; grid-template-columns: auto auto; gap: 0.125rem 0.75rem; margin: 0; font-size: var(--shp-inv-facts-size, 0.875rem); justify-content: end; }
 .shp-inv-facts dt { color: var(--color-text-muted); }
 .shp-inv-facts dd { margin: 0; color: var(--color-text); font-variant-numeric: tabular-nums; }
 /* Stacked facts read "Issued 6 April 2026" on one line instead of ruling the
@@ -85,19 +74,19 @@ export const INVOICE_DOC_CSS = `
    list, because a <dd> with nothing before it is not a description list. */
 .shp-inv-lead { margin: 0 0 0.375rem; font-weight: 700; font-size: var(--shp-inv-lead-size, 1rem); color: var(--shp-inv-title-ink, var(--color-text)); font-variant-numeric: tabular-nums; }
 .shp-inv-void { display: inline-block; margin-top: 0.5rem; padding: 0.125rem 0.5rem; border: 1px solid var(--color-error, var(--color-border)); border-radius: var(--radius-sm, 4px); color: var(--color-error, var(--color-text)); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; }
-.shp-inv-intro { margin: 1rem 0 0; color: var(--color-text); }
+.shp-inv-intro { margin: 1rem 0 0; font-size: var(--shp-inv-intro-size, inherit); color: var(--color-text); }
 
 .shp-inv-parties { margin: var(--shp-inv-gap, 1.5rem) 0 0; display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 /* A definite column count, for a document whose two addresses should sit at the
    same two places on every invoice rather than reflowing with their length. */
 .shp-inv-parties.shp-inv-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .shp-inv-parties.shp-inv-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.shp-inv-party address { font-style: normal; display: grid; gap: 0.125rem; color: var(--color-text); font-size: 0.9375rem; }
+.shp-inv-party address { font-style: normal; display: grid; gap: 0.125rem; color: var(--color-text); font-size: var(--shp-inv-party-size, 0.9375rem); }
 .shp-inv-party .shp-inv-strong { font-weight: 600; }
-.shp-inv-reg { margin: 0.5rem 0 0; display: grid; gap: 0.125rem; font-size: 0.8125rem; color: var(--color-text-muted); }
+.shp-inv-reg { margin: 0.5rem 0 0; display: grid; gap: 0.125rem; font-size: var(--shp-inv-reg-size, 0.8125rem); color: var(--color-text-muted); }
 
-.shp-inv-lines { width: 100%; border-collapse: collapse; margin: var(--shp-inv-gap, 1.5rem) 0 0; font-size: 0.9375rem; }
-.shp-inv-lines th { text-align: left; padding: 0.5rem 0.5rem 0.5rem 0; border-bottom: 1px solid var(--color-border); color: var(--shp-inv-thead-ink, var(--color-text-muted)); font-weight: 600; font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.02em; }
+.shp-inv-lines { width: 100%; border-collapse: collapse; margin: var(--shp-inv-gap, 1.5rem) 0 0; font-size: var(--shp-inv-row-size, 0.9375rem); }
+.shp-inv-lines th { text-align: left; padding: 0.5rem 0.5rem 0.5rem 0; border-bottom: 1px solid var(--color-border); color: var(--shp-inv-thead-ink, var(--color-text-muted)); font-weight: 600; font-size: var(--shp-inv-thead-size, 0.8125rem); text-transform: uppercase; letter-spacing: 0.02em; }
 .shp-inv-lines td { padding: var(--shp-inv-row-y, 0.625rem) 0.5rem var(--shp-inv-row-y, 0.625rem) 0; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); vertical-align: top; color: var(--color-text); }
 .shp-inv-lines th:last-child, .shp-inv-lines td:last-child { padding-right: 0; }
 /* A banded head. The fill needs padding inside the cells to sit in, which the
@@ -118,16 +107,16 @@ export const INVOICE_DOC_CSS = `
 .shp-inv-lines.shp-inv-rows-none tbody tr:last-child td { border-bottom: 1px solid var(--color-border); }
 .shp-inv-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .shp-inv-name { display: block; font-weight: 500; }
-.shp-inv-sku { display: block; font-size: 0.8125rem; color: var(--color-text-muted); }
-.shp-inv-detail { list-style: none; margin: 0.25rem 0 0; padding: 0; display: grid; gap: 0.125rem; font-size: 0.8125rem; color: var(--color-text-muted); }
+.shp-inv-sku { display: block; font-size: var(--shp-inv-sku-size, 0.8125rem); color: var(--color-text-muted); }
+.shp-inv-detail { list-style: none; margin: 0.25rem 0 0; padding: 0; display: grid; gap: 0.125rem; font-size: var(--shp-inv-detail-size, 0.8125rem); color: var(--color-text-muted); }
 .shp-inv-detail span { font-weight: 500; }
 .shp-inv-empty { color: var(--color-text-muted); padding: 1.25rem 0; }
 
-.shp-inv-totals { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem 1.5rem; margin: 1.25rem 0 0; margin-left: auto; max-width: 22rem; font-size: 0.9375rem; }
+.shp-inv-totals { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem 1.5rem; margin: 1.25rem 0 0; margin-left: auto; max-width: 22rem; font-size: var(--shp-inv-totals-size, 0.9375rem); }
 .shp-inv-totals dt { color: var(--color-text-muted); }
 .shp-inv-totals dd { margin: 0; text-align: right; color: var(--color-text); font-variant-numeric: tabular-nums; }
 .shp-inv-row { display: contents; }
-.shp-inv-grand { font-weight: 700; font-size: 1.0625rem; color: var(--color-text); padding-top: 0.375rem; border-top: 1px solid var(--color-border); }
+.shp-inv-grand { font-weight: 700; font-size: var(--shp-inv-grand-size, 1.0625rem); color: var(--color-text); padding-top: 0.375rem; border-top: 1px solid var(--color-border); }
 /* The total given the weight of a total: a rule in the document's accent above
    it, and the heading face at a size that ends the page.
    The rule is drawn on the label and on the figure, so the column gap would
@@ -136,11 +125,11 @@ export const INVOICE_DOC_CSS = `
 .shp-inv-totals.shp-inv-total-accent { column-gap: 0; }
 .shp-inv-totals.shp-inv-total-accent dd { padding-left: 1.5rem; }
 .shp-inv-totals.shp-inv-total-accent .shp-inv-grand { font-family: var(--shp-inv-head-font, var(--h1-family, var(--font-heading, var(--font-body, inherit)))); font-size: var(--shp-inv-grand-size, 1.5rem); padding-top: 0.75rem; margin-top: 0.375rem; border-top: var(--shp-inv-rule-w, 2px) solid var(--shp-inv-accent, var(--color-border)); color: var(--shp-inv-title-ink, var(--color-text)); }
-.shp-inv-paid { margin: 0.625rem 0 0; text-align: right; font-size: 0.8125rem; color: var(--color-text-muted); }
+.shp-inv-paid { margin: 0.625rem 0 0; text-align: right; font-size: var(--shp-inv-paid-size, 0.8125rem); color: var(--color-text-muted); }
 
 .shp-inv-vat { margin: var(--shp-inv-gap, 1.5rem) 0 0; }
-.shp-inv-vat table { width: 100%; border-collapse: collapse; font-size: 0.875rem; max-width: 30rem; margin-left: auto; }
-.shp-inv-vat th { text-align: right; padding: 0.375rem 0.5rem 0.375rem 0; border-bottom: 1px solid var(--color-border); color: var(--shp-inv-thead-ink, var(--color-text-muted)); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.02em; }
+.shp-inv-vat table { width: 100%; border-collapse: collapse; font-size: var(--shp-inv-vat-size, 0.875rem); max-width: 30rem; margin-left: auto; }
+.shp-inv-vat th { text-align: right; padding: 0.375rem 0.5rem 0.375rem 0; border-bottom: 1px solid var(--color-border); color: var(--shp-inv-thead-ink, var(--color-text-muted)); font-weight: 600; font-size: var(--shp-inv-vat-head-size, 0.75rem); text-transform: uppercase; letter-spacing: 0.02em; }
 .shp-inv-vat th:first-child { text-align: left; }
 .shp-inv-vat td { padding: 0.375rem 0.5rem 0.375rem 0; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); color: var(--color-text); text-align: right; font-variant-numeric: tabular-nums; }
 .shp-inv-vat td:first-child { text-align: left; }
@@ -158,21 +147,21 @@ export const INVOICE_DOC_CSS = `
 /* Payment and terms side by side, which is where they sit on most printed
    invoices - and where two short blocks stop pushing the footer down a page. */
 .shp-inv-pay.shp-inv-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; }
-.shp-inv-pay p { margin: 0; font-size: 0.875rem; color: var(--color-text-muted); }
+.shp-inv-pay p { margin: 0; font-size: var(--shp-inv-pay-size, 0.875rem); color: var(--color-text-muted); }
 .shp-inv-pay .shp-inv-block p { margin: 0 0 0.375rem; }
-.shp-inv-foot { margin: var(--shp-inv-gap, 1.5rem) 0 0; padding-top: 0.75rem; border-top: 1px solid var(--color-border); font-size: 0.8125rem; color: var(--color-text-muted); }
+.shp-inv-foot { margin: var(--shp-inv-gap, 1.5rem) 0 0; padding-top: 0.75rem; border-top: 1px solid var(--color-border); font-size: var(--shp-inv-foot-size, 0.8125rem); color: var(--color-text-muted); }
 
 /* ---------------------------------------------------------------------------
    Notice panel - a sentence the document needs said before the figures: how to
    pay, what the order was, how long a price holds.
    --------------------------------------------------------------------------- */
-.shp-inv-notice { margin: var(--shp-inv-gap, 1.5rem) 0 0; font-size: 0.9375rem; line-height: 1.55; color: var(--shp-inv-panel-ink, var(--color-text)); }
+.shp-inv-notice { margin: var(--shp-inv-gap, 1.5rem) 0 0; font-size: var(--shp-inv-notice-size, 0.9375rem); line-height: 1.55; color: var(--shp-inv-panel-ink, var(--color-text)); }
 .shp-inv-notice p { margin: 0 0 0.5rem; }
 .shp-inv-notice p:last-child { margin-bottom: 0; }
 .shp-inv-notice .shp-inv-notice-lead { font-weight: 700; }
 .shp-inv-notice.shp-inv-notice-panel { padding: 0.875rem 1.125rem; background: var(--shp-inv-panel-bg, var(--color-bg-subtle)); border-left: var(--shp-inv-rule-w, 3px) solid var(--shp-inv-accent, var(--color-border)); border-radius: 0 var(--shp-inv-radius, 0) var(--shp-inv-radius, 0) 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .shp-inv-notice.shp-inv-notice-outline { padding: 0.875rem 1.125rem; border: 1px solid var(--shp-inv-accent, var(--color-border)); border-radius: var(--shp-inv-radius, 0); }
-.shp-inv-notice.shp-inv-notice-quiet { padding: 0; color: var(--color-text-muted); font-size: 0.875rem; }
+.shp-inv-notice.shp-inv-notice-quiet { padding: 0; color: var(--color-text-muted); font-size: var(--shp-inv-notice-size, 0.875rem); }
 
 /* ---------------------------------------------------------------------------
    Footer - the line at the bottom of every page of paperwork a company sends:
@@ -182,8 +171,8 @@ export const INVOICE_DOC_CSS = `
 .shp-inv-footer.shp-inv-footer-bare { border-top: 0; padding-top: 0; }
 .shp-inv-footer.shp-inv-align-left { text-align: left; }
 .shp-inv-footer.shp-inv-align-right { text-align: right; }
-.shp-inv-footer .shp-inv-contact { margin: 0 0 0.5rem; font-size: 0.875rem; font-weight: 700; color: var(--shp-inv-accent, var(--color-text)); }
-.shp-inv-footer .shp-inv-small { margin: 0; font-size: 0.75rem; line-height: 1.6; color: var(--color-text-muted); }
+.shp-inv-footer .shp-inv-contact { margin: 0 0 0.5rem; font-size: var(--shp-inv-footer-contact-size, 0.875rem); font-weight: 700; color: var(--shp-inv-accent, var(--color-text)); }
+.shp-inv-footer .shp-inv-small { margin: 0; font-size: var(--shp-inv-footer-small-size, 0.75rem); line-height: 1.6; color: var(--color-text-muted); }
 
 /* ---------------------------------------------------------------------------
    Divider - a rule of its own, for the gaps between sections the blocks above
@@ -215,7 +204,7 @@ export const INVOICE_DOC_CSS = `
 @media print {
   .shp-inv-head, .shp-inv-parties, .shp-inv-lines, .shp-inv-totals, .shp-inv-vat, .shp-inv-pay, .shp-inv-foot,
   .shp-inv-notice, .shp-inv-footer { color: #111 !important; }
-  .shp-inv-site, .shp-inv-name, .shp-inv-grand, .shp-inv-strong,
+  .shp-inv-name, .shp-inv-grand, .shp-inv-strong,
   .shp-inv-facts dd, .shp-inv-lines td, .shp-inv-totals dd, .shp-inv-vat td { color: #111 !important; }
   .shp-inv-facts dt, .shp-inv-sku, .shp-inv-detail, .shp-inv-empty, .shp-inv-reg,
   .shp-inv-paid, .shp-inv-pay p, .shp-inv-foot, .shp-inv-totals dt, .shp-inv-lines th, .shp-inv-vat th { color: #444 !important; }

@@ -632,8 +632,20 @@ export function shopProductCardStarters() {
 // so a shop that has had this module for a year never gets this type seeded at
 // all, and an invoice must still come out looking like an invoice.
 
+// The letterhead: core's own Site Logo block, sitting above the heading. It is
+// core's rather than the module's so that every document on the site draws the
+// same logo the same way, and so an owner can move it, resize it or drop it for
+// a picture of their own without a field on the heading block.
+//
+// showIcon off: a shop that has uploaded no logo should print its own name, not
+// the Cactus mark. cellHeight 56 is the height the invoice logo has always been.
+const INVOICE_LOGO = block('SiteLogo', 'inv-logo', {
+  homeUrl: '/', imageUrl: '', imageUrlDark: '', align: 'left',
+  cellHeight: 56, showTextWithLogo: 'false', showIcon: 'false', textColor: '',
+})
+
 const INVOICE_HEADER = block('ShopInvoiceHeader', 'inv-head', {
-  heading: '', fontFamily: '', showLogo: 'yes', showName: 'auto',
+  heading: '', fontFamily: '',
   showOrderNumber: 'yes', showTaxPoint: 'no', taxPointLabel: 'Tax point',
 })
 const INVOICE_PARTIES = block('ShopInvoiceParties', 'inv-parties', {
@@ -679,9 +691,12 @@ const INVOICE_STYLE = block('ShopInvoiceStyle', 'inv-style', {
 
 const INVOICE_DESIGNED = [
   INVOICE_STYLE,
+  block('SiteLogo', 'inv-logo', {
+    homeUrl: '/', imageUrl: '', imageUrlDark: '', align: 'left',
+    cellHeight: 76, showTextWithLogo: 'false', showIcon: 'false', textColor: '',
+  }),
   block('ShopInvoiceHeader', 'inv-head', {
     heading: '', fontFamily: '', titleSize: 'display', sides: 'logo-left', rule: 'accent',
-    showLogo: 'yes', logoSize: 'large', showName: 'auto',
     factsLayout: 'stacked', numberStyle: 'lead',
     invoiceLabel: 'Invoice', showOrderNumber: 'no', orderLabel: 'Order',
     dateLabel: 'Issued', dueLabel: 'Due',
@@ -733,7 +748,7 @@ const INVOICE_DESIGNED = [
 /** What an invoice renders as when no layout of this type is published. Kept in
  *  step with the standard template below by being the same blocks. */
 export const INVOICE_FALLBACK_DATA = {
-  content: [INVOICE_HEADER, INVOICE_PARTIES, INVOICE_LINES, INVOICE_TOTALS, INVOICE_TAX, INVOICE_PAYMENT],
+  content: [INVOICE_LOGO, INVOICE_HEADER, INVOICE_PARTIES, INVOICE_LINES, INVOICE_TOTALS, INVOICE_TAX, INVOICE_PAYMENT],
   root: { props: {} },
   zones: {},
 }
@@ -746,7 +761,7 @@ export function shopInvoiceStarters() {
       description: 'Heading, both addresses, the items, the totals, a tax summary and your payment terms - in the order an accountant reads them.',
       publishByDefault: true,
       data: {
-        content: [INVOICE_HEADER, INVOICE_PARTIES, INVOICE_LINES, INVOICE_TOTALS, INVOICE_TAX, INVOICE_PAYMENT],
+        content: [INVOICE_LOGO, INVOICE_HEADER, INVOICE_PARTIES, INVOICE_LINES, INVOICE_TOTALS, INVOICE_TAX, INVOICE_PAYMENT],
         root: { props: {} },
         zones: {},
       },
@@ -767,6 +782,7 @@ export function shopInvoiceStarters() {
       description: 'The same invoice with the tax rate against every line. For a shop selling at more than one rate.',
       data: {
         content: [
+          INVOICE_LOGO,
           INVOICE_HEADER,
           INVOICE_PARTIES,
           block('ShopInvoiceLines', 'inv-lines', {
@@ -791,7 +807,7 @@ export function shopInvoiceStarters() {
       data: {
         content: [
           block('ShopInvoiceHeader', 'inv-head', {
-            heading: '', fontFamily: '', showLogo: 'no', showName: 'auto',
+            heading: '', fontFamily: '',
             showOrderNumber: 'yes', showTaxPoint: 'no', taxPointLabel: 'Tax point',
           }),
           block('ShopInvoiceParties', 'inv-parties', {
