@@ -877,6 +877,10 @@ const PROFORMA_NOTICE = block('ShopInvoiceNotice', 'pro-notice', {
 const PROFORMA_PARTIES = block('ShopInvoiceParties', 'pro-parties', {
   fontFamily: '', showFrom: 'yes', fromLabel: 'From', toLabel: 'Proforma to',
   showDelivery: 'yes', deliverLabel: 'Delivered to', showRegistration: 'yes',
+  // Addressed to the business, not to whoever in it filled the form in. A
+  // proforma goes to an accounts department, who file it under the company name
+  // and will not thank you for a document addressed to a colleague.
+  leadWith: 'organisation',
 })
 
 const PROFORMA_LINES = block('ShopInvoiceLines', 'pro-lines', {
@@ -953,7 +957,8 @@ export function shopProformaStarters() {
           block('ShopInvoiceParties', 'pro-parties', {
             fontFamily: '', order: 'to-first', columns: '2',
             showFrom: 'yes', fromLabel: 'From', toLabel: 'Proforma to',
-            showDelivery: 'yes', deliverLabel: 'Delivered to', showEmail: 'yes', showRegistration: 'yes',
+            showDelivery: 'yes', deliverLabel: 'Delivered to', showEmail: 'yes',
+            leadWith: 'organisation', showRegistration: 'yes',
           }),
           block('ShopInvoiceLines', 'pro-lines', {
             fontFamily: '', headStyle: 'filled', rowRules: 'every', zebra: 'no',

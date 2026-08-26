@@ -219,8 +219,28 @@ export const shopInvoiceHeaderPuckRscComponent = { ...shopInvoiceHeaderPuckCompo
 type PartiesProps = DocProps & {
   fromLabel?: string; toLabel?: string; deliverLabel?: string
   showFrom?: string; showDelivery?: string; showRegistration?: string
-  order?: string; columns?: string; showEmail?: string
+  order?: string; columns?: string; showEmail?: string; leadWith?: string
   headingPt?: number; addressPt?: number; registrationPt?: number
+}
+
+/**
+ * The address block for whoever the document is addressed to, with the
+ * organisation lifted to the top line when the layout asks for it.
+ *
+ * A trade document is addressed to a business, not to whoever in that business
+ * happened to fill the form in - the same reasoning `orderCustomerLabel` already
+ * uses for the orders list. Left off by default all the same: an invoice already
+ * in a customer's hands must keep the shape it was issued in, so only a layout
+ * that sets the field moves anything (the proforma's starters do).
+ *
+ * The organisation is deduped rather than prepended blindly. It usually IS one of
+ * the address lines already - `addressLines` puts `company` second - and the one
+ * thing worse than the wrong first line is the right one printed twice.
+ */
+export function addressedLines(lines: string[], company: string | undefined, leadWithOrg: boolean): string[] {
+  const org = company?.trim()
+  if (!leadWithOrg || !org) return lines
+  return [org, ...lines.filter((line) => line.trim() !== org)]
 }
 
 export function ShopInvoiceParties(props: PartiesProps) {
@@ -236,6 +256,7 @@ export function ShopInvoiceParties(props: PartiesProps) {
   const differentDelivery =
     props.showDelivery !== 'no' && shipping.length > 0 && shipping.join('|') !== billing.join('|')
   const showEmail = props.showEmail !== 'no'
+  const leadWithOrg = props.leadWith === 'organisation'
 
   const from = showFrom ? (
     <div className="shp-inv-party" key="from">
@@ -255,13 +276,14 @@ export function ShopInvoiceParties(props: PartiesProps) {
     </div>
   ) : null
 
+  const billTo = addressedLines(billing, customer.company, leadWithOrg)
   const to = (
     <div className="shp-inv-party" key="to">
       <h2 className="shp-inv-h2" style={font}>{props.toLabel?.trim() || 'Invoice to'}</h2>
       <address>
-        {billing.length > 0
-          ? billing.map((line, i) => <span key={i} className={i === 0 ? 'shp-inv-strong' : undefined}>{line}</span>)
-          : <span className="shp-inv-strong">{customer.name}</span>}
+        {billTo.length > 0
+          ? billTo.map((line, i) => <span key={i} className={i === 0 ? 'shp-inv-strong' : undefined}>{line}</span>)
+          : <span className="shp-inv-strong">{customer.company?.trim() || customer.name}</span>}
         {showEmail && customer.email && <span>{customer.email}</span>}
       </address>
     </div>
@@ -271,7 +293,8 @@ export function ShopInvoiceParties(props: PartiesProps) {
     <div className="shp-inv-party" key="deliver">
       <h2 className="shp-inv-h2" style={font}>{props.deliverLabel?.trim() || 'Delivered to'}</h2>
       <address>
-        {shipping.map((line, i) => <span key={i} className={i === 0 ? 'shp-inv-strong' : undefined}>{line}</span>)}
+        {addressedLines(shipping, customer.company, leadWithOrg)
+          .map((line, i) => <span key={i} className={i === 0 ? 'shp-inv-strong' : undefined}>{line}</span>)}
       </address>
     </div>
   ) : null
@@ -322,6 +345,10 @@ export const shopInvoicePartiesPuckComponent = {
     showDelivery: { type: 'select' as const, label: 'Delivery address, when it differs', options: yesNo },
     deliverLabel: { type: 'text' as const, label: '"Delivered to" heading' },
     showEmail: { type: 'select' as const, label: 'Email addresses', options: yesNo },
+    leadWith: { type: 'select' as const, label: 'Address it to', options: [
+      { value: 'person', label: 'The person, then their organisation' },
+      { value: 'organisation', label: 'The organisation, on the top line' },
+    ] },
     showRegistration: { type: 'select' as const, label: 'VAT and company numbers', options: yesNo },
     headingPt: ptField('Heading size in points'),
     addressPt: ptField('Address size in points'),
@@ -330,7 +357,7 @@ export const shopInvoicePartiesPuckComponent = {
   defaultProps: {
     fontFamily: '', order: 'from-first', columns: 'auto',
     showFrom: 'yes', fromLabel: 'From', toLabel: 'Invoice to',
-    showDelivery: 'yes', deliverLabel: 'Delivered to', showEmail: 'yes', showRegistration: 'yes',
+    showDelivery: 'yes', deliverLabel: 'Delivered to', showEmail: 'yes', leadWith: 'person', showRegistration: 'yes',
   },
   render: ShopInvoiceParties,
 }
