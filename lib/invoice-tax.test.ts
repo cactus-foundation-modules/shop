@@ -160,6 +160,27 @@ describe('buildInvoiceMoney - what goes on a line beyond the money', () => {
     const { lines } = buildInvoiceMoney(order(), [withMeta])
     expect(lines[0]!.detail).toEqual([{ label: 'Delivery', value: 'Next week' }])
   })
+
+  it('keeps the delivery promise for a proforma, which is read before the money moves', () => {
+    // The one document that wants it. A proforma is read by somebody deciding
+    // whether to pay, and the lead time per line is the thing they are weighing
+    // up - so dropping it there would take away the answer to the question the
+    // document exists to be asked.
+    const withMeta = item({
+      lineMeta: {
+        fields: [
+          { label: 'Delivery', value: 'Flat-Pack - 5 working days from when your payment reaches us' },
+          { label: 'Engraving', value: 'For Dad' },
+        ],
+        batch: { id: 'unpaid', sort: 'unpaid', heading: 'Once payment clears', fieldLabel: 'Delivery' },
+      },
+    })
+    const { lines } = buildInvoiceMoney(order(), [withMeta], { keepDeliveryDetail: true })
+    expect(lines[0]!.detail).toEqual([
+      { label: 'Delivery', value: 'Flat-Pack - 5 working days from when your payment reaches us' },
+      { label: 'Engraving', value: 'For Dad' },
+    ])
+  })
 })
 
 // What goes over the bookkeeping seam. The rule that matters is not "does it

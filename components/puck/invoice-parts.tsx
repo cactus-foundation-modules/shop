@@ -474,7 +474,7 @@ type TotalsProps = DocProps & {
 const TOTALS_WIDTHS: Record<string, string> = { narrow: '18rem', normal: '22rem', wide: '28rem' }
 
 export function ShopInvoiceTotals(props: TotalsProps) {
-  const { invoice, credit } = useCtx(props)
+  const { invoice, credit, proforma } = useCtx(props)
   const font = fontStyle(props)
   const symbol = invoice.currencySymbol || '£'
   const inclusive = invoice.taxMode === 'INCLUSIVE'
@@ -538,14 +538,19 @@ export function ShopInvoiceTotals(props: TotalsProps) {
       </dl>
       {props.showPaid !== 'no' && (
         <p className="shp-inv-paid" style={{ ...font, ...sizeVars({ '--shp-inv-paid-size': props.paidPt }) }}>
-          {/* "Paid in full - thank you" on a refund would be quite the insult.
-              The credit note's own wording was snapshotted onto it when it was
-              raised, so a later edit in settings does not rewrite paperwork
-              already sent out - and the block's own override is ignored here,
-              because it was written for the other document. */}
+          {/* "Paid in full - thank you" on a refund would be quite the insult,
+              and on a proforma for money nobody has sent yet it would be a lie
+              the customer could act on. Both documents bring their own wording
+              rather than using the block's override, because that override was
+              written for the invoice; the credit note's was snapshotted onto it
+              when it was raised, and the proforma's is picked at render time
+              from whether the money has actually arrived. */}
           {credit
             ? invoice.wording?.creditWording?.trim() || 'This amount has been refunded to your original payment method.'
-            : props.paidWording?.trim() || 'Paid in full - thank you.'}
+            : proforma
+              ? invoice.wording?.proformaWording?.trim()
+                || (proforma.paid ? 'Payment received - thank you.' : 'Not yet paid.')
+              : props.paidWording?.trim() || 'Paid in full - thank you.'}
         </p>
       )}
     </>

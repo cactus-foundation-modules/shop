@@ -338,6 +338,53 @@ export const ShpConfigSchema = z.object({
   // refund the buyer has no paperwork for is the next support ticket.
   creditNoteEmailCustomer: z.boolean().default(true),
   creditNotePdfFilenamePrefix: z.string().default('credit-note'),
+
+  // -------------------------------------------------------------------------
+  // Proforma invoices
+  // -------------------------------------------------------------------------
+  //
+  // The document a shop hands over when the goods are ordered but nobody has
+  // been paid yet - a bank transfer, cash on collection, or any method a module
+  // contributes with no automated confirmation. A buyer's accounts department
+  // will very often not release a payment without one, which is why an order
+  // placed by transfer and answered with nothing but a thank-you page tends to
+  // sit unpaid.
+  //
+  // It is emphatically NOT a VAT invoice, and it says so on its face. Nothing
+  // is numbered from the invoice sequence, nothing reaches the bookkeeping
+  // sinks and no tax point is claimed: the proforma carries the ORDER's own
+  // number, and the VAT invoice - with its own number and its own date - is
+  // still raised when the shop's invoicing settings say so.
+  //
+  // Nothing is snapshotted either, and that is the point of difference from an
+  // invoice. An invoice is frozen because it is a statutory record of what was
+  // charged on a day. A proforma is a live request for payment against an order
+  // that can still change, so it is rendered from the order every time it is
+  // opened and always shows what is actually owed today.
+  proformaEnabled: z.boolean().default(false),
+  proformaHeading: z.string().default('Proforma invoice'),
+  // The line that keeps this from being mistaken for the real thing. Printed by
+  // the notice panel on the proforma layout, and available to any written block
+  // on it as {{PROFORMA_NOTICE}}.
+  proformaNotice: z.string()
+    .default('This is not a VAT invoice. A VAT invoice will follow once payment has been received.'),
+  // The small print under an UNPAID proforma. The default says the thing a
+  // shopper most needs to know and most often assumes the opposite of: the
+  // clock has not started.
+  proformaTerms: z.string()
+    .default('Nothing is dispatched and no lead time starts until payment has cleared in full. Please quote the order number with your payment.'),
+  // The line under the total, which changes with the money rather than with
+  // settings - hence two of them.
+  proformaUnpaidWording: z.string().default('Not yet paid. Please pay using the details above.'),
+  proformaPaidWording: z.string().default('Payment received - thank you. Your VAT invoice follows separately.'),
+  // Whether the customer gets a link from the thank-you page and their own
+  // order page. On by default: a proforma nobody can reach is a filing exercise.
+  proformaShowToCustomer: z.boolean().default(true),
+  // Whether the PDF travels with the "we have your order, here is how to pay"
+  // email. On by default - that email is the one the buyer forwards to whoever
+  // actually presses the button in their bank.
+  proformaAttachToEmail: z.boolean().default(true),
+  proformaPdfFilenamePrefix: z.string().default('proforma'),
 })
 
 export type ShpConfig = z.infer<typeof ShpConfigSchema>

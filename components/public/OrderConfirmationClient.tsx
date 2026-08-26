@@ -52,6 +52,10 @@ type OrderStatusResponse = {
     phone: string
   }
   instructions: string | null
+  // A signed link to this order's proforma invoice, where the shop raises them
+  // and this is a pay-later order. Optional so a response from an older cached
+  // bundle simply shows no link rather than throwing.
+  proformaUrl?: string | null
   // Whether the method has no automated confirmation (bank transfer, cash), from
   // the provider's own confirmMode. Optional so a response from an older cached
   // bundle still renders - the fallback is the built-in-methods test below.
@@ -557,6 +561,17 @@ export function OrderConfirmationClient() {
             <div>
               <p>Your order is awaiting payment confirmation. We&apos;ll be in touch once it clears.</p>
               {data.instructions && <p className="soc-instructions">{data.instructions}</p>}
+              {/* The document the buyer's accounts department asks for before
+                  they will release the money. A plain <a> - the link is signed
+                  rather than session-bound, so prefetching would put the token
+                  in the browser's speculation cache for no gain, and a file
+                  download is not a route to prefetch at all. */}
+              {data.proformaUrl && (
+                <p className="soc-proforma">
+                  <a href={data.proformaUrl}>Download your proforma invoice</a> - what is owed, how to pay it,
+                  and how long each item takes once payment reaches us.
+                </p>
+              )}
             </div>
           </div>
         )}

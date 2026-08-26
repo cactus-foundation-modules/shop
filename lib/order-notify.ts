@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db/prisma'
 import { isSmsAvailable, sendSmsTemplate } from '@/lib/sms/send'
 import { getMemberChannelPreference } from '@/lib/members/notification-prefs'
 import { sendShopEmail } from '@/modules/shop/lib/email'
+import type { EmailAttachment } from '@/lib/email/index'
 import { SHOP_ORDER_UPDATES_CATEGORY, SHOP_TRIGGER_TO_SMS_KEY } from '@/modules/shop/lib/sms-templates'
 import { parseUkPhone } from '@/modules/shop/lib/phone'
 import type { ShpEmailTemplateTrigger, ShpOrder } from '@/modules/shop/lib/types'
@@ -103,11 +104,16 @@ export async function notifyOrderCustomer(
   trigger: ShpEmailTemplateTrigger,
   order: ShpOrder,
   vars: Record<string, string>,
+  // Files to travel with the email. Email only, obviously - a text message has
+  // nowhere to put a PDF. A customer who asked for texts and not emails gets
+  // neither the email nor its attachment, which is what they asked for; the
+  // document is still on their own order page either way.
+  opts?: { attachments?: EmailAttachment[] },
 ): Promise<void> {
   const channels = await getOrderNotifyChannels(order)
 
   if (channels.email) {
-    await sendShopEmail(trigger, order.customerEmail, vars, { orderId: order.id })
+    await sendShopEmail(trigger, order.customerEmail, vars, { orderId: order.id, attachments: opts?.attachments })
   }
 
   const smsKey = SHOP_TRIGGER_TO_SMS_KEY[trigger]

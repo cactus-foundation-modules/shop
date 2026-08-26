@@ -824,3 +824,169 @@ export function shopInvoiceStarters() {
     },
   ]
 }
+
+// ---------------------------------------------------------------------------
+// Proforma document templates (2) - shopProforma
+// ---------------------------------------------------------------------------
+//
+// The invoice's blocks, on a layout type of their own, saying the things a
+// request for payment says rather than the things a record of one says.
+//
+// A layout type of its own rather than a flag on the invoice, deliberately.
+// These two documents disagree in half a dozen places at once - the heading, the
+// number, whether there is a tax point, what the small print promises, whether
+// lead times appear - and folding both onto one layout would mean every one of
+// those was a condition an owner could not see in the editor. It would also mean
+// editing the proforma risked the document their accountant reads, which is the
+// last thing anybody wants to do by accident.
+//
+// What differs from the invoice starters, and why:
+//
+//  - The notice panel leads with {{PROFORMA_NOTICE}} - "this is not a VAT
+//    invoice". Not decoration: a proforma that reads like an invoice is one a
+//    customer will try to reclaim VAT on.
+//  - No tax point, because there is not one. A proforma claims no tax point at
+//    all - that is very nearly the definition of it.
+//  - The document number leads and there is no separate order row, because the
+//    number IS the order number and printing it twice under two labels would
+//    read as two different references.
+//  - The items show their options AND their delivery line, which on an unpaid
+//    order reads as a lead time counted from the day the money clears. That is
+//    the figure somebody deciding whether to pay is actually weighing up.
+//  - "Not yet paid" under the total, not "Paid in full". The block picks the
+//    real one from the order at render time; what is set here is what the editor
+//    canvas shows, since the canvas has no order to read.
+
+const PROFORMA_LOGO = block('SiteLogo', 'pro-logo', {
+  homeUrl: '/', imageUrl: '', imageUrlDark: '', align: 'left',
+  cellHeight: 56, showTextWithLogo: 'false', showIcon: 'false', textColor: '',
+})
+
+const PROFORMA_HEADER = block('ShopInvoiceHeader', 'pro-head', {
+  heading: 'Proforma invoice', fontFamily: '',
+  numberStyle: 'lead', invoiceLabel: 'Order', showOrderNumber: 'no', orderLabel: 'Order',
+  dateLabel: 'Issued', dueLabel: 'Payment due', showTaxPoint: 'no',
+})
+
+const PROFORMA_NOTICE = block('ShopInvoiceNotice', 'pro-notice', {
+  lead: '{{PROFORMA_NOTICE}}',
+  body: 'Order {{ORDER_NUMBER}}, raised {{INVOICE_DATE}}. Please quote the order number with your payment.',
+  panelStyle: 'panel', hideWhenEmpty: 'yes', fontFamily: '',
+})
+
+const PROFORMA_PARTIES = block('ShopInvoiceParties', 'pro-parties', {
+  fontFamily: '', showFrom: 'yes', fromLabel: 'From', toLabel: 'Proforma to',
+  showDelivery: 'yes', deliverLabel: 'Delivered to', showRegistration: 'yes',
+})
+
+const PROFORMA_LINES = block('ShopInvoiceLines', 'pro-lines', {
+  fontFamily: '', showSku: 'no', showDetail: 'yes', showTaxRate: 'no',
+  itemLabel: 'Description', qtyLabel: 'Qty', priceLabel: 'Unit price', rateLabel: 'Rate', totalLabel: 'Amount',
+})
+
+const PROFORMA_TOTALS = block('ShopInvoiceTotals', 'pro-totals', {
+  fontFamily: '', subtotalLabel: 'Subtotal', discountLabel: 'Discount', deliveryLabel: 'Delivery',
+  taxLabel: '', totalLabel: 'Total due', showPaid: 'yes', paidWording: 'Not yet paid.',
+})
+
+const PROFORMA_TAX = block('ShopInvoiceTaxSummary', 'pro-tax', {
+  fontFamily: '', heading: '', rateLabel: 'Rate', netLabel: 'Net', taxLabel: '', grossLabel: 'Gross',
+  hideWhenSingleZero: 'yes',
+})
+
+const PROFORMA_PAYMENT = block('ShopInvoicePayment', 'pro-pay', {
+  fontFamily: '', showPaymentDetails: 'yes', paymentHeading: 'How to pay',
+  showTerms: 'yes', termsHeading: 'Before we dispatch', showFooter: 'yes', footerAlign: 'center',
+})
+
+const PROFORMA_STANDARD = [
+  PROFORMA_LOGO, PROFORMA_HEADER, PROFORMA_NOTICE, PROFORMA_PARTIES,
+  PROFORMA_LINES, PROFORMA_TOTALS, PROFORMA_TAX, PROFORMA_PAYMENT,
+]
+
+/** What a proforma renders as when no layout of this type is published. Kept in
+ *  step with the standard template below by being the same blocks - which
+ *  matters here more than it does for the invoice, because every shop that
+ *  already has this module will have no `shopProforma` layout at all until
+ *  somebody makes one. */
+export const PROFORMA_FALLBACK_DATA = {
+  content: PROFORMA_STANDARD,
+  root: { props: {} },
+  zones: {},
+}
+
+export function shopProformaStarters() {
+  return [
+    {
+      id: 'starter-shop-proforma-standard',
+      name: 'Standard proforma',
+      description: 'What is owed, how to pay it, how long each item takes once you have - and, in as many words, that it is not a VAT invoice.',
+      publishByDefault: true,
+      data: {
+        content: PROFORMA_STANDARD,
+        root: { props: {} },
+        zones: {},
+      },
+    },
+    {
+      id: 'starter-shop-proforma-designed',
+      name: 'Designed proforma',
+      description: 'The same document, laid out properly: a rule in your own colour, the not-a-VAT-invoice line in a panel of its own, a banded item table and a company footer.',
+      data: {
+        content: [
+          INVOICE_STYLE,
+          block('SiteLogo', 'pro-logo', {
+            homeUrl: '/', imageUrl: '', imageUrlDark: '', align: 'left',
+            cellHeight: 76, showTextWithLogo: 'false', showIcon: 'false', textColor: '',
+          }),
+          block('ShopInvoiceHeader', 'pro-head', {
+            heading: 'Proforma invoice', fontFamily: '', titleSize: 'display', sides: 'logo-left', rule: 'accent',
+            factsLayout: 'stacked', numberStyle: 'lead',
+            invoiceLabel: 'Order', showOrderNumber: 'no', orderLabel: 'Order',
+            dateLabel: 'Issued', dueLabel: 'Payment due', showTaxPoint: 'no',
+          }),
+          block('ShopInvoiceNotice', 'pro-notice', {
+            lead: '{{PROFORMA_NOTICE}}',
+            body: 'Order {{ORDER_NUMBER}}, raised {{INVOICE_DATE}}. Please quote the order number with your payment.',
+            panelStyle: 'panel', hideWhenEmpty: 'yes', fontFamily: '',
+          }),
+          block('ShopInvoiceParties', 'pro-parties', {
+            fontFamily: '', order: 'to-first', columns: '2',
+            showFrom: 'yes', fromLabel: 'From', toLabel: 'Proforma to',
+            showDelivery: 'yes', deliverLabel: 'Delivered to', showEmail: 'yes', showRegistration: 'yes',
+          }),
+          block('ShopInvoiceLines', 'pro-lines', {
+            fontFamily: '', headStyle: 'filled', rowRules: 'every', zebra: 'no',
+            showSku: 'yes', showDetail: 'yes', showTaxRate: 'no',
+            itemLabel: 'Item', qtyLabel: 'Qty', priceLabel: 'Unit ex VAT', rateLabel: 'Rate', totalLabel: 'Total ex VAT',
+          }),
+          block('ShopInvoiceTotals', 'pro-totals', {
+            fontFamily: '', emphasis: 'accent', width: 'normal',
+            subtotalLabel: 'Subtotal ex VAT', discountLabel: 'Discount', deliveryLabel: 'Delivery ex VAT',
+            showDeliveryRow: 'always', zeroDelivery: 'Free',
+            taxLabel: '', showTaxRate: 'yes', totalLabel: 'Total due',
+            showPaid: 'yes', paidWording: 'Not yet paid.',
+          }),
+          block('ShopInvoiceTaxSummary', 'pro-tax', {
+            fontFamily: '', heading: '', headStyle: 'filled', align: 'right',
+            rateLabel: 'Rate', netLabel: 'Net', taxLabel: '', grossLabel: 'Gross',
+            hideWhenSingleZero: 'single',
+          }),
+          block('ShopInvoicePayment', 'pro-pay', {
+            fontFamily: '', columns: '2',
+            showPaymentDetails: 'yes', paymentHeading: 'How to pay', paymentExtra: '',
+            showTerms: 'yes', termsHeading: 'Before we dispatch', termsExtra: '',
+            showFooter: 'no', footerAlign: 'center',
+          }),
+          block('ShopInvoiceFooter', 'pro-footer', {
+            contact: '{{SITE_URL}} · {{BUSINESS_EMAIL}}',
+            smallPrint: '{{BUSINESS_NAME}}, registered in England and Wales, company number {{COMPANY_NUMBER}}. VAT number {{VAT_NUMBER}}.\nRegistered office: {{BUSINESS_ADDRESS}}.',
+            align: 'center', rule: 'yes', fontFamily: '',
+          }),
+        ],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+  ]
+}

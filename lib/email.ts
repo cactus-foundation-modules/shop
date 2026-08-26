@@ -1,4 +1,4 @@
-import { sendEmail } from '@/lib/email/index'
+import { sendEmail, type EmailAttachment } from '@/lib/email/index'
 import { renderEmailTemplate } from '@/lib/email/render'
 import { logOrderEmail } from '@/modules/shop/lib/db/orders'
 import { SHOP_TRIGGER_TO_TEMPLATE_KEY } from '@/modules/shop/lib/email-templates'
@@ -26,14 +26,25 @@ export async function renderShopEmail(trigger: ShpEmailTemplateTrigger, vars: Re
 // Sends a shop email to an arbitrary address. When orderId is given, every
 // customer-facing send is logged to shp_order_emails (spec's order email log /
 // Communications tab).
+//
+// `attachments` are files travelling with the message - the proforma on the "how
+// to pay" email is the first of them. Passed straight through to core, which
+// does the base64 for whichever transport the site is on and drops anything too
+// big to send rather than losing the email with it.
 export async function sendShopEmail(
   trigger: ShpEmailTemplateTrigger,
   to: string,
   vars: Record<string, string>,
-  opts?: { orderId?: string }
+  opts?: { orderId?: string; attachments?: EmailAttachment[] }
 ): Promise<void> {
   const rendered = await renderShopEmail(trigger, vars)
   if (!rendered) return
-  await sendEmail({ to, subject: rendered.subject, html: rendered.html, text: rendered.text })
+  await sendEmail({
+    to,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    ...(opts?.attachments?.length ? { attachments: opts.attachments } : {}),
+  })
   if (opts?.orderId) await logOrderEmail(opts.orderId, rendered.subject, to, trigger)
 }

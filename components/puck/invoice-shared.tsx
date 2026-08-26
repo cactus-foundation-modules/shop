@@ -163,6 +163,10 @@ export function invoiceTokens(ctx: InvoiceDocContext): Record<string, string> {
     INVOICE_NUMBER: invoice.invoiceNumber ?? '',
     CREDIT_NOTE_NUMBER: credit?.creditNoteNumber ?? '',
     CREDIT_REASON: credit?.reason ?? '',
+    // Blank on an invoice, which is the point: an invoice layout that somebody
+    // has pasted {{PROFORMA_NOTICE}} into prints nothing rather than telling a
+    // customer their VAT invoice is not one.
+    PROFORMA_NOTICE: invoice.wording?.proformaNotice ?? '',
     ORDER_NUMBER: invoice.orderNumber ?? '',
     INVOICE_DATE: formatDay(invoice.taxPointDate),
     TAX_POINT: formatDay(invoice.taxPointDate),
@@ -206,4 +210,4 @@ export function fillTokens(text: string, tokens: Record<string, string>): string
 /** The list an owner can reach, printed under the fields that accept them. Puck
  *  has no help-text of its own on a text field, so it rides on the label. */
 export const TOKEN_HINT =
-  'Placeholders: {{INVOICE_NUMBER}} {{ORDER_NUMBER}} {{INVOICE_DATE}} {{TAX_POINT}} {{DUE_DATE}} {{TOTAL}} {{CUSTOMER_NAME}} {{CUSTOMER_COMPANY}} {{BUSINESS_NAME}} {{BUSINESS_EMAIL}} {{BUSINESS_PHONE}} {{BUSINESS_ADDRESS}} {{VAT_NUMBER}} {{COMPANY_NUMBER}} {{SITE_URL}}'
+  'Placeholders: {{INVOICE_NUMBER}} {{ORDER_NUMBER}} {{INVOICE_DATE}} {{TAX_POINT}} {{DUE_DATE}} {{TOTAL}} {{CUSTOMER_NAME}} {{CUSTOMER_COMPANY}} {{BUSINESS_NAME}} {{BUSINESS_EMAIL}} {{BUSINESS_PHONE}} {{BUSINESS_ADDRESS}} {{VAT_NUMBER}} {{COMPANY_NUMBER}} {{SITE_URL}} {{PROFORMA_NOTICE}}'

@@ -626,6 +626,13 @@ export type ShpInvoiceWording = {
    *  on an invoice. Only ever set on a credit note's own snapshot; absent on
    *  every invoice, and on any credit note raised before it existed. */
   creditWording?: string
+  /** The same slot on a proforma, which has two answers rather than one: the
+   *  money has either arrived or it has not, and the document is read in both
+   *  states. Only ever set on a proforma. */
+  proformaWording?: string
+  /** The "this is not a VAT invoice" line, so the written blocks on a proforma
+   *  layout can reach it as {{PROFORMA_NOTICE}}. Only ever set on a proforma. */
+  proformaNotice?: string
 }
 
 /** What one registered bookkeeping sink made of this invoice. */

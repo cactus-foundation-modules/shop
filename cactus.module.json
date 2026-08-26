@@ -1,9 +1,9 @@
 {
   "name": "shop",
-  "version": "0.1.341",
+  "version": "0.1.342",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
-  "requiresCoreVersion": "0.5.1336",
+  "requiresCoreVersion": "0.5.1337",
   "publicBasePath": "shop",
   "publicRootSlug": {
     "page": "./app/root/[slug]/page",
@@ -522,7 +522,8 @@
       "component": "shopInvoiceHeaderPuckComponent",
       "rscComponent": "shopInvoiceHeaderPuckRscComponent",
       "layoutTypes": [
-        "shopInvoice"
+        "shopInvoice",
+        "shopProforma"
       ]
     },
     {
@@ -531,7 +532,8 @@
       "component": "shopInvoicePartiesPuckComponent",
       "rscComponent": "shopInvoicePartiesPuckRscComponent",
       "layoutTypes": [
-        "shopInvoice"
+        "shopInvoice",
+        "shopProforma"
       ]
     },
     {
@@ -540,7 +542,8 @@
       "component": "shopInvoiceLinesPuckComponent",
       "rscComponent": "shopInvoiceLinesPuckRscComponent",
       "layoutTypes": [
-        "shopInvoice"
+        "shopInvoice",
+        "shopProforma"
       ]
     },
     {
@@ -549,7 +552,8 @@
       "component": "shopInvoiceTotalsPuckComponent",
       "rscComponent": "shopInvoiceTotalsPuckRscComponent",
       "layoutTypes": [
-        "shopInvoice"
+        "shopInvoice",
+        "shopProforma"
       ]
     },
     {
@@ -558,7 +562,8 @@
       "component": "shopInvoiceTaxSummaryPuckComponent",
       "rscComponent": "shopInvoiceTaxSummaryPuckRscComponent",
       "layoutTypes": [
-        "shopInvoice"
+        "shopInvoice",
+        "shopProforma"
       ]
     },
     {
@@ -567,7 +572,8 @@
       "component": "shopInvoicePaymentPuckComponent",
       "rscComponent": "shopInvoicePaymentPuckRscComponent",
       "layoutTypes": [
-        "shopInvoice"
+        "shopInvoice",
+        "shopProforma"
       ]
     },
     {
@@ -576,7 +582,8 @@
       "component": "shopInvoiceStylePuckComponent",
       "rscComponent": "shopInvoiceStylePuckRscComponent",
       "layoutTypes": [
-        "shopInvoice"
+        "shopInvoice",
+        "shopProforma"
       ]
     },
     {
@@ -585,7 +592,8 @@
       "component": "shopInvoiceNoticePuckComponent",
       "rscComponent": "shopInvoiceNoticePuckRscComponent",
       "layoutTypes": [
-        "shopInvoice"
+        "shopInvoice",
+        "shopProforma"
       ]
     },
     {
@@ -594,7 +602,8 @@
       "component": "shopInvoiceFooterPuckComponent",
       "rscComponent": "shopInvoiceFooterPuckRscComponent",
       "layoutTypes": [
-        "shopInvoice"
+        "shopInvoice",
+        "shopProforma"
       ]
     },
     {
@@ -603,7 +612,8 @@
       "component": "shopInvoiceDividerPuckComponent",
       "rscComponent": "shopInvoiceDividerPuckRscComponent",
       "layoutTypes": [
-        "shopInvoice"
+        "shopInvoice",
+        "shopProforma"
       ]
     }
   ],
@@ -715,6 +725,12 @@
         "label": "Invoice document",
         "starterImport": "./lib/starterLayouts",
         "starterExport": "shopInvoiceStarters"
+      },
+      {
+        "key": "shopProforma",
+        "label": "Proforma document",
+        "starterImport": "./lib/starterLayouts",
+        "starterExport": "shopProformaStarters"
       }
     ]
   },

@@ -79,3 +79,38 @@ export function invoicePdfPath(invoiceNumber: string): string {
 export function creditNotePdfPath(creditNoteNumber: string): string {
   return `/api/m/shop/public/credit-notes/${encodeURIComponent(creditNoteNumber)}/pdf?t=${signCreditNoteToken(creditNoteNumber)}`
 }
+
+// The proforma, which is keyed on the ORDER number rather than a document
+// number of its own (see lib/proforma.ts for why it has none).
+//
+// That makes the token matter more here than anywhere else in this file, not
+// less. An invoice number is sequential and guessable; an order number is
+// sequential, guessable AND printed on every email the shop sends, so the
+// number is no lock whatsoever. Its own namespace in the HMAC, so a token minted
+// for one document can never open another that happens to share a number - which
+// on a shop numbering orders "INV-000123" would otherwise be every one of them.
+export function signProformaToken(orderNumber: string): string {
+  return createHmac('sha256', getKey()).update(`proforma:${orderNumber}`).digest('base64url')
+}
+
+export function verifyProformaToken(orderNumber: string, token: string | null | undefined): boolean {
+  if (!orderNumber || !token) return false
+  try {
+    const expected = signProformaToken(orderNumber)
+    const a = Buffer.from(token)
+    const b = Buffer.from(expected)
+    if (a.length !== b.length) return false
+    return timingSafeEqual(a, b)
+  } catch {
+    return false
+  }
+}
+
+/** The site-relative address of one order's proforma, token and all. */
+export function proformaPath(orderNumber: string): string {
+  return `/shop/proforma/${encodeURIComponent(orderNumber)}?t=${signProformaToken(orderNumber)}`
+}
+
+export function proformaPdfPath(orderNumber: string): string {
+  return `/api/m/shop/public/proformas/${encodeURIComponent(orderNumber)}/pdf?t=${signProformaToken(orderNumber)}`
+}

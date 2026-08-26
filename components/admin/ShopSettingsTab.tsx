@@ -682,6 +682,15 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
             <input type="checkbox" checked={config.invoicesEnabled} onChange={(e) => set('invoicesEnabled', e.target.checked)} />
             Raise invoices for orders
           </label>
+          {/* Its own switch, and deliberately not nested under the one above: a
+              shop can perfectly well want to send proformas to its bank-transfer
+              customers without invoicing anything. The two share your trading
+              details below, which is why turning either on brings that section
+              out. */}
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.proformaEnabled} onChange={(e) => set('proformaEnabled', e.target.checked)} />
+            Send a proforma invoice on orders nobody has paid yet
+          </label>
 
           {config.invoicesEnabled && (
             <>
@@ -705,9 +714,17 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
                   </span>
                 </div>
               </div>
+            </>
+          )}
 
+          {/* Shared by both documents, so it comes out when either is switched
+              on. A proforma carries the same trading details and the same VAT
+              number as an invoice - it is the same business on the same paper,
+              saying "please pay" rather than "you have paid". */}
+          {(config.invoicesEnabled || config.proformaEnabled) && (
+            <>
               <hr style={hr} />
-              <h3 style={sectionHeading}>Your details, as they appear on the invoice</h3>
+              <h3 style={sectionHeading}>Your details, as they appear on your paperwork</h3>
               {!config.invoiceVatNumber.trim() && (
                 <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
                   No VAT registration number yet. Without one the document is a bill rather than a VAT invoice, and a
@@ -754,9 +771,22 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
                   <span className="field-hint">Days from the invoice date until payment is due. 0 prints no due date, which is right for a shop paid at checkout.</span>
                 </div>
               </div>
+              {/* One switch for every document the shop prints - invoice,
+                  credit note and proforma alike. An owner whose host cannot run
+                  the printer switches it off once and keeps the on-screen
+                  copies. */}
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.invoicePdfEnabled} onChange={(e) => set('invoicePdfEnabled', e.target.checked)} />
+                Offer PDF downloads
+              </label>
 
+            </>
+          )}
+
+          {config.invoicesEnabled && (
+            <>
               <hr style={hr} />
-              <h3 style={sectionHeading}>Wording</h3>
+              <h3 style={sectionHeading}>Invoice wording</h3>
               <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
                 Copied onto each invoice as it is raised, so editing these never rewrites paperwork already sent out.
               </p>
@@ -792,10 +822,6 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
               <label style={checkboxRow}>
                 <input type="checkbox" checked={config.invoiceShowToCustomer} onChange={(e) => set('invoiceShowToCustomer', e.target.checked)} />
                 Show it to the customer on their own order page
-              </label>
-              <label style={checkboxRow}>
-                <input type="checkbox" checked={config.invoicePdfEnabled} onChange={(e) => set('invoicePdfEnabled', e.target.checked)} />
-                Offer a PDF download
               </label>
               <div className="field">
                 <label>PDF filename prefix</label>
@@ -844,6 +870,66 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
                   </div>
                 </>
               )}
+            </>
+          )}
+
+          {config.proformaEnabled && (
+            <>
+              <hr style={hr} />
+              <h3 style={sectionHeading}>Proforma invoices</h3>
+              <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
+                Sent on any order nobody has been paid for yet - bank transfer, cash, and anything else settled by
+                hand. It says what is owed, how to pay it and how long each item takes once the money lands, and it
+                is numbered with the order number rather than an invoice number, because it is not an invoice. Plenty
+                of buyers&rsquo; accounts departments will not release a payment without one. What it looks like is
+                designed under Appearance &gt; Layouts, as the &ldquo;Proforma document&rdquo; layout.
+              </p>
+              <div className="field">
+                <label>Heading</label>
+                <input value={config.proformaHeading} onChange={(e) => set('proformaHeading', e.target.value)} placeholder="Proforma invoice" />
+              </div>
+              <div className="field">
+                <label>The line that says it is not a VAT invoice</label>
+                <textarea rows={2} value={config.proformaNotice} onChange={(e) => set('proformaNotice', e.target.value)} />
+                <span className="field-hint">
+                  Printed in the panel at the top. Worth keeping: a proforma that reads like an invoice is one
+                  somebody will try to reclaim the {config.invoiceTaxLabel || 'VAT'} on.
+                </span>
+              </div>
+              <div className="field">
+                <label>Terms, while it is still unpaid</label>
+                <textarea rows={3} value={config.proformaTerms} onChange={(e) => set('proformaTerms', e.target.value)} />
+                <span className="field-hint">
+                  Once the money arrives the document switches to your invoice terms above.
+                </span>
+              </div>
+              <div style={fieldGrid}>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>Line under the total, unpaid</label>
+                  <input value={config.proformaUnpaidWording} onChange={(e) => set('proformaUnpaidWording', e.target.value)} />
+                </div>
+                <div className="field" style={{ margin: 0 }}>
+                  <label>Line under the total, once paid</label>
+                  <input value={config.proformaPaidWording} onChange={(e) => set('proformaPaidWording', e.target.value)} />
+                </div>
+              </div>
+              <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
+                Where to send the money comes from whatever you have written for that payment method on the
+                Payments tab, so the proforma, the thank-you page and the email all quote the same account details.
+              </p>
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.proformaShowToCustomer} onChange={(e) => set('proformaShowToCustomer', e.target.checked)} />
+                Give the customer a link on the thank-you page and their own order page
+              </label>
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.proformaAttachToEmail} onChange={(e) => set('proformaAttachToEmail', e.target.checked)} />
+                Attach it to the &ldquo;we have your order, here is how to pay&rdquo; email
+              </label>
+              <div className="field">
+                <label>PDF filename prefix</label>
+                <input value={config.proformaPdfFilenamePrefix} onChange={(e) => set('proformaPdfFilenamePrefix', e.target.value)} />
+                <span className="field-hint">Saves as {config.proformaPdfFilenamePrefix || 'proforma'}-{config.orderNumberPrefix || 'ORD-'}000123.pdf.</span>
+              </div>
             </>
           )}
         </div>

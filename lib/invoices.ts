@@ -44,7 +44,7 @@ export type IssueInvoiceResult =
  *  A payment taken at half past midnight in London is that day's sale, and a
  *  UTC slice of the timestamp would file it in the previous quarter on the
  *  first of April. */
-function dateInZone(date: Date, timezone: string): string {
+export function dateInZone(date: Date, timezone: string): string {
   try {
     // en-CA formats as yyyy-mm-dd, which is what a DATE column wants.
     return new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
@@ -53,13 +53,13 @@ function dateInZone(date: Date, timezone: string): string {
   }
 }
 
-function addDays(isoDate: string, days: number): string {
+export function addDays(isoDate: string, days: number): string {
   const date = new Date(`${isoDate}T00:00:00Z`)
   date.setUTCDate(date.getUTCDate() + days)
   return date.toISOString().slice(0, 10)
 }
 
-function splitLines(value: string): string[] {
+export function splitLines(value: string): string[] {
   return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
 }
 
@@ -67,7 +67,7 @@ function splitLines(value: string): string[] {
  *  back to the shop's own, so an owner who has switched invoicing on without
  *  filling the form still gets a document with a name on it - the settings
  *  screen is where the missing VAT number is complained about, not here. */
-async function buildSeller(config: ShpConfig): Promise<ShpInvoiceSeller> {
+export async function buildSeller(config: ShpConfig): Promise<ShpInvoiceSeller> {
   const site = await prisma.siteConfig
     .findUnique({ where: { id: 'singleton' }, select: { siteName: true, logoMediaId: true } })
     .catch(() => null)
@@ -91,7 +91,7 @@ async function buildSeller(config: ShpConfig): Promise<ShpInvoiceSeller> {
 /** Who it is for. The billing address is the invoice address where one was
  *  given; a shop that never asks for one bills to the delivery address, which
  *  is what the order screen already shows. */
-function buildCustomer(order: ShpOrder): ShpInvoiceCustomer {
+export function buildCustomer(order: ShpOrder): ShpInvoiceCustomer {
   const billing = order.billingAddress ?? order.shippingAddress
   return {
     name: order.customerName,

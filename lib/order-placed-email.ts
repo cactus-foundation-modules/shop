@@ -5,8 +5,13 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { sendShopEmail } from '@/modules/shop/lib/email'
 import { getPaymentProvider, resolveProviderLabel } from '@/modules/shop/lib/payments/registry'
+import { manualPaymentInstructions } from '@/modules/shop/lib/payment-instructions'
+import { proformaAvailable } from '@/modules/shop/lib/proforma'
+import { invoicePdfFilename } from '@/modules/shop/lib/invoice-pdf'
+import type { EmailAttachment } from '@/lib/email/index'
 import { formatMoney } from '@/modules/shop/lib/money'
 import type { ShpOrder } from '@/modules/shop/lib/types'
+import type { ShpConfig } from '@/modules/shop/lib/config'
 
 // The email a shopper gets when they finish checking out on a method nobody has
 // been paid on yet - bank transfer, cash, or any other method a module
@@ -19,15 +24,37 @@ import type { ShpOrder } from '@/modules/shop/lib/types'
 // else, and the one thing they needed a week later was the one thing they could
 // not find. See lib/order-fulfillment.ts for the other half of the pair.
 
-// Which setting holds the words that tell a shopper how to hand the money over.
-// Named one by one rather than read off the provider registry's confirmMode -
-// same reasoning as the shopper's own order page: a manual method contributed by
-// a module keeps its instructions in its own settings, and matching on "manual"
-// alone would print the cash wording under somebody else's method.
-const MANUAL_INSTRUCTION_KEYS = {
-  BANK_TRANSFER: 'bankTransferInstructions',
-  CASH: 'cashInstructions',
-} as const
+/**
+ * The proforma as a file to travel with the email, or null where there is not
+ * one to send.
+ *
+ * This email is the whole reason the attachment exists. A business ordering on
+ * bank transfer forwards it to whoever actually presses the button at their
+ * bank, and that person very often will not release the money without a document
+ * to file against it - so a link they have to click, on a page they have to be
+ * shown, is a step too many. The file is the thing.
+ *
+ * Never throws, and a failure is only logged. Printing a PDF runs a headless
+ * browser, which is easily the most likely thing in this email to fall over, and
+ * a customer who ordered something must be told their order was placed whether
+ * or not the paperwork printed. The link on their own order page is still there.
+ */
+async function proformaAttachment(order: ShpOrder, config: ShpConfig): Promise<EmailAttachment | null> {
+  if (!config.proformaAttachToEmail || !config.invoicePdfEnabled) return null
+  if (!proformaAvailable(config, order)) return null
+  try {
+    const { renderProformaPdf } = await import('@/modules/shop/lib/proforma-pdf')
+    const bytes = await renderProformaPdf(order.orderNumber)
+    return {
+      filename: invoicePdfFilename(config.proformaPdfFilenamePrefix, order.orderNumber),
+      content: Buffer.from(bytes),
+      contentType: 'application/pdf',
+    }
+  } catch (error) {
+    console.error('[shop] could not print the proforma for order', order.orderNumber, error)
+    return null
+  }
+}
 
 function formatAddress(address: { line1: string; line2?: string; city: string; postcode: string; country: string }): string {
   return [address.line1, address.line2, address.city, address.postcode, address.country].filter(Boolean).join(', ')
@@ -59,8 +86,7 @@ export async function announceOrderAwaitingPayment(order: ShpOrder): Promise<voi
     // useless as a single run-on line. Escaped here and turned into real breaks,
     // which is why `paymentInstructions` is a rawTag on the template - the
     // interpolator must not escape our own <br> back into view.
-    const instructionKey = MANUAL_INSTRUCTION_KEYS[order.paymentMethod as keyof typeof MANUAL_INSTRUCTION_KEYS]
-    const rawInstructions = instructionKey ? (config[instructionKey] ?? '').trim() : ''
+    const rawInstructions = manualPaymentInstructions(order.paymentMethod, config)
     const paymentInstructions = rawInstructions
       ? escapeHtml(rawInstructions).replace(/\r?\n/g, '<br />')
       : ''
@@ -68,6 +94,8 @@ export async function announceOrderAwaitingPayment(order: ShpOrder): Promise<voi
     const provider = getPaymentProvider(order.paymentMethod)
     const paymentMethod = provider ? await resolveProviderLabel(provider) : order.paymentMethod
     const preOrderItem = items.find((i) => i.isPreOrder)
+
+    const proforma = await proformaAttachment(order, config)
 
     await notifyOrderCustomer('ORDER_PLACED_UNPAID', order, {
       orderNumber: order.orderNumber,
@@ -84,7 +112,7 @@ export async function announceOrderAwaitingPayment(order: ShpOrder): Promise<voi
       preOrderDispatchDate: preOrderItem?.preOrderDispatchDate?.toLocaleDateString('en-GB') ?? '',
       shopName: config.shopTitle || 'Shop',
       shopUrl: `${siteUrl}/shop`,
-    })
+    }, proforma ? { attachments: [proforma] } : undefined)
 
     // And the owner's own copy. On every other method this alert goes out of
     // fulfillPaidOrder when the money lands, seconds after the order; on a

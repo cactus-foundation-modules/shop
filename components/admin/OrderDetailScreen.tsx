@@ -103,12 +103,23 @@ type OrderInvoice = {
   voidedAt: string | null; voidReason: string | null
   viewUrl: string; pdfUrl: string
 }
+// The proforma, which has no row of its own anywhere: it is drawn live from the
+// order every time it is opened (see lib/proforma.ts), so there is nothing to
+// list and nothing to raise - only somewhere to go and read it. Null where the
+// shop has proformas off or this was never a pay-later order.
+type OrderProforma = {
+  orderNumber: string
+  paid: boolean
+  viewUrl: string
+  pdfUrl: string
+}
 type InvoiceState = {
   enabled: boolean
   issueOn: 'MANUAL' | 'PAID' | 'DISPATCHED' | 'COMPLETED'
   pdfEnabled: boolean
   hasBookkeeping: boolean
   invoices: OrderInvoice[]
+  proforma?: OrderProforma | null
 }
 
 // The credit note panel's own payload (GET .../credit-note), kept apart for the
@@ -776,6 +787,30 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
               </dl>
             </div>
           </section>
+
+          {/* The proforma. Its own card rather than a row on the invoice one,
+              because a shop can perfectly well want proformas and not want
+              invoices - the two switches are separate and this card follows its
+              own. Nothing to press: there is no document to raise, only one to
+              read, since it is drawn from the order every time it is opened. */}
+          {invoicing?.proforma && (
+            <section className="sox-card sox-noprint">
+              <div className="sox-card-head"><h2>Proforma</h2></div>
+              <div className="sox-card-body" style={{ display: 'grid', gap: '0.75rem' }}>
+                <p className="sox-sub" style={{ margin: 0 }}>
+                  {invoicing.proforma.paid
+                    ? 'This order has been paid, so the proforma now says so. It stays available for the customer\u2019s own records.'
+                    : 'What is owed, how to pay it, and how long each line takes once payment reaches us. Not a VAT invoice, and it says so on its face.'}
+                </p>
+                <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                  <a className="btn btn-secondary btn-sm" href={invoicing.proforma.viewUrl} target="_blank" rel="noreferrer">View</a>
+                  {invoicing.pdfEnabled && (
+                    <a className="btn btn-secondary btn-sm" href={invoicing.proforma.pdfUrl}>PDF</a>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* Invoicing. The whole card is absent on a shop that has not switched
               it on, which is nearly all of them - see the panel's own comment in

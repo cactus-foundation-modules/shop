@@ -22,7 +22,11 @@ import {
 } from '@/modules/shop/lib/order-display'
 import { getInvoiceForOrder } from '@/modules/shop/lib/db/invoices'
 import { listCreditNotesForOrder } from '@/modules/shop/lib/db/credit-notes'
-import { creditNotePath, creditNotePdfPath, invoicePath, invoicePdfPath } from '@/modules/shop/lib/invoice-token'
+import {
+  creditNotePath, creditNotePdfPath, invoicePath, invoicePdfPath, proformaPath, proformaPdfPath,
+} from '@/modules/shop/lib/invoice-token'
+import { manualPaymentInstructions, paymentOutstanding } from '@/modules/shop/lib/payment-instructions'
+import { proformaAvailable } from '@/modules/shop/lib/proforma'
 import OrderRequestPanel from '@/modules/shop/components/public/OrderRequestPanel'
 import WithdrawRequestButton from '@/modules/shop/components/public/WithdrawRequestButton'
 import BuyAgainButton from '@/modules/shop/components/public/BuyAgainButton'
@@ -45,17 +49,6 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   BANK_TRANSFER: 'Bank transfer',
   CASH: 'Cash',
 }
-
-// The manual methods, and which setting holds the words that tell a shopper how
-// to actually hand the money over. Named one by one rather than read off the
-// provider registry's `confirmMode`, because a manual method contributed by a
-// module keeps its instructions in its own settings, not in either of these two
-// boxes - matching on "manual" alone would have printed the cash wording under
-// somebody else's method.
-const MANUAL_INSTRUCTION_KEYS = {
-  BANK_TRANSFER: 'bankTransferInstructions',
-  CASH: 'cashInstructions',
-} as const
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -148,16 +141,14 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
   const itemsById = new Map(lines.map((line) => [line.item.id, line.item]))
   const decided = requests.filter((request) => request.status !== 'PENDING')
 
-  const instructionsKey = MANUAL_INSTRUCTION_KEYS[order.paymentMethod as keyof typeof MANUAL_INSTRUCTION_KEYS]
-  const paymentInstructions = instructionsKey ? config[instructionsKey].trim() : ''
-  // Outstanding, as against settled or written off. A cancelled or refunded
-  // order asking to be paid would be worse than saying nothing at all, so both
-  // fall out of the warning band even while the payment sits at PENDING - which
-  // is exactly where a cancelled bank transfer stays, since nobody ever paid it.
-  const paymentOutstanding =
-    (order.paymentStatus === 'PENDING' || order.paymentStatus === 'AWAITING_CONFIRMATION') &&
-    order.status !== 'CANCELLED' &&
-    order.status !== 'REFUNDED'
+  const paymentInstructions = manualPaymentInstructions(order.paymentMethod, config)
+  const outstanding = paymentOutstanding(order)
+  // The proforma, on a pay-later order, for as long as the order exists. Kept
+  // after the money has arrived on purpose: a buyer who paid by transfer last
+  // spring still has this document in their own filing, and taking the link away
+  // the moment it cleared would take their paperwork off them. The document
+  // restates itself as paid rather than disappearing.
+  const proforma = config.proformaShowToCustomer && proformaAvailable(config, order)
 
   return (
     <MemberAccountShell member={member} maxWidth={880}>
@@ -206,6 +197,17 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
               </a>
             </>
           )}
+          {proforma && (
+            <>
+              {' · '}
+              <a
+                href={pdfDownloads ? proformaPdfPath(order.orderNumber) : proformaPath(order.orderNumber)}
+                style={{ color: 'var(--color-primary)' }}
+              >
+                Proforma invoice
+              </a>
+            </>
+          )}
           {invoicePromise && (
             <>
               {' · '}
@@ -229,7 +231,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
       </div>
 
       <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
-        {paymentInstructions && paymentOutstanding && (
+        {paymentInstructions && outstanding && (
           <PaymentInstructions instructions={paymentInstructions} amount={formatMoney(order.total, symbol)} />
         )}
 

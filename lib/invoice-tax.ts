@@ -48,11 +48,21 @@ export function formatRatePercent(rate: number): string {
  *  something will turn up: it belongs on a confirmation email, where it is still
  *  a live question. An invoice is a record of what was charged, it is read
  *  months later by an accountant, and "by Wednesday 2nd of September" is by then
- *  either history or wrong. */
-function lineDetail(item: ShpOrderItem): { label: string; value: string }[] {
+ *  either history or wrong.
+ *
+ *  `keepDelivery` puts it back, and exactly one document asks for it: the
+ *  proforma. That document is read BEFORE the money moves, by somebody deciding
+ *  whether to move it, and the lead time per line is the thing they are weighing
+ *  up - which is also why it is safe to print there and nowhere else. The
+ *  wording is already correct for an unpaid order without anything here knowing
+ *  it: whichever module owns delivery restates its own field as a lead time the
+ *  moment an order is placed unpaid (see lib/order-payment-state.ts), so the
+ *  line says "5 working days from when your payment reaches us" rather than a
+ *  date it cannot honour. */
+function lineDetail(item: ShpOrderItem, keepDelivery = false): { label: string; value: string }[] {
   const fields = item.lineMeta?.fields
   if (!Array.isArray(fields)) return []
-  const deliveryLabel = item.lineMeta?.batch?.fieldLabel?.trim().toLowerCase() ?? ''
+  const deliveryLabel = keepDelivery ? '' : (item.lineMeta?.batch?.fieldLabel?.trim().toLowerCase() ?? '')
   return fields
     .filter((field) => field && typeof field.label === 'string' && typeof field.value === 'string')
     .filter((field) => !deliveryLabel || field.label.trim().toLowerCase() !== deliveryLabel)
@@ -72,7 +82,11 @@ export type InvoiceMoney = {
  * - so the per-rate rows are reconciled against it rather than recomputed from
  * scratch and hoped over.
  */
-export function buildInvoiceMoney(order: ShpOrder, items: ShpOrderItem[]): InvoiceMoney {
+export function buildInvoiceMoney(
+  order: ShpOrder,
+  items: ShpOrderItem[],
+  opts?: { keepDeliveryDetail?: boolean },
+): InvoiceMoney {
   const inclusive = order.taxMode === 'INCLUSIVE'
   const subtotal = Number(order.subtotal)
   const discountAmount = Number(order.discountAmount)
@@ -122,7 +136,7 @@ export function buildInvoiceMoney(order: ShpOrder, items: ShpOrderItem[]): Invoi
       net: money(net),
       tax: money(tax),
       gross: money(gross),
-      detail: lineDetail(item),
+      detail: lineDetail(item, opts?.keepDeliveryDetail),
       // Which order line this is, so a credit note can find it again without
       // matching on a product name that may since have been edited.
       orderItemId: item.id,

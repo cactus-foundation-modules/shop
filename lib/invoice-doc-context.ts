@@ -25,6 +25,26 @@ export type InvoiceDocContext = {
    *  Everything else - the figures, which are positive magnitudes on both - is
    *  identical, which is why the money blocks need no branch at all. */
   credit?: CreditDocMeta
+  /** Set when the document being drawn is a proforma rather than an invoice.
+   *
+   *  Same trick as `credit` above, and for the same reason: a proforma is the
+   *  invoice's blocks on a layout type of its own, so an owner who has designed
+   *  one document has very nearly designed the other. What differs is whether
+   *  the money has arrived - the one thing the blocks cannot work out from an
+   *  invoice-shaped object, and the thing the line under the total has to say.
+   *
+   *  Note what is NOT here: a document number. A proforma carries the ORDER's
+   *  own number, which is already on the object twice over, so no invoice number
+   *  is burned and no gap appears in the invoice sequence for a document that is
+   *  not one. */
+  proforma?: ProformaDocMeta
+}
+
+/** The little a proforma needs beyond an invoice's own fields. */
+export type ProformaDocMeta = {
+  /** Whether the money has arrived. Decides the line under the total, and
+   *  nothing else - the figures are the same either way. */
+  paid: boolean
 }
 
 /** The little a credit note needs beyond an invoice's own fields. */

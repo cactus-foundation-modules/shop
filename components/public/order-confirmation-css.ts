@@ -62,6 +62,10 @@ export const ORDER_CONFIRMATION_CSS = `
    cannot pick the tint out. */
 .soc-note a{color:inherit;text-decoration:underline}
 .soc-instructions{white-space:pre-wrap}
+/* Set apart from the bank details above it: those are something to copy out,
+   this is something to click, and the two run together otherwise. */
+.soc-proforma{margin-top:0.625rem}
+.soc-proforma a{font-weight:600}
 
 /* --- Receipt card ------------------------------------------------------ */
 .soc-card{border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface);overflow:hidden}

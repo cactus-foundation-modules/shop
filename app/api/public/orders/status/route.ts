@@ -7,6 +7,9 @@ import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 import { verifyOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
 import { getOrderNotifyChannels } from '@/modules/shop/lib/order-notify'
+import { manualPaymentInstructions, paymentOutstanding } from '@/modules/shop/lib/payment-instructions'
+import { proformaAvailable } from '@/modules/shop/lib/proforma'
+import { proformaPath, proformaPdfPath } from '@/modules/shop/lib/invoice-token'
 import { isSmsAvailable } from '@/lib/sms/send'
 import { getMembersConfig, type MembersConfig } from '@/lib/members/config'
 import { getMemberAreaPath } from '@/lib/members/paths'
@@ -76,14 +79,17 @@ export async function GET(request: NextRequest) {
   // money as arrived the instructions have no job left, and the owner's bank
   // details should stop travelling to anyone holding an order number and an
   // email address for the rest of time.
-  const paymentOutstanding =
-    (order.paymentStatus === 'PENDING' || order.paymentStatus === 'AWAITING_CONFIRMATION') &&
-    order.status !== 'CANCELLED' &&
-    order.status !== 'REFUNDED'
-  let instructions: string | null = null
-  if (paymentOutstanding && (order.paymentMethod === 'BANK_TRANSFER' || order.paymentMethod === 'CASH')) {
-    instructions = order.paymentMethod === 'BANK_TRANSFER' ? config.bankTransferInstructions : config.cashInstructions
-  }
+  const outstanding = paymentOutstanding(order)
+  const instructions = outstanding ? (manualPaymentInstructions(order.paymentMethod, config) || null) : null
+
+  // The proforma, where the shop raises them and this is a pay-later order. The
+  // link is signed rather than session-bound, because the person who needs it is
+  // very often not the person who placed the order - it goes to whoever in the
+  // buyer's accounts department actually presses the button at the bank, and
+  // they have no login here and never will.
+  const proformaUrl = config.proformaShowToCustomer && proformaAvailable(config, order)
+    ? (config.invoicePdfEnabled ? proformaPdfPath(order.orderNumber) : proformaPath(order.orderNumber))
+    : null
 
   // Whether this method has no automated confirmation at all. It decides what
   // "awaiting confirmation" is telling the shopper, and the two readings are
@@ -196,6 +202,7 @@ export async function GET(request: NextRequest) {
     })),
     instructions,
     manualPayment,
+    proformaUrl,
     accountPrompt,
     notifications: {
       smsAvailable,

@@ -5,7 +5,9 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { listInvoicesForOrder } from '@/modules/shop/lib/db/invoices'
 import { issueInvoiceForOrder, resendInvoiceToSinks, voidInvoiceAndTellSinks } from '@/modules/shop/lib/invoices'
 import { hasInvoiceSinks } from '@/modules/shop/lib/invoice-sinks'
-import { signInvoiceToken } from '@/modules/shop/lib/invoice-token'
+import { proformaPath, proformaPdfPath, signInvoiceToken } from '@/modules/shop/lib/invoice-token'
+import { getOrderById } from '@/modules/shop/lib/db/orders'
+import { proformaAvailable } from '@/modules/shop/lib/proforma'
 import type { ShpInvoice } from '@/modules/shop/lib/types'
 
 // The order screen's invoice panel: what this order has been invoiced, and the
@@ -47,11 +49,30 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   if (gate.error) return gate.error
 
   const { id } = await params
-  const [invoices, config, sinks] = await Promise.all([
+  const [invoices, config, sinks, order] = await Promise.all([
     listInvoicesForOrder(id),
     getShopConfigCached(),
     hasInvoiceSinks(),
+    getOrderById(id),
   ])
+
+  // The proforma rides on this route rather than one of its own: it is the same
+  // question ("what paperwork does this order have?"), asked once, and a second
+  // fetch on every order screen to answer half of it would be a poor trade. Null
+  // where there is none - the shop has them off, or this was never a pay-later
+  // order - so the screen shows no card at all rather than an empty one.
+  //
+  // Its links are signed here for the same reason the invoice's are: the key
+  // never leaves the server, and staff routinely forward one of these to a
+  // customer's accounts department, who have no login and never will.
+  const proforma = order && proformaAvailable(config, order)
+    ? {
+        orderNumber: order.orderNumber,
+        paid: order.paymentStatus === 'PAID',
+        viewUrl: proformaPath(order.orderNumber),
+        pdfUrl: proformaPdfPath(order.orderNumber),
+      }
+    : null
 
   return NextResponse.json({
     enabled: config.invoicesEnabled,
@@ -61,6 +82,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // can offer "send to the books again" only where there are books to send to.
     hasBookkeeping: sinks,
     invoices: invoices.map(present),
+    proforma,
   })
 }
 
