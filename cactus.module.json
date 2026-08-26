@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.336",
+  "version": "0.1.337",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1288",
@@ -566,6 +566,42 @@
       "import": "./components/puck/invoice-parts",
       "component": "shopInvoicePaymentPuckComponent",
       "rscComponent": "shopInvoicePaymentPuckRscComponent",
+      "layoutTypes": [
+        "shopInvoice"
+      ]
+    },
+    {
+      "type": "ShopInvoiceStyle",
+      "import": "./components/puck/invoice-chrome",
+      "component": "shopInvoiceStylePuckComponent",
+      "rscComponent": "shopInvoiceStylePuckRscComponent",
+      "layoutTypes": [
+        "shopInvoice"
+      ]
+    },
+    {
+      "type": "ShopInvoiceNotice",
+      "import": "./components/puck/invoice-chrome",
+      "component": "shopInvoiceNoticePuckComponent",
+      "rscComponent": "shopInvoiceNoticePuckRscComponent",
+      "layoutTypes": [
+        "shopInvoice"
+      ]
+    },
+    {
+      "type": "ShopInvoiceFooter",
+      "import": "./components/puck/invoice-chrome",
+      "component": "shopInvoiceFooterPuckComponent",
+      "rscComponent": "shopInvoiceFooterPuckRscComponent",
+      "layoutTypes": [
+        "shopInvoice"
+      ]
+    },
+    {
+      "type": "ShopInvoiceDivider",
+      "import": "./components/puck/invoice-chrome",
+      "component": "shopInvoiceDividerPuckComponent",
+      "rscComponent": "shopInvoiceDividerPuckRscComponent",
       "layoutTypes": [
         "shopInvoice"
       ]

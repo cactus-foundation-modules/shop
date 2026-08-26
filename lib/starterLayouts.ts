@@ -657,6 +657,79 @@ const INVOICE_PAYMENT = block('ShopInvoicePayment', 'inv-pay', {
   showTerms: 'yes', termsHeading: 'Terms', showFooter: 'yes', footerAlign: 'center',
 })
 
+// The designed invoice: an accent rule under the heading, a notice panel before
+// the figures, a banded item table, the total set large above an accent rule,
+// payment and terms side by side and a proper company footer.
+//
+// Its colours are site tokens, not values - `var(--color-primary)` for the
+// accent and `var(--color-bg-subtle)` for the bands. So the template is the
+// SHAPE of a designed invoice, drawn in whatever colours the site already uses,
+// and an owner who wants their own accent changes one field on the style block
+// rather than six blocks' worth of them.
+
+const INVOICE_STYLE = block('ShopInvoiceStyle', 'inv-style', {
+  accent: 'var(--color-primary)',
+  labelColour: 'var(--color-primary)',
+  titleColour: '',
+  tableHeadBg: 'var(--color-bg-subtle)', tableHeadInk: '',
+  panelBg: 'var(--color-bg-subtle)', panelInk: '', zebraBg: '',
+  ruleWeight: 'thick', corners: 'square', density: 'normal',
+  bodyFont: '', headingFont: '',
+})
+
+const INVOICE_DESIGNED = [
+  INVOICE_STYLE,
+  block('ShopInvoiceHeader', 'inv-head', {
+    heading: '', fontFamily: '', titleSize: 'display', sides: 'logo-left', rule: 'accent',
+    showLogo: 'yes', logoSize: 'large', showName: 'auto',
+    factsLayout: 'stacked', numberStyle: 'lead',
+    invoiceLabel: 'Invoice', showOrderNumber: 'no', orderLabel: 'Order',
+    dateLabel: 'Issued', dueLabel: 'Due',
+    showTaxPoint: 'yes', taxPointLabel: 'Tax point',
+  }),
+  block('ShopInvoiceParties', 'inv-parties', {
+    fontFamily: '', order: 'to-first', columns: '2',
+    showFrom: 'yes', fromLabel: 'From', toLabel: 'Invoice to',
+    showDelivery: 'yes', deliverLabel: 'Delivered to', showEmail: 'yes', showRegistration: 'no',
+  }),
+  block('ShopInvoiceNotice', 'inv-notice', {
+    lead: 'Payment is due by {{DUE_DATE}}.',
+    body: 'Order {{ORDER_NUMBER}}, invoiced {{INVOICE_DATE}}. Please quote the invoice number on any payment or query.',
+    panelStyle: 'panel', hideWhenEmpty: 'yes', fontFamily: '',
+  }),
+  block('ShopInvoiceLines', 'inv-lines', {
+    fontFamily: '', headStyle: 'filled', rowRules: 'every', zebra: 'no',
+    showSku: 'yes', showDetail: 'yes', showTaxRate: 'no',
+    itemLabel: 'Item', qtyLabel: 'Qty', priceLabel: 'Unit ex VAT', rateLabel: 'Rate', totalLabel: 'Total ex VAT',
+  }),
+  block('ShopInvoiceTotals', 'inv-totals', {
+    fontFamily: '', emphasis: 'accent', width: 'normal',
+    subtotalLabel: 'Subtotal ex VAT', discountLabel: 'Discount', deliveryLabel: 'Delivery ex VAT',
+    showDeliveryRow: 'always', zeroDelivery: 'Free',
+    taxLabel: '', showTaxRate: 'yes', totalLabel: 'Total',
+    showPaid: 'no', paidWording: 'Paid in full - thank you.',
+  }),
+  // Left in and set to appear only where it earns its place. A shop selling at
+  // one rate has said everything in the totals row above; a shop selling at two
+  // gets the table back without anybody remembering to switch it on.
+  block('ShopInvoiceTaxSummary', 'inv-tax', {
+    fontFamily: '', heading: '', headStyle: 'filled', align: 'right',
+    rateLabel: 'Rate', netLabel: 'Net', taxLabel: '', grossLabel: 'Gross',
+    hideWhenSingleZero: 'single',
+  }),
+  block('ShopInvoicePayment', 'inv-pay', {
+    fontFamily: '', columns: '2',
+    showPaymentDetails: 'yes', paymentHeading: 'How to pay', paymentExtra: '',
+    showTerms: 'yes', termsHeading: 'Terms', termsExtra: '',
+    showFooter: 'no', footerAlign: 'center',
+  }),
+  block('ShopInvoiceFooter', 'inv-footer', {
+    contact: '{{SITE_URL}} · {{BUSINESS_EMAIL}}',
+    smallPrint: '{{BUSINESS_NAME}}, registered in England and Wales, company number {{COMPANY_NUMBER}}. VAT number {{VAT_NUMBER}}.\nRegistered office: {{BUSINESS_ADDRESS}}.',
+    align: 'center', rule: 'yes', fontFamily: '',
+  }),
+]
+
 /** What an invoice renders as when no layout of this type is published. Kept in
  *  step with the standard template below by being the same blocks. */
 export const INVOICE_FALLBACK_DATA = {
@@ -674,6 +747,16 @@ export function shopInvoiceStarters() {
       publishByDefault: true,
       data: {
         content: [INVOICE_HEADER, INVOICE_PARTIES, INVOICE_LINES, INVOICE_TOTALS, INVOICE_TAX, INVOICE_PAYMENT],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+    {
+      id: 'starter-shop-invoice-designed',
+      name: 'Designed invoice',
+      description: 'The same invoice, laid out properly: a rule in your own colour under the heading, the payment terms in a panel of their own, a banded item table and a company footer.',
+      data: {
+        content: INVOICE_DESIGNED,
         root: { props: {} },
         zones: {},
       },

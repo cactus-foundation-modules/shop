@@ -11,13 +11,42 @@
 // document inherits the site's fonts wherever it is rendered. A block whose own
 // Font field is set overrides these inline, which is why they are plain class
 // rules and not !important.
+//
+// ---------------------------------------------------------------------------
+// The `--shp-inv-*` custom properties
+// ---------------------------------------------------------------------------
+//
+// Every rule below that an owner can influence reads a `--shp-inv-*` property
+// with a fallback, and every one of those fallbacks is exactly what the document
+// looked like before the Document style block existed. So a layout that carries
+// no style block is byte-identical to the old one, and one that does gets its
+// accent colour, its table fill and its spacing from a single place rather than
+// from the same field repeated on six blocks.
+//
+// The style block sets them on the part classes themselves (see DOC_SCOPE in
+// invoice-chrome.tsx) rather than on :root, so nothing escapes the document -
+// which matters in the Puck editor, where the canvas shares a document with the
+// admin UI.
 export const INVOICE_DOC_CSS = `
 .shp-inv-head, .shp-inv-intro, .shp-inv-parties, .shp-inv-lines, .shp-inv-totals,
-.shp-inv-vat, .shp-inv-pay, .shp-inv-foot { font-family: var(--font-body, var(--font-sans, inherit)); }
-.shp-inv-h1 { font-family: var(--h1-family, var(--font-heading, var(--font-body, inherit))); font-weight: var(--h1-weight, 700); letter-spacing: var(--h1-letter-spacing, normal); text-transform: var(--h1-transform, none); }
-.shp-inv-h2 { font-family: var(--h2-family, var(--font-heading, var(--font-body, inherit))); font-weight: var(--h2-weight, 700); letter-spacing: var(--h2-letter-spacing, normal); text-transform: var(--h2-transform, none); }
+.shp-inv-vat, .shp-inv-pay, .shp-inv-foot, .shp-inv-notice, .shp-inv-footer,
+.shp-inv-rule, .shp-inv-lead { font-family: var(--shp-inv-body-font, var(--font-body, var(--font-sans, inherit))); }
+.shp-inv-h1 { font-family: var(--shp-inv-head-font, var(--h1-family, var(--font-heading, var(--font-body, inherit)))); font-weight: var(--h1-weight, 700); letter-spacing: var(--h1-letter-spacing, normal); text-transform: var(--h1-transform, none); }
+.shp-inv-h2 { font-family: var(--shp-inv-head-font, var(--h2-family, var(--font-heading, var(--font-body, inherit)))); font-weight: var(--h2-weight, 700); letter-spacing: var(--h2-letter-spacing, normal); text-transform: var(--h2-transform, none); }
 
 .shp-inv-head { display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: space-between; align-items: flex-start; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border); }
+/* The rule under the heading, as three looks rather than three fields. A hairline
+   is what it has always been; the accent is the document's own colour at the
+   document's own weight; flat drops it for a heading that leads straight into a
+   notice panel. */
+.shp-inv-head.shp-inv-head-accent { padding-bottom: 1.25rem; border-bottom: var(--shp-inv-rule-w, 3px) solid var(--shp-inv-accent, var(--color-border)); }
+.shp-inv-head.shp-inv-head-flat { padding-bottom: 0.5rem; border-bottom: 0; }
+/* Brand and meta sit in source order by default. 'Title on the left' flips them
+   without touching the markup, so the RSC path and the editor cannot disagree. */
+.shp-inv-head.shp-inv-swap { flex-direction: row-reverse; }
+.shp-inv-head.shp-inv-swap .shp-inv-meta { text-align: left; margin-left: 0; margin-right: auto; }
+.shp-inv-head.shp-inv-swap .shp-inv-facts { justify-content: start; }
+.shp-inv-head.shp-inv-swap .shp-inv-brand { margin-left: auto; }
 .shp-inv-brand { display: flex; align-items: center; gap: 0.75rem; }
 /* The height here is definite on purpose. An SVG logo carries a viewBox and no
    width or height of its own, and a picture with no size of its own sizes to
@@ -26,25 +55,67 @@ export const INVOICE_DOC_CSS = `
    letting the width follow is what the site header does too. object-fit keeps
    the shape of anything wider than the box. */
 .shp-inv-logo { height: 56px; width: auto; max-width: 220px; object-fit: contain; object-position: left center; }
+.shp-inv-logo-sm { height: 36px; max-width: 160px; }
+.shp-inv-logo-lg { height: 76px; max-width: 300px; }
+.shp-inv-logo-xl { height: 96px; max-width: 380px; }
 .shp-inv-site { font-weight: 600; font-size: 1.0625rem; color: var(--color-text); }
 .shp-inv-meta { text-align: right; margin-left: auto; }
-.shp-inv-h1 { font-size: 1.5rem; margin: 0 0 0.5rem; color: var(--color-text); }
-.shp-inv-h2 { font-size: 0.8125rem; margin: 0 0 0.375rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.shp-inv-h1 { font-size: 1.5rem; line-height: 1.1; margin: 0 0 0.5rem; color: var(--shp-inv-title-ink, var(--color-text)); }
+.shp-inv-h1.shp-inv-title-sm { font-size: 1.25rem; }
+.shp-inv-h1.shp-inv-title-lg { font-size: 2rem; }
+.shp-inv-h1.shp-inv-title-xl { font-size: 2.75rem; }
+.shp-inv-h2 { font-size: 0.8125rem; margin: 0 0 0.375rem; color: var(--shp-inv-label, var(--color-text-muted)); text-transform: uppercase; letter-spacing: 0.04em; }
 .shp-inv-facts { display: grid; grid-template-columns: auto auto; gap: 0.125rem 0.75rem; margin: 0; font-size: 0.875rem; justify-content: end; }
 .shp-inv-facts dt { color: var(--color-text-muted); }
 .shp-inv-facts dd { margin: 0; color: var(--color-text); font-variant-numeric: tabular-nums; }
+/* Stacked facts read "Issued 6 April 2026" on one line instead of ruling the
+   labels and the values into two columns. Same <dl>, same source order: the
+   grid collapses to one column and each pair is laid inline. */
+.shp-inv-facts.shp-inv-facts-stack { display: block; text-align: right; line-height: 1.5; }
+.shp-inv-facts.shp-inv-facts-stack dt { display: inline; }
+.shp-inv-facts.shp-inv-facts-stack dd { display: inline; }
+/* The space between a label and its value, and the break after the pair. A text
+   node between <dt> and <dd> is not something a <dl> may hold, so the gap is
+   drawn rather than typed - white-space: pre stops it collapsing to nothing. */
+.shp-inv-facts.shp-inv-facts-stack dt::after { content: ' '; white-space: pre; }
+.shp-inv-facts.shp-inv-facts-stack dd::after { content: ''; display: block; }
+/* The number the document is filed under, printed above the dates at its own
+   weight and with no label - an invoice number needs no introduction, and the
+   dates under it are supporting detail. Its own element rather than a row of the
+   list, because a <dd> with nothing before it is not a description list. */
+.shp-inv-lead { margin: 0 0 0.375rem; font-weight: 700; font-size: var(--shp-inv-lead-size, 1rem); color: var(--shp-inv-title-ink, var(--color-text)); font-variant-numeric: tabular-nums; }
 .shp-inv-void { display: inline-block; margin-top: 0.5rem; padding: 0.125rem 0.5rem; border: 1px solid var(--color-error, var(--color-border)); border-radius: var(--radius-sm, 4px); color: var(--color-error, var(--color-text)); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; }
 .shp-inv-intro { margin: 1rem 0 0; color: var(--color-text); }
 
-.shp-inv-parties { margin: 1.5rem 0 0; display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.shp-inv-parties { margin: var(--shp-inv-gap, 1.5rem) 0 0; display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+/* A definite column count, for a document whose two addresses should sit at the
+   same two places on every invoice rather than reflowing with their length. */
+.shp-inv-parties.shp-inv-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.shp-inv-parties.shp-inv-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .shp-inv-party address { font-style: normal; display: grid; gap: 0.125rem; color: var(--color-text); font-size: 0.9375rem; }
 .shp-inv-party .shp-inv-strong { font-weight: 600; }
 .shp-inv-reg { margin: 0.5rem 0 0; display: grid; gap: 0.125rem; font-size: 0.8125rem; color: var(--color-text-muted); }
 
-.shp-inv-lines { width: 100%; border-collapse: collapse; margin: 1.5rem 0 0; font-size: 0.9375rem; }
-.shp-inv-lines th { text-align: left; padding: 0.5rem 0.5rem 0.5rem 0; border-bottom: 1px solid var(--color-border); color: var(--color-text-muted); font-weight: 600; font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.02em; }
-.shp-inv-lines td { padding: 0.625rem 0.5rem 0.625rem 0; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); vertical-align: top; color: var(--color-text); }
+.shp-inv-lines { width: 100%; border-collapse: collapse; margin: var(--shp-inv-gap, 1.5rem) 0 0; font-size: 0.9375rem; }
+.shp-inv-lines th { text-align: left; padding: 0.5rem 0.5rem 0.5rem 0; border-bottom: 1px solid var(--color-border); color: var(--shp-inv-thead-ink, var(--color-text-muted)); font-weight: 600; font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.02em; }
+.shp-inv-lines td { padding: var(--shp-inv-row-y, 0.625rem) 0.5rem var(--shp-inv-row-y, 0.625rem) 0; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); vertical-align: top; color: var(--color-text); }
 .shp-inv-lines th:last-child, .shp-inv-lines td:last-child { padding-right: 0; }
+/* A banded head. The fill needs padding inside the cells to sit in, which the
+   ruled head does not, so the whole treatment is one class rather than a colour
+   swapped underneath. print-color-adjust keeps it in the PDF: a browser drops
+   backgrounds when it prints unless told the fill is the point. */
+.shp-inv-lines.shp-inv-thead-fill th { background: var(--shp-inv-thead-bg, var(--color-bg-subtle)); padding: 0.625rem 0.75rem; border-bottom: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.shp-inv-lines.shp-inv-thead-fill th:first-child { padding-left: 0.75rem; border-radius: var(--shp-inv-radius, 0) 0 0 var(--shp-inv-radius, 0); }
+.shp-inv-lines.shp-inv-thead-fill th:last-child { padding-right: 0.75rem; border-radius: 0 var(--shp-inv-radius, 0) var(--shp-inv-radius, 0) 0; }
+.shp-inv-lines.shp-inv-thead-fill td:first-child { padding-left: 0.75rem; }
+.shp-inv-lines.shp-inv-thead-fill td:last-child { padding-right: 0.75rem; }
+/* Banding every other row, for a long list somebody has to read across. */
+.shp-inv-lines.shp-inv-zebra tbody tr:nth-child(even) td { background: var(--shp-inv-zebra-bg, var(--color-bg-subtle)); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+/* Rules dropped from between the rows, keeping only the one that closes the
+   table. Suits a short invoice with a banded head, where a rule under every
+   line is one line too many. */
+.shp-inv-lines.shp-inv-rows-none td { border-bottom: 0; }
+.shp-inv-lines.shp-inv-rows-none tbody tr:last-child td { border-bottom: 1px solid var(--color-border); }
 .shp-inv-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .shp-inv-name { display: block; font-weight: 500; }
 .shp-inv-sku { display: block; font-size: 0.8125rem; color: var(--color-text-muted); }
@@ -57,42 +128,113 @@ export const INVOICE_DOC_CSS = `
 .shp-inv-totals dd { margin: 0; text-align: right; color: var(--color-text); font-variant-numeric: tabular-nums; }
 .shp-inv-row { display: contents; }
 .shp-inv-grand { font-weight: 700; font-size: 1.0625rem; color: var(--color-text); padding-top: 0.375rem; border-top: 1px solid var(--color-border); }
+/* The total given the weight of a total: a rule in the document's accent above
+   it, and the heading face at a size that ends the page.
+   The rule is drawn on the label and on the figure, so the column gap would
+   otherwise break it in two with a notch in the middle. The gap moves into the
+   figure's own padding instead: same spacing, one continuous rule. */
+.shp-inv-totals.shp-inv-total-accent { column-gap: 0; }
+.shp-inv-totals.shp-inv-total-accent dd { padding-left: 1.5rem; }
+.shp-inv-totals.shp-inv-total-accent .shp-inv-grand { font-family: var(--shp-inv-head-font, var(--h1-family, var(--font-heading, var(--font-body, inherit)))); font-size: var(--shp-inv-grand-size, 1.5rem); padding-top: 0.75rem; margin-top: 0.375rem; border-top: var(--shp-inv-rule-w, 2px) solid var(--shp-inv-accent, var(--color-border)); color: var(--shp-inv-title-ink, var(--color-text)); }
 .shp-inv-paid { margin: 0.625rem 0 0; text-align: right; font-size: 0.8125rem; color: var(--color-text-muted); }
 
-.shp-inv-vat { margin: 1.5rem 0 0; }
+.shp-inv-vat { margin: var(--shp-inv-gap, 1.5rem) 0 0; }
 .shp-inv-vat table { width: 100%; border-collapse: collapse; font-size: 0.875rem; max-width: 30rem; margin-left: auto; }
-.shp-inv-vat th { text-align: right; padding: 0.375rem 0.5rem 0.375rem 0; border-bottom: 1px solid var(--color-border); color: var(--color-text-muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.02em; }
+.shp-inv-vat th { text-align: right; padding: 0.375rem 0.5rem 0.375rem 0; border-bottom: 1px solid var(--color-border); color: var(--shp-inv-thead-ink, var(--color-text-muted)); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.02em; }
 .shp-inv-vat th:first-child { text-align: left; }
 .shp-inv-vat td { padding: 0.375rem 0.5rem 0.375rem 0; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); color: var(--color-text); text-align: right; font-variant-numeric: tabular-nums; }
 .shp-inv-vat td:first-child { text-align: left; }
 .shp-inv-vat th:last-child, .shp-inv-vat td:last-child { padding-right: 0; }
+/* The same banded head as the item table, on the smaller table. Its own rule
+   because the fill needs padding inside the cells, and the item table's rule is
+   scoped to the item table so it cannot reach here. */
+.shp-inv-vat table.shp-inv-thead-fill th { background: var(--shp-inv-thead-bg, var(--color-bg-subtle)); padding: 0.5rem 0.625rem; border-bottom: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.shp-inv-vat table.shp-inv-thead-fill th:first-child { border-radius: var(--shp-inv-radius, 0) 0 0 var(--shp-inv-radius, 0); }
+.shp-inv-vat table.shp-inv-thead-fill th:last-child { padding-right: 0.625rem; border-radius: 0 var(--shp-inv-radius, 0) var(--shp-inv-radius, 0) 0; }
+.shp-inv-vat table.shp-inv-thead-fill td:first-child { padding-left: 0.625rem; }
+.shp-inv-vat table.shp-inv-thead-fill td:last-child { padding-right: 0.625rem; }
 
-.shp-inv-pay { margin: 1.75rem 0 0; display: grid; gap: 0.75rem; }
+.shp-inv-pay { margin: var(--shp-inv-gap-lg, 1.75rem) 0 0; display: grid; gap: 0.75rem; }
+/* Payment and terms side by side, which is where they sit on most printed
+   invoices - and where two short blocks stop pushing the footer down a page. */
+.shp-inv-pay.shp-inv-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; }
 .shp-inv-pay p { margin: 0; font-size: 0.875rem; color: var(--color-text-muted); }
 .shp-inv-pay .shp-inv-block p { margin: 0 0 0.375rem; }
-.shp-inv-foot { margin: 1.5rem 0 0; padding-top: 0.75rem; border-top: 1px solid var(--color-border); font-size: 0.8125rem; color: var(--color-text-muted); }
+.shp-inv-foot { margin: var(--shp-inv-gap, 1.5rem) 0 0; padding-top: 0.75rem; border-top: 1px solid var(--color-border); font-size: 0.8125rem; color: var(--color-text-muted); }
+
+/* ---------------------------------------------------------------------------
+   Notice panel - a sentence the document needs said before the figures: how to
+   pay, what the order was, how long a price holds.
+   --------------------------------------------------------------------------- */
+.shp-inv-notice { margin: var(--shp-inv-gap, 1.5rem) 0 0; font-size: 0.9375rem; line-height: 1.55; color: var(--shp-inv-panel-ink, var(--color-text)); }
+.shp-inv-notice p { margin: 0 0 0.5rem; }
+.shp-inv-notice p:last-child { margin-bottom: 0; }
+.shp-inv-notice .shp-inv-notice-lead { font-weight: 700; }
+.shp-inv-notice.shp-inv-notice-panel { padding: 0.875rem 1.125rem; background: var(--shp-inv-panel-bg, var(--color-bg-subtle)); border-left: var(--shp-inv-rule-w, 3px) solid var(--shp-inv-accent, var(--color-border)); border-radius: 0 var(--shp-inv-radius, 0) var(--shp-inv-radius, 0) 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.shp-inv-notice.shp-inv-notice-outline { padding: 0.875rem 1.125rem; border: 1px solid var(--shp-inv-accent, var(--color-border)); border-radius: var(--shp-inv-radius, 0); }
+.shp-inv-notice.shp-inv-notice-quiet { padding: 0; color: var(--color-text-muted); font-size: 0.875rem; }
+
+/* ---------------------------------------------------------------------------
+   Footer - the line at the bottom of every page of paperwork a company sends:
+   where to find them, and the registration details the law wants on it.
+   --------------------------------------------------------------------------- */
+.shp-inv-footer { margin: var(--shp-inv-gap-lg, 1.75rem) 0 0; padding-top: 1rem; border-top: 1px solid var(--color-border); text-align: center; }
+.shp-inv-footer.shp-inv-footer-bare { border-top: 0; padding-top: 0; }
+.shp-inv-footer.shp-inv-align-left { text-align: left; }
+.shp-inv-footer.shp-inv-align-right { text-align: right; }
+.shp-inv-footer .shp-inv-contact { margin: 0 0 0.5rem; font-size: 0.875rem; font-weight: 700; color: var(--shp-inv-accent, var(--color-text)); }
+.shp-inv-footer .shp-inv-small { margin: 0; font-size: 0.75rem; line-height: 1.6; color: var(--color-text-muted); }
+
+/* ---------------------------------------------------------------------------
+   Divider - a rule of its own, for the gaps between sections the blocks above
+   do not rule themselves.
+   --------------------------------------------------------------------------- */
+.shp-inv-rule { border: 0; border-top: var(--shp-inv-rule-h, 1px) solid var(--shp-inv-rule-ink, var(--color-border)); }
+.shp-inv-rule.shp-inv-rule-short { max-width: 6rem; margin-right: auto; }
+.shp-inv-rule.shp-inv-rule-centre { max-width: 6rem; margin-left: auto; margin-right: auto; }
 
 @media (max-width: 560px) {
-  .shp-inv-meta { text-align: left; margin-left: 0; }
-  .shp-inv-facts { justify-content: start; }
+  .shp-inv-meta, .shp-inv-head.shp-inv-swap .shp-inv-meta { text-align: left; margin-left: 0; }
+  .shp-inv-facts, .shp-inv-head.shp-inv-swap .shp-inv-facts { justify-content: start; }
+  .shp-inv-facts.shp-inv-facts-stack { text-align: left; }
   .shp-inv-totals { max-width: none; }
   .shp-inv-vat table { max-width: none; }
+  .shp-inv-parties.shp-inv-cols-2, .shp-inv-parties.shp-inv-cols-3, .shp-inv-pay.shp-inv-cols-2 { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Print and PDF. The renderer opens the invoice page in a headless browser and
    prints it, so these rules are what the PDF actually looks like. The token
    colours are overridden outright: a viewer in dark mode would otherwise be
    handed a black page, and an invoice is a document people genuinely still
-   print. */
+   print.
+
+   Anything an owner can colour is forced through its own custom property with
+   the old print colour as the fallback, so an untouched document prints exactly
+   as it always did while a designed one keeps its accent instead of having it
+   flattened to grey. */
 @media print {
-  .shp-inv-head, .shp-inv-parties, .shp-inv-lines, .shp-inv-totals, .shp-inv-vat, .shp-inv-pay, .shp-inv-foot { color: #111 !important; }
-  .shp-inv-site, .shp-inv-h1, .shp-inv-name, .shp-inv-grand, .shp-inv-strong,
+  .shp-inv-head, .shp-inv-parties, .shp-inv-lines, .shp-inv-totals, .shp-inv-vat, .shp-inv-pay, .shp-inv-foot,
+  .shp-inv-notice, .shp-inv-footer { color: #111 !important; }
+  .shp-inv-site, .shp-inv-name, .shp-inv-grand, .shp-inv-strong,
   .shp-inv-facts dd, .shp-inv-lines td, .shp-inv-totals dd, .shp-inv-vat td { color: #111 !important; }
-  .shp-inv-h2, .shp-inv-facts dt, .shp-inv-sku, .shp-inv-detail, .shp-inv-empty, .shp-inv-reg,
+  .shp-inv-facts dt, .shp-inv-sku, .shp-inv-detail, .shp-inv-empty, .shp-inv-reg,
   .shp-inv-paid, .shp-inv-pay p, .shp-inv-foot, .shp-inv-totals dt, .shp-inv-lines th, .shp-inv-vat th { color: #444 !important; }
-  .shp-inv-head, .shp-inv-lines th, .shp-inv-lines td, .shp-inv-grand, .shp-inv-vat th, .shp-inv-vat td, .shp-inv-foot { border-color: #ccc !important; }
+  .shp-inv-h1, .shp-inv-lead, .shp-inv-totals.shp-inv-total-accent .shp-inv-grand { color: var(--shp-inv-title-ink, #111) !important; }
+  .shp-inv-h2 { color: var(--shp-inv-label, #444) !important; }
+  .shp-inv-lines.shp-inv-thead-fill th, .shp-inv-vat table.shp-inv-thead-fill th { color: var(--shp-inv-thead-ink, #444) !important; background: var(--shp-inv-thead-bg, transparent) !important; }
+  .shp-inv-notice { color: var(--shp-inv-panel-ink, #111) !important; }
+  .shp-inv-notice.shp-inv-notice-panel { background: var(--shp-inv-panel-bg, transparent) !important; }
+  .shp-inv-notice.shp-inv-notice-quiet { color: #444 !important; }
+  .shp-inv-footer .shp-inv-contact { color: var(--shp-inv-accent, #111) !important; }
+  .shp-inv-footer .shp-inv-small { color: #444 !important; }
+  .shp-inv-head, .shp-inv-lines th, .shp-inv-lines td, .shp-inv-grand, .shp-inv-vat th, .shp-inv-vat td, .shp-inv-foot,
+  .shp-inv-footer { border-color: #ccc !important; }
+  .shp-inv-head.shp-inv-head-accent,
+  .shp-inv-totals.shp-inv-total-accent .shp-inv-grand,
+  .shp-inv-notice.shp-inv-notice-panel, .shp-inv-notice.shp-inv-notice-outline { border-color: var(--shp-inv-accent, #ccc) !important; }
+  .shp-inv-rule { border-top-color: var(--shp-inv-rule-ink, #ccc) !important; }
   .shp-inv-lines { page-break-inside: auto; }
   .shp-inv-lines tr { page-break-inside: avoid; page-break-after: auto; }
-  .shp-inv-totals, .shp-inv-vat, .shp-inv-pay { page-break-inside: avoid; }
+  .shp-inv-totals, .shp-inv-vat, .shp-inv-pay, .shp-inv-notice, .shp-inv-footer { page-break-inside: avoid; }
 }
 `

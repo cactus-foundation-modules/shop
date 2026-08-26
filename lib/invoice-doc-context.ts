@@ -36,6 +36,9 @@ export type CreditDocMeta = {
 
 type PuckLikeData = { content?: unknown; zones?: Record<string, unknown>; root?: unknown }
 
+// Every block that reads the invoice. The style block and the divider are not
+// here on purpose: neither prints a figure, so neither needs the document, and
+// attaching it to them would only make the injected tree bigger.
 const DOC_PART_TYPES = new Set([
   'ShopInvoiceHeader',
   'ShopInvoiceParties',
@@ -43,6 +46,8 @@ const DOC_PART_TYPES = new Set([
   'ShopInvoiceTotals',
   'ShopInvoiceTaxSummary',
   'ShopInvoicePayment',
+  'ShopInvoiceNotice',
+  'ShopInvoiceFooter',
 ])
 
 function attach(blocks: unknown[], ctx: InvoiceDocContext): void {

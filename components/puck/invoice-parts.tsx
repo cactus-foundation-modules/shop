@@ -1,13 +1,13 @@
-import type { CSSProperties } from 'react'
-import { googleFontHrefForFamily } from '@/lib/design/tokens'
-import { SiteFontField } from '@/lib/puck/fields/registry'
 import { formatMoney } from '@/modules/shop/lib/money'
-import { INVOICE_DOC_CSS } from '@/modules/shop/components/public/invoice-doc-css'
-import { SAMPLE_INVOICE_CONTEXT, type InvoiceDocContext } from '@/modules/shop/lib/invoice-doc-context'
+import {
+  Style, FontLink, fontStyle, fontField, yesNo, formatDay, paragraphs, useCtx,
+  type DocProps,
+} from '@/modules/shop/components/puck/invoice-shared'
 
 // The invoice document, as six draggable blocks on the `shopInvoice` layout
 // type: the heading, who it is between, the lines, the money, the VAT summary
-// and the payment small print.
+// and the payment small print. Four more - the document style, a notice panel, a
+// footer and a rule - live in invoice-chrome.tsx.
 //
 // One render path each, shared by the Puck editor and the storefront (the
 // manifest points both `component` and `rscComponent` at the same export), so an
@@ -18,60 +18,11 @@ import { SAMPLE_INVOICE_CONTEXT, type InvoiceDocContext } from '@/modules/shop/l
 //
 // Context arrives as `_ctx` (see lib/invoice-doc-context.ts). Absent means the
 // editor canvas, where a sample invoice is drawn instead of six empty boxes.
-
-type DocProps = { _ctx?: InvoiceDocContext; fontFamily?: string }
-
-function useCtx(props: DocProps): InvoiceDocContext {
-  return props._ctx ?? SAMPLE_INVOICE_CONTEXT
-}
-
-/** One <style> per part. Identical rules every time, so a document holding all
- *  six blocks costs one set of rules repeated, not six different ones. */
-function Style() {
-  return <style dangerouslySetInnerHTML={{ __html: INVOICE_DOC_CSS }} />
-}
-
-// ---------------------------------------------------------------------------
-// Typeface - same field on every part, same reasoning as the quote document's:
-// blank inherits the site's fonts, set overrides them inline (the CSS binding is
-// a class rule and would otherwise win against anything inherited).
-// ---------------------------------------------------------------------------
-
-function fontStyle(props: { fontFamily?: string }): CSSProperties | undefined {
-  const family = props.fontFamily?.trim()
-  return family ? { fontFamily: family } : undefined
-}
-
-/** The stylesheet a chosen family needs, when it is a Google face rather than a
- *  system one. Rendered inside the block so it travels with the document: the
- *  PDF is a browser opening the page and gets no chance to add a <link>. */
-function FontLink({ family }: { family?: string }) {
-  const href = googleFontHrefForFamily(family?.trim())
-  return href ? <link rel="stylesheet" href={href} /> : null
-}
-
-const fontField = {
-  type: 'custom' as const,
-  label: 'Font (blank uses the site font)',
-  render: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
-    <SiteFontField value={value} onChange={onChange} />
-  ),
-}
-
-const yesNo = [
-  { value: 'yes', label: 'Show' },
-  { value: 'no', label: 'Hide' },
-]
-
-/** "6 April 2026" from a plain yyyy-mm-dd. Parsed as UTC deliberately: a date
- *  with no time in it must not shift a day because the reader is in Auckland. */
-function formatDay(value: string | null): string {
-  if (!value) return ''
-  const date = new Date(`${value}T00:00:00Z`)
-  return Number.isNaN(date.getTime())
-    ? ''
-    : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
-}
+//
+// Every look-and-feel field added here follows one rule: the value a layout
+// saved before the field existed carries - which is `undefined` - must render
+// what it rendered then. So the defaults read as `!== 'no'` or fall through to
+// the old behaviour, never `=== 'yes'` for something that used to be on.
 
 // ---------------------------------------------------------------------------
 // Header: whose invoice, which invoice, and when
@@ -80,6 +31,29 @@ function formatDay(value: string | null): string {
 type HeaderProps = DocProps & {
   heading?: string; showLogo?: string; showName?: string
   showOrderNumber?: string; showTaxPoint?: string; taxPointLabel?: string
+  titleSize?: string; logoSize?: string; sides?: string; rule?: string
+  factsLayout?: string; numberStyle?: string
+  dateLabel?: string; dueLabel?: string; orderLabel?: string; invoiceLabel?: string
+}
+
+const TITLE_SIZES: Record<string, string> = {
+  small: ' shp-inv-title-sm',
+  medium: '',
+  large: ' shp-inv-title-lg',
+  display: ' shp-inv-title-xl',
+}
+
+const LOGO_SIZES: Record<string, string> = {
+  small: ' shp-inv-logo-sm',
+  medium: '',
+  large: ' shp-inv-logo-lg',
+  huge: ' shp-inv-logo-xl',
+}
+
+const HEAD_RULES: Record<string, string> = {
+  hairline: '',
+  accent: ' shp-inv-head-accent',
+  none: ' shp-inv-head-flat',
 }
 
 export function ShopInvoiceHeader(props: HeaderProps) {
@@ -95,48 +69,71 @@ export function ShopInvoiceHeader(props: HeaderProps) {
   const nameSetting = props.showName?.trim() || 'auto'
   const nameWanted = nameSetting === 'yes' || (nameSetting !== 'no' && !showLogo)
   const showName = nameWanted && Boolean(invoice.seller?.siteName || invoice.seller?.name)
+
+  const headClass = [
+    'shp-inv-head',
+    props.sides === 'title-left' ? 'shp-inv-swap' : '',
+    (HEAD_RULES[props.rule ?? 'hairline'] ?? '').trim(),
+  ].filter(Boolean).join(' ')
+  // Stacked reads "Issued 6 April 2026" on one line; columns rules the labels
+  // and the values into two, which is what the document has always done.
+  const stacked = props.factsLayout === 'stacked'
+  // The document's own number, lifted out of the list and printed above it with
+  // no label. An invoice number needs no introduction and the dates under it are
+  // supporting detail, which is how most printed invoices are set.
+  const leadNumber = props.numberStyle === 'lead'
+  const documentNumber = credit ? credit.creditNoteNumber : invoice.invoiceNumber
+  const invoiceLabel = props.invoiceLabel?.trim() || 'Invoice'
+
   return (
     <>
       <Style />
       <FontLink family={props.fontFamily} />
-      <header className="shp-inv-head" style={font}>
+      <header className={headClass} style={font}>
         {(showLogo || showName) && (
           <div className="shp-inv-brand">
             {showLogo && (
               // eslint-disable-next-line @next/next/no-img-element -- the PDF renderer loads this straight from the URL; next/image's optimiser adds nothing to a one-off print
-              <img className="shp-inv-logo" src={invoice.seller.logoUrl!} alt={invoice.seller.name} />
+              <img
+                className={`shp-inv-logo${LOGO_SIZES[props.logoSize ?? 'medium'] ?? ''}`}
+                src={invoice.seller.logoUrl!}
+                alt={invoice.seller.name}
+              />
             )}
             {showName && <span className="shp-inv-site">{invoice.seller.name || invoice.seller.siteName}</span>}
           </div>
         )}
         <div className="shp-inv-meta">
-          <h1 className="shp-inv-h1" style={font}>{heading}</h1>
-          <dl className="shp-inv-facts">
+          <h1 className={`shp-inv-h1${TITLE_SIZES[props.titleSize ?? 'medium'] ?? ''}`} style={font}>{heading}</h1>
+          {leadNumber && documentNumber && <p className="shp-inv-lead">{documentNumber}</p>}
+          <dl className={`shp-inv-facts${stacked ? ' shp-inv-facts-stack' : ''}`}>
             {/* A credit note leads with its own number and then names the
                 invoice it credits. The reference is not decoration: a credit
                 note that does not say which invoice it undoes is not one, and
-                it is the first thing an accountant looks for. */}
-            {credit && (
+                it is the first thing an accountant looks for. Lifted above the
+                list when the number leads, so it is never printed twice. */}
+            {credit && !leadNumber && (
               <>
                 <dt>{invoice.wording?.heading?.trim() || 'Credit note'}</dt>
                 <dd>{credit.creditNoteNumber}</dd>
               </>
             )}
             {/* Skipped on a credit note whose invoice row has since been
-                deleted - an empty "Invoice" row says less than no row. */}
-            {(!credit || invoice.invoiceNumber) && (
+                deleted - an empty "Invoice" row says less than no row. And
+                skipped on an ordinary invoice whose number already leads. */}
+            {(!credit || invoice.invoiceNumber) && !(leadNumber && !credit) && (
               <>
-                <dt>Invoice</dt>
+                <dt>{invoiceLabel}</dt>
                 <dd>{invoice.invoiceNumber}</dd>
               </>
             )}
             {props.showOrderNumber !== 'no' && invoice.orderNumber && (
               <>
-                <dt>Order</dt>
+                <dt>{props.orderLabel?.trim() || 'Order'}</dt>
                 <dd>{invoice.orderNumber}</dd>
               </>
             )}
-            <dt>Date</dt>
+            <dt>{props.dateLabel?.trim() || 'Date'}</dt>
             <dd>{formatDay(invoice.taxPointDate)}</dd>
             {/* The tax point is the date the VAT belongs to. It is usually the
                 same day as the invoice, and printing it twice is noise - so it
@@ -149,7 +146,7 @@ export function ShopInvoiceHeader(props: HeaderProps) {
             )}
             {invoice.dueDate && (
               <>
-                <dt>Due by</dt>
+                <dt>{props.dueLabel?.trim() || 'Due by'}</dt>
                 <dd>{formatDay(invoice.dueDate)}</dd>
               </>
             )}
@@ -169,19 +166,56 @@ export const shopInvoiceHeaderPuckComponent = {
   fields: {
     heading: { type: 'text' as const, label: 'Heading (blank uses the one in Shop settings)' },
     fontFamily: fontField,
+    titleSize: { type: 'select' as const, label: 'Heading size', options: [
+      { value: 'small', label: 'Small' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'large', label: 'Large' },
+      { value: 'display', label: 'Very large' },
+    ] },
+    sides: { type: 'select' as const, label: 'Which way round', options: [
+      { value: 'logo-left', label: 'Logo left, heading right' },
+      { value: 'title-left', label: 'Heading left, logo right' },
+    ] },
+    rule: { type: 'select' as const, label: 'Rule underneath', options: [
+      { value: 'hairline', label: 'Hairline' },
+      { value: 'accent', label: 'Thick, in the accent colour' },
+      { value: 'none', label: 'None' },
+    ] },
     showLogo: { type: 'select' as const, label: 'Site logo', options: yesNo },
+    logoSize: { type: 'select' as const, label: 'Logo size', options: [
+      { value: 'small', label: 'Small' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'large', label: 'Large' },
+      { value: 'huge', label: 'Very large' },
+    ] },
     showName: { type: 'select' as const, label: 'Business name in words', options: [
       { value: 'auto', label: 'Only when there is no logo' },
       { value: 'yes', label: 'Always' },
       { value: 'no', label: 'Never' },
     ] },
+    factsLayout: { type: 'select' as const, label: 'Dates and numbers', options: [
+      { value: 'columns', label: 'Labels and values in two columns' },
+      { value: 'stacked', label: 'One line each, label first' },
+    ] },
+    numberStyle: { type: 'select' as const, label: 'The invoice number', options: [
+      { value: 'row', label: 'As a row, with the rest' },
+      { value: 'lead', label: 'On its own, above the dates' },
+    ] },
+    invoiceLabel: { type: 'text' as const, label: '"Invoice" row label' },
     showOrderNumber: { type: 'select' as const, label: 'Order number', options: yesNo },
+    orderLabel: { type: 'text' as const, label: '"Order" row label' },
+    dateLabel: { type: 'text' as const, label: '"Date" row label' },
+    dueLabel: { type: 'text' as const, label: '"Due by" row label' },
     showTaxPoint: { type: 'select' as const, label: 'Tax point date as its own row', options: yesNo },
     taxPointLabel: { type: 'text' as const, label: 'Tax point row label' },
   },
   defaultProps: {
-    heading: '', fontFamily: '', showLogo: 'yes', showName: 'auto',
-    showOrderNumber: 'yes', showTaxPoint: 'no', taxPointLabel: 'Tax point',
+    heading: '', fontFamily: '', titleSize: 'medium', sides: 'logo-left', rule: 'hairline',
+    showLogo: 'yes', logoSize: 'medium', showName: 'auto',
+    factsLayout: 'columns', numberStyle: 'row',
+    invoiceLabel: 'Invoice', showOrderNumber: 'yes', orderLabel: 'Order',
+    dateLabel: 'Date', dueLabel: 'Due by',
+    showTaxPoint: 'no', taxPointLabel: 'Tax point',
   },
   render: ShopInvoiceHeader,
 }
@@ -194,6 +228,7 @@ export const shopInvoiceHeaderPuckRscComponent = { ...shopInvoiceHeaderPuckCompo
 type PartiesProps = DocProps & {
   fromLabel?: string; toLabel?: string; deliverLabel?: string
   showFrom?: string; showDelivery?: string; showRegistration?: string
+  order?: string; columns?: string; showEmail?: string
 }
 
 export function ShopInvoiceParties(props: PartiesProps) {
@@ -208,46 +243,59 @@ export function ShopInvoiceParties(props: PartiesProps) {
   // same address twice under two headings helps nobody.
   const differentDelivery =
     props.showDelivery !== 'no' && shipping.length > 0 && shipping.join('|') !== billing.join('|')
+  const showEmail = props.showEmail !== 'no'
+
+  const from = showFrom ? (
+    <div className="shp-inv-party" key="from">
+      <h2 className="shp-inv-h2" style={font}>{props.fromLabel?.trim() || 'From'}</h2>
+      <address>
+        {seller.name && <span className="shp-inv-strong">{seller.name}</span>}
+        {(seller.addressLines ?? []).map((line, i) => <span key={i}>{line}</span>)}
+        {showEmail && seller.email && <span>{seller.email}</span>}
+        {seller.phone && <span>{seller.phone}</span>}
+      </address>
+      {props.showRegistration !== 'no' && (seller.vatNumber || seller.companyNumber) && (
+        <div className="shp-inv-reg">
+          {seller.vatNumber && <span>VAT registration {seller.vatNumber}</span>}
+          {seller.companyNumber && <span>Company number {seller.companyNumber}</span>}
+        </div>
+      )}
+    </div>
+  ) : null
+
+  const to = (
+    <div className="shp-inv-party" key="to">
+      <h2 className="shp-inv-h2" style={font}>{props.toLabel?.trim() || 'Invoice to'}</h2>
+      <address>
+        {billing.length > 0
+          ? billing.map((line, i) => <span key={i} className={i === 0 ? 'shp-inv-strong' : undefined}>{line}</span>)
+          : <span className="shp-inv-strong">{customer.name}</span>}
+        {showEmail && customer.email && <span>{customer.email}</span>}
+      </address>
+    </div>
+  )
+
+  const deliver = differentDelivery ? (
+    <div className="shp-inv-party" key="deliver">
+      <h2 className="shp-inv-h2" style={font}>{props.deliverLabel?.trim() || 'Delivered to'}</h2>
+      <address>
+        {shipping.map((line, i) => <span key={i} className={i === 0 ? 'shp-inv-strong' : undefined}>{line}</span>)}
+      </address>
+    </div>
+  ) : null
+
+  // Whose details come first. "From" first is the older order and stays the
+  // default; plenty of printed invoices lead with the customer instead, because
+  // the customer is who the document is addressed to.
+  const columns = props.order === 'to-first' ? [to, from, deliver] : [from, to, deliver]
+  const width = props.columns === '2' || props.columns === '3' ? ` shp-inv-cols-${props.columns}` : ''
 
   return (
     <>
       <Style />
       <FontLink family={props.fontFamily} />
-      <section className="shp-inv-parties" style={font}>
-        {showFrom && (
-          <div className="shp-inv-party">
-            <h2 className="shp-inv-h2" style={font}>{props.fromLabel?.trim() || 'From'}</h2>
-            <address>
-              {seller.name && <span className="shp-inv-strong">{seller.name}</span>}
-              {(seller.addressLines ?? []).map((line, i) => <span key={i}>{line}</span>)}
-              {seller.email && <span>{seller.email}</span>}
-              {seller.phone && <span>{seller.phone}</span>}
-            </address>
-            {props.showRegistration !== 'no' && (seller.vatNumber || seller.companyNumber) && (
-              <div className="shp-inv-reg">
-                {seller.vatNumber && <span>VAT registration {seller.vatNumber}</span>}
-                {seller.companyNumber && <span>Company number {seller.companyNumber}</span>}
-              </div>
-            )}
-          </div>
-        )}
-        <div className="shp-inv-party">
-          <h2 className="shp-inv-h2" style={font}>{props.toLabel?.trim() || 'Invoice to'}</h2>
-          <address>
-            {billing.length > 0
-              ? billing.map((line, i) => <span key={i} className={i === 0 ? 'shp-inv-strong' : undefined}>{line}</span>)
-              : <span className="shp-inv-strong">{customer.name}</span>}
-            {customer.email && <span>{customer.email}</span>}
-          </address>
-        </div>
-        {differentDelivery && (
-          <div className="shp-inv-party">
-            <h2 className="shp-inv-h2" style={font}>{props.deliverLabel?.trim() || 'Delivered to'}</h2>
-            <address>
-              {shipping.map((line, i) => <span key={i} className={i === 0 ? 'shp-inv-strong' : undefined}>{line}</span>)}
-            </address>
-          </div>
-        )}
+      <section className={`shp-inv-parties${width}`} style={font}>
+        {columns.filter(Boolean)}
       </section>
     </>
   )
@@ -257,16 +305,27 @@ export const shopInvoicePartiesPuckComponent = {
   label: 'Invoice: From and to',
   fields: {
     fontFamily: fontField,
+    order: { type: 'select' as const, label: 'Which comes first', options: [
+      { value: 'from-first', label: 'Your details, then theirs' },
+      { value: 'to-first', label: 'Their details, then yours' },
+    ] },
+    columns: { type: 'select' as const, label: 'Columns', options: [
+      { value: 'auto', label: 'As many as fit' },
+      { value: '2', label: 'Always two' },
+      { value: '3', label: 'Always three' },
+    ] },
     showFrom: { type: 'select' as const, label: 'Your own details', options: yesNo },
     fromLabel: { type: 'text' as const, label: '"From" heading' },
     toLabel: { type: 'text' as const, label: '"Invoice to" heading' },
     showDelivery: { type: 'select' as const, label: 'Delivery address, when it differs', options: yesNo },
     deliverLabel: { type: 'text' as const, label: '"Delivered to" heading' },
+    showEmail: { type: 'select' as const, label: 'Email addresses', options: yesNo },
     showRegistration: { type: 'select' as const, label: 'VAT and company numbers', options: yesNo },
   },
   defaultProps: {
-    fontFamily: '', showFrom: 'yes', fromLabel: 'From', toLabel: 'Invoice to',
-    showDelivery: 'yes', deliverLabel: 'Delivered to', showRegistration: 'yes',
+    fontFamily: '', order: 'from-first', columns: 'auto',
+    showFrom: 'yes', fromLabel: 'From', toLabel: 'Invoice to',
+    showDelivery: 'yes', deliverLabel: 'Delivered to', showEmail: 'yes', showRegistration: 'yes',
   },
   render: ShopInvoiceParties,
 }
@@ -279,6 +338,7 @@ export const shopInvoicePartiesPuckRscComponent = { ...shopInvoicePartiesPuckCom
 type LinesProps = DocProps & {
   showSku?: string; showDetail?: string; showTaxRate?: string
   itemLabel?: string; qtyLabel?: string; priceLabel?: string; rateLabel?: string; totalLabel?: string
+  headStyle?: string; rowRules?: string; zebra?: string
 }
 
 export function ShopInvoiceLines(props: LinesProps) {
@@ -295,11 +355,18 @@ export function ShopInvoiceLines(props: LinesProps) {
   const showRate = props.showTaxRate === 'yes'
   const lines = invoice.lines ?? []
 
+  const table = [
+    'shp-inv-lines',
+    props.headStyle === 'filled' ? 'shp-inv-thead-fill' : '',
+    props.zebra === 'yes' ? 'shp-inv-zebra' : '',
+    props.rowRules === 'none' ? 'shp-inv-rows-none' : '',
+  ].filter(Boolean).join(' ')
+
   return (
     <>
       <Style />
       <FontLink family={props.fontFamily} />
-      <table className="shp-inv-lines" style={font}>
+      <table className={table} style={font}>
         <thead>
           <tr>
             <th>{props.itemLabel?.trim() || 'Description'}</th>
@@ -344,6 +411,15 @@ export const shopInvoiceLinesPuckComponent = {
   label: 'Invoice: Items',
   fields: {
     fontFamily: fontField,
+    headStyle: { type: 'select' as const, label: 'Column headings', options: [
+      { value: 'rule', label: 'Ruled underneath' },
+      { value: 'filled', label: 'On a filled band' },
+    ] },
+    rowRules: { type: 'select' as const, label: 'Rules between rows', options: [
+      { value: 'every', label: 'Under every row' },
+      { value: 'none', label: 'Only under the last one' },
+    ] },
+    zebra: { type: 'select' as const, label: 'Shade alternate rows', options: yesNo },
     showSku: { type: 'select' as const, label: 'Product codes', options: yesNo },
     showDetail: { type: 'select' as const, label: 'Options and personalisation', options: yesNo },
     showTaxRate: { type: 'select' as const, label: 'Tax rate column', options: yesNo },
@@ -354,7 +430,8 @@ export const shopInvoiceLinesPuckComponent = {
     totalLabel: { type: 'text' as const, label: 'Amount column' },
   },
   defaultProps: {
-    fontFamily: '', showSku: 'no', showDetail: 'yes', showTaxRate: 'no',
+    fontFamily: '', headStyle: 'rule', rowRules: 'every', zebra: 'no',
+    showSku: 'no', showDetail: 'yes', showTaxRate: 'no',
     itemLabel: 'Description', qtyLabel: 'Qty', priceLabel: 'Unit price', rateLabel: 'Rate', totalLabel: 'Amount',
   },
   render: ShopInvoiceLines,
@@ -368,7 +445,11 @@ export const shopInvoiceLinesPuckRscComponent = { ...shopInvoiceLinesPuckCompone
 type TotalsProps = DocProps & {
   subtotalLabel?: string; discountLabel?: string; deliveryLabel?: string
   taxLabel?: string; totalLabel?: string; showPaid?: string; paidWording?: string
+  emphasis?: string; showTaxRate?: string; width?: string
+  showDeliveryRow?: string; zeroDelivery?: string
 }
+
+const TOTALS_WIDTHS: Record<string, string> = { narrow: '18rem', normal: '22rem', wide: '28rem' }
 
 export function ShopInvoiceTotals(props: TotalsProps) {
   const { invoice, credit } = useCtx(props)
@@ -379,12 +460,27 @@ export function ShopInvoiceTotals(props: TotalsProps) {
   const shipping = Number(invoice.shippingAmount)
   const tax = Number(invoice.taxAmount)
   const taxLabel = props.taxLabel?.trim() || invoice.wording?.taxLabel || 'VAT'
+  // "VAT at 20%" rather than "VAT", where a single rate covers the whole
+  // document. Two rates make one figure in the label a lie, so it falls back to
+  // the plain label and the tax summary block does the explaining.
+  const rates = new Set((invoice.taxBreakdown ?? []).map((row) => String(row.ratePercent)))
+  const singleRate = rates.size === 1 ? [...rates][0] : null
+  const withRate = props.showTaxRate === 'yes' && singleRate ? `${taxLabel} at ${singleRate}%` : taxLabel
+  // A delivery row printed even at zero, so a customer can see that delivery was
+  // free rather than wondering whether it is still to come.
+  const showDelivery = props.showDeliveryRow === 'always' || shipping > 0
+  const deliveryValue = shipping > 0
+    ? formatMoney(shipping, symbol)
+    : props.zeroDelivery?.trim() || formatMoney(0, symbol)
+
+  const listClass = `shp-inv-totals${props.emphasis === 'accent' ? ' shp-inv-total-accent' : ''}`
+  const width = TOTALS_WIDTHS[props.width ?? 'normal']
 
   return (
     <>
       <Style />
       <FontLink family={props.fontFamily} />
-      <dl className="shp-inv-totals" style={font}>
+      <dl className={listClass} style={{ ...font, maxWidth: width }}>
         <dt>{props.subtotalLabel?.trim() || 'Subtotal'}</dt>
         <dd>{formatMoney(invoice.subtotal, symbol)}</dd>
         {discount > 0 && (
@@ -393,10 +489,10 @@ export function ShopInvoiceTotals(props: TotalsProps) {
             <dd>-{formatMoney(discount, symbol)}</dd>
           </div>
         )}
-        {shipping > 0 && (
+        {showDelivery && (
           <div className="shp-inv-row">
             <dt>{props.deliveryLabel?.trim() || 'Delivery'}</dt>
-            <dd>{formatMoney(shipping, symbol)}</dd>
+            <dd>{deliveryValue}</dd>
           </div>
         )}
         {tax > 0 && (
@@ -404,7 +500,7 @@ export function ShopInvoiceTotals(props: TotalsProps) {
             {/* An INCLUSIVE shop's prices already carry the tax, so the row is a
                 statement of how much of the total it is - not an addition. Say
                 which, or the arithmetic looks wrong by exactly the VAT. */}
-            <dt>{taxLabel}{inclusive ? ' (included)' : ''}</dt>
+            <dt>{withRate}{inclusive ? ' (included)' : ''}</dt>
             <dd>{formatMoney(tax, symbol)}</dd>
           </div>
         )}
@@ -431,17 +527,35 @@ export const shopInvoiceTotalsPuckComponent = {
   label: 'Invoice: Totals',
   fields: {
     fontFamily: fontField,
+    emphasis: { type: 'select' as const, label: 'The total', options: [
+      { value: 'rule', label: 'Bold, above a hairline' },
+      { value: 'accent', label: 'Large, above an accent rule' },
+    ] },
+    width: { type: 'select' as const, label: 'How wide', options: [
+      { value: 'narrow', label: 'Narrow' },
+      { value: 'normal', label: 'Normal' },
+      { value: 'wide', label: 'Wide' },
+    ] },
     subtotalLabel: { type: 'text' as const, label: 'Subtotal row' },
     discountLabel: { type: 'text' as const, label: 'Discount row' },
     deliveryLabel: { type: 'text' as const, label: 'Delivery row' },
+    showDeliveryRow: { type: 'select' as const, label: 'Delivery row when there is no charge', options: [
+      { value: 'charged', label: 'Leave it off' },
+      { value: 'always', label: 'Print it anyway' },
+    ] },
+    zeroDelivery: { type: 'text' as const, label: 'What a free delivery says (e.g. "Free")' },
     taxLabel: { type: 'text' as const, label: 'Tax row (blank uses the one in Shop settings)' },
+    showTaxRate: { type: 'select' as const, label: 'Put the rate in the tax row', options: yesNo },
     totalLabel: { type: 'text' as const, label: 'Total row' },
     showPaid: { type: 'select' as const, label: 'Line under the total', options: yesNo },
     paidWording: { type: 'text' as const, label: 'What that line says' },
   },
   defaultProps: {
-    fontFamily: '', subtotalLabel: 'Subtotal', discountLabel: 'Discount', deliveryLabel: 'Delivery',
-    taxLabel: '', totalLabel: 'Total', showPaid: 'yes', paidWording: 'Paid in full - thank you.',
+    fontFamily: '', emphasis: 'rule', width: 'normal',
+    subtotalLabel: 'Subtotal', discountLabel: 'Discount', deliveryLabel: 'Delivery',
+    showDeliveryRow: 'charged', zeroDelivery: '',
+    taxLabel: '', showTaxRate: 'no', totalLabel: 'Total',
+    showPaid: 'yes', paidWording: 'Paid in full - thank you.',
   },
   render: ShopInvoiceTotals,
 }
@@ -458,7 +572,7 @@ export const shopInvoiceTotalsPuckRscComponent = { ...shopInvoiceTotalsPuckCompo
 
 type TaxProps = DocProps & {
   heading?: string; rateLabel?: string; netLabel?: string; taxLabel?: string; grossLabel?: string
-  hideWhenSingleZero?: string
+  hideWhenSingleZero?: string; headStyle?: string; align?: string
 }
 
 export function ShopInvoiceTaxSummary(props: TaxProps) {
@@ -471,6 +585,13 @@ export function ShopInvoiceTaxSummary(props: TaxProps) {
   // zeroes on every invoice invites the question "why is this here".
   const allZero = rows.every((row) => Number(row.tax) === 0)
   if (allZero && props.hideWhenSingleZero !== 'no') return null
+  // A shop selling everything at one rate says so once in the totals ("VAT at
+  // 20%"), and a four-column table restating the same figures underneath is
+  // filler. The moment a second rate appears the table comes back on its own,
+  // which is the point at which it stops being filler and starts being the
+  // thing that makes this a VAT invoice.
+  if (rows.length === 1 && props.hideWhenSingleZero === 'single') return null
+  const filled = props.headStyle === 'filled' ? ' shp-inv-thead-fill' : ''
 
   return (
     <>
@@ -480,7 +601,7 @@ export function ShopInvoiceTaxSummary(props: TaxProps) {
         <h2 className="shp-inv-h2" style={font}>
           {props.heading?.trim() || `${invoice.wording?.taxLabel || 'VAT'} summary`}
         </h2>
-        <table>
+        <table className={filled.trim() || undefined} style={props.align === 'left' ? { marginLeft: 0 } : undefined}>
           <thead>
             <tr>
               <th>{props.rateLabel?.trim() || 'Rate'}</th>
@@ -510,17 +631,27 @@ export const shopInvoiceTaxSummaryPuckComponent = {
   fields: {
     fontFamily: fontField,
     heading: { type: 'text' as const, label: 'Heading' },
+    headStyle: { type: 'select' as const, label: 'Column headings', options: [
+      { value: 'rule', label: 'Ruled underneath' },
+      { value: 'filled', label: 'On a filled band' },
+    ] },
+    align: { type: 'select' as const, label: 'Sits', options: [
+      { value: 'right', label: 'At the right, under the totals' },
+      { value: 'left', label: 'At the left' },
+    ] },
     rateLabel: { type: 'text' as const, label: 'Rate column' },
     netLabel: { type: 'text' as const, label: 'Net column' },
     taxLabel: { type: 'text' as const, label: 'Tax column' },
     grossLabel: { type: 'text' as const, label: 'Gross column' },
-    hideWhenSingleZero: { type: 'select' as const, label: 'Print it even when no tax was charged', options: [
-      { value: 'no', label: 'Always print it' },
-      { value: 'yes', label: 'Hide it when there is no tax' },
+    hideWhenSingleZero: { type: 'select' as const, label: 'When to print it', options: [
+      { value: 'no', label: 'Always' },
+      { value: 'yes', label: 'Unless no tax was charged' },
+      { value: 'single', label: 'Only when there is more than one rate' },
     ] },
   },
   defaultProps: {
-    fontFamily: '', heading: '', rateLabel: 'Rate', netLabel: 'Net', taxLabel: '', grossLabel: 'Gross',
+    fontFamily: '', heading: '', headStyle: 'rule', align: 'right',
+    rateLabel: 'Rate', netLabel: 'Net', taxLabel: '', grossLabel: 'Gross',
     hideWhenSingleZero: 'yes',
   },
   render: ShopInvoiceTaxSummary,
@@ -534,41 +665,44 @@ export const shopInvoiceTaxSummaryPuckRscComponent = { ...shopInvoiceTaxSummaryP
 type PaymentProps = DocProps & {
   showPaymentDetails?: string; paymentHeading?: string
   showTerms?: string; termsHeading?: string; showFooter?: string; footerAlign?: string
-}
-
-/** Plain text from a settings textarea, split on blank lines into paragraphs -
- *  a textarea is not a rich-text field and paragraphs are all it can mean. */
-function paragraphs(value: string): string[] {
-  return value.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean)
+  columns?: string; paymentExtra?: string; termsExtra?: string
 }
 
 export function ShopInvoicePayment(props: PaymentProps) {
   const { invoice } = useCtx(props)
   const font = fontStyle(props)
   const wording = invoice.wording ?? ({} as typeof invoice.wording)
-  const showPayment = props.showPaymentDetails !== 'no' && Boolean(wording.paymentDetails)
-  const showTerms = props.showTerms !== 'no' && Boolean(wording.terms)
+  // The extra paragraph is the block's own, not the shop's - somewhere to put a
+  // sentence that belongs to this document's design rather than to every
+  // invoice ever issued. It counts towards the block having something to say.
+  const paymentExtra = props.paymentExtra?.trim() ?? ''
+  const termsExtra = props.termsExtra?.trim() ?? ''
+  const showPayment = props.showPaymentDetails !== 'no' && Boolean(wording.paymentDetails || paymentExtra)
+  const showTerms = props.showTerms !== 'no' && Boolean(wording.terms || termsExtra)
   const showFooter = props.showFooter !== 'no' && Boolean(wording.footer)
   // A strapline under a rule reads as a footer when it is centred and as an
   // unfinished sentence when it is not. Centred unless a layout says otherwise.
   const footerAlign = props.footerAlign === 'left' || props.footerAlign === 'right' ? props.footerAlign : 'center'
   if (!showPayment && !showTerms && !showFooter) return null
+  const cols = props.columns === '2' ? ' shp-inv-cols-2' : ''
 
   return (
     <>
       <Style />
       <FontLink family={props.fontFamily} />
-      <section className="shp-inv-pay" style={font}>
+      <section className={`shp-inv-pay${cols}`} style={font}>
         {showPayment && (
           <div className="shp-inv-block">
             <h2 className="shp-inv-h2" style={font}>{props.paymentHeading?.trim() || 'Payment'}</h2>
-            {paragraphs(wording.paymentDetails).map((para, i) => <p key={i}>{para}</p>)}
+            {paragraphs(wording.paymentDetails ?? '').map((para, i) => <p key={i}>{para}</p>)}
+            {paragraphs(paymentExtra).map((para, i) => <p key={`x${i}`}>{para}</p>)}
           </div>
         )}
         {showTerms && (
           <div className="shp-inv-block">
             <h2 className="shp-inv-h2" style={font}>{props.termsHeading?.trim() || 'Terms'}</h2>
-            {paragraphs(wording.terms).map((para, i) => <p key={i}>{para}</p>)}
+            {paragraphs(wording.terms ?? '').map((para, i) => <p key={i}>{para}</p>)}
+            {paragraphs(termsExtra).map((para, i) => <p key={`x${i}`}>{para}</p>)}
           </div>
         )}
       </section>
@@ -583,10 +717,16 @@ export const shopInvoicePaymentPuckComponent = {
   label: 'Invoice: Payment and terms',
   fields: {
     fontFamily: fontField,
+    columns: { type: 'select' as const, label: 'Payment and terms', options: [
+      { value: '1', label: 'One under the other' },
+      { value: '2', label: 'Side by side' },
+    ] },
     showPaymentDetails: { type: 'select' as const, label: 'How to pay', options: yesNo },
     paymentHeading: { type: 'text' as const, label: 'Payment heading' },
+    paymentExtra: { type: 'textarea' as const, label: 'Extra payment wording, on this layout only' },
     showTerms: { type: 'select' as const, label: 'Terms', options: yesNo },
     termsHeading: { type: 'text' as const, label: 'Terms heading' },
+    termsExtra: { type: 'textarea' as const, label: 'Extra terms wording, on this layout only' },
     showFooter: { type: 'select' as const, label: 'Footer line', options: yesNo },
     footerAlign: { type: 'select' as const, label: 'Footer line sits', options: [
       { value: 'center', label: 'Centred' },
@@ -595,8 +735,8 @@ export const shopInvoicePaymentPuckComponent = {
     ] },
   },
   defaultProps: {
-    fontFamily: '', showPaymentDetails: 'yes', paymentHeading: 'Payment',
-    showTerms: 'yes', termsHeading: 'Terms', showFooter: 'yes', footerAlign: 'center',
+    fontFamily: '', columns: '1', showPaymentDetails: 'yes', paymentHeading: 'Payment', paymentExtra: '',
+    showTerms: 'yes', termsHeading: 'Terms', termsExtra: '', showFooter: 'yes', footerAlign: 'center',
   },
   render: ShopInvoicePayment,
 }
