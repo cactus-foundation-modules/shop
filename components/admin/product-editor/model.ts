@@ -33,6 +33,9 @@ export type ProductForm = {
   /** The code the supplier wants on an order while this one is on offer. Lives
    * on the Pricing tab beside the sale price, since that is when it applies. */
   saleSku: string
+  /** What the supplier calls this line, for ordering it back off them. Lives on
+   * the Details tab beside the SKU it translates. */
+  supplierSku: string
   barcode: string
   supplier: string
   price: string
@@ -141,6 +144,7 @@ export function toEditorState(payload: ProductPayload): EditorState {
       shortDescription: str(p.shortDescription),
       sku: str(p.sku),
       saleSku: str(p.saleSku),
+      supplierSku: str(p.supplierSku),
       barcode: str(p.barcode),
       supplier: str(p.supplier),
       price: str(p.price),
@@ -213,6 +217,7 @@ export function toProductBody(s: EditorState): Record<string, unknown> {
     shortDescription: nullable(f.shortDescription),
     sku: nullable(f.sku),
     saleSku: nullable(f.saleSku),
+    supplierSku: nullable(f.supplierSku),
     barcode: nullable(f.barcode),
     supplier: nullable(f.supplier),
     price: num(f.price) ?? 0,
@@ -271,7 +276,7 @@ export type ShopTabId = keyof typeof SHOP_TAB_ORDER
 
 /** Which form fields each tab owns, so an unsaved edit dots the tab it came from. */
 const TAB_FIELDS: Record<ShopTabId, ReadonlyArray<keyof ProductForm>> = {
-  details: ['name', 'status', 'sku', 'barcode', 'supplier', 'shortDescription', 'description'],
+  details: ['name', 'status', 'sku', 'barcode', 'supplierSku', 'supplier', 'shortDescription', 'description'],
   media: [],
   pricing: ['price', 'salePrice', 'saleSku', 'retailPrice', 'tradePrice', 'costPrice', 'taxClassId'],
   stock: [

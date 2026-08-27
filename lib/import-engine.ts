@@ -39,7 +39,7 @@ type ImportFields = Partial<{
   minOrderQuantity: number | null
   relatedMode: ShpRecommendationMode; upsellMode: ShpRecommendationMode; relatedLimit: number; upsellLimit: number
   metaTitle: string | null; metaDescription: string | null; barcode: string | null
-  supplier: string | null; saleSku: string | null
+  supplier: string | null; saleSku: string | null; supplierSku: string | null
 }>
 
 // Fields stored as SQL numeric, so Prisma hands them back as decimal strings
@@ -315,6 +315,7 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       // The offer code. Never a match key - `sku` is the identity, and the whole
       // point of this column is that the two are allowed to differ.
       put('sale_sku', 'saleSku', cell(row, 'sale_sku') || null)
+      put('supplier_sku', 'supplierSku', cell(row, 'supplier_sku') || null)
       // Smallest order. A sheet saying 1 (or 0) means "no minimum", so it lands
       // as null rather than as a figure every reader then has to see past.
       put('min_order_quantity', 'minOrderQuantity', (() => {

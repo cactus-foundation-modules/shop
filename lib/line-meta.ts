@@ -9,7 +9,7 @@
 // manifests. It MUST be server-safe (this file runs inside lib/checkout.ts).
 import { getInstalledManifests } from '@/lib/modules/live-status'
 import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
-import type { LineMeta, LineMetaBatch, ShpProduct } from '@/modules/shop/lib/types'
+import type { CartLineCharge, LineMeta, LineMetaBatch, ShpProduct } from '@/modules/shop/lib/types'
 
 // A declarative per-line picker a resolver can offer for display in the cart.
 // Shop renders it generically - a labelled <select> by default, a radio group
@@ -121,7 +121,10 @@ export type CartLineTitle = {
 // never adds money. The cart uses it to show "Subtotal / Delivery / Total"
 // instead of quietly folding a service fee into the goods figure. Shop only
 // ever sums by `label` and prints it - it never interprets what the charge is.
-export type CartLineCharge = { label: string; amount: number }
+//
+// Declared in lib/types.ts, because LineMeta persists one and this file imports
+// that one. Re-exported here so the resolver contract still reads in one place.
+export type { CartLineCharge }
 
 export type CartLineResolution = {
   valid: boolean
@@ -326,8 +329,12 @@ export async function resolveLineMeta(
     // and it rides on the meta rather than in a module's namespaced bag because
     // it is SHOP's contract: the confirmation page and the emails read it
     // without knowing which module grouped the lines.
-    persistMeta: fields.length || data || group || batch
-      ? { fields, ...(data ? { data } : {}), ...(group ? { group } : {}), ...(batch ? { batch } : {}) }
+    // Charges are persisted for the same reason data and group are: a purchase
+    // order raised off this line months later has to know what the delivery
+    // service cost, and the resolver that priced it is long gone. Note the
+    // figure stored is the per-unit, unclamped one - see LineMeta.charges.
+    persistMeta: fields.length || data || group || batch || charges.length
+      ? { fields, ...(data ? { data } : {}), ...(group ? { group } : {}), ...(batch ? { batch } : {}), ...(charges.length ? { charges } : {}) }
       : null,
     reason,
     control,

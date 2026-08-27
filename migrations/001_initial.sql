@@ -103,6 +103,12 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
     -- supplier's code, not the shop's own identity, and a supplier is free to
     -- put one clearance code across several lines.
     "sale_sku" TEXT,
+    -- What the supplier calls this line. Ordering means translating our code
+    -- into theirs, so the translation is recorded rather than looked up every
+    -- time. See 031_supplier_sku.sql. Not UNIQUE, for the same reason
+    -- "sale_sku" is not: it is their code, and one of theirs can cover several
+    -- of ours. Blank falls back to "sku".
+    "supplier_sku" TEXT,
     "barcode" TEXT,
 
     -- Pricing. Only "price" is mandatory; the rest are optional price types the

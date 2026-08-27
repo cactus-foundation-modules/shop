@@ -52,9 +52,30 @@ export type LineMetaBatch = {
   fieldLabel?: string
 }
 
+// A named slice of a line's price that is a separate CHARGE rather than part of
+// what the product itself costs - a delivery service, say. Declared here rather
+// than beside the resolver contract in lib/line-meta.ts because LineMeta now
+// persists one, and line-meta.ts imports this file: the other way round is a
+// cycle. lib/line-meta.ts re-exports it, so every existing importer is unaffected.
+export type CartLineCharge = { label: string; amount: number }
+
 export type LineMeta = {
   fields: LineMetaField[]
   data?: Record<string, unknown>
+  // What a resolver attributed to a named charge on this line, kept so a
+  // surface reading the order months later can tell a delivery service apart
+  // from the goods without re-resolving anything.
+  //
+  // CAUTION - this is NOT the figure the basket showed. It is PER UNIT and
+  // UNCLAMPED, exactly as the resolver returned it: the true cost of the
+  // service for one of them. The basket instead shows attributeCharges()
+  // (lib/checkout.ts), which multiplies by quantity and scales the whole set
+  // down where it would outrun a discounted line price. Per-unit unclamped is
+  // the right figure for buying the service back off a supplier - it is a cost,
+  // not an attribution of what the shopper paid - and the wrong one for any
+  // screen that has to agree with the basket. Multiply, and clamp, if you want
+  // that one.
+  charges?: CartLineCharge[] | null
   group?: { key: string; role: 'main' | 'attachment'; caption?: string; depth?: number; order?: number; collectiveLabel?: string } | null
   // Display bucketing for the surfaces that list a whole order at once - see
   // LineMetaBatch. Persisted for the same reason `group` is: it is shop's own
@@ -103,6 +124,10 @@ export type ShpProduct = {
   // they issue a separate one for discounted stock. Never replaces `sku`, which
   // their stock lists still speak; owner-facing only, and never charged against.
   saleSku: string | null
+  // What the supplier calls this line. Never replaces `sku`, which is the
+  // shop's own identity; owner-facing only, never shown to a shopper and never
+  // charged against. Blank means the supplier knows it by `sku`.
+  supplierSku: string | null
   barcode: string | null
   // Who the shop got it from. Always carried on the row; whether it is offered
   // in the editor or shown to shoppers is a settings question, not a data one.

@@ -84,6 +84,7 @@ export async function buildProductCsvRows(opts?: { status?: ShpProductStatus; ca
       image_urls: imageUrls, image_alt: imageAlt, barcode: p.barcode ?? '',
       supplier: p.supplier ?? '',
       sale_sku: p.saleSku ?? '',
+      supplier_sku: p.supplierSku ?? '',
       min_order_quantity: num(p.minOrderQuantity),
     })
   }

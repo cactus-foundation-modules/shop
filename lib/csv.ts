@@ -25,6 +25,10 @@ export const CSV_COLUMNS = [
   // The fewest of a line the shop will sell in one go. Appended for the same
   // column-order reason as `sale_sku` above.
   'min_order_quantity',
+  // What the supplier calls this line, for ordering it back off them. Appended
+  // for the same column-order reason as `sale_sku` above. Text, never numeric -
+  // a supplier code is free to carry leading zeros.
+  'supplier_sku',
 ] as const
 
 export type CsvColumn = (typeof CSV_COLUMNS)[number]
@@ -45,7 +49,7 @@ const OPTIONAL_CSV_COLUMNS: readonly CsvColumn[] = [
   'download_limit', 'download_expiry',
   'is_pre_order', 'pre_order_dispatch_date', 'pre_order_note', 'pre_order_max_quantity',
   'related_mode', 'related_limit', 'upsell_mode', 'upsell_limit',
-  'supplier', 'sale_sku', 'min_order_quantity',
+  'supplier', 'sale_sku', 'min_order_quantity', 'supplier_sku',
 ]
 
 // Columns whose values are numbers, not text. The CSV writer does not care (every

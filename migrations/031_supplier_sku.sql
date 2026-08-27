@@ -1,0 +1,25 @@
+-- The code the supplier knows the line by.
+--
+-- The shop buys everything it sells from somebody, and what that somebody calls
+-- a line is rarely what the shop calls it. Ordering therefore means translating
+-- every code by hand, off a supplier price list, every time - which is exactly
+-- the kind of clerical work a column removes. Recorded here so a purchase order
+-- raised from the shop can speak the supplier's language without anybody
+-- looking anything up.
+--
+--   sku          - the shop's own identity for the line. UNIQUE, and what stock
+--                  imports and every other catalogue match runs on.
+--   supplier_sku - what the supplier calls the same thing. Nullable, and NOT
+--                  unique: it is their code rather than ours, and one code can
+--                  legitimately cover several of our lines. Follows sale_sku
+--                  (018) rather than sku for exactly that reason.
+--
+-- Blank is not a problem: an order falls back to `sku`, which is what a
+-- supplier-coded catalogue import will have left there anyway.
+--
+-- Owner-facing only. It is never shown to a shopper and never charged against.
+--
+-- Variations need nothing of their own: a variation IS an shp_products row
+-- (a hidden child), so this column lands on parents and children at once.
+
+ALTER TABLE "shp_products" ADD COLUMN IF NOT EXISTS "supplier_sku" TEXT;
