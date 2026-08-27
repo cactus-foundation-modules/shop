@@ -5,6 +5,7 @@ import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { injectInvoiceDocContext, type InvoiceDocContext } from '@/modules/shop/lib/invoice-doc-context'
 import { INVOICE_FALLBACK_DATA } from '@/modules/shop/lib/starterLayouts'
 import { docPageSetupFromLayout, type DocPageSetup } from '@/modules/shop/lib/doc-page-settings'
+import { renderDocumentRunningFooter as renderCoreDocumentRunningFooter } from '@/lib/documents/footer'
 import type { ShpInvoice } from '@/modules/shop/lib/types'
 
 // Rendering the invoice document. One layout, two surfaces:
@@ -59,16 +60,22 @@ export async function renderInvoiceDocument(ctx: InvoiceDocContext): Promise<Rea
 //  - what repeats at the FOOT OF EVERY PAGE. A footer block on the document
 //    itself is printed once, after the last line, which is what a footer on a
 //    one-page invoice looks like and emphatically not what one on a four-page
-//    invoice should. So the repeating footer is a layout of its own -
-//    `shopDocumentFooter` - lifted out of the printed page and handed to the
-//    browser as a running footer.
+//    invoice should. So the repeating footer is a layout of its own, lifted out
+//    of the printed page and handed to the browser as a running footer.
 //
 // ONE footer layout, not one per document type. An invoice, a credit note and a
 // proforma are the same folder of paperwork on somebody's desk, and the quote
-// this order started as reads too (quote-for-shop calls this same function -
-// see its lib/document.tsx). Designing a footer once and having it everywhere
-// is the point; three copies of the same rule and registration line would not
-// have been.
+// this order started as reads too. Designing a footer once and having it
+// everywhere is the point; three copies of the same rule and registration line
+// would not have been.
+//
+// That idea outgrew the shop. The footer layout type is CORE's now
+// (`documentFooter`), so a purchase order or anything else a module prints puts
+// its small print at the foot of the same designed strip rather than inventing a
+// second one. Shop's own `shopDocumentFooter` type stays exactly where it was
+// and is still the fallback - a shop that has published one keeps printing it,
+// with nothing migrated and nothing for an owner to redo. Publish a
+// `documentFooter` layout and that one wins from then on.
 //
 // Both page settings and the footer are optional: a shop that has published
 // neither gets the document it always got, on the paper it always got it on.
@@ -79,10 +86,13 @@ export async function documentPageSetup(layoutType: string): Promise<DocPageSetu
   return docPageSetupFromLayout(layout?.builderData ?? null)
 }
 
-const DOC_FOOTER_LAYOUT_TYPE = 'shopDocumentFooter'
+/** The shop's own PDF footer layout type, from before core had one. Still read,
+ *  still second in line. */
+const SHOP_DOC_FOOTER_LAYOUT_TYPE = 'shopDocumentFooter'
 
-/** The one shared PDF footer, as a React tree - or null when the shop has
- *  published none, which is every shop until somebody makes one.
+/** The one shared PDF footer, as a React tree - or null when nothing has been
+ *  published under either layout type, which is every shop until somebody makes
+ *  one.
  *
  *  Takes an `InvoiceDocContext` because that is the shape every caller already
  *  has or can build cheaply: the invoice, credit note and proforma pages pass
@@ -90,10 +100,8 @@ const DOC_FOOTER_LAYOUT_TYPE = 'shopDocumentFooter'
  *  trading identity (see quote-for-shop/lib/document.tsx) rather than this
  *  module learning a second document shape. */
 export async function renderDocumentRunningFooter(ctx: InvoiceDocContext): Promise<ReactNode | null> {
-  const layout = await resolveThemeLayout(DOC_FOOTER_LAYOUT_TYPE, { moduleName: 'shop' })
-  const source = layout?.builderData as Data | undefined
-  if (!source) return null
-  const { getModuleLayoutPuckRscConfig } = await import('@/lib/puck/config.rsc')
-  const data = injectInvoiceDocContext(source, ctx)
-  return <Render config={getModuleLayoutPuckRscConfig(DOC_FOOTER_LAYOUT_TYPE)} data={data as Data} />
+  return renderCoreDocumentRunningFooter(ctx, {
+    fallbackLayoutTypes: [SHOP_DOC_FOOTER_LAYOUT_TYPE],
+    moduleName: 'shop',
+  })
 }

@@ -1,9 +1,9 @@
 {
   "name": "shop",
-  "version": "0.1.351",
+  "version": "0.1.352",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
-  "requiresCoreVersion": "0.5.1338",
+  "requiresCoreVersion": "0.5.1347",
   "publicBasePath": "shop",
   "publicRootSlug": {
     "page": "./app/root/[slug]/page",
@@ -604,6 +604,7 @@
       "layoutTypes": [
         "shopInvoice",
         "shopProforma",
+        "documentFooter",
         "shopDocumentFooter"
       ]
     },
@@ -615,6 +616,7 @@
       "layoutTypes": [
         "shopInvoice",
         "shopProforma",
+        "documentFooter",
         "shopDocumentFooter"
       ]
     },
@@ -626,6 +628,7 @@
       "layoutTypes": [
         "shopInvoice",
         "shopProforma",
+        "documentFooter",
         "shopDocumentFooter"
       ]
     },
@@ -637,6 +640,7 @@
       "layoutTypes": [
         "shopInvoice",
         "shopProforma",
+        "documentFooter",
         "shopDocumentFooter"
       ]
     },
@@ -646,6 +650,7 @@
       "component": "shopInvoicePageNumberPuckComponent",
       "rscComponent": "shopInvoicePageNumberPuckRscComponent",
       "layoutTypes": [
+        "documentFooter",
         "shopDocumentFooter"
       ]
     }

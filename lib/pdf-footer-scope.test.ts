@@ -20,9 +20,12 @@ import { join } from 'path'
 // no error, for every document. tsc, eslint and every test here passed
 // throughout; it took printing a PDF and looking at it.
 //
-// So the two ends are pinned here. Neither assertion is clever: they are the two
-// facts that, held together, make the bug impossible to reintroduce without a
-// test going red.
+// The capture end of that pair is core's now (lib/documents/pdf.ts, pinned by
+// lib/documents/pdf-footer-scope.test.ts). What is pinned HERE is the other end:
+// the rule on this module's document pages that made the sweep dangerous in the
+// first place. If it ever stops being there, the guard in core is no longer
+// protecting anything, and whoever removed it should decide what replaces it
+// rather than finding a test quietly passing for the wrong reason.
 
 const shopDir = join(__dirname, '..')
 const read = (relative: string) => readFileSync(join(shopDir, relative), 'utf8')
@@ -41,25 +44,5 @@ describe('the hazard is still there', () => {
   // rather than finding this test quietly passing for the wrong reason.
   it.each(DOCUMENT_PAGES)('%s hides everything that is not <main>', (page) => {
     expect(read(page)).toContain('body > *:not(main) { display: none !important; }')
-  })
-})
-
-describe('the running footer takes only the stylesheets its own region carries', () => {
-  const pdfSources = ['lib/invoice-pdf.ts']
-
-  it.each(pdfSources)('%s scopes the stylesheet capture to the region', (source) => {
-    const capture = read(source)
-    // The capture runs inside page.evaluate. It must read <style> out of the
-    // footer region, never out of the whole document - see the note above.
-    expect(capture).toContain("region!.querySelectorAll('style')")
-    expect(capture).not.toContain("document.querySelectorAll('style')")
-  })
-
-  it('forces the footer visible whatever the captured rules decide', () => {
-    // Belt and braces on top of the scoping: the region's own stylesheet is the
-    // document's, written for a document, and the template is not one.
-    const capture = read('lib/invoice-pdf.ts')
-    expect(capture).toContain('RUNNING_FOOTER_FORCE')
-    expect(capture).toContain('.cactus-pdf-footer { display: block !important; }')
   })
 })
