@@ -33,6 +33,10 @@ type OrderDetail = {
   order: {
     id: string; orderNumber: string; status: string; paymentStatus: string; paymentMethod: string; paymentReference: string | null
     memberId: string | null; customerName: string; customerOrganisation: string | null; customerEmail: string; customerPhone: string | null
+    // The customer's OWN reference for the order - their purchase order number.
+    // Editable here because it routinely arrives after the order does: somebody
+    // rings up the next morning with the number their finance team raised.
+    customerReference: string | null
     subtotal: string; discountAmount: string; shippingAmount: string; taxAmount: string; total: string
     taxMode: string; currency: string; couponCode: string | null; shippingRateName: string | null
     shippingAddress: Address; billingAddress: Address | null
@@ -51,6 +55,9 @@ type OrderDetail = {
   downloads: Array<{ id: string; token: string; orderItemId: string; downloadCount: number; expiresAt: string | null }>
   customer: { orderCount: number; paidOrderCount: number; totalSpent: string; firstOrderAt: string | null }
   authors: Record<string, string>
+  // What this shop calls that reference. Sent with the order so the screen and
+  // the checkout call it the same thing.
+  customerReferenceLabel?: string
 }
 
 // Dispatch progress is worked out from the shipment lines every time it is
@@ -159,6 +166,10 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   const [refundOpen, setRefundOpen] = useState(false)
   const [dispatchOpen, setDispatchOpen] = useState(false)
   const [emailOpen, setEmailOpen] = useState(false)
+  // The customer's reference, while it is being edited. Null means "not being
+  // edited", which is a different state from an empty string - an empty string
+  // is somebody deliberately clearing it.
+  const [referenceDraft, setReferenceDraft] = useState<string | null>(null)
 
   const refresh = useCallback(() => {
     fetch(`/api/m/shop/admin/orders/${orderId}`)
@@ -196,6 +207,10 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
     || order.shippingAddress?.company?.trim()
     || null
 
+  // The shop's own wording for the customer's reference, with a sensible name to
+  // fall back on for a response from a server half that predates the field.
+  const referenceLabel = data.customerReferenceLabel?.trim() || 'Purchase order number'
+
   // Settled refunds with no credit note against them. Worked out here rather
   // than on the server so the panel does not need a second round trip after
   // every refund - both lists are already on the screen.
@@ -215,6 +230,19 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
       await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That status could not be set.', 'This order was left as it was')
       return
     }
+    refresh()
+  }
+
+  async function saveReference() {
+    if (referenceDraft === null) return
+    setBusy(true)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customerReference: referenceDraft.trim() }),
+    })
+    setBusy(false)
+    if (!res.ok) { await alert('That reference could not be saved.'); return }
+    setReferenceDraft(null)
     refresh()
   }
 
@@ -701,6 +729,50 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                     <dd>{organisation}</dd>
                   </div>
                 )}
+                {/* Always shown, unlike the organisation above: a blank one is
+                    a box to fill in rather than a fact to hide, because this is
+                    the number that gets the invoice paid and it usually turns up
+                    after the order does. */}
+                <div className="sox-detail-row">
+                  <dt>{referenceLabel}</dt>
+                  <dd>
+                    {referenceDraft === null ? (
+                      <>
+                        {order.customerReference?.trim() || <span className="sox-muted">Not given</span>}{' '}
+                        <button
+                          type="button"
+                          className="sox-copy sox-noprint"
+                          onClick={() => setReferenceDraft(order.customerReference ?? '')}
+                        >
+                          {order.customerReference?.trim() ? 'Edit' : 'Add'}
+                        </button>
+                      </>
+                    ) : (
+                      <div style={{ display: 'grid', gap: '0.375rem' }}>
+                        <input
+                          className="sox-input"
+                          type="text"
+                          maxLength={120}
+                          autoFocus
+                          aria-label={referenceLabel}
+                          value={referenceDraft}
+                          disabled={busy}
+                          onChange={(e) => setReferenceDraft(e.target.value)}
+                        />
+                        <div style={{ display: 'flex', gap: '0.375rem' }}>
+                          <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={saveReference}>Save</button>
+                          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => setReferenceDraft(null)}>Cancel</button>
+                        </div>
+                        {/* Said out loud, because it is the one thing about this
+                            box that surprises people: a document already raised
+                            took its own copy of the number on the day. */}
+                        <span className="sox-muted" style={{ fontSize: '0.75rem' }}>
+                          Any invoice already issued keeps the reference it was issued with.
+                        </span>
+                      </div>
+                    )}
+                  </dd>
+                </div>
                 <div className="sox-detail-row">
                   <dt>Email</dt>
                   <dd>

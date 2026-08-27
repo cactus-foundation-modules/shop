@@ -3,7 +3,7 @@ import { getSiteUrl } from '@/lib/config/env'
 import { getOrderItems } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
-import { sendShopEmail } from '@/modules/shop/lib/email'
+import { customerReferenceVars, sendShopEmail } from '@/modules/shop/lib/email'
 import { getPaymentProvider, resolveProviderLabel } from '@/modules/shop/lib/payments/registry'
 import { manualPaymentInstructions } from '@/modules/shop/lib/payment-instructions'
 import { proformaAvailable } from '@/modules/shop/lib/proforma'
@@ -110,6 +110,7 @@ export async function announceOrderAwaitingPayment(order: ShpOrder): Promise<voi
       hasPreOrderItems: preOrderItem ? 'true' : 'false',
       preOrderItemName: preOrderItem?.productName ?? '',
       preOrderDispatchDate: preOrderItem?.preOrderDispatchDate?.toLocaleDateString('en-GB') ?? '',
+      ...customerReferenceVars(order, config),
       shopName: config.shopTitle || 'Shop',
       shopUrl: `${siteUrl}/shop`,
     }, proforma ? { attachments: [proforma] } : undefined)
@@ -130,6 +131,7 @@ export async function announceOrderAwaitingPayment(order: ShpOrder): Promise<voi
         orderTotal: formatMoney(order.total, config.currencySymbol),
         orderItems: itemsList,
         paymentMethod,
+        ...customerReferenceVars(order, config),
         shopName: config.shopTitle || 'Shop',
         shopUrl: `${siteUrl}/shop`,
       })

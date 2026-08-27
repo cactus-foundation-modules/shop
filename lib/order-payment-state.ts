@@ -142,7 +142,7 @@ function prospectiveOrder(paymentMethod: string): ShpOrder {
   const nowhere: ShpAddress = { firstName: '', lastName: '', line1: '', city: '', postcode: '', country: 'GB' }
   return {
     id: '', orderNumber: '', status: 'PENDING', memberId: null,
-    customerEmail: '', customerName: '', customerOrganisation: null, customerPhone: null,
+    customerEmail: '', customerName: '', customerOrganisation: null, customerReference: null, customerPhone: null,
     shippingAddress: nowhere, billingAddress: null,
     subtotal: '0', discountAmount: '0', shippingAmount: '0', taxAmount: '0', total: '0',
     taxMode: 'INCLUSIVE', currency: '', couponId: null, couponCode: null,

@@ -2,7 +2,8 @@ import { sendEmail, type EmailAttachment } from '@/lib/email/index'
 import { renderEmailTemplate } from '@/lib/email/render'
 import { logOrderEmail } from '@/modules/shop/lib/db/orders'
 import { SHOP_TRIGGER_TO_TEMPLATE_KEY } from '@/modules/shop/lib/email-templates'
-import type { ShpEmailTemplateTrigger } from '@/modules/shop/lib/types'
+import type { ShpConfig } from '@/modules/shop/lib/config'
+import type { ShpEmailTemplateTrigger, ShpOrder } from '@/modules/shop/lib/types'
 
 // The shop's emails are registered with core (see lib/email-templates.ts and
 // the manifest's `emailTemplates` entry), so the wording, the on/off switch and
@@ -47,4 +48,24 @@ export async function sendShopEmail(
     ...(opts?.attachments?.length ? { attachments: opts.attachments } : {}),
   })
   if (opts?.orderId) await logOrderEmail(opts.orderId, rendered.subject, to, trigger)
+}
+
+// The customer's own reference for an order, as the three merge values every
+// order email wants: the number, the shop's own wording for it, and the flag the
+// `{{#if}}` block is gated on.
+//
+// One helper rather than the same three lines at four call sites, because the
+// flag is the easy one to forget - a template with the value but not the flag
+// prints nothing at all, and nobody notices until a customer asks why their
+// purchase order number is not on the confirmation.
+export function customerReferenceVars(
+  order: Pick<ShpOrder, 'customerReference'>,
+  config: Pick<ShpConfig, 'customerReferenceLabel'>,
+): Record<string, string> {
+  const reference = order.customerReference?.trim() ?? ''
+  return {
+    customerReference: reference,
+    customerReferenceLabel: config.customerReferenceLabel.trim() || 'Purchase order number',
+    hasCustomerReference: reference ? 'true' : 'false',
+  }
 }

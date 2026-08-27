@@ -13,6 +13,7 @@ function mapOrder(r: Record<string, unknown>): ShpOrder {
     customerEmail: r.customer_email as string,
     customerName: r.customer_name as string,
     customerOrganisation: (r.customer_organisation as string | null) ?? null,
+    customerReference: (r.customer_reference as string | null) ?? null,
     customerPhone: (r.customer_phone as string | null) ?? null,
     shippingAddress: r.shipping_address as ShpAddress,
     billingAddress: (r.billing_address as ShpAddress | null) ?? null,
@@ -115,6 +116,7 @@ export type CreateOrderInput = {
   customerEmail: string
   customerName: string
   customerOrganisation?: string | null
+  customerReference?: string | null
   customerPhone?: string | null
   shippingAddress: ShpAddress
   billingAddress?: ShpAddress | null
@@ -163,7 +165,7 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
   const rows = await tx.$queryRaw<[{ id: string }]>`
     INSERT INTO "shp_orders" (
       "id",
-      "order_number", "member_id", "customer_email", "customer_name", "customer_organisation", "customer_phone",
+      "order_number", "member_id", "customer_email", "customer_name", "customer_organisation", "customer_reference", "customer_phone",
       "shipping_address", "billing_address", "subtotal", "discount_amount", "shipping_amount",
       "tax_amount", "total", "tax_mode", "currency", "coupon_id", "coupon_code",
       "payment_method", "shipping_rate_id", "shipping_rate_name", "agreements"
@@ -173,7 +175,8 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
       -- so both cases go through one statement.
       COALESCE(${data.id ?? null}::text, gen_random_uuid()::text),
       ${data.orderNumber}, ${data.memberId ?? null}, ${data.customerEmail}, ${data.customerName},
-      ${data.customerOrganisation?.trim() || null}, ${normaliseStoredPhone(data.customerPhone)},
+      ${data.customerOrganisation?.trim() || null}, ${data.customerReference?.trim() || null},
+      ${normaliseStoredPhone(data.customerPhone)},
       ${JSON.stringify(data.shippingAddress)}::jsonb, ${data.billingAddress ? JSON.stringify(data.billingAddress) : null}::jsonb,
       ${data.subtotal}, ${data.discountAmount}, ${data.shippingAmount}, ${data.taxAmount}, ${data.total},
       ${data.taxMode}, ${data.currency}, ${data.couponId ?? null}, ${data.couponCode ?? null},
@@ -367,6 +370,22 @@ export async function setOrderPaymentReference(id: string, reference: string): P
   await prisma.$executeRaw`UPDATE "shp_orders" SET "payment_reference" = ${reference}, "updated_at" = CURRENT_TIMESTAMP WHERE "id" = ${id}`
 }
 
+// The customer's own reference, set or cleared from the order screen. Blank
+// stores NULL rather than an empty string, so "not given" reads the same whether
+// the box was never filled in or emptied afterwards.
+//
+// Editing this does NOT rewrite any invoice already issued: the document took
+// its own copy on the day it was raised (buildCustomer in lib/invoices.ts), and
+// a document in somebody's hands is a record, not a view. Correcting a reference
+// after invoicing means raising a credit note and invoicing again, which is the
+// same answer as correcting anything else on an invoice.
+export async function setOrderCustomerReference(id: string, reference: string): Promise<boolean> {
+  const result = await prisma.$executeRaw`
+    UPDATE "shp_orders" SET "customer_reference" = ${reference.trim() || null}, "updated_at" = CURRENT_TIMESTAMP WHERE "id" = ${id}
+  `
+  return result > 0
+}
+
 // Prunes stale PENDING orders that never paid (Q8 cron scope).
 export async function pruneAbandonedPendingOrders(olderThanHours: number): Promise<number> {
   return prisma.$executeRaw`
@@ -477,7 +496,11 @@ export async function listOrders(filter: ListOrdersFilter): Promise<{ orders: Sh
   // Company is searched as well as the person's name: on a trade shop the name
   // on the order is whoever in the office typed it, and "Acme" is what the
   // owner actually remembers the order by.
-  if (filter.search) conditions.push(Prisma.sql`(o."order_number" ILIKE ${`%${filter.search}%`} OR o."customer_email" ILIKE ${`%${filter.search}%`} OR o."customer_name" ILIKE ${`%${filter.search}%`} OR ${ORDER_COMPANY_SQL} ILIKE ${`%${filter.search}%`})`)
+  // The customer's own reference is searched alongside the shop's order number
+  // for the same reason the company is: when a trade customer rings up they
+  // quote THEIR purchase order number, not ours, and being told "we file that
+  // under a different number" is not an answer.
+  if (filter.search) conditions.push(Prisma.sql`(o."order_number" ILIKE ${`%${filter.search}%`} OR o."customer_email" ILIKE ${`%${filter.search}%`} OR o."customer_name" ILIKE ${`%${filter.search}%`} OR o."customer_reference" ILIKE ${`%${filter.search}%`} OR ${ORDER_COMPANY_SQL} ILIKE ${`%${filter.search}%`})`)
   if (filter.dateFrom) conditions.push(Prisma.sql`o."created_at" >= ${filter.dateFrom}`)
   if (filter.dateTo) conditions.push(Prisma.sql`o."created_at" <= ${filter.dateTo}`)
   if (filter.preOrder) {

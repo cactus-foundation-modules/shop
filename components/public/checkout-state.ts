@@ -30,6 +30,10 @@ export type CheckoutState = {
   // one. A contact detail, alongside the name and email - not part of any
   // address. Signed-in shoppers have theirs filled in from their account.
   customerOrganisation: string
+  // The customer's own reference for this order - their purchase order number,
+  // their job number - where the shop asks for one. A contact detail like the
+  // organisation above, and nothing to do with the shop's own order number.
+  customerReference: string
   customerPhone: string
   shippingAddress: ShpAddressForm
   shippingRateId: string | null
@@ -53,7 +57,7 @@ export const EMPTY_ADDRESS: ShpAddressForm = {
 }
 
 export const EMPTY_CHECKOUT_STATE: CheckoutState = {
-  customerEmail: '', customerName: '', customerOrganisation: '', customerPhone: '',
+  customerEmail: '', customerName: '', customerOrganisation: '', customerReference: '', customerPhone: '',
   shippingAddress: EMPTY_ADDRESS, shippingRateId: null, couponCode: null, paymentMethod: null,
   agreements: {},
 }
@@ -198,6 +202,10 @@ export type CheckoutFieldRules = {
   // Only used for the label, so a caller without it yet still gets the right
   // list, just with the default name on that one row.
   organisationLabel?: string
+  // Whether the customer's own reference has to be given, and what the owner
+  // calls it. Same arrangement as the organisation pair above.
+  customerReferenceRequired?: boolean
+  customerReferenceLabel?: string
   phoneRequired?: boolean
 }
 
@@ -228,6 +236,12 @@ export function missingCheckoutFields(
   // details rather than in the address below.
   if (opts?.organisationRequired && state.customerOrganisation.trim().length === 0) {
     add('customerOrganisation', opts.organisationLabel?.trim() || 'Organisation name')
+  }
+
+  // Directly under it, because that is the order the boxes are drawn in: who
+  // they are, then what they want the order called on their side.
+  if (opts?.customerReferenceRequired && state.customerReference.trim().length === 0) {
+    add('customerReference', opts.customerReferenceLabel?.trim() || 'Purchase order number')
   }
 
   if (a.firstName.trim().length === 0) add('firstName', 'First name')

@@ -106,6 +106,22 @@ export const ShpConfigSchema = z.object({
   organisationRequired: z.boolean().default(false),
   organisationLabel: z.string().default('Organisation name'),
 
+  // The customer's own reference for the order - their purchase order number,
+  // their job number, whatever their finance team has to see before they will
+  // pay. Off by default, for the same reason as the box above: a shop selling to
+  // the public has no use for it.
+  //
+  // Worth having as its own field rather than a line in the order notes, because
+  // it is the number the customer's accounts department matches our invoice
+  // against. It is searchable on the orders list, it is snapshotted onto the
+  // invoice when the invoice is issued, and it prints on the invoice and the
+  // proforma. The label is the owner's: "Purchase order number" on a trade shop,
+  // "Job reference" on a builder's merchant, and whatever it says at checkout is
+  // what it says on the paperwork.
+  customerReferenceFieldEnabled: z.boolean().default(false),
+  customerReferenceRequired: z.boolean().default(false),
+  customerReferenceLabel: z.string().default('Purchase order number'),
+
   // Terms and conditions tickbox at checkout. Kept apart from the owner's own
   // tickboxes below because it is the one nearly every shop wants and it can
   // point at the site's own terms page without anyone typing a URL - leave

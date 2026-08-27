@@ -17,7 +17,7 @@ import type { ShpAddress } from '@/modules/shop/lib/types'
 
 const COLUMNS = [
   'order_number', 'placed_at', 'status', 'payment_status', 'payment_method', 'payment_reference', 'paid_at',
-  'customer_name', 'customer_organisation', 'customer_email', 'customer_phone', 'account_holder',
+  'customer_name', 'customer_organisation', 'customer_reference', 'customer_email', 'customer_phone', 'account_holder',
   'items', 'units', 'dispatched_units', 'refunded_units', 'outstanding_units',
   'subtotal', 'discount', 'coupon_code', 'shipping', 'shipping_method', 'tax', 'tax_mode', 'total', 'currency',
   'delivery_line1', 'delivery_line2', 'delivery_city', 'delivery_county', 'delivery_postcode', 'delivery_country',
@@ -58,6 +58,9 @@ export async function GET(request: NextRequest) {
       // the delivery address still exports what it was given - see
       // orderCompanyName.
       orderCompanyName(order) ?? '',
+      // Their number for the order, not ours. The column a finance team
+      // reconciles the export against.
+      order.customerReference ?? '',
       order.customerEmail,
       order.customerPhone ?? '',
       order.memberId ? 'yes' : 'no',

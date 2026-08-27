@@ -372,7 +372,7 @@ export function OrdersScreen() {
         <input
           className="sox-search"
           aria-label="Search orders"
-          placeholder="Search by order number, organisation, name or email…"
+          placeholder="Search by order number, their reference, organisation, name or email…"
           value={searchBox}
           onChange={(e) => setSearchBox(e.target.value)}
         />

@@ -114,6 +114,8 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
   const [agreements, setAgreements] = useState<Agreement[]>([])
   const [organisationRequired, setOrganisationRequired] = useState(false)
   const [organisationLabel, setOrganisationLabel] = useState('')
+  const [referenceRequired, setReferenceRequired] = useState(false)
+  const [referenceLabel, setReferenceLabel] = useState('')
   const [phoneRequired, setPhoneRequired] = useState(false)
   // The shop's ISO currency code, and the publishable per-method config a
   // payment module's own components draw from. Both come off the same config
@@ -141,6 +143,7 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
     fetchShopPublicConfig<{
       checkoutAgreements?: Agreement[]
       organisation?: { required?: boolean; label?: string }
+      customerReference?: { required?: boolean; label?: string }
       requirePhone?: boolean
       currency?: string
       paymentMethodClientFields?: Record<string, Record<string, unknown>>
@@ -157,6 +160,8 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
         // The owner's own wording for that box, so the outstanding list calls it
         // what the form above calls it rather than inventing a name for it.
         setOrganisationLabel(d.organisation?.label ?? '')
+        setReferenceRequired(d.customerReference?.required === true)
+        setReferenceLabel(d.customerReference?.label ?? '')
         setPhoneRequired(d.requirePhone === true)
       })
       .catch(() => {})
@@ -171,7 +176,7 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
       const lines = getCart()
       setTicked(state.agreements ?? {})
       setPaymentMethod(state.paymentMethod)
-      setMissing(missingCheckoutFields(state, { organisationRequired, organisationLabel, phoneRequired }))
+      setMissing(missingCheckoutFields(state, { organisationRequired, organisationLabel, customerReferenceRequired: referenceRequired, customerReferenceLabel: referenceLabel, phoneRequired }))
       if (lines.length === 0) { setSummary(null); return }
 
       // Carriage is only priced once there is a postcode and a service picked,
@@ -231,7 +236,7 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
     // Re-runs when the business-name and phone rules arrive from config: the
     // completeness test above closes over them, so a stale `false` would wave
     // through a checkout the order route is about to refuse.
-  }, [organisationRequired, organisationLabel, phoneRequired])
+  }, [organisationRequired, organisationLabel, referenceRequired, referenceLabel, phoneRequired])
 
   function setAgreement(id: string, accepted: boolean) {
     const next = { ...getCheckoutState().agreements, [id]: accepted }
@@ -266,7 +271,7 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
     // rather than a code path - it exists so a stale render can never post. It
     // guards the wallet buttons too, which are disabled by the same test: a
     // shopper must not skip the terms tickbox by paying with their watch.
-    if (outstandingDecisions().length > 0 || missingCheckoutFields(getCheckoutState(), { organisationRequired, organisationLabel, phoneRequired }).length > 0) return
+    if (outstandingDecisions().length > 0 || missingCheckoutFields(getCheckoutState(), { organisationRequired, organisationLabel, customerReferenceRequired: referenceRequired, customerReferenceLabel: referenceLabel, phoneRequired }).length > 0) return
     setPlacing(true)
     setError(null)
     window.dispatchEvent(new CustomEvent('cactus-shop-place-order', {

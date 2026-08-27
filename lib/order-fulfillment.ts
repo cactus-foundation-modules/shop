@@ -6,7 +6,7 @@ import { createDigitalDownload } from '@/modules/shop/lib/db/digital'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
 import { rememberOrderAddress } from '@/modules/shop/lib/order-address-book'
-import { sendShopEmail } from '@/modules/shop/lib/email'
+import { customerReferenceVars, sendShopEmail } from '@/modules/shop/lib/email'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { getPaymentProvider, resolveProviderLabel } from '@/modules/shop/lib/payments/registry'
 import { issueInvoiceForOrder, shouldIssueOn } from '@/modules/shop/lib/invoices'
@@ -107,6 +107,7 @@ export async function fulfillPaidOrder(
       hasPreOrderItems: preOrderItem ? 'true' : 'false',
       preOrderItemName: preOrderItem?.productName ?? '',
       preOrderDispatchDate: preOrderItem?.preOrderDispatchDate?.toLocaleDateString('en-GB') ?? '',
+      ...customerReferenceVars(order, config),
       shopName: config.shopTitle || 'Shop',
       shopUrl: `${siteUrl}/shop`,
     })
@@ -136,6 +137,7 @@ export async function fulfillPaidOrder(
       customerEmail: order.customerEmail,
       orderTotal: formatMoney(order.total, config.currencySymbol),
       orderItems: itemsList,
+      ...customerReferenceVars(order, config),
       shopName: config.shopTitle || 'Shop',
       shopUrl: `${siteUrl}/shop`,
     })

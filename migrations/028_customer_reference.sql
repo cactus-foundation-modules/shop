@@ -1,0 +1,15 @@
+-- The customer's OWN reference for an order: their purchase order number, their
+-- job number, whatever their accounts department needs to see on the paperwork
+-- before they will pay it.
+--
+-- Nothing to do with the shop's own order number. A business buyer raises a
+-- purchase order on their side, and their finance team matches our invoice to
+-- it; an invoice arriving without that number gets sent back or sits in a
+-- queue, which is a slow way to be paid for work already done.
+--
+-- A column on the order rather than a line in the notes, because it has to be
+-- searchable, printable and snapshotted onto the invoice at issue time.
+--
+-- Nullable, and off by default in settings: most shops sell to people, and
+-- people do not raise purchase orders.
+ALTER TABLE "shp_orders" ADD COLUMN IF NOT EXISTS "customer_reference" TEXT;

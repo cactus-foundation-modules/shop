@@ -417,6 +417,11 @@ export type ShpOrder = {
   // one. A snapshot like the name and email beside it: changing it on the
   // account later does not rewrite orders already placed.
   customerOrganisation: string | null
+  // The customer's OWN reference for this order - their purchase order number,
+  // their job number - where the shop asks for one. Nothing to do with
+  // orderNumber, which is the shop's. Snapshotted onto the invoice at issue
+  // time, so editing it afterwards never rewrites a document already sent.
+  customerReference: string | null
   customerPhone: string | null
   shippingAddress: ShpAddress
   billingAddress: ShpAddress | null
@@ -552,6 +557,10 @@ export type ShpInvoiceSeller = {
 export type ShpInvoiceCustomer = {
   name: string
   company: string
+  /** The customer's own reference for the order, frozen as it read on the day
+   *  the document was raised. Empty string on a shop that does not ask for one,
+   *  and on every invoice issued before the field existed. */
+  reference: string
   email: string
   phone: string
   billingAddress: string[]
@@ -622,6 +631,12 @@ export type ShpInvoiceWording = {
   paymentDetails: string
   terms: string
   footer: string
+  /** What the shop calls the customer's own reference, as settings read on the
+   *  day the document was raised - "Purchase order number", "Job reference".
+   *  Snapshotted with the rest of the wording so a document keeps the words it
+   *  was issued in. Absent on anything raised before the field existed, where
+   *  the document block falls back to its own default. */
+  customerReferenceLabel?: string
   /** What stands under the total on a credit note, where "Paid in full" stands
    *  on an invoice. Only ever set on a credit note's own snapshot; absent on
    *  every invoice, and on any credit note raised before it existed. */

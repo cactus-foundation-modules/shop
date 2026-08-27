@@ -99,6 +99,10 @@ export function buildCustomer(order: ShpOrder): ShpInvoiceCustomer {
     // orderCompanyName for why the order's own field comes before the two
     // address fallbacks.
     company: orderCompanyName(order) ?? '',
+    // Their reference, not ours. Frozen here with everything else on the
+    // document: the number the customer's finance team matches this invoice
+    // against has to still read the way it read when the invoice was sent.
+    reference: order.customerReference?.trim() ?? '',
     email: order.customerEmail,
     phone: order.customerPhone ?? '',
     billingAddress: billing ? addressLines(billing) : [],
@@ -114,6 +118,7 @@ function buildWording(config: ShpConfig): ShpInvoiceWording {
     paymentDetails: config.invoicePaymentDetails.trim(),
     terms: config.invoiceTerms.trim(),
     footer: config.invoiceFooter.trim(),
+    customerReferenceLabel: config.customerReferenceLabel.trim(),
   }
 }
 

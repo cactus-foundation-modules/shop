@@ -37,6 +37,10 @@ export const ordersScreenCss = `
 .sox-select{height:36px;padding:0 2rem 0 0.625rem;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text);font-size:0.8125rem;cursor:pointer}
 .sox-select:focus-visible{outline:2px solid var(--color-border-focus);outline-offset:1px}
 .sox-date{height:36px;padding:0 0.5rem;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text);font-size:0.8125rem}
+/* A text box inside a detail card, where a field is edited in place rather than
+   on a form of its own. */
+.sox-input{width:100%;height:34px;padding:0 0.5rem;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text);font-size:0.8125rem}
+.sox-input:focus-visible{outline:2px solid var(--color-border-focus);outline-offset:1px}
 .sox-filters{display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-bottom:1rem}
 .sox-filters-label{font-size:0.75rem;font-weight:600;letter-spacing:0.02em;text-transform:uppercase;color:var(--color-text-secondary)}
 

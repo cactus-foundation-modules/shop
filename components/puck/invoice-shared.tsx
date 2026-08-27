@@ -335,6 +335,10 @@ export function invoiceTokens(ctx: InvoiceDocContext): Record<string, string> {
     DUE_DATE: formatDay(invoice.dueDate),
     CUSTOMER_NAME: customer.name ?? '',
     CUSTOMER_COMPANY: customer.company ?? '',
+    // Their purchase order number, where they gave one. Blank on every document
+    // raised before the shop asked, which is why an owner pasting it into a
+    // notice gets nothing rather than a stranded label.
+    CUSTOMER_REFERENCE: customer.reference ?? '',
     CUSTOMER_EMAIL: customer.email ?? '',
     BUSINESS_NAME: seller.name || seller.siteName || '',
     BUSINESS_EMAIL: seller.email ?? '',

@@ -148,6 +148,7 @@ export const SAMPLE_INVOICE_CONTEXT: InvoiceDocContext = {
     customer: {
       name: 'Sample Customer',
       company: 'Sample Company Ltd',
+      reference: 'PO-4471',
       email: 'buyer@example.com',
       phone: '',
       billingAddress: ['Sample Customer', 'Sample Company Ltd', '4 Example Road', 'Manchester', 'M1 2AB'],
@@ -175,6 +176,7 @@ export const SAMPLE_INVOICE_CONTEXT: InvoiceDocContext = {
       paymentDetails: 'Bank transfer to Example Bank, sort code 00-00-00, account 12345678.',
       terms: 'Payment due within 30 days. Goods remain our property until paid for in full.',
       footer: '',
+      customerReferenceLabel: 'Purchase order number',
     },
     issuedBy: 'AUTO',
     issueTrigger: 'COMPLETED',

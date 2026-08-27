@@ -19,8 +19,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Order confirmed',
     subject: 'Your order {{orderNumber}} is confirmed',
     bodyHtml:
-      "<p>Hi {{customerName}},</p><p>Thanks for your order <strong>{{orderNumber}}</strong> - we're getting it ready.</p><p>{{orderItems}}</p><p>Total: {{orderTotal}}</p>{{#if hasPreOrderItems}}<p>Pre-order notice: your order contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p>",
-    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'preOrderItemName', 'preOrderDispatchDate', 'shopName'],
+      "<p>Hi {{customerName}},</p><p>Thanks for your order <strong>{{orderNumber}}</strong> - we're getting it ready.</p><p>{{orderItems}}</p><p>Total: {{orderTotal}}</p>{{#if hasPreOrderItems}}<p>Pre-order notice: your order contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}",
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'customerReference', 'customerReferenceLabel', 'preOrderItemName', 'preOrderDispatchDate', 'shopName'],
     transactional: false,
   },
   {
@@ -38,8 +38,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Order placed (payment still to come)',
     subject: 'Your order {{orderNumber}} - how to pay',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>Thanks - we have your order <strong>{{orderNumber}}</strong>. It is not on its way yet: we start work on it once your payment reaches us.</p><p>{{orderItems}}</p><p>Total to pay: <strong>{{orderTotal}}</strong></p>{{#if hasPaymentInstructions}}<p><strong>How to pay by {{paymentMethod}}</strong></p><p>{{paymentInstructions}}</p><p>Please quote <strong>{{orderNumber}}</strong> as the reference, so we can match your payment to your order.</p>{{/if}}<p><strong>Delivery times start from the day your payment reaches us</strong>, not the day you ordered - so the sooner it lands, the sooner your order goes out.</p>{{#if hasPreOrderItems}}<p>Your order also contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p><p>We will email you the moment your payment arrives.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'paymentMethod', 'paymentInstructions', 'preOrderItemName', 'preOrderDispatchDate', 'shopName'],
+      '<p>Hi {{customerName}},</p><p>Thanks - we have your order <strong>{{orderNumber}}</strong>. It is not on its way yet: we start work on it once your payment reaches us.</p><p>{{orderItems}}</p><p>Total to pay: <strong>{{orderTotal}}</strong></p>{{#if hasPaymentInstructions}}<p><strong>How to pay by {{paymentMethod}}</strong></p><p>{{paymentInstructions}}</p><p>Please quote <strong>{{orderNumber}}</strong> as the reference, so we can match your payment to your order.</p>{{/if}}<p><strong>Delivery times start from the day your payment reaches us</strong>, not the day you ordered - so the sooner it lands, the sooner your order goes out.</p>{{#if hasPreOrderItems}}<p>Your order also contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p><p>We will email you the moment your payment arrives.</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'paymentMethod', 'paymentInstructions', 'customerReference', 'customerReferenceLabel', 'preOrderItemName', 'preOrderDispatchDate', 'shopName'],
     // Bank details are typed into a settings box over several lines and are
     // useless run together, so the sending code escapes them and puts the line
     // breaks back itself. Nothing else here is pre-built markup.
@@ -56,8 +56,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Payment received',
     subject: 'We have received your payment for order {{orderNumber}}',
     bodyHtml:
-      "<p>Hi {{customerName}},</p><p>Your payment of <strong>{{orderTotal}}</strong> for order <strong>{{orderNumber}}</strong> has landed with us - thank you.</p>{{#if hasPaymentReference}}<p>Payment reference: {{paymentReference}}</p>{{/if}}<p>{{orderItems}}</p>{{#if hasPreOrderItems}}<p>Your order contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p><p>We are getting it ready now and will be in touch when it is on its way.</p>",
-    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'paymentMethod', 'paymentReference', 'preOrderItemName', 'preOrderDispatchDate', 'shopName'],
+      "<p>Hi {{customerName}},</p><p>Your payment of <strong>{{orderTotal}}</strong> for order <strong>{{orderNumber}}</strong> has landed with us - thank you.</p>{{#if hasPaymentReference}}<p>Payment reference: {{paymentReference}}</p>{{/if}}<p>{{orderItems}}</p>{{#if hasPreOrderItems}}<p>Your order contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p><p>We are getting it ready now and will be in touch when it is on its way.</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}",
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'paymentMethod', 'paymentReference', 'customerReference', 'customerReferenceLabel', 'preOrderItemName', 'preOrderDispatchDate', 'shopName'],
     transactional: true,
   },
   {
@@ -105,8 +105,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     key: 'shop.admin-new-order',
     label: 'New order (admin alert)',
     subject: 'New order received: {{orderNumber}}',
-    bodyHtml: '<p>New order <strong>{{orderNumber}}</strong> from {{customerName}} ({{customerEmail}}).</p><p>Total: {{orderTotal}}</p>',
-    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'orderTotal', 'shopName'],
+    bodyHtml: '<p>New order <strong>{{orderNumber}}</strong> from {{customerName}} ({{customerEmail}}).</p><p>Total: {{orderTotal}}</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}',
+    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'orderTotal', 'customerReference', 'customerReferenceLabel', 'shopName'],
     transactional: false,
   },
   {
@@ -118,8 +118,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'New order, payment still to come (admin alert)',
     subject: 'New order awaiting payment: {{orderNumber}}',
     bodyHtml:
-      '<p>New order <strong>{{orderNumber}}</strong> from {{customerName}} ({{customerEmail}}), placed by {{paymentMethod}}.</p><p>Total: {{orderTotal}} - <strong>not paid yet</strong>. They have been emailed how to pay, and the order sits in Awaiting payment until you mark it received.</p><p>{{orderItems}}</p>',
-    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'orderTotal', 'orderItems', 'paymentMethod', 'shopName'],
+      '<p>New order <strong>{{orderNumber}}</strong> from {{customerName}} ({{customerEmail}}), placed by {{paymentMethod}}.</p><p>Total: {{orderTotal}} - <strong>not paid yet</strong>. They have been emailed how to pay, and the order sits in Awaiting payment until you mark it received.</p><p>{{orderItems}}</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}',
+    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'orderTotal', 'orderItems', 'paymentMethod', 'customerReference', 'customerReferenceLabel', 'shopName'],
     transactional: false,
   },
   {

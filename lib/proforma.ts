@@ -76,6 +76,7 @@ function buildWording(config: ShpConfig, order: ShpOrder, paid: boolean): ShpInv
     // ordinary ones once it is a record of one that was met.
     terms: paid ? config.invoiceTerms.trim() : config.proformaTerms.trim(),
     footer: config.invoiceFooter.trim(),
+    customerReferenceLabel: config.customerReferenceLabel.trim(),
     proformaWording: paid
       ? config.proformaPaidWording.trim()
       : config.proformaUnpaidWording.trim(),

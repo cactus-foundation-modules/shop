@@ -46,6 +46,7 @@ import {
 type HeaderProps = DocProps & {
   heading?: string
   showOrderNumber?: string; showTaxPoint?: string; taxPointLabel?: string
+  showCustomerReference?: string; customerReferenceLabel?: string
   showDate?: string; showDue?: string
   titleSize?: string; sides?: string; rule?: string
   factsLayout?: string; numberStyle?: string
@@ -111,6 +112,23 @@ export function ShopInvoiceHeader(props: HeaderProps) {
   // whose number already leads.
   if (!(leadNumber && !credit)) facts.push({ label: invoiceLabel, value: invoice.invoiceNumber ?? '' })
   if (props.showOrderNumber !== 'no') facts.push({ label: props.orderLabel?.trim() || 'Order', value: invoice.orderNumber ?? '' })
+  // The customer's OWN number for this order, where they gave one. On by
+  // default, and safe to be: no document raised before the shop asked for one
+  // carries a value, and a row with no value is dropped below - so an invoice
+  // already in somebody's hands is unchanged, while a layout published last year
+  // starts printing a purchase order number the day the owner switches the box
+  // on, without anybody having to reopen the editor.
+  //
+  // The label comes from the document's own snapshot before its default, so it
+  // reads the way the shop worded it on the day - an owner who renames the box
+  // from "Purchase order number" to "Job reference" does not retitle every
+  // invoice they have already sent.
+  if (props.showCustomerReference !== 'no') {
+    facts.push({
+      label: props.customerReferenceLabel?.trim() || invoice.wording?.customerReferenceLabel?.trim() || 'Your reference',
+      value: invoice.customer?.reference ?? '',
+    })
+  }
   if (props.showDate !== 'no') facts.push({ label: props.dateLabel?.trim() || 'Date', value: formatDay(invoice.taxPointDate) })
   // The tax point is the date the VAT belongs to. It is usually the same day as
   // the invoice, and printing it twice is noise - so it is a switch, off unless
@@ -194,6 +212,8 @@ export const shopInvoiceHeaderPuckComponent = {
     invoiceLabel: { type: 'text' as const, label: '"Invoice" row label' },
     showOrderNumber: { type: 'select' as const, label: 'Order number', options: yesNo },
     orderLabel: { type: 'text' as const, label: '"Order" row label' },
+    showCustomerReference: { type: 'select' as const, label: "The customer's own reference", options: yesNo },
+    customerReferenceLabel: { type: 'text' as const, label: 'Their reference row label (blank uses the one in Shop settings)' },
     showDate: { type: 'select' as const, label: 'Date row', options: yesNo },
     dateLabel: { type: 'text' as const, label: '"Date" row label' },
     showDue: { type: 'select' as const, label: 'Due by row', options: yesNo },
@@ -210,6 +230,7 @@ export const shopInvoiceHeaderPuckComponent = {
     heading: '', fontFamily: '', titleSize: 'medium', sides: 'logo-left', rule: 'hairline',
     factsLayout: 'columns', numberStyle: 'row',
     invoiceLabel: 'Invoice', showOrderNumber: 'yes', orderLabel: 'Order',
+    showCustomerReference: 'yes', customerReferenceLabel: '',
     showDate: 'yes', dateLabel: 'Date', showDue: 'yes', dueLabel: 'Due by',
     showTaxPoint: 'no', taxPointLabel: 'Tax point',
   },

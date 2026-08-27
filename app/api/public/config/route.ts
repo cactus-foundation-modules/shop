@@ -133,6 +133,14 @@ async function buildConfigPayload() {
       required: config.organisationRequired,
       label: config.organisationLabel.trim() || 'Organisation name',
     },
+    // The customer's own reference box - their purchase order number - under the
+    // organisation. Same arrangement as above: the contact step draws it from
+    // here and the route that creates the order enforces the rule again.
+    customerReference: {
+      enabled: config.customerReferenceFieldEnabled,
+      required: config.customerReferenceRequired,
+      label: config.customerReferenceLabel.trim() || 'Purchase order number',
+    },
     // Checkout tickboxes, already resolved: disabled and blank ones dropped,
     // and the terms link filled in from the site's own terms page where the
     // owner left the URL blank.

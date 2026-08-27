@@ -11,6 +11,10 @@ import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 // preview draws the same form the storefront does.
 type OrganisationConfig = { enabled: boolean; required: boolean; label: string }
 
+// The customer's own reference box - their purchase order number - and whether
+// an order can be placed without one. Same three answers, same source.
+type CustomerReferenceConfig = { enabled: boolean; required: boolean; label: string }
+
 // Client island for the checkout contact step. Registered Puck block wrapper
 // (ShopCheckoutContact) is a server component that renders this, so Puck's RSC
 // <Render> never serialises its renderDropZone function bag into the client.
@@ -43,6 +47,9 @@ export function CheckoutContactClient({ preview = false, heading, extras = [] }:
   const [organisation, setOrganisation] = useState(initial.customerOrganisation)
   const [organisationConfig, setOrganisationConfig] = useState<OrganisationConfig | null>(null)
   const [organisationTouched, setOrganisationTouched] = useState(false)
+  const [reference, setReference] = useState(initial.customerReference)
+  const [referenceConfig, setReferenceConfig] = useState<CustomerReferenceConfig | null>(null)
+  const [referenceTouched, setReferenceTouched] = useState(false)
 
   // The name and organisation the shopper keeps on their account, if they are
   // signed in and have filled them in. A signed-out shopper gets an empty 204
@@ -81,10 +88,11 @@ export function CheckoutContactClient({ preview = false, heading, extras = [] }:
 
   useEffect(() => {
     let cancelled = false
-    fetchShopPublicConfig<{ organisation?: OrganisationConfig }>()
+    fetchShopPublicConfig<{ organisation?: OrganisationConfig; customerReference?: CustomerReferenceConfig }>()
       .then((d) => {
-        if (cancelled || !d?.organisation) return
-        setOrganisationConfig(d.organisation)
+        if (cancelled || !d) return
+        if (d.organisation) setOrganisationConfig(d.organisation)
+        if (d.customerReference) setReferenceConfig(d.customerReference)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -97,6 +105,11 @@ export function CheckoutContactClient({ preview = false, heading, extras = [] }:
   const organisationError = organisationConfig?.enabled && organisationConfig.required
     && organisationTouched && organisation.trim().length === 0
     ? `Enter your ${organisationConfig.label.trim().toLowerCase() || 'organisation name'}.`
+    : null
+
+  const referenceError = referenceConfig?.enabled && referenceConfig.required
+    && referenceTouched && reference.trim().length === 0
+    ? `Enter your ${referenceConfig.label.trim().toLowerCase() || 'purchase order number'}.`
     : null
 
   // Empty basket: the order-summary block owns the "your basket is empty"
@@ -132,6 +145,26 @@ export function CheckoutContactClient({ preview = false, heading, extras = [] }:
             style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: `1px solid ${organisationError ? 'var(--color-danger)' : 'var(--color-border)'}` }}
           />
           {organisationError && <span role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{organisationError}</span>}
+        </label>
+      )}
+      {/* Under the organisation, because that is the order a trade buyer is
+          asked in: who they are, then what their own finance team files this
+          order under. Never filled in from the account - a purchase order
+          number belongs to one order, not to a customer. */}
+      {referenceConfig?.enabled && (
+        <label style={{ display: 'grid', gap: '0.25rem' }}>
+          <span>{referenceConfig.required ? referenceConfig.label : `${referenceConfig.label} (optional)`}</span>
+          <input
+            type="text"
+            required={referenceConfig.required}
+            data-shop-field="customerReference"
+            value={reference}
+            onChange={(e) => { setReference(e.target.value); updateCheckoutState({ customerReference: e.target.value }) }}
+            onBlur={() => setReferenceTouched(true)}
+            aria-invalid={referenceError ? true : undefined}
+            style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: `1px solid ${referenceError ? 'var(--color-danger)' : 'var(--color-border)'}` }}
+          />
+          {referenceError && <span role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{referenceError}</span>}
         </label>
       )}
       <label style={{ display: 'grid', gap: '0.25rem' }}>

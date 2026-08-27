@@ -523,6 +523,31 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
           )}
 
           <hr style={hr} />
+          <h3 style={sectionHeading}>Their own order reference</h3>
+          <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
+            A box for the customer&apos;s own number for the order - the purchase order number their finance team raised, or a job reference. It goes
+            on the invoice and the proforma, and you can search your orders by it. Worth switching on if you sell to businesses: an invoice that
+            arrives without their number on it tends to sit in somebody&apos;s tray rather than get paid.
+          </p>
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.customerReferenceFieldEnabled} onChange={(e) => set('customerReferenceFieldEnabled', e.target.checked)} />
+            Ask for their own reference at checkout
+          </label>
+          {config.customerReferenceFieldEnabled && (
+            <>
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.customerReferenceRequired} onChange={(e) => set('customerReferenceRequired', e.target.checked)} />
+                Orders can&apos;t be placed without one
+              </label>
+              <div className="field">
+                <label>What to call it</label>
+                <input type="text" value={config.customerReferenceLabel} onChange={(e) => set('customerReferenceLabel', e.target.value)} placeholder="Purchase order number" />
+                <p className="field-hint">Whatever your customers call it. This is the wording on the checkout box and on the paperwork.</p>
+              </div>
+            </>
+          )}
+
+          <hr style={hr} />
           <h3 style={sectionHeading}>Tickboxes at checkout</h3>
           <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
             These appear just above the Place order button. A required one has to be ticked before the order will go through, and what was ticked is

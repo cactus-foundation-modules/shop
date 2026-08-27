@@ -41,6 +41,7 @@ const Body = z.object({
   customerEmail: z.string().email(),
   customerName: z.string().min(1),
   customerOrganisation: z.string().optional(),
+  customerReference: z.string().optional(),
   customerPhone: z.string().optional(),
   shippingAddress: AddressSchema,
   paymentMethod: z.enum(['STRIPE', 'PAYPAL', 'BANK_TRANSFER', 'CASH']),
@@ -69,6 +70,10 @@ export async function POST(request: NextRequest) {
     customerEmail: data.customerEmail,
     customerName: data.customerName,
     customerOrganisation: data.customerOrganisation?.trim() || null,
+    // Taken whether or not the box is switched on at checkout: an order typed in
+    // by hand is very often the trade one that came with a purchase order number
+    // over the telephone.
+    customerReference: data.customerReference?.trim() || null,
     customerPhone: data.customerPhone ?? null,
     shippingAddress: data.shippingAddress,
     subtotal: totals.subtotal,

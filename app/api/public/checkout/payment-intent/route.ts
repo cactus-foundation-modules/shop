@@ -36,6 +36,7 @@ const Body = z.object({
   customerEmail: z.string().email(),
   customerName: z.string().min(1),
   customerOrganisation: z.string().optional(),
+  customerReference: z.string().optional(),
   customerPhone: z.string().optional(),
   shippingAddress: AddressSchema,
   billingAddress: AddressSchema.nullable().optional(),
@@ -90,6 +91,14 @@ export async function POST(request: NextRequest) {
   // it. Checked against the trimmed value, so a space is not an organisation.
   if (config.organisationFieldEnabled && config.organisationRequired && !data.customerOrganisation?.trim()) {
     const label = config.organisationLabel.trim() || 'Organisation name'
+    return NextResponse.json({ error: `${label} is required.` }, { status: 400 })
+  }
+
+  // And the customer's own reference, where the owner has made it compulsory.
+  // Same reasoning: the box on the contact step is a courtesy, this route is
+  // where an order actually becomes one.
+  if (config.customerReferenceFieldEnabled && config.customerReferenceRequired && !data.customerReference?.trim()) {
+    const label = config.customerReferenceLabel.trim() || 'Purchase order number'
     return NextResponse.json({ error: `${label} is required.` }, { status: 400 })
   }
 
@@ -195,6 +204,10 @@ export async function POST(request: NextRequest) {
     // Only kept when the shop actually asks for one, so switching the box off
     // stops orders carrying whatever a stale page still had in it.
     customerOrganisation: config.organisationFieldEnabled ? (data.customerOrganisation?.trim() || null) : null,
+    // Same rule as the organisation above: only kept while the shop is actually
+    // asking for one, so switching the box off stops orders carrying whatever a
+    // stale page still had in it.
+    customerReference: config.customerReferenceFieldEnabled ? (data.customerReference?.trim() || null) : null,
     customerPhone: data.customerPhone ?? null,
     shippingAddress: data.shippingAddress as ShpAddress,
     billingAddress: (data.billingAddress as ShpAddress | null) ?? null,
