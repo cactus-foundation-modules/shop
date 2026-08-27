@@ -1,9 +1,9 @@
 {
   "name": "shop",
-  "version": "0.1.352",
+  "version": "0.1.353",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
-  "requiresCoreVersion": "0.5.1347",
+  "requiresCoreVersion": "0.5.1350",
   "publicBasePath": "shop",
   "publicRootSlug": {
     "page": "./app/root/[slug]/page",
@@ -37,6 +37,7 @@
   "requiredEnvVars": [],
   "cookieCategories": [],
   "teardown": [
+    "shp_stock_movements",
     "shp_products",
     "shp_product_media",
     "shp_categories",
@@ -845,6 +846,12 @@
       "id": "shop",
       "import": "./lib/media-usage-provider",
       "component": "shopMediaUsageProvider"
+    },
+    {
+      "point": "core.inventory-adjuster",
+      "id": "shop",
+      "import": "./lib/stock",
+      "component": "shopInventoryAdjuster"
     }
   ],
   "memberExtensions": {
