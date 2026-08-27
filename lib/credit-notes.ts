@@ -14,7 +14,7 @@ import {
 import { generateCreditNoteNumber } from '@/modules/shop/lib/credit-note-number'
 import { CreditNoteMoneyError, buildCreditNoteMoney } from '@/modules/shop/lib/credit-note-tax'
 import { ledgerItems } from '@/modules/shop/lib/invoice-tax'
-import { invoicePdfFilename } from '@/modules/shop/lib/invoice-pdf'
+import { invoicePdfFilename, printPath } from '@/modules/shop/lib/invoice-pdf'
 import { dispatchInvoiceCredited, type ShopInvoiceCreditedPayload } from '@/modules/shop/lib/invoice-sinks'
 import { creditNotePath, signCreditNoteToken } from '@/modules/shop/lib/invoice-token'
 import { sendShopEmail } from '@/modules/shop/lib/email'
@@ -66,7 +66,7 @@ async function creditNotePdfBytes(creditNoteNumber: string): Promise<Buffer | nu
     const config = await getShopConfigCached()
     if (!config.invoicePdfEnabled) return null
     const { renderInvoicePdf } = await import('@/modules/shop/lib/invoice-pdf')
-    const path = `/shop/credit-note/${encodeURIComponent(creditNoteNumber)}?t=${signCreditNoteToken(creditNoteNumber)}&print=1`
+    const path = printPath(`/shop/credit-note/${encodeURIComponent(creditNoteNumber)}`, signCreditNoteToken(creditNoteNumber))
     return Buffer.from(await renderInvoicePdf(path))
   } catch (error) {
     console.error('[shop] could not print credit note', creditNoteNumber, 'for a bookkeeping sink:', error)

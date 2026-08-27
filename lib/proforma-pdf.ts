@@ -1,5 +1,5 @@
 import { signProformaToken } from '@/modules/shop/lib/invoice-token'
-import { renderInvoicePdf } from '@/modules/shop/lib/invoice-pdf'
+import { printPath, renderInvoicePdf } from '@/modules/shop/lib/invoice-pdf'
 
 /**
  * One proforma printed to PDF bytes.
@@ -14,6 +14,6 @@ import { renderInvoicePdf } from '@/modules/shop/lib/invoice-pdf'
  * need these bytes.
  */
 export async function renderProformaPdf(orderNumber: string): Promise<Uint8Array> {
-  const path = `/shop/proforma/${encodeURIComponent(orderNumber)}?t=${signProformaToken(orderNumber)}&print=1`
+  const path = printPath(`/shop/proforma/${encodeURIComponent(orderNumber)}`, signProformaToken(orderNumber))
   return renderInvoicePdf(path)
 }

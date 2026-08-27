@@ -44,6 +44,33 @@ async function localChromePath(): Promise<string | null> {
   return null
 }
 
+/**
+ * The site-relative URL a document is printed from, with a nonce on the end.
+ *
+ * The nonce is not decoration. `renderInvoicePdf` prints by opening the
+ * document's own page over HTTP from the site's public address, which means the
+ * request leaves the box and comes back in through whatever sits in front of it.
+ * That layer caches, and it does so in spite of the `no-store` this page and
+ * every one of these routes answers with - a print URL is a fixed string (the
+ * number, its signed token, `print=1`), so once one copy is held, every PDF made
+ * afterwards is that copy.
+ *
+ * What that looked like: an owner published a redesigned proforma layout, saw it
+ * on screen, and kept getting PDFs of the old one - for half an hour, from a URL
+ * reporting `age: 1671` on a cache MISS. The on-screen page was fine throughout,
+ * because a human opens it WITHOUT `print=1` and so never touches the poisoned
+ * key. Invoices and credit notes had the same fault and nobody had caught it,
+ * because a layout is usually designed once and then left alone.
+ *
+ * A unique URL per render cannot be served from a cache, whoever is caching and
+ * whatever they think of our headers. It costs one query parameter that the page
+ * itself never reads.
+ */
+export function printPath(page: string, token: string): string {
+  const nonce = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+  return `${page}?t=${encodeURIComponent(token)}&print=1&r=${nonce}`
+}
+
 export class InvoicePdfUnavailableError extends Error {}
 
 /**

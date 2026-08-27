@@ -12,7 +12,7 @@ import {
 } from '@/modules/shop/lib/db/invoices'
 import { generateInvoiceNumber } from '@/modules/shop/lib/invoice-number'
 import { buildInvoiceMoney, ledgerItems } from '@/modules/shop/lib/invoice-tax'
-import { invoicePdfFilename } from '@/modules/shop/lib/invoice-pdf'
+import { invoicePdfFilename, printPath } from '@/modules/shop/lib/invoice-pdf'
 import {
   dispatchInvoiceIssued,
   dispatchInvoiceVoided,
@@ -127,7 +127,7 @@ async function invoicePdfBytes(invoiceNumber: string): Promise<Buffer | null> {
     const config = await getShopConfigCached()
     if (!config.invoicePdfEnabled) return null
     const { renderInvoicePdf } = await import('@/modules/shop/lib/invoice-pdf')
-    const path = `/shop/invoice/${encodeURIComponent(invoiceNumber)}?t=${signInvoiceToken(invoiceNumber)}&print=1`
+    const path = printPath(`/shop/invoice/${encodeURIComponent(invoiceNumber)}`, signInvoiceToken(invoiceNumber))
     return Buffer.from(await renderInvoicePdf(path))
   } catch (error) {
     console.error('[shop] could not print invoice', invoiceNumber, 'for a bookkeeping sink:', error)

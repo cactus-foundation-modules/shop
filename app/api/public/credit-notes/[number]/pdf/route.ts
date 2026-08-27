@@ -6,7 +6,7 @@ import { getCreditNoteByNumber } from '@/modules/shop/lib/db/credit-notes'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 import { signCreditNoteToken, verifyCreditNoteToken } from '@/modules/shop/lib/invoice-token'
-import { InvoicePdfUnavailableError, invoicePdfFilename, renderInvoicePdf } from '@/modules/shop/lib/invoice-pdf'
+import { InvoicePdfUnavailableError, invoicePdfFilename, printPath, renderInvoicePdf } from '@/modules/shop/lib/invoice-pdf'
 
 // GET - the credit note as a PDF. The invoice's PDF route with a different
 // lookup: same headless browser, same throttle, same three ways in.
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ num
   }
 
   try {
-    const path = `/shop/credit-note/${encodeURIComponent(note.creditNoteNumber)}?t=${signCreditNoteToken(note.creditNoteNumber)}&print=1`
+    const path = printPath(`/shop/credit-note/${encodeURIComponent(note.creditNoteNumber)}`, signCreditNoteToken(note.creditNoteNumber))
     const pdf = await renderInvoicePdf(path)
     return new NextResponse(pdf as unknown as BodyInit, {
       headers: {
