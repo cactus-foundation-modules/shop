@@ -80,8 +80,9 @@ export default async function ShopProformaPage({
   const config = await getShopConfigCached()
   const ctx = await proformaDocContext(order, items, { print })
   const document = await renderProformaDocument(ctx)
-  // Only when printing - see the invoice page for why.
-  const runningFooter = print ? await renderDocumentRunningFooter('shopProformaFooter', ctx) : null
+  // Only when printing - see the invoice page for why. The one shared PDF
+  // footer, same layout as the invoice.
+  const runningFooter = print ? await renderDocumentRunningFooter(ctx) : null
 
   return (
     <>

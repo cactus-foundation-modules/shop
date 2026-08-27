@@ -997,23 +997,31 @@ export function shopProformaStarters() {
 }
 
 // ---------------------------------------------------------------------------
-// PDF footer templates - shopInvoiceFooter, shopProformaFooter
+// PDF footer template - shopDocumentFooter
 // ---------------------------------------------------------------------------
 //
-// What repeats at the FOOT OF EVERY PAGE of the PDF, printed into the bottom
-// margin by the browser rather than into the document. A footer block on the
-// document itself is printed once, after the last line - which is right on a
-// one-page invoice and wrong on a four-page one, where page two ends with a
+// What repeats at the FOOT OF EVERY PAGE of a document's PDF, printed into the
+// bottom margin by the browser rather than into the document. A footer block on
+// the document itself is printed once, after the last line - which is right on
+// a one-page invoice and wrong on a four-page one, where page two ends with a
 // half-finished item table and nothing to say whose invoice it is.
 //
+// ONE layout type, shared by the invoice, the credit note and the proforma -
+// and, since it belongs to the shop, by the quote document too (see
+// quote-for-shop/lib/document.tsx). A shop's paperwork is one folder on
+// somebody's desk: a footer designed once belongs on all of it, not on each
+// document separately with the same thing built three times over.
+//
 // Nothing publishes by default. A shop that already has a footer block on its
-// document would otherwise get the same words twice on page one, and a repeating
-// footer is a decision an owner should make rather than find has been made.
+// document would otherwise get the same words twice on page one, and a
+// repeating footer is a decision an owner should make rather than find has been
+// made.
 //
 // Two things to know when laying one out:
 //
 //  - it is drawn into the page's BOTTOM MARGIN, so the margin has to be deep
-//    enough to hold it. That is a page setting on the document's own layout.
+//    enough to hold it. That is a page setting on whichever document is being
+//    printed.
 //  - the Page number block only says anything here. Its two figures are filled
 //    in by the printing browser, which is the only thing that knows how many
 //    pages the document turned into.
@@ -1025,15 +1033,15 @@ const PDF_FOOTER_RULE = block('ShopInvoiceDivider', 'pdf-foot-rule', {
 
 const PDF_FOOTER_ROOT = { align: 'stretch', inset: '0' }
 
-function pdfFooterStarters(prefix: string, documentName: string) {
+export function shopDocumentFooterStarters() {
   return [
     {
-      id: `starter-shop-${prefix}-footer-pages`,
+      id: 'starter-shop-doc-footer-pages',
       name: 'Page numbers',
-      description: `"Page 2 of 3" at the foot of every page of the ${documentName} PDF, and nothing else.`,
+      description: '"Page 2 of 3" at the foot of every page of the PDF, and nothing else.',
       data: {
         content: [
-          block('ShopInvoicePageNumber', `${prefix}-foot-pageno`, {
+          block('ShopInvoicePageNumber', 'doc-foot-pageno', {
             text: 'Page {{PAGE}} of {{PAGES}}', align: 'center', fontFamily: '', colour: '',
           }),
         ],
@@ -1042,19 +1050,19 @@ function pdfFooterStarters(prefix: string, documentName: string) {
       },
     },
     {
-      id: `starter-shop-${prefix}-footer-company`,
+      id: 'starter-shop-doc-footer-company',
       name: 'Company footer',
       description: 'Your registration small print above a rule, with the page number beside it - on every page, the way headed paper does it.',
       data: {
         content: [
           PDF_FOOTER_RULE,
-          block('ShopInvoiceFooter', `${prefix}-foot-company`, {
+          block('ShopInvoiceFooter', 'doc-foot-company', {
             contact: '',
             smallPrint: '{{BUSINESS_NAME}} · company number {{COMPANY_NUMBER}} · VAT {{VAT_NUMBER}}',
             align: 'center', rule: 'no', fontFamily: '',
           }),
-          block('ShopInvoicePageNumber', `${prefix}-foot-pageno`, {
-            text: '{{INVOICE_NUMBER}} · page {{PAGE}} of {{PAGES}}', align: 'center', fontFamily: '', colour: '',
+          block('ShopInvoicePageNumber', 'doc-foot-pageno2', {
+            text: 'page {{PAGE}} of {{PAGES}}', align: 'center', fontFamily: '', colour: '',
           }),
         ],
         root: { props: PDF_FOOTER_ROOT },
@@ -1062,12 +1070,4 @@ function pdfFooterStarters(prefix: string, documentName: string) {
       },
     },
   ]
-}
-
-export function shopInvoiceFooterStarters() {
-  return pdfFooterStarters('invoice', 'invoice')
-}
-
-export function shopProformaFooterStarters() {
-  return pdfFooterStarters('proforma', 'proforma')
 }

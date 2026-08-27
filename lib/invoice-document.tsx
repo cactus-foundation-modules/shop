@@ -60,11 +60,18 @@ export async function renderInvoiceDocument(ctx: InvoiceDocContext): Promise<Rea
 //    itself is printed once, after the last line, which is what a footer on a
 //    one-page invoice looks like and emphatically not what one on a four-page
 //    invoice should. So the repeating footer is a layout of its own -
-//    `shopInvoiceFooter`, `shopProformaFooter` - lifted out of the printed page
-//    and handed to the browser as a running footer.
+//    `shopDocumentFooter` - lifted out of the printed page and handed to the
+//    browser as a running footer.
 //
-// Both are optional: a shop that has published neither gets the document it
-// always got, on the paper it always got it on.
+// ONE footer layout, not one per document type. An invoice, a credit note and a
+// proforma are the same folder of paperwork on somebody's desk, and the quote
+// this order started as reads too (quote-for-shop calls this same function -
+// see its lib/document.tsx). Designing a footer once and having it everywhere
+// is the point; three copies of the same rule and registration line would not
+// have been.
+//
+// Both page settings and the footer are optional: a shop that has published
+// neither gets the document it always got, on the paper it always got it on.
 
 /** The paper, margins and scale a document layout asks to be printed on. */
 export async function documentPageSetup(layoutType: string): Promise<DocPageSetup> {
@@ -72,16 +79,21 @@ export async function documentPageSetup(layoutType: string): Promise<DocPageSetu
   return docPageSetupFromLayout(layout?.builderData ?? null)
 }
 
-/** The PDF footer layout as a React tree, or null when the shop has published
- *  none - which is every shop until somebody makes one. */
-export async function renderDocumentRunningFooter(
-  layoutType: string,
-  ctx: InvoiceDocContext,
-): Promise<ReactNode | null> {
-  const layout = await resolveThemeLayout(layoutType, { moduleName: 'shop' })
+const DOC_FOOTER_LAYOUT_TYPE = 'shopDocumentFooter'
+
+/** The one shared PDF footer, as a React tree - or null when the shop has
+ *  published none, which is every shop until somebody makes one.
+ *
+ *  Takes an `InvoiceDocContext` because that is the shape every caller already
+ *  has or can build cheaply: the invoice, credit note and proforma pages pass
+ *  their own; the quote document builds a lightweight stand-in carrying its own
+ *  trading identity (see quote-for-shop/lib/document.tsx) rather than this
+ *  module learning a second document shape. */
+export async function renderDocumentRunningFooter(ctx: InvoiceDocContext): Promise<ReactNode | null> {
+  const layout = await resolveThemeLayout(DOC_FOOTER_LAYOUT_TYPE, { moduleName: 'shop' })
   const source = layout?.builderData as Data | undefined
   if (!source) return null
   const { getModuleLayoutPuckRscConfig } = await import('@/lib/puck/config.rsc')
   const data = injectInvoiceDocContext(source, ctx)
-  return <Render config={getModuleLayoutPuckRscConfig(layoutType)} data={data as Data} />
+  return <Render config={getModuleLayoutPuckRscConfig(DOC_FOOTER_LAYOUT_TYPE)} data={data as Data} />
 }

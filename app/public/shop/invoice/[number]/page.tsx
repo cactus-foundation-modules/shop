@@ -94,8 +94,9 @@ export default async function ShopInvoicePage({
   const document = await renderInvoiceDocument(ctx)
   // Only when printing: it is a region for the printing browser to lift out, and
   // rendering it for a reader on screen would be a layout resolved and a tree
-  // built for something nobody can see.
-  const runningFooter = print ? await renderDocumentRunningFooter('shopInvoiceFooter', ctx) : null
+  // built for something nobody can see. The one shared PDF footer - the same
+  // layout the proforma and credit note use.
+  const runningFooter = print ? await renderDocumentRunningFooter(ctx) : null
 
   return (
     <>

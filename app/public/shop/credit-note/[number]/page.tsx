@@ -81,9 +81,8 @@ export default async function ShopCreditNotePage({
   const config = await getShopConfigCached()
   const ctx = creditNoteDocContext(note, { print })
   const document = await renderInvoiceDocument(ctx)
-  // A credit note is drawn on the invoice's layout, so it takes the invoice's
-  // running footer too - one design, both documents.
-  const runningFooter = print ? await renderDocumentRunningFooter('shopInvoiceFooter', ctx) : null
+  // The one shared PDF footer, same layout every document uses.
+  const runningFooter = print ? await renderDocumentRunningFooter(ctx) : null
 
   return (
     <>

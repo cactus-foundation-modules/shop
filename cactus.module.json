@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.346",
+  "version": "0.1.347",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1338",
@@ -604,8 +604,7 @@
       "layoutTypes": [
         "shopInvoice",
         "shopProforma",
-        "shopInvoiceFooter",
-        "shopProformaFooter"
+        "shopDocumentFooter"
       ]
     },
     {
@@ -616,8 +615,7 @@
       "layoutTypes": [
         "shopInvoice",
         "shopProforma",
-        "shopInvoiceFooter",
-        "shopProformaFooter"
+        "shopDocumentFooter"
       ]
     },
     {
@@ -628,8 +626,7 @@
       "layoutTypes": [
         "shopInvoice",
         "shopProforma",
-        "shopInvoiceFooter",
-        "shopProformaFooter"
+        "shopDocumentFooter"
       ]
     },
     {
@@ -640,8 +637,7 @@
       "layoutTypes": [
         "shopInvoice",
         "shopProforma",
-        "shopInvoiceFooter",
-        "shopProformaFooter"
+        "shopDocumentFooter"
       ]
     },
     {
@@ -650,8 +646,7 @@
       "component": "shopInvoicePageNumberPuckComponent",
       "rscComponent": "shopInvoicePageNumberPuckRscComponent",
       "layoutTypes": [
-        "shopInvoiceFooter",
-        "shopProformaFooter"
+        "shopDocumentFooter"
       ]
     }
   ],
@@ -767,14 +762,6 @@
         "pageSettingsExport": "shopDocPageSettings"
       },
       {
-        "key": "shopInvoiceFooter",
-        "label": "Invoice PDF footer",
-        "starterImport": "./lib/starterLayouts",
-        "starterExport": "shopInvoiceFooterStarters",
-        "pageSettingsImport": "./lib/doc-page-settings",
-        "pageSettingsExport": "shopDocFooterPageSettings"
-      },
-      {
         "key": "shopProforma",
         "label": "Proforma document",
         "starterImport": "./lib/starterLayouts",
@@ -783,10 +770,10 @@
         "pageSettingsExport": "shopDocPageSettings"
       },
       {
-        "key": "shopProformaFooter",
-        "label": "Proforma PDF footer",
+        "key": "shopDocumentFooter",
+        "label": "PDF footer",
         "starterImport": "./lib/starterLayouts",
-        "starterExport": "shopProformaFooterStarters",
+        "starterExport": "shopDocumentFooterStarters",
         "pageSettingsImport": "./lib/doc-page-settings",
         "pageSettingsExport": "shopDocFooterPageSettings"
       }
