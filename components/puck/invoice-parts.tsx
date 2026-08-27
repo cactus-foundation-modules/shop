@@ -681,7 +681,7 @@ export const shopInvoiceLinesPuckComponent = {
       { value: 'none', label: 'Only under the last one' },
     ] },
     zebra: { type: 'select' as const, label: 'Shade alternate rows', options: yesNo },
-    headRadius: radiusField('Column heading corners'),
+    headRadius: radiusField('Column heading corners (needs a filled band)'),
     headRadiusEdges: { type: 'select' as const, label: 'Those corners go on', options: [
       { value: 'outer', label: 'The outer ends of the band' },
       { value: 'every', label: 'Every heading cell' },
@@ -967,7 +967,7 @@ export const shopInvoiceTaxSummaryPuckComponent = {
       { value: 'right', label: 'At the right, under the totals' },
       { value: 'left', label: 'At the left' },
     ] },
-    headRadius: radiusField('Column heading corners'),
+    headRadius: radiusField('Column heading corners (needs a filled band)'),
     rateLabel: { type: 'text' as const, label: 'Rate column' },
     netLabel: { type: 'text' as const, label: 'Net column' },
     taxLabel: { type: 'text' as const, label: 'Tax column' },

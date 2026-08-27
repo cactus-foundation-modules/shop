@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import {
-  Style, FontLink, fontStyle, fontField, sizeField, radiusField, spaceField, sizeVars, cssLength,
+  Style, FontLink, fontStyle, fontField, headingFontField, sizeField, radiusField, spaceField, sizeVars, cssLength,
   colourField, yesNo, fillTokens, invoiceTokens, paragraphs, useCtx, TOKEN_HINT,
   type DocProps,
 } from '@/modules/shop/components/puck/invoice-shared'
@@ -166,11 +166,7 @@ export const shopInvoiceStylePuckComponent = {
     blockGap: spaceField('…or exactly this gap between blocks'),
     blockGapLarge: spaceField('…and this one before the payment and footer blocks'),
     bodyFont: fontField,
-    headingFont: {
-      type: 'custom' as const,
-      label: 'Heading font (blank uses the site heading font)',
-      render: fontField.render,
-    },
+    headingFont: headingFontField,
   },
   defaultProps: {
     accent: '', labelColour: '', titleColour: '',

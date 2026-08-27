@@ -100,19 +100,45 @@ html, body { margin: 0; padding: 0; font-size: 12px; -webkit-print-color-adjust:
 .cactus-pdf-footer .shp-inv-footer, .cactus-pdf-footer .shp-inv-notice { margin-top: 0; }
 `
 
+/**
+ * And the last word, after the document's own rules have had theirs.
+ *
+ * The template is a document of its own, and the footer sits directly under its
+ * body - a place the document's stylesheet has opinions about that make no sense
+ * here. Whatever those rules decide, the footer is the only thing on the page
+ * and it is not optional.
+ */
+const RUNNING_FOOTER_FORCE = `
+.cactus-pdf-footer, .cactus-pdf-footer * { visibility: visible !important; }
+.cactus-pdf-footer { display: block !important; }
+`
+
 type RunningFooter = { html: string; css: string }
 
-/** Lifts the footer region and every stylesheet the document carries out of the
- *  printed page, so the running footer is drawn from the same blocks and the
- *  same rules as the document itself. Null when the shop has published no PDF
- *  footer layout, which is the ordinary case and costs one query selector. */
+/**
+ * Lifts the footer region out of the printed page, with the stylesheets it
+ * carries, so the running footer is drawn from the same blocks and the same
+ * rules as the document itself. Null when the shop has published no PDF footer
+ * layout, which is the ordinary case and costs one query selector.
+ *
+ * Only the stylesheets INSIDE THE REGION, which is the whole trick and was
+ * learned the hard way. Every document part emits the shared invoice stylesheet
+ * itself, so the region already carries everything the footer's own blocks need
+ * - and the page's `<style>` tags carry things that have no business in a
+ * footer template. `body > *:not(main) { display: none !important }` is the one
+ * that mattered: it strips the site chrome off the document page, and copied
+ * into the template it matched the footer's own wrapper and printed nothing at
+ * all, on every page, silently. A page-wide sweep for `<style>` looked like the
+ * obvious way to make the footer match the document; it was the way to make the
+ * footer disappear.
+ */
 async function captureRunningFooter(page: Page): Promise<RunningFooter | null> {
   try {
     return await page.evaluate((id: string) => {
       const region = document.getElementById(id)
       const html = region?.innerHTML?.trim() ?? ''
       if (!html) return null
-      const css = Array.from(document.querySelectorAll('style'))
+      const css = Array.from(region!.querySelectorAll('style'))
         .map((node) => node.textContent ?? '')
         .join('\n')
       return { html, css }
@@ -192,7 +218,7 @@ export async function renderInvoicePdf(path: string, setup?: DocPageSetup): Prom
         ? {
             displayHeaderFooter: true,
             headerTemplate: '<span></span>',
-            footerTemplate: `<style>${RUNNING_FOOTER_RESET}${footer.css}</style><div class="cactus-pdf-footer" style="padding: 0 ${paper.margin.right} 0 ${paper.margin.left};">${footer.html}</div>`,
+            footerTemplate: `<style>${RUNNING_FOOTER_RESET}${footer.css}${RUNNING_FOOTER_FORCE}</style><div class="cactus-pdf-footer" style="padding: 0 ${paper.margin.right} 0 ${paper.margin.left};">${footer.html}</div>`,
           }
         : {}),
     })

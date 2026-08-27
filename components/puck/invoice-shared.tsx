@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { googleFontHrefForFamily } from '@/lib/design/tokens'
 import { SiteColourField, SiteFontField } from '@/lib/puck/fields/registry'
 import { formatMoney } from '@/modules/shop/lib/money'
@@ -47,12 +47,58 @@ export function FontLink({ family }: { family?: string }) {
   return href ? <link rel="stylesheet" href={href} /> : null
 }
 
+// ---------------------------------------------------------------------------
+// Field labels
+// ---------------------------------------------------------------------------
+//
+// Puck draws the label for its own field types and NOT for `type: 'custom'` - a
+// custom field is handed the whole row and is expected to head itself. Core's
+// widgets all do (see lib/puck/UnitValueField.tsx, BgColorField.tsx); this
+// module's did not, so every font, colour and size menu on a document block sat
+// in the panel as an unlabelled box with no clue what it was for. A dozen of
+// them in a row, every one reading "Default".
+//
+// So every custom field here goes through `labelled`, which draws the same
+// heading in the same style core's widgets use. One helper rather than the
+// label repeated in five renders, because the next custom field added here
+// would forget it otherwise.
+
+const fieldLabelStyle: CSSProperties = {
+  display: 'block',
+  fontSize: '0.8125rem',
+  fontWeight: 500,
+  color: 'var(--color-text)',
+  marginBottom: '0.375rem',
+}
+
+function labelled(label: string, control: ReactNode): ReactNode {
+  return (
+    <div>
+      {label && <label style={fieldLabelStyle}>{label}</label>}
+      {control}
+    </div>
+  )
+}
+
+const FONT_LABEL = 'Font (blank uses the site font)'
+
 export const fontField = {
   type: 'custom' as const,
-  label: 'Font (blank uses the site font)',
-  render: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
-    <SiteFontField value={value} onChange={onChange} />
-  ),
+  label: FONT_LABEL,
+  render: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
+    labelled(FONT_LABEL, <SiteFontField value={value} onChange={onChange} />),
+}
+
+const HEADING_FONT_LABEL = 'Heading font (blank uses the site heading font)'
+
+/** The same widget as `fontField` under a different heading, for the Document
+ *  style block's second font. Its own field rather than a spread of the one
+ *  above, which would carry that one's label into the panel. */
+export const headingFontField = {
+  type: 'custom' as const,
+  label: HEADING_FONT_LABEL,
+  render: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
+    labelled(HEADING_FONT_LABEL, <SiteFontField value={value} onChange={onChange} />),
 }
 
 // ---------------------------------------------------------------------------
@@ -144,9 +190,8 @@ export function sizeField(label: string) {
   return {
     type: 'custom' as const,
     label,
-    render: ({ value, onChange }: { value: string | number | undefined; onChange: (value: string) => void }) => (
-      <SizeSelect value={value} onChange={onChange} sizes={PX_SIZES} unit="px" />
-    ),
+    render: ({ value, onChange }: { value: string | number | undefined; onChange: (value: string) => void }) =>
+      labelled(label, <SizeSelect value={value} onChange={onChange} sizes={PX_SIZES} unit="px" />),
   }
 }
 
@@ -157,9 +202,8 @@ export function radiusField(label: string) {
   return {
     type: 'custom' as const,
     label,
-    render: ({ value, onChange }: { value: string | number | undefined; onChange: (value: string) => void }) => (
-      <SizeSelect value={value} onChange={onChange} sizes={RADII} unit="px" zeroLabel="Square (0px)" />
-    ),
+    render: ({ value, onChange }: { value: string | number | undefined; onChange: (value: string) => void }) =>
+      labelled(label, <SizeSelect value={value} onChange={onChange} sizes={RADII} unit="px" zeroLabel="Square (0px)" />),
   }
 }
 
@@ -170,9 +214,8 @@ export function spaceField(label: string) {
   return {
     type: 'custom' as const,
     label,
-    render: ({ value, onChange }: { value: string | number | undefined; onChange: (value: string) => void }) => (
-      <SizeSelect value={value} onChange={onChange} sizes={SPACES} unit="px" zeroLabel="None (0px)" />
-    ),
+    render: ({ value, onChange }: { value: string | number | undefined; onChange: (value: string) => void }) =>
+      labelled(label, <SizeSelect value={value} onChange={onChange} sizes={SPACES} unit="px" zeroLabel="None (0px)" />),
   }
 }
 
@@ -219,9 +262,8 @@ export function colourField(label: string) {
   return {
     type: 'custom' as const,
     label,
-    render: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
-      <SiteColourField value={value} onChange={onChange} allowManual />
-    ),
+    render: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
+      labelled(label, <SiteColourField value={value} onChange={onChange} allowManual />),
   }
 }
 
