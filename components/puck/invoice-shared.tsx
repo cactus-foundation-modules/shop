@@ -316,7 +316,17 @@ export function paragraphs(value: string): string[] {
 // comes from a field the invoice already stores as a plain string.
 
 export function invoiceTokens(ctx: InvoiceDocContext): Record<string, string> {
-  const { invoice, credit } = ctx
+  const { credit } = ctx
+  // Four of these blocks (Style, Notice, Footer, Page number) also sit on core's
+  // shared `documentFooter`, which is printed on the bottom of whatever document
+  // is going through the press - an invoice, a quote, a purchase order, or
+  // something a module nobody has written yet prints. Only one of those carries
+  // an `invoice`. Handed anything else this used to throw, and a footer block
+  // throwing takes the whole PDF page with it. Absent means every token here
+  // comes out blank, which is what an owner writing {{INVOICE_NUMBER}} into a
+  // shared footer should get on a purchase order - not the sample invoice's
+  // number, and not a broken document.
+  const invoice = ctx.invoice ?? ({} as InvoiceDocContext['invoice'])
   const seller = invoice.seller ?? ({} as typeof invoice.seller)
   const customer = invoice.customer ?? ({} as typeof invoice.customer)
   const symbol = invoice.currencySymbol || '£'
