@@ -7,6 +7,7 @@ import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 import { signInvoiceToken, verifyInvoiceToken } from '@/modules/shop/lib/invoice-token'
 import { InvoicePdfUnavailableError, invoicePdfFilename, printPath, renderInvoicePdf } from '@/modules/shop/lib/invoice-pdf'
+import { documentPageSetup } from '@/modules/shop/lib/invoice-document'
 
 // GET - the invoice as a PDF. What the button under the document points at.
 //
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ num
     // is minted here rather than passed through: the browser doing the printing
     // has no session of its own.
     const path = printPath(`/shop/invoice/${encodeURIComponent(invoice.invoiceNumber)}`, signInvoiceToken(invoice.invoiceNumber))
-    const pdf = await renderInvoicePdf(path)
+    const pdf = await renderInvoicePdf(path, await documentPageSetup('shopInvoice'))
     return new NextResponse(pdf as unknown as BodyInit, {
       headers: {
         'Content-Type': 'application/pdf',

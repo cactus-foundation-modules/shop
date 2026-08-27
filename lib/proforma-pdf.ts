@@ -1,5 +1,6 @@
 import { signProformaToken } from '@/modules/shop/lib/invoice-token'
 import { printPath, renderInvoicePdf } from '@/modules/shop/lib/invoice-pdf'
+import { documentPageSetup } from '@/modules/shop/lib/invoice-document'
 
 /**
  * One proforma printed to PDF bytes.
@@ -15,5 +16,8 @@ import { printPath, renderInvoicePdf } from '@/modules/shop/lib/invoice-pdf'
  */
 export async function renderProformaPdf(orderNumber: string): Promise<Uint8Array> {
   const path = printPath(`/shop/proforma/${encodeURIComponent(orderNumber)}`, signProformaToken(orderNumber))
-  return renderInvoicePdf(path)
+  // The paper and margins the proforma layout's page settings ask for. Its own
+  // layout type, so its own sheet: a proforma an owner wants on A5 has nothing
+  // to do with the invoice that follows it.
+  return renderInvoicePdf(path, await documentPageSetup('shopProforma'))
 }

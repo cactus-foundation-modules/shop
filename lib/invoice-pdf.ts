@@ -1,4 +1,6 @@
+import type { PaperFormat, Page } from 'puppeteer-core'
 import { getSiteUrl } from '@/lib/config/env'
+import { docPageSetup, PDF_FOOTER_REGION_ID, type DocPageSetup } from '@/modules/shop/lib/doc-page-settings'
 
 // Turning the invoice document into a PDF.
 //
@@ -82,7 +84,47 @@ export class InvoicePdfUnavailableError extends Error {}
  * because a Puck layout of async server components cannot be rendered to a
  * string by hand.
  */
-export async function renderInvoicePdf(path: string): Promise<Uint8Array> {
+/**
+ * Chrome draws a running header and footer in a document of its own, with no
+ * access to the page's stylesheets, no network and a root font-size of zero -
+ * so `0.75rem` in the document's own CSS comes out as nothing at all there.
+ *
+ * These rules go in FIRST, ahead of the page's own, so every relative size in
+ * the invoice stylesheet has a sane base to be relative to and anything the
+ * document says about itself still wins.
+ */
+const RUNNING_FOOTER_RESET = `
+html, body { margin: 0; padding: 0; font-size: 12px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.cactus-pdf-footer { width: 100%; box-sizing: border-box; font-size: 9px; line-height: 1.4; color: #444; }
+.cactus-pdf-footer * { box-sizing: border-box; }
+.cactus-pdf-footer .shp-inv-footer, .cactus-pdf-footer .shp-inv-notice { margin-top: 0; }
+`
+
+type RunningFooter = { html: string; css: string }
+
+/** Lifts the footer region and every stylesheet the document carries out of the
+ *  printed page, so the running footer is drawn from the same blocks and the
+ *  same rules as the document itself. Null when the shop has published no PDF
+ *  footer layout, which is the ordinary case and costs one query selector. */
+async function captureRunningFooter(page: Page): Promise<RunningFooter | null> {
+  try {
+    return await page.evaluate((id: string) => {
+      const region = document.getElementById(id)
+      const html = region?.innerHTML?.trim() ?? ''
+      if (!html) return null
+      const css = Array.from(document.querySelectorAll('style'))
+        .map((node) => node.textContent ?? '')
+        .join('\n')
+      return { html, css }
+    }, PDF_FOOTER_REGION_ID)
+  } catch {
+    // A page that would not run script is still a page worth printing. The
+    // footer is a nicety; the invoice is the point.
+    return null
+  }
+}
+
+export async function renderInvoicePdf(path: string, setup?: DocPageSetup): Promise<Uint8Array> {
   const [{ default: puppeteer }, chromiumModule] = await Promise.all([
     import('puppeteer-core'),
     isServerless() ? import('@sparticuz/chromium') : Promise.resolve(null),
@@ -129,12 +171,30 @@ export async function renderInvoicePdf(path: string): Promise<Uint8Array> {
       throw new InvoicePdfUnavailableError(`The invoice page could not be loaded to print (${response?.status() ?? 'no response'}).`)
     }
     await page.emulateMediaType('print')
+    // The paper, the margins and the scale the layout's page settings asked for.
+    // Absent - an older caller, or a document with no published layout - falls
+    // back to exactly the figures this used to hard-code.
+    const paper = setup ?? docPageSetup(undefined)
+    const footer = await captureRunningFooter(page)
     const pdf = await page.pdf({
-      format: 'a4',
-      // Backgrounds on, or every rule and border in the document prints white.
-      printBackground: true,
-      margin: { top: '16mm', bottom: '16mm', left: '14mm', right: '14mm' },
+      format: paper.format as PaperFormat,
+      // Backgrounds on by default, or every rule and border in the document
+      // prints white. A shop that would rather save the ink can say so.
+      printBackground: paper.printBackground,
+      margin: paper.margin,
+      scale: paper.scale,
       preferCSSPageSize: false,
+      // The running footer, when the shop has designed one. Chrome will not draw
+      // a footer without also drawing a header, so an empty one is supplied -
+      // otherwise it helpfully prints today's date and the page URL across the
+      // top of somebody's invoice.
+      ...(footer
+        ? {
+            displayHeaderFooter: true,
+            headerTemplate: '<span></span>',
+            footerTemplate: `<style>${RUNNING_FOOTER_RESET}${footer.css}</style><div class="cactus-pdf-footer" style="padding: 0 ${paper.margin.right} 0 ${paper.margin.left};">${footer.html}</div>`,
+          }
+        : {}),
     })
     return pdf
   } finally {

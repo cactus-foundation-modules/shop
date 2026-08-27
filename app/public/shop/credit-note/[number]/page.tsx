@@ -7,7 +7,8 @@ import { getCreditNoteByNumber } from '@/modules/shop/lib/db/credit-notes'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { verifyCreditNoteToken, creditNotePdfPath } from '@/modules/shop/lib/invoice-token'
 import { creditNoteDocContext } from '@/modules/shop/lib/invoice-doc-context'
-import { renderInvoiceDocument } from '@/modules/shop/lib/invoice-document'
+import { renderInvoiceDocument, renderDocumentRunningFooter } from '@/modules/shop/lib/invoice-document'
+import { PdfFooterRegion } from '@/modules/shop/lib/doc-page-settings'
 import PrintButton from '@/modules/shop/components/public/PrintButton'
 
 export const dynamic = 'force-dynamic'
@@ -78,7 +79,11 @@ export default async function ShopCreditNotePage({
   if (!allowed) notFound()
 
   const config = await getShopConfigCached()
-  const document = await renderInvoiceDocument(creditNoteDocContext(note, { print }))
+  const ctx = creditNoteDocContext(note, { print })
+  const document = await renderInvoiceDocument(ctx)
+  // A credit note is drawn on the invoice's layout, so it takes the invoice's
+  // running footer too - one design, both documents.
+  const runningFooter = print ? await renderDocumentRunningFooter('shopInvoiceFooter', ctx) : null
 
   return (
     <>
@@ -102,6 +107,7 @@ export default async function ShopCreditNotePage({
         )}
         {document}
       </div>
+      <PdfFooterRegion>{runningFooter}</PdfFooterRegion>
     </>
   )
 }

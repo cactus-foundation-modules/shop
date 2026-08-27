@@ -55,19 +55,28 @@ export const INVOICE_DOC_CSS = `
 .shp-inv-h1.shp-inv-title-xl { font-size: var(--shp-inv-title-size, 2.75rem); }
 .shp-inv-h2 { font-size: var(--shp-inv-h2-size, 0.8125rem); margin: 0 0 0.375rem; color: var(--shp-inv-label, var(--color-text-muted)); text-transform: uppercase; letter-spacing: 0.04em; }
 .shp-inv-facts { display: grid; grid-template-columns: auto auto; gap: 0.125rem 0.75rem; margin: 0; font-size: var(--shp-inv-facts-size, 0.875rem); justify-content: end; }
+/* Each label-and-value pair is wrapped, so a row can be dropped whole rather
+   than as two loose children of the grid - which is what left a gap on the page
+   when a document had no due date. display: contents keeps the pair as two grid
+   cells, exactly as it was when they were direct children. */
+.shp-inv-facts .shp-inv-fact { display: contents; }
 .shp-inv-facts dt { color: var(--color-text-muted); }
 .shp-inv-facts dd { margin: 0; color: var(--color-text); font-variant-numeric: tabular-nums; }
 /* Stacked facts read "Issued 6 April 2026" on one line instead of ruling the
    labels and the values into two columns. Same <dl>, same source order: the
    grid collapses to one column and each pair is laid inline. */
 .shp-inv-facts.shp-inv-facts-stack { display: block; text-align: right; line-height: 1.5; }
+/* The wrapper is the line here, so each pair breaks after itself. It used to be
+   an empty ::after block on every <dd>, which put one blank line under the last
+   row of every stacked heading - the last thing anybody looks for when an
+   invoice comes out with a gap in it. */
+.shp-inv-facts.shp-inv-facts-stack .shp-inv-fact { display: block; }
 .shp-inv-facts.shp-inv-facts-stack dt { display: inline; }
 .shp-inv-facts.shp-inv-facts-stack dd { display: inline; }
-/* The space between a label and its value, and the break after the pair. A text
-   node between <dt> and <dd> is not something a <dl> may hold, so the gap is
-   drawn rather than typed - white-space: pre stops it collapsing to nothing. */
+/* The space between a label and its value. A text node between <dt> and <dd> is
+   not something a <dl> may hold, so the gap is drawn rather than typed -
+   white-space: pre stops it collapsing to nothing. */
 .shp-inv-facts.shp-inv-facts-stack dt::after { content: ' '; white-space: pre; }
-.shp-inv-facts.shp-inv-facts-stack dd::after { content: ''; display: block; }
 /* The number the document is filed under, printed above the dates at its own
    weight and with no label - an invoice number needs no introduction, and the
    dates under it are supporting detail. Its own element rather than a row of the
@@ -81,6 +90,12 @@ export const INVOICE_DOC_CSS = `
    same two places on every invoice rather than reflowing with their length. */
 .shp-inv-parties.shp-inv-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .shp-inv-parties.shp-inv-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* A single party on its own - the "From" and "To" blocks, which are one column
+   each and must not be stretched across a grid of one. */
+.shp-inv-parties.shp-inv-party-one { display: block; }
+.shp-inv-parties.shp-inv-party-centre { text-align: center; }
+.shp-inv-parties.shp-inv-party-right { text-align: right; }
+.shp-inv-parties.shp-inv-party-centre address, .shp-inv-parties.shp-inv-party-right address { justify-items: inherit; }
 .shp-inv-party address { font-style: normal; display: grid; gap: 0.125rem; color: var(--color-text); font-size: var(--shp-inv-party-size, 0.9375rem); }
 .shp-inv-party .shp-inv-strong { font-weight: 600; }
 .shp-inv-reg { margin: 0.5rem 0 0; display: grid; gap: 0.125rem; font-size: var(--shp-inv-reg-size, 0.8125rem); color: var(--color-text-muted); }
@@ -93,11 +108,25 @@ export const INVOICE_DOC_CSS = `
    ruled head does not, so the whole treatment is one class rather than a colour
    swapped underneath. print-color-adjust keeps it in the PDF: a browser drops
    backgrounds when it prints unless told the fill is the point. */
-.shp-inv-lines.shp-inv-thead-fill th { background: var(--shp-inv-thead-bg, var(--color-bg-subtle)); padding: 0.625rem 0.75rem; border-bottom: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.shp-inv-lines.shp-inv-thead-fill th:first-child { padding-left: 0.75rem; border-radius: var(--shp-inv-radius, 0) 0 0 var(--shp-inv-radius, 0); }
-.shp-inv-lines.shp-inv-thead-fill th:last-child { padding-right: 0.75rem; border-radius: 0 var(--shp-inv-radius, 0) var(--shp-inv-radius, 0) 0; }
-.shp-inv-lines.shp-inv-thead-fill td:first-child { padding-left: 0.75rem; }
-.shp-inv-lines.shp-inv-thead-fill td:last-child { padding-right: 0.75rem; }
+.shp-inv-lines.shp-inv-thead-fill th { background: var(--shp-inv-thead-bg, var(--color-bg-subtle)); padding: var(--shp-inv-thead-pad-y, 0.625rem) var(--shp-inv-thead-pad-x, 0.75rem); border-bottom: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+/* The band's own corners. --shp-inv-thead-radius is the Items block's own field
+   and falls back to the document style block's --shp-inv-radius, so a layout
+   that set corners once still gets them and one that wants a different radius
+   on this table alone can have it. */
+.shp-inv-lines.shp-inv-thead-fill th:first-child { padding-left: var(--shp-inv-thead-pad-x, 0.75rem); border-radius: var(--shp-inv-thead-radius, var(--shp-inv-radius, 0)) 0 0 var(--shp-inv-thead-radius, var(--shp-inv-radius, 0)); }
+.shp-inv-lines.shp-inv-thead-fill th:last-child { padding-right: var(--shp-inv-thead-pad-x, 0.75rem); border-radius: 0 var(--shp-inv-thead-radius, var(--shp-inv-radius, 0)) var(--shp-inv-thead-radius, var(--shp-inv-radius, 0)) 0; }
+/* Every cell rounded, for a banded head an owner wants read as separate chips
+   rather than as one bar. */
+.shp-inv-lines.shp-inv-thead-fill.shp-inv-thead-round-all th { border-radius: var(--shp-inv-thead-radius, var(--shp-inv-radius, 0)); }
+.shp-inv-lines.shp-inv-thead-fill td:first-child { padding-left: var(--shp-inv-thead-pad-x, 0.75rem); }
+.shp-inv-lines.shp-inv-thead-fill td:last-child { padding-right: var(--shp-inv-thead-pad-x, 0.75rem); }
+/* Column headings as typed, for a document whose headings are words rather than
+   labels ("Description" reads better than "DESCRIPTION" at 14px). */
+.shp-inv-lines.shp-inv-thead-plain th { text-transform: none; letter-spacing: normal; }
+/* Rounded shading on the alternate rows, which only means anything with the
+   shading switched on. */
+.shp-inv-lines.shp-inv-zebra tbody tr td:first-child { border-radius: var(--shp-inv-row-radius, 0) 0 0 var(--shp-inv-row-radius, 0); }
+.shp-inv-lines.shp-inv-zebra tbody tr td:last-child { border-radius: 0 var(--shp-inv-row-radius, 0) var(--shp-inv-row-radius, 0) 0; }
 /* Banding every other row, for a long list somebody has to read across. */
 .shp-inv-lines.shp-inv-zebra tbody tr:nth-child(even) td { background: var(--shp-inv-zebra-bg, var(--color-bg-subtle)); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 /* Rules dropped from between the rows, keeping only the one that closes the
@@ -113,6 +142,8 @@ export const INVOICE_DOC_CSS = `
 .shp-inv-empty { color: var(--color-text-muted); padding: 1.25rem 0; }
 
 .shp-inv-totals { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem 1.5rem; margin: 1.25rem 0 0; margin-left: auto; max-width: 22rem; font-size: var(--shp-inv-totals-size, 0.9375rem); }
+/* The figures at the left instead of pushed to the right margin. */
+.shp-inv-totals.shp-inv-totals-left { margin-left: 0; margin-right: auto; }
 .shp-inv-totals dt { color: var(--color-text-muted); }
 .shp-inv-totals dd { margin: 0; text-align: right; color: var(--color-text); font-variant-numeric: tabular-nums; }
 .shp-inv-row { display: contents; }
@@ -138,8 +169,8 @@ export const INVOICE_DOC_CSS = `
    because the fill needs padding inside the cells, and the item table's rule is
    scoped to the item table so it cannot reach here. */
 .shp-inv-vat table.shp-inv-thead-fill th { background: var(--shp-inv-thead-bg, var(--color-bg-subtle)); padding: 0.5rem 0.625rem; border-bottom: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.shp-inv-vat table.shp-inv-thead-fill th:first-child { border-radius: var(--shp-inv-radius, 0) 0 0 var(--shp-inv-radius, 0); }
-.shp-inv-vat table.shp-inv-thead-fill th:last-child { padding-right: 0.625rem; border-radius: 0 var(--shp-inv-radius, 0) var(--shp-inv-radius, 0) 0; }
+.shp-inv-vat table.shp-inv-thead-fill th:first-child { border-radius: var(--shp-inv-thead-radius, var(--shp-inv-radius, 0)) 0 0 var(--shp-inv-thead-radius, var(--shp-inv-radius, 0)); }
+.shp-inv-vat table.shp-inv-thead-fill th:last-child { padding-right: 0.625rem; border-radius: 0 var(--shp-inv-thead-radius, var(--shp-inv-radius, 0)) var(--shp-inv-thead-radius, var(--shp-inv-radius, 0)) 0; }
 .shp-inv-vat table.shp-inv-thead-fill td:first-child { padding-left: 0.625rem; }
 .shp-inv-vat table.shp-inv-thead-fill td:last-child { padding-right: 0.625rem; }
 
@@ -159,8 +190,8 @@ export const INVOICE_DOC_CSS = `
 .shp-inv-notice p { margin: 0 0 0.5rem; }
 .shp-inv-notice p:last-child { margin-bottom: 0; }
 .shp-inv-notice .shp-inv-notice-lead { font-weight: 700; }
-.shp-inv-notice.shp-inv-notice-panel { padding: 0.875rem 1.125rem; background: var(--shp-inv-panel-bg, var(--color-bg-subtle)); border-left: var(--shp-inv-rule-w, 3px) solid var(--shp-inv-accent, var(--color-border)); border-radius: 0 var(--shp-inv-radius, 0) var(--shp-inv-radius, 0) 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.shp-inv-notice.shp-inv-notice-outline { padding: 0.875rem 1.125rem; border: 1px solid var(--shp-inv-accent, var(--color-border)); border-radius: var(--shp-inv-radius, 0); }
+.shp-inv-notice.shp-inv-notice-panel { padding: var(--shp-inv-notice-pad, 0.875rem) calc(var(--shp-inv-notice-pad, 0.875rem) * 1.3); background: var(--shp-inv-panel-bg, var(--color-bg-subtle)); border-left: var(--shp-inv-rule-w, 3px) solid var(--shp-inv-accent, var(--color-border)); border-radius: 0 var(--shp-inv-radius, 0) var(--shp-inv-radius, 0) 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.shp-inv-notice.shp-inv-notice-outline { padding: var(--shp-inv-notice-pad, 0.875rem) calc(var(--shp-inv-notice-pad, 0.875rem) * 1.3); border: 1px solid var(--shp-inv-accent, var(--color-border)); border-radius: var(--shp-inv-radius, 0); }
 .shp-inv-notice.shp-inv-notice-quiet { padding: 0; color: var(--color-text-muted); font-size: var(--shp-inv-notice-size, 0.875rem); }
 
 /* ---------------------------------------------------------------------------
@@ -173,6 +204,13 @@ export const INVOICE_DOC_CSS = `
 .shp-inv-footer.shp-inv-align-right { text-align: right; }
 .shp-inv-footer .shp-inv-contact { margin: 0 0 0.5rem; font-size: var(--shp-inv-footer-contact-size, 0.875rem); font-weight: 700; color: var(--shp-inv-accent, var(--color-text)); }
 .shp-inv-footer .shp-inv-small { margin: 0; font-size: var(--shp-inv-footer-small-size, 0.75rem); line-height: 1.6; color: var(--color-text-muted); }
+
+/* ---------------------------------------------------------------------------
+   Page number - "Page 2 of 3" in the running footer. The two spans are empty
+   until the printing browser fills them in, so this only ever says anything on
+   a PDF.
+   --------------------------------------------------------------------------- */
+.shp-inv-pageno { margin: 0; font-size: var(--shp-inv-pageno-size, 0.75rem); color: var(--shp-inv-pageno-ink, var(--color-text-muted)); }
 
 /* ---------------------------------------------------------------------------
    Divider - a rule of its own, for the gaps between sections the blocks above
@@ -216,6 +254,7 @@ export const INVOICE_DOC_CSS = `
   .shp-inv-notice.shp-inv-notice-quiet { color: #444 !important; }
   .shp-inv-footer .shp-inv-contact { color: var(--shp-inv-accent, #111) !important; }
   .shp-inv-footer .shp-inv-small { color: #444 !important; }
+  .shp-inv-pageno { color: var(--shp-inv-pageno-ink, #444) !important; }
   .shp-inv-head, .shp-inv-lines th, .shp-inv-lines td, .shp-inv-grand, .shp-inv-vat th, .shp-inv-vat td, .shp-inv-foot,
   .shp-inv-footer { border-color: #ccc !important; }
   .shp-inv-head.shp-inv-head-accent,

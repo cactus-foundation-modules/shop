@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import {
-  Style, FontLink, fontStyle, fontField, ptField, sizeVars, colourField, yesNo,
-  fillTokens, invoiceTokens, paragraphs, useCtx, TOKEN_HINT,
+  Style, FontLink, fontStyle, fontField, sizeField, radiusField, spaceField, sizeVars, cssLength,
+  colourField, yesNo, fillTokens, invoiceTokens, paragraphs, useCtx, TOKEN_HINT,
   type DocProps,
 } from '@/modules/shop/components/puck/invoice-shared'
 
@@ -53,6 +53,7 @@ export const INVOICE_DOC_SCOPE_CLASSES = [
   'shp-inv-notice',
   'shp-inv-footer',
   'shp-inv-rule',
+  'shp-inv-pageno',
 ]
 
 const RULE_WEIGHTS: Record<string, string> = {
@@ -80,7 +81,8 @@ type StyleProps = {
   accent?: string; labelColour?: string; titleColour?: string
   tableHeadBg?: string; tableHeadInk?: string
   panelBg?: string; panelInk?: string; zebraBg?: string
-  ruleWeight?: string; corners?: string; density?: string
+  ruleWeight?: string; ruleWeightPx?: string; corners?: string; cornerRadius?: string; density?: string
+  blockGap?: string; blockGapLarge?: string
   bodyFont?: string; headingFont?: string
 }
 
@@ -108,11 +110,15 @@ export function ShopInvoiceStyle(props: StyleProps) {
     ['--shp-inv-panel-bg', props.panelBg],
     ['--shp-inv-panel-ink', props.panelInk],
     ['--shp-inv-zebra-bg', props.zebraBg],
-    ['--shp-inv-rule-w', RULE_WEIGHTS[props.ruleWeight ?? '']],
-    ['--shp-inv-radius', RADII[props.corners ?? '']],
+    // The picked thickness, or an exact one where an owner asked for exactly
+    // that. The exact box wins, and blank in it leaves the menu standing.
+    ['--shp-inv-rule-w', cssLength(props.ruleWeightPx) ?? RULE_WEIGHTS[props.ruleWeight ?? '']],
+    // Same again for corners: three presets for an owner who wants one look, and
+    // a px menu for one who has a number in mind.
+    ['--shp-inv-radius', cssLength(props.cornerRadius) ?? RADII[props.corners ?? '']],
     ['--shp-inv-row-y', density?.row],
-    ['--shp-inv-gap', density?.gap],
-    ['--shp-inv-gap-lg', density?.gapLg],
+    ['--shp-inv-gap', cssLength(props.blockGap) ?? density?.gap],
+    ['--shp-inv-gap-lg', cssLength(props.blockGapLarge) ?? density?.gapLg],
     ['--shp-inv-body-font', props.bodyFont?.trim()],
     ['--shp-inv-head-font', props.headingFont?.trim()],
   ])
@@ -145,16 +151,20 @@ export const shopInvoiceStylePuckComponent = {
       { value: 'thick', label: 'Thick' },
       { value: 'heavy', label: 'Heavy' },
     ] },
+    ruleWeightPx: spaceField('…or exactly this thick'),
     corners: { type: 'select' as const, label: 'Corners', options: [
       { value: 'square', label: 'Square' },
       { value: 'soft', label: 'Slightly rounded' },
       { value: 'round', label: 'Rounded' },
     ] },
+    cornerRadius: radiusField('…or exactly this radius'),
     density: { type: 'select' as const, label: 'Spacing', options: [
       { value: 'compact', label: 'Compact' },
       { value: 'normal', label: 'Normal' },
       { value: 'roomy', label: 'Roomy' },
     ] },
+    blockGap: spaceField('…or exactly this gap between blocks'),
+    blockGapLarge: spaceField('…and this one before the payment and footer blocks'),
     bodyFont: fontField,
     headingFont: {
       type: 'custom' as const,
@@ -165,7 +175,8 @@ export const shopInvoiceStylePuckComponent = {
   defaultProps: {
     accent: '', labelColour: '', titleColour: '',
     tableHeadBg: '', tableHeadInk: '', panelBg: '', panelInk: '', zebraBg: '',
-    ruleWeight: 'thick', corners: 'square', density: 'normal',
+    ruleWeight: 'thick', ruleWeightPx: '', corners: 'square', cornerRadius: '',
+    density: 'normal', blockGap: '', blockGapLarge: '',
     bodyFont: '', headingFont: '',
   },
   render: ShopInvoiceStyle,
@@ -189,7 +200,7 @@ const NOTICE_STYLES = [
 
 type NoticeProps = DocProps & {
   lead?: string; body?: string; panelStyle?: string; hideWhenEmpty?: string
-  bodyPt?: number
+  bodyPt?: number | string; radius?: string; padding?: string
 }
 
 export function ShopInvoiceNotice(props: NoticeProps) {
@@ -210,7 +221,12 @@ export function ShopInvoiceNotice(props: NoticeProps) {
       <FontLink family={props.fontFamily} />
       <section
         className={`shp-inv-notice shp-inv-notice-${variant}`}
-        style={{ ...font, ...sizeVars({ '--shp-inv-notice-size': props.bodyPt }) }}
+        style={{
+          ...font,
+          ...sizeVars({ '--shp-inv-notice-size': props.bodyPt }),
+          ...(cssLength(props.radius) ? { '--shp-inv-radius': cssLength(props.radius)! } : {}),
+          ...(cssLength(props.padding) ? { '--shp-inv-notice-pad': cssLength(props.padding)! } : {}),
+        }}
       >
         {/* The lead runs into the first paragraph rather than sitting above it -
             "Payment is due on 6 May. Order ORD-000142, placed 6 April." is one
@@ -241,12 +257,14 @@ export const shopInvoiceNoticePuckComponent = {
       { value: 'no', label: 'Print the empty panel' },
     ] },
     fontFamily: fontField,
-    bodyPt: ptField('Text size in points'),
+    bodyPt: sizeField('Text size'),
+    radius: radiusField('Corners'),
+    padding: spaceField('Space inside the panel'),
   },
   defaultProps: {
     lead: 'Payment is due by {{DUE_DATE}}.',
     body: 'Order {{ORDER_NUMBER}}, invoiced {{INVOICE_DATE}}. Please quote the invoice number on any payment or query.',
-    panelStyle: 'panel', hideWhenEmpty: 'yes', fontFamily: '',
+    panelStyle: 'panel', hideWhenEmpty: 'yes', fontFamily: '', radius: '', padding: '',
   },
   render: ShopInvoiceNotice,
 }
@@ -264,7 +282,7 @@ export const shopInvoiceNoticePuckRscComponent = { ...shopInvoiceNoticePuckCompo
 
 type FooterProps = DocProps & {
   contact?: string; smallPrint?: string; align?: string; rule?: string
-  contactPt?: number; smallPrintPt?: number
+  contactPt?: number | string; smallPrintPt?: number | string
 }
 
 export function ShopInvoiceFooter(props: FooterProps) {
@@ -321,8 +339,8 @@ export const shopInvoiceFooterPuckComponent = {
     ] },
     rule: { type: 'select' as const, label: 'Rule above it', options: yesNo },
     fontFamily: fontField,
-    contactPt: ptField('Contact line size in points'),
-    smallPrintPt: ptField('Small print size in points'),
+    contactPt: sizeField('Contact line size'),
+    smallPrintPt: sizeField('Small print size'),
   },
   defaultProps: {
     contact: '{{SITE_URL}} · {{BUSINESS_EMAIL}}',
@@ -349,7 +367,8 @@ const SPACES: Record<string, string> = {
 }
 
 type DividerProps = {
-  weight?: string; colour?: string; width?: string; spaceAbove?: string; spaceBelow?: string
+  weight?: string; weightPx?: string; colour?: string; width?: string
+  spaceAbove?: string; spaceBelow?: string; spaceAbovePx?: string; spaceBelowPx?: string
 }
 
 export function ShopInvoiceDivider(props: DividerProps) {
@@ -361,9 +380,9 @@ export function ShopInvoiceDivider(props: DividerProps) {
       <hr
         className={`shp-inv-rule${width}`}
         style={{
-          borderTopWidth: RULE_WEIGHTS[props.weight ?? 'hairline'] ?? '1px',
-          marginTop: SPACES[props.spaceAbove ?? 'medium'] ?? SPACES.medium,
-          marginBottom: SPACES[props.spaceBelow ?? 'medium'] ?? SPACES.medium,
+          borderTopWidth: cssLength(props.weightPx) ?? RULE_WEIGHTS[props.weight ?? 'hairline'] ?? '1px',
+          marginTop: cssLength(props.spaceAbovePx) ?? SPACES[props.spaceAbove ?? 'medium'] ?? SPACES.medium,
+          marginBottom: cssLength(props.spaceBelowPx) ?? SPACES[props.spaceBelow ?? 'medium'] ?? SPACES.medium,
           // The colour goes on the custom property the stylesheet reads, NOT on
           // border-top-color. The print rules have to say !important to force a
           // dark-mode page back to ink on paper, and !important beats an inline
@@ -387,6 +406,7 @@ export const shopInvoiceDividerPuckComponent = {
       { value: 'thick', label: 'Thick' },
       { value: 'heavy', label: 'Heavy' },
     ] },
+    weightPx: spaceField('…or exactly this thick'),
     colour: colourField('Colour (blank uses the document border)'),
     width: { type: 'select' as const, label: 'Width', options: [
       { value: 'full', label: 'Right across' },
@@ -399,14 +419,97 @@ export const shopInvoiceDividerPuckComponent = {
       { value: 'medium', label: 'Medium' },
       { value: 'large', label: 'Large' },
     ] },
+    spaceAbovePx: spaceField('…or exactly this much above'),
     spaceBelow: { type: 'select' as const, label: 'Space below', options: [
       { value: 'none', label: 'None' },
       { value: 'small', label: 'Small' },
       { value: 'medium', label: 'Medium' },
       { value: 'large', label: 'Large' },
     ] },
+    spaceBelowPx: spaceField('…or exactly this much below'),
   },
-  defaultProps: { weight: 'hairline', colour: '', width: 'full', spaceAbove: 'medium', spaceBelow: 'medium' },
+  defaultProps: {
+    weight: 'hairline', weightPx: '', colour: '', width: 'full',
+    spaceAbove: 'medium', spaceAbovePx: '', spaceBelow: 'medium', spaceBelowPx: '',
+  },
   render: ShopInvoiceDivider,
 }
 export const shopInvoiceDividerPuckRscComponent = { ...shopInvoiceDividerPuckComponent, render: ShopInvoiceDivider }
+
+// ---------------------------------------------------------------------------
+// Page number
+// ---------------------------------------------------------------------------
+//
+// "Page 2 of 3", for the running footer that repeats at the foot of every page
+// of the PDF (see lib/doc-page-settings.tsx and lib/invoice-pdf.ts).
+//
+// It works by a trick of the printing browser rather than by anything this
+// module counts. Chrome fills in the text of any element carrying the classes
+// `pageNumber` and `totalPages` when it draws a running header or footer, so the
+// block emits two empty spans and lets the browser do the arithmetic - which is
+// the only place the arithmetic can be done, since nothing on the server knows
+// how many pages a document turned into until it has been printed.
+//
+// Anywhere else - on the document itself, on the screen - those spans stay
+// empty, which is why the block is offered on the PDF footer layouts and not on
+// the document ones. {{PAGE}} and {{PAGES}} are the two placeholders; the
+// ordinary invoice ones (see invoice-shared.tsx) work here too, so a footer can
+// read "Invoice INV-000087 - page 2 of 3".
+
+type PageNumberProps = DocProps & {
+  text?: string; align?: string; sizePt?: number | string; colour?: string
+}
+
+const PAGE_TOKEN_RE = /(\{\{\s*(?:PAGE|PAGES)\s*\}\})/
+
+export function ShopInvoicePageNumber(props: PageNumberProps) {
+  const ctx = useCtx(props)
+  const font = fontStyle(props)
+  // The invoice's own placeholders first, then the two the browser fills in -
+  // in that order, so an owner writing {{INVOICE_NUMBER}} beside {{PAGE}} gets
+  // the number filled in here and the page left for Chrome.
+  const text = fillTokens(props.text?.trim() || 'Page {{PAGE}} of {{PAGES}}', invoiceTokens(ctx))
+  const align = props.align === 'left' || props.align === 'right' ? props.align : 'center'
+  const colour = props.colour?.trim()
+  if (!text) return null
+
+  return (
+    <>
+      <Style />
+      <FontLink family={props.fontFamily} />
+      <p
+        className="shp-inv-pageno"
+        style={{
+          ...font,
+          textAlign: align,
+          ...sizeVars({ '--shp-inv-pageno-size': props.sizePt }),
+          ...(colour ? { '--shp-inv-pageno-ink': colour } : {}),
+        } as CSSProperties}
+      >
+        {text.split(PAGE_TOKEN_RE).map((part, i) => {
+          if (/^\{\{\s*PAGE\s*\}\}$/.test(part)) return <span className="pageNumber" key={i} />
+          if (/^\{\{\s*PAGES\s*\}\}$/.test(part)) return <span className="totalPages" key={i} />
+          return <span key={i}>{part}</span>
+        })}
+      </p>
+    </>
+  )
+}
+
+export const shopInvoicePageNumberPuckComponent = {
+  label: 'Invoice: Page number',
+  fields: {
+    text: { type: 'text' as const, label: `Reads. {{PAGE}} and {{PAGES}} are filled in by the printer. ${TOKEN_HINT}` },
+    align: { type: 'select' as const, label: 'Sits', options: [
+      { value: 'center', label: 'Centred' },
+      { value: 'left', label: 'Left' },
+      { value: 'right', label: 'Right' },
+    ] },
+    fontFamily: fontField,
+    sizePt: sizeField('Size'),
+    colour: colourField('Colour'),
+  },
+  defaultProps: { text: 'Page {{PAGE}} of {{PAGES}}', align: 'center', fontFamily: '', colour: '' },
+  render: ShopInvoicePageNumber,
+}
+export const shopInvoicePageNumberPuckRscComponent = { ...shopInvoicePageNumberPuckComponent, render: ShopInvoicePageNumber }

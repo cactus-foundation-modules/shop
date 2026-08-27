@@ -14,6 +14,18 @@ export type InvoiceDocContext = {
   /** True while rendering for the PDF. Parts use it to drop anything that only
    *  makes sense on screen. */
   print: boolean
+  /** Whether the money has arrived, where the document knows.
+   *
+   *  Not on the invoice itself, and deliberately not: an invoice is a snapshot
+   *  taken when it was raised, and whether it has since been paid is a fact
+   *  about the ORDER. The blocks need it all the same - a paid invoice has no
+   *  business printing bank details - so it is gathered by whoever loads the
+   *  document and handed over here.
+   *
+   *  Undefined means "not known", which is what the editor canvas and any older
+   *  caller sees, and every block treats that as unpaid so nothing disappears
+   *  from a document that cannot say. */
+  paid?: boolean
   /** Set when the document being drawn is a credit note rather than an invoice.
    *
    *  A credit note is drawn by these same six blocks on this same layout, so an
@@ -62,6 +74,9 @@ type PuckLikeData = { content?: unknown; zones?: Record<string, unknown>; root?:
 const DOC_PART_TYPES = new Set([
   'ShopInvoiceHeader',
   'ShopInvoiceParties',
+  'ShopInvoiceFrom',
+  'ShopInvoiceTo',
+  'ShopInvoicePageNumber',
   'ShopInvoiceLines',
   'ShopInvoiceTotals',
   'ShopInvoiceTaxSummary',
@@ -228,6 +243,10 @@ export function creditNoteDocContext(note: ShpCreditNote, opts?: { print?: boole
   return {
     invoice,
     print: opts?.print ?? false,
+    // Nothing on a credit note is owed, so nothing on one is unpaid. Blocks that
+    // hide themselves once the money is in - the bank details in particular -
+    // have no business on a document that gives money back.
+    paid: true,
     credit: { creditNoteNumber: note.creditNoteNumber, reason: note.reason },
   }
 }

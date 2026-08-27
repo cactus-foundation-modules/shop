@@ -6,7 +6,8 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getInvoiceByNumber } from '@/modules/shop/lib/db/invoices'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { verifyInvoiceToken, invoicePdfPath } from '@/modules/shop/lib/invoice-token'
-import { invoiceDocContext, renderInvoiceDocument } from '@/modules/shop/lib/invoice-document'
+import { invoiceDocContext, renderInvoiceDocument, renderDocumentRunningFooter } from '@/modules/shop/lib/invoice-document'
+import { PdfFooterRegion } from '@/modules/shop/lib/doc-page-settings'
 import PrintButton from '@/modules/shop/components/public/PrintButton'
 
 export const dynamic = 'force-dynamic'
@@ -74,19 +75,27 @@ export default async function ShopInvoicePage({
   // (no session, no query), the member whose order it is, and a staff session.
   // Anything else is a 404 rather than a 403 - an invoice number is sequential,
   // so "wrong token" and "not yours" must look identical from outside.
+  //
+  // The order is loaded either way, and once. It is what says whether the money
+  // has arrived - the invoice itself is a snapshot taken when it was raised and
+  // cannot know - which is what the payment block reads to leave the bank
+  // details off an invoice that has already been settled.
+  const order = await getOrderById(invoice.orderId)
   let allowed = verifyInvoiceToken(invoice.invoiceNumber, token)
   if (!allowed) {
     const [member, user] = await Promise.all([getMemberFromCookie(), getSessionFromCookie()])
-    if (member) {
-      const order = await getOrderById(invoice.orderId)
-      allowed = Boolean(order?.memberId && order.memberId === member.id)
-    }
+    if (member) allowed = Boolean(order?.memberId && order.memberId === member.id)
     if (!allowed && user) allowed = true
   }
   if (!allowed) notFound()
 
   const config = await getShopConfigCached()
-  const document = await renderInvoiceDocument(invoiceDocContext(invoice, { print }))
+  const ctx = invoiceDocContext(invoice, { print, paid: order?.paymentStatus === 'PAID' })
+  const document = await renderInvoiceDocument(ctx)
+  // Only when printing: it is a region for the printing browser to lift out, and
+  // rendering it for a reader on screen would be a layout resolved and a tree
+  // built for something nobody can see.
+  const runningFooter = print ? await renderDocumentRunningFooter('shopInvoiceFooter', ctx) : null
 
   return (
     <>
@@ -110,6 +119,7 @@ export default async function ShopInvoicePage({
         )}
         {document}
       </div>
+      <PdfFooterRegion>{runningFooter}</PdfFooterRegion>
     </>
   )
 }

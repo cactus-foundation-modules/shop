@@ -6,6 +6,8 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { verifyProformaToken, proformaPdfPath } from '@/modules/shop/lib/invoice-token'
 import { loadProforma, proformaDocContext } from '@/modules/shop/lib/proforma'
 import { renderProformaDocument } from '@/modules/shop/lib/proforma-document'
+import { renderDocumentRunningFooter } from '@/modules/shop/lib/invoice-document'
+import { PdfFooterRegion } from '@/modules/shop/lib/doc-page-settings'
 import PrintButton from '@/modules/shop/components/public/PrintButton'
 
 export const dynamic = 'force-dynamic'
@@ -76,7 +78,10 @@ export default async function ShopProformaPage({
   if (!allowed) notFound()
 
   const config = await getShopConfigCached()
-  const document = await renderProformaDocument(await proformaDocContext(order, items, { print }))
+  const ctx = await proformaDocContext(order, items, { print })
+  const document = await renderProformaDocument(ctx)
+  // Only when printing - see the invoice page for why.
+  const runningFooter = print ? await renderDocumentRunningFooter('shopProformaFooter', ctx) : null
 
   return (
     <>
@@ -97,6 +102,7 @@ export default async function ShopProformaPage({
         )}
         {document}
       </div>
+      <PdfFooterRegion>{runningFooter}</PdfFooterRegion>
     </>
   )
 }

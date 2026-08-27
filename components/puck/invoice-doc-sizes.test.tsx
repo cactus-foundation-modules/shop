@@ -4,7 +4,7 @@ import {
   ShopInvoiceHeader, ShopInvoiceParties, ShopInvoiceLines,
   ShopInvoiceTotals, ShopInvoiceTaxSummary, ShopInvoicePayment,
 } from '@/modules/shop/components/puck/invoice-parts'
-import { ShopInvoiceNotice, ShopInvoiceFooter } from '@/modules/shop/components/puck/invoice-chrome'
+import { ShopInvoiceNotice, ShopInvoiceFooter, ShopInvoicePageNumber } from '@/modules/shop/components/puck/invoice-chrome'
 import { sizeVars } from '@/modules/shop/components/puck/invoice-shared'
 import { SAMPLE_INVOICE_CONTEXT } from '@/modules/shop/lib/invoice-doc-context'
 import { INVOICE_DOC_CSS } from '@/modules/shop/components/public/invoice-doc-css'
@@ -45,6 +45,9 @@ const RENDERED = [
   // they are given their wording here rather than left to return null.
   renderToStaticMarkup(<ShopInvoiceNotice _ctx={ctx} lead="Due by" body="Please quote the number." bodyPt={10} />),
   renderToStaticMarkup(<ShopInvoiceFooter _ctx={ctx} contact="example.com" smallPrint="Company number 01234567." contactPt={9} smallPrintPt={7} />),
+  // Only ever drawn into the PDF's running footer, but it is a block of this
+  // document all the same and its size box has to reach the stylesheet.
+  renderToStaticMarkup(<ShopInvoicePageNumber _ctx={ctx} text="Page {{PAGE}} of {{PAGES}}" sizePt={8} />),
 ].join('\n')
 
 /** Custom properties the blocks actually wrote onto the document. */

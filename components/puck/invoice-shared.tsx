@@ -81,13 +81,133 @@ export function ptField(label: string) {
   return { type: 'number' as const, label, min: 4, max: 96 }
 }
 
-/** The `--shp-inv-*-size` properties for the boxes an owner actually filled in.
- *  An empty box, a zero and anything that is not a number emit nothing. */
+// ---------------------------------------------------------------------------
+// The size picker
+// ---------------------------------------------------------------------------
+//
+// The boxes above are now menus, and the menus are in PIXELS. Points were the
+// right unit for a thing that ends up on paper and the wrong one for a thing an
+// owner is looking at on a screen while they design it: every other size field
+// in the admin is in px, a browser lays the document out in px, and "13" typed
+// into a box meaning points landed at a size nobody predicted.
+//
+// A menu rather than a box for the same reason the rest of the admin uses one:
+// a document set in 11px, 12px and 11.5px is not a design, it is three
+// accidents, and nobody typing free numbers into fourteen boxes ends up with a
+// document whose sizes agree with one another.
+//
+// Old values keep working, untouched. A size saved before this was a menu is a
+// bare number meaning points; it renders exactly as it did (see `sizeVars`), and
+// the menu offers it back as its own first option so an owner can see what they
+// have and change it when they mean to rather than the moment they open the
+// panel.
+
+const PX_SIZES = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32, 36, 40, 48, 56, 64, 72]
+
+const selectStyle: CSSProperties = {
+  width: '100%',
+  padding: '0.375rem 0.5rem',
+  border: '1px solid var(--color-border)',
+  borderRadius: 6,
+  fontSize: '0.8125rem',
+  fontFamily: 'inherit',
+}
+
+/** A menu of px sizes, with "Default" at the top and any legacy point value kept
+ *  where an owner can see it. Not a client component: it is only ever rendered
+ *  inside the Puck editor, which is client-side already, and marking it would
+ *  open a client boundary in the document's published render path. */
+function SizeSelect({
+  value, onChange, sizes, unit, zeroLabel,
+}: {
+  value: string | number | undefined
+  onChange: (value: string) => void
+  sizes: number[]
+  unit: string
+  zeroLabel?: string
+}) {
+  const current = value === undefined || value === null ? '' : String(value).trim()
+  const known = current === '' || sizes.some((n) => `${n}${unit}` === current)
+  return (
+    <select style={selectStyle} value={current} onChange={(event) => onChange(event.target.value)}>
+      <option value="">Default</option>
+      {!known && <option value={current}>{`${current}${/[a-z%]$/i.test(current) ? '' : 'pt'} (set before this was a menu)`}</option>}
+      {sizes.map((n) => (
+        <option key={n} value={`${n}${unit}`}>{n === 0 && zeroLabel ? zeroLabel : `${n}${unit}`}</option>
+      ))}
+    </select>
+  )
+}
+
+/** A text size, in px. Blank means "leave it as the document has it". */
+export function sizeField(label: string) {
+  return {
+    type: 'custom' as const,
+    label,
+    render: ({ value, onChange }: { value: string | number | undefined; onChange: (value: string) => void }) => (
+      <SizeSelect value={value} onChange={onChange} sizes={PX_SIZES} unit="px" />
+    ),
+  }
+}
+
+const RADII = [0, 1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 24, 32]
+
+/** A corner radius, in px. Same shape as the size menu, so the two read alike. */
+export function radiusField(label: string) {
+  return {
+    type: 'custom' as const,
+    label,
+    render: ({ value, onChange }: { value: string | number | undefined; onChange: (value: string) => void }) => (
+      <SizeSelect value={value} onChange={onChange} sizes={RADII} unit="px" zeroLabel="Square (0px)" />
+    ),
+  }
+}
+
+const SPACES = [0, 2, 4, 6, 8, 10, 12, 16, 20, 24, 28, 32, 40, 48, 56, 64, 80]
+
+/** A gap, in px - the space above a block, the padding inside a table cell. */
+export function spaceField(label: string) {
+  return {
+    type: 'custom' as const,
+    label,
+    render: ({ value, onChange }: { value: string | number | undefined; onChange: (value: string) => void }) => (
+      <SizeSelect value={value} onChange={onChange} sizes={SPACES} unit="px" zeroLabel="None (0px)" />
+    ),
+  }
+}
+
+/** One CSS length from whatever a field holds, or null for "not set".
+ *
+ *  Two shapes, and the difference is the whole reason this exists:
+ *
+ *   - a bare number, or a string of digits, is POINTS. That is what the old
+ *     number boxes stored, and a document already in a customer's hands has to
+ *     keep the size it was issued at.
+ *   - anything carrying a unit is used as it stands, which is what the px menus
+ *     save and what an owner typing `1.2rem` into a legacy value would mean.
+ */
+export function cssLength(raw: number | string | undefined | null): string | null {
+  if (raw === undefined || raw === null) return null
+  if (typeof raw === 'number') return Number.isFinite(raw) && raw > 0 ? `${raw}pt` : null
+  const value = raw.trim()
+  if (!value) return null
+  if (/^-?[\d.]+$/.test(value)) {
+    const n = Number(value)
+    return Number.isFinite(n) && n > 0 ? `${n}pt` : null
+  }
+  // A unit an owner picked or typed. `0` on its own is caught above and dropped;
+  // `0px` is a deliberate square corner and has to survive.
+  return /^-?[\d.]+(px|pt|rem|em|%|mm|cm|in)$/.test(value) ? value : null
+}
+
+/** The `--shp-inv-*` properties for the fields an owner actually set. An empty
+ *  field emits nothing at all, so the stylesheet's own fallback stands and a
+ *  layout saved before the field existed renders what it always did. */
 export function sizeVars(sizes: Record<string, number | string | undefined>): CSSProperties {
   const out: Record<string, string> = {}
   for (const [name, raw] of Object.entries(sizes)) {
-    const pt = typeof raw === 'string' ? Number(raw.trim()) : raw
-    if (typeof pt === 'number' && Number.isFinite(pt) && pt > 0) out[name] = `${pt}pt`
+    const length = cssLength(raw)
+    if (length) out[name] = length
   }
   return out as CSSProperties
 }

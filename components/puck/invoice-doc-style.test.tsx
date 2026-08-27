@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
-  ShopInvoiceHeader, ShopInvoiceParties, ShopInvoiceLines,
+  ShopInvoiceHeader, ShopInvoiceParties, ShopInvoiceFrom, ShopInvoiceTo, ShopInvoiceLines,
   ShopInvoiceTotals, ShopInvoiceTaxSummary, ShopInvoicePayment,
 } from '@/modules/shop/components/puck/invoice-parts'
 import {
-  ShopInvoiceStyle, ShopInvoiceNotice, ShopInvoiceFooter, ShopInvoiceDivider,
+  ShopInvoiceStyle, ShopInvoiceNotice, ShopInvoiceFooter, ShopInvoiceDivider, ShopInvoicePageNumber,
   INVOICE_DOC_SCOPE_CLASSES,
 } from '@/modules/shop/components/puck/invoice-chrome'
 import { fillTokens, invoiceTokens } from '@/modules/shop/components/puck/invoice-shared'
@@ -74,6 +74,8 @@ describe('invoice document style scope', () => {
   const blocks: [string, string][] = [
     ['header', renderToStaticMarkup(<ShopInvoiceHeader _ctx={ctx} />)],
     ['parties', renderToStaticMarkup(<ShopInvoiceParties _ctx={ctx} />)],
+    ['from', renderToStaticMarkup(<ShopInvoiceFrom _ctx={ctx} />)],
+    ['to', renderToStaticMarkup(<ShopInvoiceTo _ctx={ctx} />)],
     ['lines', renderToStaticMarkup(<ShopInvoiceLines _ctx={ctx} />)],
     ['totals', renderToStaticMarkup(<ShopInvoiceTotals _ctx={ctx} />)],
     ['tax summary', renderToStaticMarkup(<ShopInvoiceTaxSummary _ctx={ctx} hideWhenSingleZero="no" />)],
@@ -81,6 +83,7 @@ describe('invoice document style scope', () => {
     ['notice', renderToStaticMarkup(<ShopInvoiceNotice _ctx={ctx} lead="Lead" body="Body" />)],
     ['footer', renderToStaticMarkup(<ShopInvoiceFooter _ctx={ctx} contact="a" smallPrint="b" />)],
     ['divider', renderToStaticMarkup(<ShopInvoiceDivider />)],
+    ['page number', renderToStaticMarkup(<ShopInvoicePageNumber _ctx={ctx} />)],
   ]
 
   it.each(blocks)('every root element of the %s block is inside the style scope', (_name, html) => {

@@ -143,12 +143,22 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
 
   const paymentInstructions = manualPaymentInstructions(order.paymentMethod, config)
   const outstanding = paymentOutstanding(order)
-  // The proforma, on a pay-later order, for as long as the order exists. Kept
-  // after the money has arrived on purpose: a buyer who paid by transfer last
-  // spring still has this document in their own filing, and taking the link away
-  // the moment it cleared would take their paperwork off them. The document
-  // restates itself as paid rather than disappearing.
-  const proforma = config.proformaShowToCustomer && proformaAvailable(config, order)
+  // The proforma, on a pay-later order, until the real invoice exists.
+  //
+  // A proforma is a request for money; a VAT invoice is the record of the sale,
+  // and it is the one an accountant files and reclaims against. Offering both
+  // side by side invites somebody to hand their bookkeeper the wrong one - and
+  // the proforma says in as many words that it is not a VAT invoice, which is
+  // not a document anybody needs once there is a VAT invoice sitting beside it.
+  //
+  // It is kept while the money is still owed, paid or not: a buyer who paid by
+  // transfer but is waiting on despatch still needs the paperwork they paid
+  // against. It goes when the invoice arrives, not when the money does.
+  //
+  // `invoice` is null on a shop that raises invoices but keeps them to itself,
+  // and the proforma rightly stays there - it is then the only paperwork the
+  // customer has, and taking it away would leave them with nothing.
+  const proforma = config.proformaShowToCustomer && proformaAvailable(config, order) && !invoice
 
   return (
     <MemberAccountShell member={member} maxWidth={880}>

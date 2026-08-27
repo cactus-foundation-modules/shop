@@ -1,6 +1,9 @@
+import type { ReactElement } from 'react'
 import { formatMoney } from '@/modules/shop/lib/money'
+import type { InvoiceDocContext } from '@/modules/shop/lib/invoice-doc-context'
 import {
-  Style, FontLink, fontStyle, fontField, ptField, sizeVars, yesNo, formatDay, paragraphs, useCtx,
+  Style, FontLink, fontStyle, fontField, sizeField, radiusField, spaceField, sizeVars, cssLength,
+  yesNo, formatDay, paragraphs, useCtx,
   type DocProps,
 } from '@/modules/shop/components/puck/invoice-shared'
 
@@ -43,10 +46,11 @@ import {
 type HeaderProps = DocProps & {
   heading?: string
   showOrderNumber?: string; showTaxPoint?: string; taxPointLabel?: string
+  showDate?: string; showDue?: string
   titleSize?: string; sides?: string; rule?: string
   factsLayout?: string; numberStyle?: string
   dateLabel?: string; dueLabel?: string; orderLabel?: string; invoiceLabel?: string
-  titlePt?: number; numberPt?: number; factsPt?: number; introPt?: number
+  titlePt?: number | string; numberPt?: number | string; factsPt?: number | string; introPt?: number | string
 }
 
 const TITLE_SIZES: Record<string, string> = {
@@ -87,6 +91,38 @@ export function ShopInvoiceHeader(props: HeaderProps) {
   const documentNumber = credit ? credit.creditNoteNumber : invoice.invoiceNumber
   const invoiceLabel = props.invoiceLabel?.trim() || 'Invoice'
 
+  // Built as a list and then filtered, rather than as eight conditionals inside
+  // the <dl>. A row whose value is empty used to reach the markup as a label
+  // with nothing beside it, and in the stacked layout that is a line of white
+  // space on the printed page under a heading that says nothing - which is what
+  // "the invoice prints a gap where the due date should be" was. A row with no
+  // value is not a row.
+  const facts: { label: string; value: string }[] = []
+  // A credit note leads with its own number and then names the invoice it
+  // credits. The reference is not decoration: a credit note that does not say
+  // which invoice it undoes is not one, and it is the first thing an accountant
+  // looks for. Lifted above the list when the number leads, so it is never
+  // printed twice.
+  if (credit && !leadNumber) {
+    facts.push({ label: invoice.wording?.heading?.trim() || 'Credit note', value: credit.creditNoteNumber })
+  }
+  // Skipped on a credit note whose invoice row has since been deleted - an empty
+  // "Invoice" row says less than no row. And skipped on an ordinary invoice
+  // whose number already leads.
+  if (!(leadNumber && !credit)) facts.push({ label: invoiceLabel, value: invoice.invoiceNumber ?? '' })
+  if (props.showOrderNumber !== 'no') facts.push({ label: props.orderLabel?.trim() || 'Order', value: invoice.orderNumber ?? '' })
+  if (props.showDate !== 'no') facts.push({ label: props.dateLabel?.trim() || 'Date', value: formatDay(invoice.taxPointDate) })
+  // The tax point is the date the VAT belongs to. It is usually the same day as
+  // the invoice, and printing it twice is noise - so it is a switch, off unless
+  // an owner's accountant wants it.
+  if (props.showTaxPoint === 'yes') {
+    facts.push({ label: props.taxPointLabel?.trim() || 'Tax point', value: formatDay(invoice.taxPointDate) })
+  }
+  // Off entirely on a document that has no due date - a credit note, an invoice
+  // for money already in the bank - and switchable off on one that has.
+  if (props.showDue !== 'no') facts.push({ label: props.dueLabel?.trim() || 'Due by', value: formatDay(invoice.dueDate) })
+  const rows = facts.filter((row) => row.value.trim() !== '')
+
   return (
     <>
       <Style />
@@ -95,51 +131,18 @@ export function ShopInvoiceHeader(props: HeaderProps) {
         <div className="shp-inv-meta">
           <h1 className={`shp-inv-h1${TITLE_SIZES[props.titleSize ?? 'medium'] ?? ''}`} style={font}>{heading}</h1>
           {leadNumber && documentNumber && <p className="shp-inv-lead">{documentNumber}</p>}
-          <dl className={`shp-inv-facts${stacked ? ' shp-inv-facts-stack' : ''}`}>
-            {/* A credit note leads with its own number and then names the
-                invoice it credits. The reference is not decoration: a credit
-                note that does not say which invoice it undoes is not one, and
-                it is the first thing an accountant looks for. Lifted above the
-                list when the number leads, so it is never printed twice. */}
-            {credit && !leadNumber && (
-              <>
-                <dt>{invoice.wording?.heading?.trim() || 'Credit note'}</dt>
-                <dd>{credit.creditNoteNumber}</dd>
-              </>
-            )}
-            {/* Skipped on a credit note whose invoice row has since been
-                deleted - an empty "Invoice" row says less than no row. And
-                skipped on an ordinary invoice whose number already leads. */}
-            {(!credit || invoice.invoiceNumber) && !(leadNumber && !credit) && (
-              <>
-                <dt>{invoiceLabel}</dt>
-                <dd>{invoice.invoiceNumber}</dd>
-              </>
-            )}
-            {props.showOrderNumber !== 'no' && invoice.orderNumber && (
-              <>
-                <dt>{props.orderLabel?.trim() || 'Order'}</dt>
-                <dd>{invoice.orderNumber}</dd>
-              </>
-            )}
-            <dt>{props.dateLabel?.trim() || 'Date'}</dt>
-            <dd>{formatDay(invoice.taxPointDate)}</dd>
-            {/* The tax point is the date the VAT belongs to. It is usually the
-                same day as the invoice, and printing it twice is noise - so it
-                is a switch, off unless an owner's accountant wants it. */}
-            {props.showTaxPoint === 'yes' && (
-              <>
-                <dt>{props.taxPointLabel?.trim() || 'Tax point'}</dt>
-                <dd>{formatDay(invoice.taxPointDate)}</dd>
-              </>
-            )}
-            {invoice.dueDate && (
-              <>
-                <dt>{props.dueLabel?.trim() || 'Due by'}</dt>
-                <dd>{formatDay(invoice.dueDate)}</dd>
-              </>
-            )}
-          </dl>
+          {/* No rows at all means no list at all: an empty <dl> still carries
+              the grid's own row gap, and that gap is white space on paper. */}
+          {rows.length > 0 && (
+            <dl className={`shp-inv-facts${stacked ? ' shp-inv-facts-stack' : ''}`}>
+              {rows.map((row, i) => (
+                <div className="shp-inv-fact" key={`${row.label}-${i}`}>
+                  <dt>{row.label}</dt>
+                  <dd>{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
           {/* A voided invoice still opens - the number is spent and the document
               is part of the trail - so it has to say so on its face. */}
           {invoice.status === 'VOID' && <span className="shp-inv-void">Void</span>}
@@ -168,7 +171,7 @@ export const shopInvoiceHeaderPuckComponent = {
       { value: 'large', label: 'Large' },
       { value: 'display', label: 'Very large' },
     ] },
-    titlePt: ptField('Heading size in points (overrides the box above)'),
+    titlePt: sizeField('Heading size (overrides the menu above)'),
     sides: { type: 'select' as const, label: 'The heading sits', options: [
       // Values kept as they were: a layout saved when this also flipped the logo
       // keeps the side it was set to, without a data migration.
@@ -191,21 +194,23 @@ export const shopInvoiceHeaderPuckComponent = {
     invoiceLabel: { type: 'text' as const, label: '"Invoice" row label' },
     showOrderNumber: { type: 'select' as const, label: 'Order number', options: yesNo },
     orderLabel: { type: 'text' as const, label: '"Order" row label' },
+    showDate: { type: 'select' as const, label: 'Date row', options: yesNo },
     dateLabel: { type: 'text' as const, label: '"Date" row label' },
+    showDue: { type: 'select' as const, label: 'Due by row', options: yesNo },
     dueLabel: { type: 'text' as const, label: '"Due by" row label' },
     showTaxPoint: { type: 'select' as const, label: 'Tax point date as its own row', options: yesNo },
     taxPointLabel: { type: 'text' as const, label: 'Tax point row label' },
-    numberPt: ptField('Invoice number size in points'),
-    factsPt: ptField('Dates and numbers size in points'),
-    introPt: ptField('Opening line size in points'),
+    numberPt: sizeField('Invoice number size'),
+    factsPt: sizeField('Dates and numbers size'),
+    introPt: sizeField('Opening line size'),
   },
-  // No defaults for the point sizes on purpose: blank is "leave it as it is",
-  // and a default would set every document's sizes the moment the field shipped.
+  // No defaults for the sizes on purpose: blank is "leave it as it is", and a
+  // default would set every document's sizes the moment the field shipped.
   defaultProps: {
     heading: '', fontFamily: '', titleSize: 'medium', sides: 'logo-left', rule: 'hairline',
     factsLayout: 'columns', numberStyle: 'row',
     invoiceLabel: 'Invoice', showOrderNumber: 'yes', orderLabel: 'Order',
-    dateLabel: 'Date', dueLabel: 'Due by',
+    showDate: 'yes', dateLabel: 'Date', showDue: 'yes', dueLabel: 'Due by',
     showTaxPoint: 'no', taxPointLabel: 'Tax point',
   },
   render: ShopInvoiceHeader,
@@ -216,11 +221,15 @@ export const shopInvoiceHeaderPuckRscComponent = { ...shopInvoiceHeaderPuckCompo
 // Parties: who it is from, who it is to, and where the goods went
 // ---------------------------------------------------------------------------
 
-type PartiesProps = DocProps & {
+type PartyLook = DocProps & {
+  headingPt?: number | string; addressPt?: number | string; registrationPt?: number | string
+}
+
+type PartiesProps = PartyLook & {
   fromLabel?: string; toLabel?: string; deliverLabel?: string
   showFrom?: string; showDelivery?: string; showRegistration?: string
   order?: string; columns?: string; showEmail?: string; leadWith?: string
-  headingPt?: number; addressPt?: number; registrationPt?: number
+  showPhone?: string; showCustomerPhone?: string
 }
 
 /**
@@ -243,29 +252,40 @@ export function addressedLines(lines: string[], company: string | undefined, lea
   return [org, ...lines.filter((line) => line.trim() !== org)]
 }
 
-export function ShopInvoiceParties(props: PartiesProps) {
-  const { invoice } = useCtx(props)
+/** The size properties every party block sets, so the three of them cannot
+ *  drift apart. */
+function partySizes(props: PartyLook) {
+  return sizeVars({
+    '--shp-inv-h2-size': props.headingPt,
+    '--shp-inv-party-size': props.addressPt,
+    '--shp-inv-reg-size': props.registrationPt,
+  })
+}
+
+/** The seller's own column: name, address, and the registration numbers a
+ *  limited company has to print. Shared by the combined block and by the
+ *  "Invoice: From" one, so the two can never disagree about what "From" means. */
+function SellerParty({
+  invoice, props, heading,
+}: {
+  invoice: InvoiceDocContext['invoice']
+  props: PartiesProps
+  heading: string
+}) {
   const font = fontStyle(props)
   const seller = invoice.seller ?? ({} as typeof invoice.seller)
-  const customer = invoice.customer ?? ({} as typeof invoice.customer)
-  const showFrom = props.showFrom !== 'no'
-  const billing = customer.billingAddress ?? []
-  const shipping = customer.shippingAddress ?? []
-  // Only worth a second column when the goods went somewhere else. Printing the
-  // same address twice under two headings helps nobody.
-  const differentDelivery =
-    props.showDelivery !== 'no' && shipping.length > 0 && shipping.join('|') !== billing.join('|')
-  const showEmail = props.showEmail !== 'no'
-  const leadWithOrg = props.leadWith === 'organisation'
-
-  const from = showFrom ? (
+  return (
     <div className="shp-inv-party" key="from">
-      <h2 className="shp-inv-h2" style={font}>{props.fromLabel?.trim() || 'From'}</h2>
+      <h2 className="shp-inv-h2" style={font}>{heading}</h2>
       <address>
         {seller.name && <span className="shp-inv-strong">{seller.name}</span>}
         {(seller.addressLines ?? []).map((line, i) => <span key={i}>{line}</span>)}
-        {showEmail && seller.email && <span>{seller.email}</span>}
-        {seller.phone && <span>{seller.phone}</span>}
+        {props.showEmail !== 'no' && seller.email && <span>{seller.email}</span>}
+        {/* The shop's own telephone number. On by default because it always
+            printed; a switch because plenty of trades would rather a customer
+            emailed, and because a document going to an accountant does not need
+            a number on it at all. */}
+        {props.showPhone !== 'no' && seller.phone && <span>{seller.phone}</span>}
       </address>
       {props.showRegistration !== 'no' && (seller.vatNumber || seller.companyNumber) && (
         <div className="shp-inv-reg">
@@ -274,30 +294,68 @@ export function ShopInvoiceParties(props: PartiesProps) {
         </div>
       )}
     </div>
-  ) : null
+  )
+}
 
-  const billTo = addressedLines(billing, customer.company, leadWithOrg)
-  const to = (
+/** Who the document is addressed to. */
+function CustomerParty({
+  invoice, props, heading,
+}: {
+  invoice: InvoiceDocContext['invoice']
+  props: PartiesProps
+  heading: string
+}) {
+  const font = fontStyle(props)
+  const customer = invoice.customer ?? ({} as typeof invoice.customer)
+  const billTo = addressedLines(customer.billingAddress ?? [], customer.company, props.leadWith === 'organisation')
+  return (
     <div className="shp-inv-party" key="to">
-      <h2 className="shp-inv-h2" style={font}>{props.toLabel?.trim() || 'Invoice to'}</h2>
+      <h2 className="shp-inv-h2" style={font}>{heading}</h2>
       <address>
         {billTo.length > 0
           ? billTo.map((line, i) => <span key={i} className={i === 0 ? 'shp-inv-strong' : undefined}>{line}</span>)
           : <span className="shp-inv-strong">{customer.company?.trim() || customer.name}</span>}
-        {showEmail && customer.email && <span>{customer.email}</span>}
+        {props.showEmail !== 'no' && customer.email && <span>{customer.email}</span>}
+        {/* Off unless asked for, because it never printed: a document already in
+            somebody's hands must keep the shape it was issued in. */}
+        {props.showCustomerPhone === 'yes' && customer.phone && <span>{customer.phone}</span>}
       </address>
     </div>
   )
+}
 
-  const deliver = differentDelivery ? (
+/** Where the goods went, when that is somewhere else. Only worth a column when
+ *  it differs - printing the same address twice under two headings helps
+ *  nobody. */
+function deliveryParty(
+  invoice: InvoiceDocContext['invoice'],
+  props: PartiesProps,
+  heading: string,
+): ReactElement | null {
+  const font = fontStyle(props)
+  const customer = invoice.customer ?? ({} as typeof invoice.customer)
+  const billing = customer.billingAddress ?? []
+  const shipping = customer.shippingAddress ?? []
+  if (props.showDelivery === 'no' || shipping.length === 0 || shipping.join('|') === billing.join('|')) return null
+  return (
     <div className="shp-inv-party" key="deliver">
-      <h2 className="shp-inv-h2" style={font}>{props.deliverLabel?.trim() || 'Delivered to'}</h2>
+      <h2 className="shp-inv-h2" style={font}>{heading}</h2>
       <address>
-        {addressedLines(shipping, customer.company, leadWithOrg)
+        {addressedLines(shipping, customer.company, props.leadWith === 'organisation')
           .map((line, i) => <span key={i} className={i === 0 ? 'shp-inv-strong' : undefined}>{line}</span>)}
       </address>
     </div>
-  ) : null
+  )
+}
+
+export function ShopInvoiceParties(props: PartiesProps) {
+  const { invoice } = useCtx(props)
+  const font = fontStyle(props)
+  const from = props.showFrom !== 'no'
+    ? <SellerParty invoice={invoice} props={props} heading={props.fromLabel?.trim() || 'From'} key="from" />
+    : null
+  const to = <CustomerParty invoice={invoice} props={props} heading={props.toLabel?.trim() || 'Invoice to'} key="to" />
+  const deliver = deliveryParty(invoice, props, props.deliverLabel?.trim() || 'Delivered to')
 
   // Whose details come first. "From" first is the older order and stays the
   // default; plenty of printed invoices lead with the customer instead, because
@@ -309,25 +367,27 @@ export function ShopInvoiceParties(props: PartiesProps) {
     <>
       <Style />
       <FontLink family={props.fontFamily} />
-      <section
-        className={`shp-inv-parties${width}`}
-        style={{
-          ...font,
-          ...sizeVars({
-            '--shp-inv-h2-size': props.headingPt,
-            '--shp-inv-party-size': props.addressPt,
-            '--shp-inv-reg-size': props.registrationPt,
-          }),
-        }}
-      >
+      <section className={`shp-inv-parties${width}`} style={{ ...font, ...partySizes(props) }}>
         {columns.filter(Boolean)}
       </section>
     </>
   )
 }
 
+// The party fields that belong to one column, shared by all three blocks so a
+// field added to one is a field added to all of them.
+const PARTY_SIZE_FIELDS = {
+  headingPt: sizeField('Heading size'),
+  addressPt: sizeField('Address size'),
+  registrationPt: sizeField('VAT and company number size'),
+}
+
 export const shopInvoicePartiesPuckComponent = {
-  label: 'Invoice: From and to',
+  // Kept, and kept working, because it is on every invoice layout published
+  // before the split - including ones a customer has already been sent. New
+  // layouts get "Invoice: From" and "Invoice: To" instead, which is the same
+  // two columns as two blocks an owner can move, size and space apart.
+  label: 'Invoice: From and to (both columns)',
   fields: {
     fontFamily: fontField,
     order: { type: 'select' as const, label: 'Which comes first', options: [
@@ -345,23 +405,145 @@ export const shopInvoicePartiesPuckComponent = {
     showDelivery: { type: 'select' as const, label: 'Delivery address, when it differs', options: yesNo },
     deliverLabel: { type: 'text' as const, label: '"Delivered to" heading' },
     showEmail: { type: 'select' as const, label: 'Email addresses', options: yesNo },
+    showPhone: { type: 'select' as const, label: 'Your telephone number', options: yesNo },
+    showCustomerPhone: { type: 'select' as const, label: 'Their telephone number', options: yesNo },
     leadWith: { type: 'select' as const, label: 'Address it to', options: [
       { value: 'person', label: 'The person, then their organisation' },
       { value: 'organisation', label: 'The organisation, on the top line' },
     ] },
     showRegistration: { type: 'select' as const, label: 'VAT and company numbers', options: yesNo },
-    headingPt: ptField('Heading size in points'),
-    addressPt: ptField('Address size in points'),
-    registrationPt: ptField('VAT and company number size in points'),
+    ...PARTY_SIZE_FIELDS,
   },
   defaultProps: {
     fontFamily: '', order: 'from-first', columns: 'auto',
     showFrom: 'yes', fromLabel: 'From', toLabel: 'Invoice to',
-    showDelivery: 'yes', deliverLabel: 'Delivered to', showEmail: 'yes', leadWith: 'person', showRegistration: 'yes',
+    showDelivery: 'yes', deliverLabel: 'Delivered to', showEmail: 'yes',
+    showPhone: 'yes', showCustomerPhone: 'no',
+    leadWith: 'person', showRegistration: 'yes',
   },
   render: ShopInvoiceParties,
 }
 export const shopInvoicePartiesPuckRscComponent = { ...shopInvoicePartiesPuckComponent, render: ShopInvoiceParties }
+
+// ---------------------------------------------------------------------------
+// From, and To, as blocks of their own
+// ---------------------------------------------------------------------------
+//
+// The same two columns the block above draws together, drawn one at a time.
+//
+// One block that drew both was fine until an owner wanted them anywhere other
+// than side by side and equal: the seller at the top under the letterhead and
+// the customer down beside the dates, one of them in a two-column grid with the
+// notice panel, different sizes on each. None of that is reachable through a
+// block that owns both columns and lays them out itself.
+//
+// Separately they are ordinary blocks: drop them where you want them, put them
+// in a Columns block if you want them beside each other, and they carry their
+// own headings, sizes and switches. The combined block stays for every layout
+// that already uses it.
+
+type OnePartyProps = PartyLook & {
+  heading?: string; showEmail?: string; showPhone?: string
+  showRegistration?: string; align?: string
+}
+
+const PARTY_ALIGN: Record<string, string> = {
+  left: '',
+  centre: ' shp-inv-party-centre',
+  right: ' shp-inv-party-right',
+}
+
+export function ShopInvoiceFrom(props: OnePartyProps) {
+  const { invoice } = useCtx(props)
+  const font = fontStyle(props)
+  return (
+    <>
+      <Style />
+      <FontLink family={props.fontFamily} />
+      <section
+        className={`shp-inv-parties shp-inv-party-one${PARTY_ALIGN[props.align ?? 'left'] ?? ''}`}
+        style={{ ...font, ...partySizes(props) }}
+      >
+        <SellerParty invoice={invoice} props={props as PartiesProps} heading={props.heading?.trim() || 'From'} />
+      </section>
+    </>
+  )
+}
+
+export const shopInvoiceFromPuckComponent = {
+  label: 'Invoice: From',
+  fields: {
+    heading: { type: 'text' as const, label: 'Heading' },
+    fontFamily: fontField,
+    showEmail: { type: 'select' as const, label: 'Email address', options: yesNo },
+    showPhone: { type: 'select' as const, label: 'Telephone number', options: yesNo },
+    showRegistration: { type: 'select' as const, label: 'VAT and company numbers', options: yesNo },
+    align: { type: 'select' as const, label: 'Sits', options: [
+      { value: 'left', label: 'Left' },
+      { value: 'centre', label: 'Centred' },
+      { value: 'right', label: 'Right' },
+    ] },
+    ...PARTY_SIZE_FIELDS,
+  },
+  defaultProps: {
+    heading: 'From', fontFamily: '', showEmail: 'yes', showPhone: 'yes', showRegistration: 'yes', align: 'left',
+  },
+  render: ShopInvoiceFrom,
+}
+export const shopInvoiceFromPuckRscComponent = { ...shopInvoiceFromPuckComponent, render: ShopInvoiceFrom }
+
+type ToProps = PartyLook & {
+  heading?: string; deliverLabel?: string
+  showEmail?: string; showCustomerPhone?: string; showDelivery?: string
+  leadWith?: string; align?: string
+}
+
+export function ShopInvoiceTo(props: ToProps) {
+  const { invoice } = useCtx(props)
+  const font = fontStyle(props)
+  const deliver = deliveryParty(invoice, props as PartiesProps, props.deliverLabel?.trim() || 'Delivered to')
+  return (
+    <>
+      <Style />
+      <FontLink family={props.fontFamily} />
+      <section
+        className={`shp-inv-parties${deliver ? '' : ' shp-inv-party-one'}${PARTY_ALIGN[props.align ?? 'left'] ?? ''}`}
+        style={{ ...font, ...partySizes(props) }}
+      >
+        <CustomerParty invoice={invoice} props={props as PartiesProps} heading={props.heading?.trim() || 'Invoice to'} />
+        {deliver}
+      </section>
+    </>
+  )
+}
+
+export const shopInvoiceToPuckComponent = {
+  label: 'Invoice: To',
+  fields: {
+    heading: { type: 'text' as const, label: 'Heading' },
+    fontFamily: fontField,
+    showEmail: { type: 'select' as const, label: 'Email address', options: yesNo },
+    showCustomerPhone: { type: 'select' as const, label: 'Telephone number', options: yesNo },
+    leadWith: { type: 'select' as const, label: 'Address it to', options: [
+      { value: 'person', label: 'The person, then their organisation' },
+      { value: 'organisation', label: 'The organisation, on the top line' },
+    ] },
+    showDelivery: { type: 'select' as const, label: 'Delivery address, when it differs', options: yesNo },
+    deliverLabel: { type: 'text' as const, label: '"Delivered to" heading' },
+    align: { type: 'select' as const, label: 'Sits', options: [
+      { value: 'left', label: 'Left' },
+      { value: 'centre', label: 'Centred' },
+      { value: 'right', label: 'Right' },
+    ] },
+    ...PARTY_SIZE_FIELDS,
+  },
+  defaultProps: {
+    heading: 'Invoice to', fontFamily: '', showEmail: 'yes', showCustomerPhone: 'no',
+    leadWith: 'person', showDelivery: 'yes', deliverLabel: 'Delivered to', align: 'left',
+  },
+  render: ShopInvoiceTo,
+}
+export const shopInvoiceToPuckRscComponent = { ...shopInvoiceToPuckComponent, render: ShopInvoiceTo }
 
 // ---------------------------------------------------------------------------
 // Lines: what was charged for
@@ -371,7 +553,19 @@ type LinesProps = DocProps & {
   showSku?: string; showDetail?: string; showTaxRate?: string
   itemLabel?: string; qtyLabel?: string; priceLabel?: string; rateLabel?: string; totalLabel?: string
   headStyle?: string; rowRules?: string; zebra?: string
-  headPt?: number; rowPt?: number; skuPt?: number; detailPt?: number
+  headPt?: number | string; rowPt?: number | string; skuPt?: number | string; detailPt?: number | string
+  headRadius?: string; headRadiusEdges?: string; headPadX?: string; headPadY?: string
+  rowPadY?: string; rowRadius?: string; descWidth?: string; headCase?: string
+}
+
+/** How much of the table the description column takes, leaving the money
+ *  columns whatever is left. `auto` is the browser's own guess, which is what
+ *  the table has always used and what a document with long descriptions wants. */
+const DESC_WIDTHS: Record<string, string> = {
+  auto: '',
+  half: '50%',
+  wide: '60%',
+  widest: '70%',
 }
 
 export function ShopInvoiceLines(props: LinesProps) {
@@ -393,7 +587,29 @@ export function ShopInvoiceLines(props: LinesProps) {
     props.headStyle === 'filled' ? 'shp-inv-thead-fill' : '',
     props.zebra === 'yes' ? 'shp-inv-zebra' : '',
     props.rowRules === 'none' ? 'shp-inv-rows-none' : '',
+    // Corners on the outer ends of the heading band only, or on every cell in
+    // it. "Every cell" is the look a document with a filled head and gaps
+    // between the columns wants; the outer ends is what a single banner wants.
+    props.headRadiusEdges === 'every' ? 'shp-inv-thead-round-all' : '',
+    props.headCase === 'plain' ? 'shp-inv-thead-plain' : '',
   ].filter(Boolean).join(' ')
+
+  // The corner radius on the column headings, and the padding around them, as
+  // properties rather than classes: an owner picking 6px means 6px, not
+  // "slightly rounded". Blank leaves the document style block's own corner
+  // setting standing, which is what every layout published before this had.
+  const shape: Record<string, string> = {}
+  const headRadius = cssLength(props.headRadius)
+  if (headRadius) shape['--shp-inv-thead-radius'] = headRadius
+  const rowRadius = cssLength(props.rowRadius)
+  if (rowRadius) shape['--shp-inv-row-radius'] = rowRadius
+  const headPadX = cssLength(props.headPadX)
+  if (headPadX) shape['--shp-inv-thead-pad-x'] = headPadX
+  const headPadY = cssLength(props.headPadY)
+  if (headPadY) shape['--shp-inv-thead-pad-y'] = headPadY
+  const rowPadY = cssLength(props.rowPadY)
+  if (rowPadY) shape['--shp-inv-row-y'] = rowPadY
+  const descWidth = DESC_WIDTHS[props.descWidth ?? 'auto'] ?? ''
 
   return (
     <>
@@ -409,11 +625,12 @@ export function ShopInvoiceLines(props: LinesProps) {
             '--shp-inv-sku-size': props.skuPt,
             '--shp-inv-detail-size': props.detailPt,
           }),
+          ...shape,
         }}
       >
         <thead>
           <tr>
-            <th>{props.itemLabel?.trim() || 'Description'}</th>
+            <th style={descWidth ? { width: descWidth } : undefined}>{props.itemLabel?.trim() || 'Description'}</th>
             <th className="shp-inv-num">{props.qtyLabel?.trim() || 'Qty'}</th>
             <th className="shp-inv-num">{props.priceLabel?.trim() || 'Unit price'}</th>
             {showRate && <th className="shp-inv-num">{props.rateLabel?.trim() || 'Rate'}</th>}
@@ -464,6 +681,25 @@ export const shopInvoiceLinesPuckComponent = {
       { value: 'none', label: 'Only under the last one' },
     ] },
     zebra: { type: 'select' as const, label: 'Shade alternate rows', options: yesNo },
+    headRadius: radiusField('Column heading corners'),
+    headRadiusEdges: { type: 'select' as const, label: 'Those corners go on', options: [
+      { value: 'outer', label: 'The outer ends of the band' },
+      { value: 'every', label: 'Every heading cell' },
+    ] },
+    headPadX: spaceField('Space either side of a column heading'),
+    headPadY: spaceField('Space above and below a column heading'),
+    headCase: { type: 'select' as const, label: 'Column headings read', options: [
+      { value: 'caps', label: 'IN SMALL CAPITALS' },
+      { value: 'plain', label: 'As you typed them' },
+    ] },
+    rowPadY: spaceField('Space above and below an item row'),
+    rowRadius: radiusField('Shaded row corners'),
+    descWidth: { type: 'select' as const, label: 'Description column takes', options: [
+      { value: 'auto', label: 'As much as it needs' },
+      { value: 'half', label: 'Half the table' },
+      { value: 'wide', label: 'Three fifths' },
+      { value: 'widest', label: 'Seven tenths' },
+    ] },
     showSku: { type: 'select' as const, label: 'Product codes', options: yesNo },
     showDetail: { type: 'select' as const, label: 'Options and personalisation', options: yesNo },
     showTaxRate: { type: 'select' as const, label: 'Tax rate column', options: yesNo },
@@ -472,13 +708,15 @@ export const shopInvoiceLinesPuckComponent = {
     priceLabel: { type: 'text' as const, label: 'Unit price column' },
     rateLabel: { type: 'text' as const, label: 'Rate column' },
     totalLabel: { type: 'text' as const, label: 'Amount column' },
-    headPt: ptField('Column heading size in points'),
-    rowPt: ptField('Item row size in points'),
-    skuPt: ptField('Product code size in points'),
-    detailPt: ptField('Options and personalisation size in points'),
+    headPt: sizeField('Column heading size'),
+    rowPt: sizeField('Item row size'),
+    skuPt: sizeField('Product code size'),
+    detailPt: sizeField('Options and personalisation size'),
   },
   defaultProps: {
     fontFamily: '', headStyle: 'rule', rowRules: 'every', zebra: 'no',
+    headRadius: '', headRadiusEdges: 'outer', headPadX: '', headPadY: '',
+    headCase: 'caps', rowPadY: '', rowRadius: '', descWidth: 'auto',
     showSku: 'no', showDetail: 'yes', showTaxRate: 'no',
     itemLabel: 'Description', qtyLabel: 'Qty', priceLabel: 'Unit price', rateLabel: 'Rate', totalLabel: 'Amount',
   },
@@ -495,7 +733,8 @@ type TotalsProps = DocProps & {
   taxLabel?: string; totalLabel?: string; showPaid?: string; paidWording?: string
   emphasis?: string; showTaxRate?: string; width?: string
   showDeliveryRow?: string; zeroDelivery?: string
-  rowPt?: number; totalPt?: number; paidPt?: number
+  align?: string
+  rowPt?: number | string; totalPt?: number | string; paidPt?: number | string
 }
 
 const TOTALS_WIDTHS: Record<string, string> = { narrow: '18rem', normal: '22rem', wide: '28rem' }
@@ -522,7 +761,15 @@ export function ShopInvoiceTotals(props: TotalsProps) {
     ? formatMoney(shipping, symbol)
     : props.zeroDelivery?.trim() || formatMoney(0, symbol)
 
-  const listClass = `shp-inv-totals${props.emphasis === 'accent' ? ' shp-inv-total-accent' : ''}`
+  const listClass = [
+    'shp-inv-totals',
+    props.emphasis === 'accent' ? 'shp-inv-total-accent' : '',
+    // Where the column of figures sits. It has always been pushed to the right,
+    // which is where a total belongs on a printed invoice - but a document set
+    // left, with the totals under the item table's first column, is a look
+    // plenty of trades use and there was no way to ask for it.
+    props.align === 'left' ? 'shp-inv-totals-left' : '',
+  ].filter(Boolean).join(' ')
   const width = TOTALS_WIDTHS[props.width ?? 'normal']
 
   return (
@@ -597,6 +844,10 @@ export const shopInvoiceTotalsPuckComponent = {
       { value: 'normal', label: 'Normal' },
       { value: 'wide', label: 'Wide' },
     ] },
+    align: { type: 'select' as const, label: 'Sits', options: [
+      { value: 'right', label: 'At the right' },
+      { value: 'left', label: 'At the left' },
+    ] },
     subtotalLabel: { type: 'text' as const, label: 'Subtotal row' },
     discountLabel: { type: 'text' as const, label: 'Discount row' },
     deliveryLabel: { type: 'text' as const, label: 'Delivery row' },
@@ -610,12 +861,12 @@ export const shopInvoiceTotalsPuckComponent = {
     totalLabel: { type: 'text' as const, label: 'Total row' },
     showPaid: { type: 'select' as const, label: 'Line under the total', options: yesNo },
     paidWording: { type: 'text' as const, label: 'What that line says' },
-    rowPt: ptField('Row size in points'),
-    totalPt: ptField('Total size in points'),
-    paidPt: ptField('Size in points of the line under the total'),
+    rowPt: sizeField('Row size'),
+    totalPt: sizeField('Total size'),
+    paidPt: sizeField('Size of the line under the total'),
   },
   defaultProps: {
-    fontFamily: '', emphasis: 'rule', width: 'normal',
+    fontFamily: '', emphasis: 'rule', width: 'normal', align: 'right',
     subtotalLabel: 'Subtotal', discountLabel: 'Discount', deliveryLabel: 'Delivery',
     showDeliveryRow: 'charged', zeroDelivery: '',
     taxLabel: '', showTaxRate: 'no', totalLabel: 'Total',
@@ -637,7 +888,8 @@ export const shopInvoiceTotalsPuckRscComponent = { ...shopInvoiceTotalsPuckCompo
 type TaxProps = DocProps & {
   heading?: string; rateLabel?: string; netLabel?: string; taxLabel?: string; grossLabel?: string
   hideWhenSingleZero?: string; headStyle?: string; align?: string
-  headingPt?: number; headPt?: number; rowPt?: number
+  headRadius?: string
+  headingPt?: number | string; headPt?: number | string; rowPt?: number | string
 }
 
 export function ShopInvoiceTaxSummary(props: TaxProps) {
@@ -671,6 +923,7 @@ export function ShopInvoiceTaxSummary(props: TaxProps) {
             '--shp-inv-vat-head-size': props.headPt,
             '--shp-inv-vat-size': props.rowPt,
           }),
+          ...(cssLength(props.headRadius) ? { '--shp-inv-thead-radius': cssLength(props.headRadius)! } : {}),
         }}
       >
         <h2 className="shp-inv-h2" style={font}>
@@ -714,6 +967,7 @@ export const shopInvoiceTaxSummaryPuckComponent = {
       { value: 'right', label: 'At the right, under the totals' },
       { value: 'left', label: 'At the left' },
     ] },
+    headRadius: radiusField('Column heading corners'),
     rateLabel: { type: 'text' as const, label: 'Rate column' },
     netLabel: { type: 'text' as const, label: 'Net column' },
     taxLabel: { type: 'text' as const, label: 'Tax column' },
@@ -723,12 +977,12 @@ export const shopInvoiceTaxSummaryPuckComponent = {
       { value: 'yes', label: 'Unless no tax was charged' },
       { value: 'single', label: 'Only when there is more than one rate' },
     ] },
-    headingPt: ptField('Heading size in points'),
-    headPt: ptField('Column heading size in points'),
-    rowPt: ptField('Row size in points'),
+    headingPt: sizeField('Heading size'),
+    headPt: sizeField('Column heading size'),
+    rowPt: sizeField('Row size'),
   },
   defaultProps: {
-    fontFamily: '', heading: '', headStyle: 'rule', align: 'right',
+    fontFamily: '', heading: '', headStyle: 'rule', align: 'right', headRadius: '',
     rateLabel: 'Rate', netLabel: 'Net', taxLabel: '', grossLabel: 'Gross',
     hideWhenSingleZero: 'yes',
   },
@@ -744,11 +998,13 @@ type PaymentProps = DocProps & {
   showPaymentDetails?: string; paymentHeading?: string
   showTerms?: string; termsHeading?: string; showFooter?: string; footerAlign?: string
   columns?: string; paymentExtra?: string; termsExtra?: string
-  headingPt?: number; bodyPt?: number; footerPt?: number
+  whenPaid?: string
+  headingPt?: number | string; bodyPt?: number | string; footerPt?: number | string
 }
 
 export function ShopInvoicePayment(props: PaymentProps) {
-  const { invoice } = useCtx(props)
+  const ctx = useCtx(props)
+  const { invoice } = ctx
   const font = fontStyle(props)
   const wording = invoice.wording ?? ({} as typeof invoice.wording)
   // The extra paragraph is the block's own, not the shop's - somewhere to put a
@@ -756,8 +1012,18 @@ export function ShopInvoicePayment(props: PaymentProps) {
   // invoice ever issued. It counts towards the block having something to say.
   const paymentExtra = props.paymentExtra?.trim() ?? ''
   const termsExtra = props.termsExtra?.trim() ?? ''
-  const showPayment = props.showPaymentDetails !== 'no' && Boolean(wording.paymentDetails || paymentExtra)
-  const showTerms = props.showTerms !== 'no' && Boolean(wording.terms || termsExtra)
+  // Money already in the bank needs no bank details. An invoice raised on
+  // despatch and paid a fortnight later still carries the "how to pay" wording
+  // it was issued with, because that wording is a snapshot - so the block asks
+  // the document whether the money arrived and leaves the panel off when it did.
+  // Three settings rather than a switch: the terms are usually still worth
+  // printing on a paid invoice (retention of title, returns), and the bank
+  // details never are.
+  const paid = ctx.paid === true
+  const hidePaymentWhenPaid = paid && (props.whenPaid === 'payment' || props.whenPaid === 'both')
+  const hideTermsWhenPaid = paid && props.whenPaid === 'both'
+  const showPayment = props.showPaymentDetails !== 'no' && !hidePaymentWhenPaid && Boolean(wording.paymentDetails || paymentExtra)
+  const showTerms = props.showTerms !== 'no' && !hideTermsWhenPaid && Boolean(wording.terms || termsExtra)
   const showFooter = props.showFooter !== 'no' && Boolean(wording.footer)
   // A strapline under a rule reads as a footer when it is centred and as an
   // unfinished sentence when it is not. Centred unless a layout says otherwise.
@@ -811,6 +1077,11 @@ export const shopInvoicePaymentPuckComponent = {
       { value: '1', label: 'One under the other' },
       { value: '2', label: 'Side by side' },
     ] },
+    whenPaid: { type: 'select' as const, label: 'Once it has been paid', options: [
+      { value: 'both', label: 'Leave off how to pay, and the terms' },
+      { value: 'payment', label: 'Leave off how to pay' },
+      { value: 'show', label: 'Print both anyway' },
+    ] },
     showPaymentDetails: { type: 'select' as const, label: 'How to pay', options: yesNo },
     paymentHeading: { type: 'text' as const, label: 'Payment heading' },
     paymentExtra: { type: 'textarea' as const, label: 'Extra payment wording, on this layout only' },
@@ -823,12 +1094,13 @@ export const shopInvoicePaymentPuckComponent = {
       { value: 'left', label: 'Left' },
       { value: 'right', label: 'Right' },
     ] },
-    headingPt: ptField('Heading size in points'),
-    bodyPt: ptField('Body size in points'),
-    footerPt: ptField('Footer line size in points'),
+    headingPt: sizeField('Heading size'),
+    bodyPt: sizeField('Body size'),
+    footerPt: sizeField('Footer line size'),
   },
   defaultProps: {
-    fontFamily: '', columns: '1', showPaymentDetails: 'yes', paymentHeading: 'Payment', paymentExtra: '',
+    fontFamily: '', columns: '1', whenPaid: 'both',
+    showPaymentDetails: 'yes', paymentHeading: 'Payment', paymentExtra: '',
     showTerms: 'yes', termsHeading: 'Terms', termsExtra: '', showFooter: 'yes', footerAlign: 'center',
   },
   render: ShopInvoicePayment,

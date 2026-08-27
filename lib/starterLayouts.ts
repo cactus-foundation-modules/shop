@@ -995,3 +995,79 @@ export function shopProformaStarters() {
     },
   ]
 }
+
+// ---------------------------------------------------------------------------
+// PDF footer templates - shopInvoiceFooter, shopProformaFooter
+// ---------------------------------------------------------------------------
+//
+// What repeats at the FOOT OF EVERY PAGE of the PDF, printed into the bottom
+// margin by the browser rather than into the document. A footer block on the
+// document itself is printed once, after the last line - which is right on a
+// one-page invoice and wrong on a four-page one, where page two ends with a
+// half-finished item table and nothing to say whose invoice it is.
+//
+// Nothing publishes by default. A shop that already has a footer block on its
+// document would otherwise get the same words twice on page one, and a repeating
+// footer is a decision an owner should make rather than find has been made.
+//
+// Two things to know when laying one out:
+//
+//  - it is drawn into the page's BOTTOM MARGIN, so the margin has to be deep
+//    enough to hold it. That is a page setting on the document's own layout.
+//  - the Page number block only says anything here. Its two figures are filled
+//    in by the printing browser, which is the only thing that knows how many
+//    pages the document turned into.
+
+const PDF_FOOTER_RULE = block('ShopInvoiceDivider', 'pdf-foot-rule', {
+  weight: 'hairline', weightPx: '', colour: '', width: 'full',
+  spaceAbove: 'none', spaceAbovePx: '', spaceBelow: 'small', spaceBelowPx: '4px',
+})
+
+const PDF_FOOTER_ROOT = { align: 'stretch', inset: '0' }
+
+function pdfFooterStarters(prefix: string, documentName: string) {
+  return [
+    {
+      id: `starter-shop-${prefix}-footer-pages`,
+      name: 'Page numbers',
+      description: `"Page 2 of 3" at the foot of every page of the ${documentName} PDF, and nothing else.`,
+      data: {
+        content: [
+          block('ShopInvoicePageNumber', `${prefix}-foot-pageno`, {
+            text: 'Page {{PAGE}} of {{PAGES}}', align: 'center', fontFamily: '', colour: '',
+          }),
+        ],
+        root: { props: PDF_FOOTER_ROOT },
+        zones: {},
+      },
+    },
+    {
+      id: `starter-shop-${prefix}-footer-company`,
+      name: 'Company footer',
+      description: 'Your registration small print above a rule, with the page number beside it - on every page, the way headed paper does it.',
+      data: {
+        content: [
+          PDF_FOOTER_RULE,
+          block('ShopInvoiceFooter', `${prefix}-foot-company`, {
+            contact: '',
+            smallPrint: '{{BUSINESS_NAME}} · company number {{COMPANY_NUMBER}} · VAT {{VAT_NUMBER}}',
+            align: 'center', rule: 'no', fontFamily: '',
+          }),
+          block('ShopInvoicePageNumber', `${prefix}-foot-pageno`, {
+            text: '{{INVOICE_NUMBER}} · page {{PAGE}} of {{PAGES}}', align: 'center', fontFamily: '', colour: '',
+          }),
+        ],
+        root: { props: PDF_FOOTER_ROOT },
+        zones: {},
+      },
+    },
+  ]
+}
+
+export function shopInvoiceFooterStarters() {
+  return pdfFooterStarters('invoice', 'invoice')
+}
+
+export function shopProformaFooterStarters() {
+  return pdfFooterStarters('proforma', 'proforma')
+}

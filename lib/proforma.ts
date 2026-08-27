@@ -157,7 +157,7 @@ export async function proformaDocContext(
     updatedAt: order.updatedAt,
   }
 
-  return { invoice, print: opts?.print ?? false, proforma: { paid } }
+  return { invoice, print: opts?.print ?? false, paid, proforma: { paid } }
 }
 
 /** The order behind a proforma link, or null where there is no proforma to draw
