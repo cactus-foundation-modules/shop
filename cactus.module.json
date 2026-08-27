@@ -1,9 +1,9 @@
 {
   "name": "shop",
-  "version": "0.1.353",
+  "version": "0.1.354",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
-  "requiresCoreVersion": "0.5.1350",
+  "requiresCoreVersion": "0.5.1352",
   "publicBasePath": "shop",
   "publicRootSlug": {
     "page": "./app/root/[slug]/page",
@@ -604,9 +604,7 @@
       "rscComponent": "shopInvoiceStylePuckRscComponent",
       "layoutTypes": [
         "shopInvoice",
-        "shopProforma",
-        "documentFooter",
-        "shopDocumentFooter"
+        "shopProforma"
       ]
     },
     {
@@ -617,8 +615,7 @@
       "layoutTypes": [
         "shopInvoice",
         "shopProforma",
-        "documentFooter",
-        "shopDocumentFooter"
+        "documentFooter"
       ]
     },
     {
@@ -628,9 +625,7 @@
       "rscComponent": "shopInvoiceFooterPuckRscComponent",
       "layoutTypes": [
         "shopInvoice",
-        "shopProforma",
-        "documentFooter",
-        "shopDocumentFooter"
+        "shopProforma"
       ]
     },
     {
@@ -641,8 +636,7 @@
       "layoutTypes": [
         "shopInvoice",
         "shopProforma",
-        "documentFooter",
-        "shopDocumentFooter"
+        "documentFooter"
       ]
     },
     {
@@ -651,8 +645,7 @@
       "component": "shopInvoicePageNumberPuckComponent",
       "rscComponent": "shopInvoicePageNumberPuckRscComponent",
       "layoutTypes": [
-        "documentFooter",
-        "shopDocumentFooter"
+        "documentFooter"
       ]
     }
   ],
@@ -774,17 +767,16 @@
         "starterExport": "shopProformaStarters",
         "pageSettingsImport": "./lib/doc-page-settings",
         "pageSettingsExport": "shopDocPageSettings"
-      },
-      {
-        "key": "shopDocumentFooter",
-        "label": "PDF footer",
-        "starterImport": "./lib/starterLayouts",
-        "starterExport": "shopDocumentFooterStarters",
-        "pageSettingsImport": "./lib/doc-page-settings",
-        "pageSettingsExport": "shopDocFooterPageSettings"
       }
     ]
   },
+  "layoutStarters": [
+    {
+      "layoutType": "documentFooter",
+      "import": "./lib/starterLayouts",
+      "export": "documentFooterStarters"
+    }
+  ],
   "extensionPoints": [
     {
       "point": "core.admin-dashboard-widgets",

@@ -997,7 +997,7 @@ export function shopProformaStarters() {
 }
 
 // ---------------------------------------------------------------------------
-// PDF footer template - shopDocumentFooter
+// Document footer templates - contributed to CORE's documentFooter
 // ---------------------------------------------------------------------------
 //
 // What repeats at the FOOT OF EVERY PAGE of a document's PDF, printed into the
@@ -1006,11 +1006,15 @@ export function shopProformaStarters() {
 // a one-page invoice and wrong on a four-page one, where page two ends with a
 // half-finished item table and nothing to say whose invoice it is.
 //
-// ONE layout type, shared by the invoice, the credit note and the proforma -
-// and, since it belongs to the shop, by the quote document too (see
-// quote-for-shop/lib/document.tsx). A shop's paperwork is one folder on
-// somebody's desk: a footer designed once belongs on all of it, not on each
-// document separately with the same thing built three times over.
+// ONE layout type for the lot, and it is core's: `documentFooter`. The invoice,
+// the credit note, the proforma, the quote and the purchase order are one folder
+// on somebody's desk, and a footer designed once belongs on all of it. The shop
+// used to own a second type of its own, `shopDocumentFooter`, from before core
+// had one; migration 030 moves anything published under it across and it is gone.
+//
+// These are CONTRIBUTED starters (`layoutStarters` in the manifest), not this
+// module's own: the layout type belongs to core, the blocks on the templates
+// belong here, and core appends them to its own two rather than replacing them.
 //
 // Nothing publishes by default. A shop that already has a footer block on its
 // document would otherwise get the same words twice on page one, and a
@@ -1025,6 +1029,9 @@ export function shopProformaStarters() {
 //  - the Page number block only says anything here. Its two figures are filled
 //    in by the printing browser, which is the only thing that knows how many
 //    pages the document turned into.
+//  - the Style and Footer blocks are NOT offered here. The document sets its own
+//    style, and a block called Footer inside the layout that is the footer was one
+//    footer too many. Small print goes in the Notice panel, set to "Small print".
 
 const PDF_FOOTER_RULE = block('ShopInvoiceDivider', 'pdf-foot-rule', {
   weight: 'hairline', weightPx: '', colour: '', width: 'full',
@@ -1033,7 +1040,7 @@ const PDF_FOOTER_RULE = block('ShopInvoiceDivider', 'pdf-foot-rule', {
 
 const PDF_FOOTER_ROOT = { align: 'stretch', inset: '0' }
 
-export function shopDocumentFooterStarters() {
+export function documentFooterStarters() {
   return [
     {
       id: 'starter-shop-doc-footer-pages',
@@ -1056,10 +1063,13 @@ export function shopDocumentFooterStarters() {
       data: {
         content: [
           PDF_FOOTER_RULE,
-          block('ShopInvoiceFooter', 'doc-foot-company', {
-            contact: '',
-            smallPrint: '{{BUSINESS_NAME}} · company number {{COMPANY_NUMBER}} · VAT {{VAT_NUMBER}}',
-            align: 'center', rule: 'no', fontFamily: '',
+          // The Notice panel as small print, not the Footer block: a Footer block
+          // inside a layout that IS the footer read as one footer too many, and it
+          // is no longer offered here. This carries the same {{TOKENS}}.
+          block('ShopInvoiceNotice', 'doc-foot-company', {
+            lead: '',
+            body: '{{BUSINESS_NAME}} · company number {{COMPANY_NUMBER}} · VAT {{VAT_NUMBER}}',
+            panelStyle: 'quiet', hideWhenEmpty: 'yes', fontFamily: '', radius: '', padding: '',
           }),
           block('ShopInvoicePageNumber', 'doc-foot-pageno2', {
             text: 'page {{PAGE}} of {{PAGES}}', align: 'center', fontFamily: '', colour: '',

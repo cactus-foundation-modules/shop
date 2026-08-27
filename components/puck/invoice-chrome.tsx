@@ -135,7 +135,7 @@ export function ShopInvoiceStyle(props: StyleProps) {
 }
 
 export const shopInvoiceStylePuckComponent = {
-  label: 'Invoice: Document style',
+  label: 'Document: Style',
   fields: {
     accent: colourField('Accent colour (rules, the total, the notice bar)'),
     labelColour: colourField('Small headings ("Invoice to", "Terms")'),
@@ -243,7 +243,7 @@ export function ShopInvoiceNotice(props: NoticeProps) {
 }
 
 export const shopInvoiceNoticePuckComponent = {
-  label: 'Invoice: Notice panel',
+  label: 'Document: Notice panel',
   fields: {
     lead: { type: 'text' as const, label: 'Opening words, in bold' },
     body: { type: 'textarea' as const, label: `The rest of it. ${TOKEN_HINT}` },
@@ -324,7 +324,7 @@ export function ShopInvoiceFooter(props: FooterProps) {
 }
 
 export const shopInvoiceFooterPuckComponent = {
-  label: 'Invoice: Footer',
+  label: 'Document: Footer',
   fields: {
     contact: { type: 'text' as const, label: 'Contact line, in bold' },
     smallPrint: { type: 'textarea' as const, label: `Small print, one line each. ${TOKEN_HINT}` },
@@ -394,7 +394,7 @@ export function ShopInvoiceDivider(props: DividerProps) {
 }
 
 export const shopInvoiceDividerPuckComponent = {
-  label: 'Invoice: Divider',
+  label: 'Document: Divider',
   fields: {
     weight: { type: 'select' as const, label: 'Thickness', options: [
       { value: 'hairline', label: 'Hairline' },
@@ -447,8 +447,8 @@ export const shopInvoiceDividerPuckRscComponent = { ...shopInvoiceDividerPuckCom
 // how many pages a document turned into until it has been printed.
 //
 // Anywhere else - on the document itself, on the screen - those spans stay
-// empty, which is why the block is offered on the PDF footer layouts and not on
-// the document ones. {{PAGE}} and {{PAGES}} are the two placeholders; the
+// empty, which is why the block is offered on the Document Footer layout and not
+// on the document ones. {{PAGE}} and {{PAGES}} are the two placeholders; the
 // ordinary invoice ones (see invoice-shared.tsx) work here too, so a footer can
 // read "Invoice INV-000087 - page 2 of 3".
 
@@ -493,7 +493,7 @@ export function ShopInvoicePageNumber(props: PageNumberProps) {
 }
 
 export const shopInvoicePageNumberPuckComponent = {
-  label: 'Invoice: Page number',
+  label: 'Document: Page number',
   fields: {
     text: { type: 'text' as const, label: `Reads. {{PAGE}} and {{PAGES}} are filled in by the printer. ${TOKEN_HINT}` },
     align: { type: 'select' as const, label: 'Sits', options: [

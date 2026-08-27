@@ -13,7 +13,8 @@ import {
   shopInvoiceFooterPuckComponent, shopInvoiceDividerPuckComponent,
   shopInvoicePageNumberPuckComponent,
 } from '@/modules/shop/components/puck/invoice-chrome'
-import { shopDocPageSettings, shopDocFooterPageSettings } from '@/modules/shop/lib/doc-page-settings'
+import { shopDocPageSettings } from '@/modules/shop/lib/doc-page-settings'
+import { documentFooterPageSettings } from '@/lib/documents/page-settings'
 
 // Puck draws the label for its own field types. It does NOT draw one for
 // `type: 'custom'`: that field is handed the whole row and is expected to head
@@ -58,12 +59,14 @@ const BLOCKS_BY_TYPE: Record<string, BlockDef> = {
 
 const DOCUMENT_BLOCKS: BlockDef[] = Object.values(BLOCKS_BY_TYPE)
 
-/** Every layout type in this module that is a printed document. The proforma
- *  draws itself with the invoice's own blocks and the credit note draws itself
- *  on the invoice's own layout, so all three are the same set - but that is a
- *  fact about the manifest, and the manifest is where it gets checked rather
- *  than somewhere it gets assumed. */
-const DOCUMENT_LAYOUT_TYPES = ['shopInvoice', 'shopProforma', 'shopDocumentFooter']
+/** Every layout type these blocks are offered on. The proforma draws itself with
+ *  the invoice's own blocks and the credit note draws itself on the invoice's own
+ *  layout, so those two are the same set - but that is a fact about the manifest,
+ *  and the manifest is where it gets checked rather than somewhere it gets
+ *  assumed. `documentFooter` is CORE's, shared by every module that prints
+ *  paperwork; the shop's own `shopDocumentFooter` retired into it (migration
+ *  030). */
+const DOCUMENT_LAYOUT_TYPES = ['shopInvoice', 'shopProforma', 'documentFooter']
 
 type Manifest = { puckBlocks: { type: string; layoutTypes?: string[] }[] }
 const manifest: Manifest = JSON.parse(
@@ -146,7 +149,7 @@ describe('page settings head themselves too', () => {
   // not quietly becoming custom ones.
   const roots = [
     ['document', shopDocPageSettings],
-    ['PDF footer', shopDocFooterPageSettings],
+    ['document footer', documentFooterPageSettings],
   ] as [string, { fields: Record<string, FieldDef> }][]
 
   it.each(roots)('%s page settings', (_name, root) => {

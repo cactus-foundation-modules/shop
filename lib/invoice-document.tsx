@@ -72,10 +72,15 @@ export async function renderInvoiceDocument(ctx: InvoiceDocContext): Promise<Rea
 // That idea outgrew the shop. The footer layout type is CORE's now
 // (`documentFooter`), so a purchase order or anything else a module prints puts
 // its small print at the foot of the same designed strip rather than inventing a
-// second one. Shop's own `shopDocumentFooter` type stays exactly where it was
-// and is still the fallback - a shop that has published one keeps printing it,
-// with nothing migrated and nothing for an owner to redo. Publish a
-// `documentFooter` layout and that one wins from then on.
+// second one. Shop's own `shopDocumentFooter` type is gone with it: two entries
+// in the Layouts screen, both called some version of "footer", both printing on
+// the same paperwork, was a choice nobody could make correctly. Migration 030
+// moves anything published under the old type across to the new one, so an owner
+// finds their footer where it always was and one menu entry shorter.
+//
+// This module's footer BLOCKS are unchanged and still where they were - they now
+// name `documentFooter` in the manifest, and its starter templates are
+// contributed to that type rather than to a type of shop's own.
 //
 // Both page settings and the footer are optional: a shop that has published
 // neither gets the document it always got, on the paper it always got it on.
@@ -86,13 +91,8 @@ export async function documentPageSetup(layoutType: string): Promise<DocPageSetu
   return docPageSetupFromLayout(layout?.builderData ?? null)
 }
 
-/** The shop's own PDF footer layout type, from before core had one. Still read,
- *  still second in line. */
-const SHOP_DOC_FOOTER_LAYOUT_TYPE = 'shopDocumentFooter'
-
 /** The one shared PDF footer, as a React tree - or null when nothing has been
- *  published under either layout type, which is every shop until somebody makes
- *  one.
+ *  published, which is every shop until somebody makes one.
  *
  *  Takes an `InvoiceDocContext` because that is the shape every caller already
  *  has or can build cheaply: the invoice, credit note and proforma pages pass
@@ -100,8 +100,5 @@ const SHOP_DOC_FOOTER_LAYOUT_TYPE = 'shopDocumentFooter'
  *  trading identity (see quote-for-shop/lib/document.tsx) rather than this
  *  module learning a second document shape. */
 export async function renderDocumentRunningFooter(ctx: InvoiceDocContext): Promise<ReactNode | null> {
-  return renderCoreDocumentRunningFooter(ctx, {
-    fallbackLayoutTypes: [SHOP_DOC_FOOTER_LAYOUT_TYPE],
-    moduleName: 'shop',
-  })
+  return renderCoreDocumentRunningFooter(ctx, { moduleName: 'shop' })
 }
