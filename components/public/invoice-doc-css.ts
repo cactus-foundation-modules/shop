@@ -85,7 +85,9 @@ export const INVOICE_DOC_CSS = `
 .shp-inv-void { display: inline-block; margin-top: 0.5rem; padding: 0.125rem 0.5rem; border: 1px solid var(--color-error, var(--color-border)); border-radius: var(--radius-sm, 4px); color: var(--color-error, var(--color-text)); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; }
 .shp-inv-intro { margin: 1rem 0 0; font-size: var(--shp-inv-intro-size, inherit); color: var(--color-text); }
 
-.shp-inv-parties { margin: var(--shp-inv-gap, 1.5rem) 0 0; display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+/* min(100%, 220px), not a bare 220px: an invoice read on a phone stacks its
+   parties rather than widening the document past the screen. */
+.shp-inv-parties { margin: var(--shp-inv-gap, 1.5rem) 0 0; display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
 /* A definite column count, for a document whose two addresses should sit at the
    same two places on every invoice rather than reflowing with their length. */
 .shp-inv-parties.shp-inv-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }

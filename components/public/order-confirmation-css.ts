@@ -109,8 +109,10 @@ export const ORDER_CONFIRMATION_CSS = `
   padding-top:0.625rem;margin-top:0.25rem;border-top:1px solid var(--color-border)}
 
 /* --- Detail cards ------------------------------------------------------ */
-/* Delivery, contact and payment, side by side where there is room. */
-.soc-details{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+/* Delivery, contact and payment, side by side where there is room. The min()
+   is what decides there is none: a bare 220px minimum keeps its column on a
+   narrow phone and pushes the page wider than the screen instead of stacking. */
+.soc-details{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
 .soc-detail{border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:0.875rem 1rem;background:var(--color-surface)}
 .soc-detail h3{margin:0 0 0.5rem;font-size:0.75rem;font-weight:650;letter-spacing:0.04em;text-transform:uppercase;color:var(--color-text-muted)}
 .soc-detail address,.soc-detail p{margin:0;font-style:normal;line-height:1.55;overflow-wrap:anywhere}

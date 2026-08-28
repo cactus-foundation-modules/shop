@@ -88,7 +88,11 @@ export default async function ShopAccountOrderReceiptPage({ params }: { params: 
           </div>
         </div>
 
-        <div style={{ display: 'grid', gap: 'var(--space-4)', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+        {/* min(100%, 220px) rather than a bare 220px: a narrow phone would
+            otherwise be handed a column wider than the page and the whole
+            receipt would scroll sideways. Capped at 100%, one column is always
+            allowed to be as narrow as the space going. */}
+        <div style={{ display: 'grid', gap: 'var(--space-4)', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))' }}>
           <div>
             <strong>Delivered to</strong>
             <address style={{ fontStyle: 'normal', color: 'var(--color-text-muted)', display: 'grid', gap: '0.125rem', marginTop: '0.25rem' }}>

@@ -432,7 +432,10 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
           </Section>
         )}
 
-        <div style={{ display: 'grid', gap: 'var(--space-4)', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
+        {/* min(100%, 260px): the addresses stack on a phone rather than
+            insisting on a 260px column the screen has not got, which would put
+            a sideways scrollbar under the whole order. */}
+        <div style={{ display: 'grid', gap: 'var(--space-4)', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))' }}>
           <Section title="Delivery address">
             <address style={{ fontStyle: 'normal', color: 'var(--color-text-muted)', display: 'grid', gap: '0.125rem' }}>
               {addressLines(order.shippingAddress).map((line, i) => <span key={i}>{line}</span>)}
