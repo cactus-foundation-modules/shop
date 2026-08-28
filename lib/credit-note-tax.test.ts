@@ -113,3 +113,44 @@ describe('buildCreditNoteMoney', () => {
     expect(money.taxAmount).toBe('0.00')
   })
 })
+
+// A per-item delivery service is inside the line price, so refunding the line
+// refunds its delivery too. A credit note that showed the lot as goods would
+// have somebody's accounts department filing the delivery under the wrong
+// heading - and the customer's own copy disagreeing with the invoice beside it.
+describe('named charges on a credit note', () => {
+  it('credits the whole charge with the whole line', () => {
+    const invoiceLines = [line({
+      lineTotal: '216.95', net: '216.95', tax: '43.39', gross: '260.34',
+      charges: [{ label: 'Delivery', amount: '25.95' }],
+    })]
+    const money = buildCreditNoteMoney(
+      invoiceLines, ['itm_1'],
+      [{ orderItemId: 'itm_1', quantity: 1, amount: 260.34 }],
+      'EXCLUSIVE',
+    )
+    expect(money.lines[0]!.charges).toEqual([{ label: 'Delivery', amount: '25.95' }])
+  })
+
+  it('credits a share of it with a part refund', () => {
+    const invoiceLines = [line({
+      lineTotal: '216.95', net: '216.95', tax: '43.39', gross: '260.34',
+      charges: [{ label: 'Delivery', amount: '25.95' }],
+    })]
+    const money = buildCreditNoteMoney(
+      invoiceLines, ['itm_1'],
+      [{ orderItemId: 'itm_1', quantity: 1, amount: 130.17 }],
+      'EXCLUSIVE',
+    )
+    expect(money.lines[0]!.charges).toEqual([{ label: 'Delivery', amount: '12.98' }])
+  })
+
+  it('leaves a line that never carried one alone', () => {
+    const money = buildCreditNoteMoney(
+      [line()], ['itm_1'],
+      [{ orderItemId: 'itm_1', quantity: 1, amount: 100 }],
+      'EXCLUSIVE',
+    )
+    expect(money.lines[0]!.charges).toBeUndefined()
+  })
+})

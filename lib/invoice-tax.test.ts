@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildInvoiceMoney, formatRatePercent, ledgerItems } from '@/modules/shop/lib/invoice-tax'
+import { buildInvoiceMoney, formatRatePercent, invoiceChargeRows, ledgerItems } from '@/modules/shop/lib/invoice-tax'
 import type { ShpInvoiceLine, ShpInvoiceTaxRow, ShpOrder, ShpOrderItem } from '@/modules/shop/lib/types'
 
 // An invoice is the one document in the shop that somebody else audits. The
@@ -300,5 +300,59 @@ describe('ledgerItems', () => {
     const items = ledgerItems(lines, taxBreakdown, { carriageLabel: 'Delivery' })
     expect(items.length).toBeGreaterThan(0)
     expect(sums(items)).toEqual(sums(taxBreakdown))
+  })
+})
+
+// A delivery service priced per item is charged INSIDE the line price, and the
+// order's own shippingAmount stays at nought. Unless the document can see what
+// the lines were carrying, every one of them prints a delivery row of nothing -
+// which on a layout set to reassure reads "Free" on the document asking to be
+// paid for it.
+describe('named charges inside a line', () => {
+  it('carries them onto the invoice line as line totals, not per unit', () => {
+    const o = order({ subtotal: '400.00', taxAmount: '80.00', total: '480.00' })
+    const lines = buildInvoiceMoney(o, [item({
+      quantity: 2, unitPrice: '200.00', total: '400.00', taxAmount: '80.00',
+      lineMeta: { fields: [], charges: [{ label: 'Delivery', amount: 25.95 }] },
+    })]).lines
+    expect(lines[0]!.charges).toEqual([{ label: 'Delivery', amount: '51.90' }])
+  })
+
+  it('never lets a charge claim more than the line is worth', () => {
+    // A discounted line and a provider that has not moved its service price
+    // with it. Attributing the whole £60 would send the goods figure negative.
+    const o = order({ subtotal: '40.00', taxAmount: '8.00', total: '48.00' })
+    const lines = buildInvoiceMoney(o, [item({
+      unitPrice: '40.00', total: '40.00', taxAmount: '8.00',
+      lineMeta: { fields: [], charges: [{ label: 'Delivery', amount: 60 }] },
+    })]).lines
+    expect(lines[0]!.charges).toEqual([{ label: 'Delivery', amount: '40.00' }])
+  })
+
+  it('leaves a line with none alone', () => {
+    const lines = buildInvoiceMoney(order(), [item()]).lines
+    expect(lines[0]!.charges).toBeUndefined()
+  })
+
+  it('sums by label across the document, first mention first', () => {
+    const rows = invoiceChargeRows([
+      { ...invLine(), charges: [{ label: 'Delivery', amount: '25.95' }] },
+      { ...invLine(), charges: [{ label: 'Installation', amount: '50.00' }, { label: 'Delivery', amount: '17.95' }] },
+      { ...invLine(), charges: null },
+    ])
+    expect(rows).toEqual([
+      { label: 'Delivery', amount: 43.9 },
+      { label: 'Installation', amount: 50 },
+    ])
+  })
+
+  it('adds nothing: the charges come out of the subtotal, never on top of it', () => {
+    const o = order({ subtotal: '400.00', taxAmount: '80.00', total: '480.00' })
+    const { lines } = buildInvoiceMoney(o, [item({
+      unitPrice: '400.00', total: '400.00', taxAmount: '80.00',
+      lineMeta: { fields: [], charges: [{ label: 'Delivery', amount: 25.95 }] },
+    })])
+    expect(lines[0]!.lineTotal).toBe('400.00')
+    expect(lines[0]!.gross).toBe('480.00')
   })
 })

@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { invoiceChargeRows } from '@/modules/shop/lib/invoice-tax'
 import type { InvoiceDocContext } from '@/modules/shop/lib/invoice-doc-context'
 import {
   Style, FontLink, fontStyle, fontField, sizeField, radiusField, spaceField, sizeVars, cssLength,
@@ -775,9 +776,23 @@ export function ShopInvoiceTotals(props: TotalsProps) {
   const rates = new Set((invoice.taxBreakdown ?? []).map((row) => String(row.ratePercent)))
   const singleRate = rates.size === 1 ? [...rates][0] : null
   const withRate = props.showTaxRate === 'yes' && singleRate ? `${taxLabel} at ${singleRate}%` : taxLabel
+  // Named charges a cart-line resolver broke out of the line prices - a delivery
+  // service priced per item rather than per order. The money is already inside
+  // the lines, so these come OUT of the subtotal instead of being added to it,
+  // and the column still sums to the same total to the penny.
+  const chargeRows = invoiceChargeRows(invoice.lines)
+  const chargeTotal = chargeRows.reduce((sum, row) => sum + row.amount, 0)
+  const goodsSubtotal = Math.round((Number(invoice.subtotal) - chargeTotal + Number.EPSILON) * 100) / 100
   // A delivery row printed even at zero, so a customer can see that delivery was
   // free rather than wondering whether it is still to come.
-  const showDelivery = props.showDeliveryRow === 'always' || shipping > 0
+  //
+  // Except where the lines carried delivery charges of their own. `shipping` is
+  // the ORDER's carriage rate, and on a shop that prices delivery per item that
+  // figure is nought while the customer is being charged plenty - so the
+  // reassuring "Free" was flatly untrue on every one of those documents. The
+  // charge rows above say what was actually charged; this row only speaks when
+  // there is carriage to speak about.
+  const showDelivery = shipping > 0 || (props.showDeliveryRow === 'always' && chargeTotal === 0)
   const deliveryValue = shipping > 0
     ? formatMoney(shipping, symbol)
     : props.zeroDelivery?.trim() || formatMoney(0, symbol)
@@ -806,7 +821,16 @@ export function ShopInvoiceTotals(props: TotalsProps) {
         }}
       >
         <dt>{props.subtotalLabel?.trim() || 'Subtotal'}</dt>
-        <dd>{formatMoney(invoice.subtotal, symbol)}</dd>
+        <dd>{formatMoney(goodsSubtotal, symbol)}</dd>
+        {/* Printed with the label the module that charged it gave, which is the
+            only name anybody has for it - the delivery row's own label belongs
+            to the order's carriage rate and would be a guess here. */}
+        {chargeRows.map((charge) => (
+          <div className="shp-inv-row" key={charge.label}>
+            <dt>{charge.label}</dt>
+            <dd>{formatMoney(charge.amount, symbol)}</dd>
+          </div>
+        ))}
         {discount > 0 && (
           <div className="shp-inv-row">
             <dt>{props.discountLabel?.trim() || 'Discount'}</dt>

@@ -1,4 +1,4 @@
-import type { ShpInvoiceLine, ShpInvoiceTaxRow, ShpLedgerItem, ShpOrder, ShpOrderItem } from '@/modules/shop/lib/types'
+import type { ShpInvoiceLine, ShpInvoiceLineCharge, ShpInvoiceTaxRow, ShpLedgerItem, ShpOrder, ShpOrderItem } from '@/modules/shop/lib/types'
 
 // The arithmetic on an invoice, kept pure and kept here so it can be tested
 // without a database (see invoice-tax.test.ts). Nothing in this file reads
@@ -69,6 +69,59 @@ function lineDetail(item: ShpOrderItem, keepDelivery = false): { label: string; 
     .map((field) => ({ label: field.label, value: field.value }))
 }
 
+/** The named charges a cart-line resolver attributed out of this line's price -
+ *  a delivery service - as LINE totals the document can print.
+ *
+ *  Two conversions, and both matter. The figure persisted on the order line is
+ *  PER UNIT and UNCLAMPED by design (see LineMeta.charges): it is what the
+ *  service costs for one of them, which is the right figure to buy it back at
+ *  and the wrong one for any document that has to agree with what was charged.
+ *  So it is multiplied out by quantity and then capped at the line's own total,
+ *  scaling the whole set together where the cap bites - exactly what
+ *  attributeCharges did in lib/checkout.ts when the basket showed these rows in
+ *  the first place. A charge that claimed more than the line is worth would send
+ *  the goods figure on the document negative.
+ *
+ *  Nothing here adds money: every penny is already inside `lineTotal`. */
+function lineCharges(item: ShpOrderItem, lineTotal: number): ShpInvoiceLineCharge[] | undefined {
+  const charges = item.lineMeta?.charges
+  if (!Array.isArray(charges) || charges.length === 0) return undefined
+  const raw = charges
+    .filter((charge) => charge && typeof charge.label === 'string' && Number.isFinite(Number(charge.amount)))
+    .map((charge) => ({ label: charge.label, amount: Number(charge.amount) * item.quantity }))
+  const attributed = raw.reduce((sum, charge) => sum + charge.amount, 0)
+  if (!(attributed > 0)) return undefined
+  const cap = Math.max(0, lineTotal)
+  const scale = attributed > cap ? cap / attributed : 1
+  const rows = raw
+    .map((charge) => ({ label: charge.label, amount: money(charge.amount * scale) }))
+    .filter((charge) => Number(charge.amount) > 0)
+  return rows.length > 0 ? rows : undefined
+}
+
+/** The charge rows a document prints: every line's named charges summed by
+ *  label, in the order the document first mentions them - the same fold the
+ *  basket and the checkout do, so a customer holding the basket, the order
+ *  confirmation and the invoice reads one set of rows and not three.
+ *
+ *  They come OUT of the subtotal rather than being added to it: the money is
+ *  already in the line prices, so a document prints the goods on the subtotal
+ *  row and these underneath it. Empty on an invoice raised before charges were
+ *  recorded, which leaves that document reading exactly as it did. */
+export function invoiceChargeRows(lines: ShpInvoiceLine[]): { label: string; amount: number }[] {
+  const rows: { label: string; amount: number }[] = []
+  for (const line of lines) {
+    for (const charge of line.charges ?? []) {
+      const amount = Number(charge.amount) || 0
+      if (!(amount > 0)) continue
+      const row = rows.find((existing) => existing.label === charge.label)
+      if (row) row.amount = round2(row.amount + amount)
+      else rows.push({ label: charge.label, amount: round2(amount) })
+    }
+  }
+  return rows
+}
+
 export type InvoiceMoney = {
   lines: ShpInvoiceLine[]
   taxBreakdown: ShpInvoiceTaxRow[]
@@ -137,6 +190,11 @@ export function buildInvoiceMoney(
       tax: money(tax),
       gross: money(gross),
       detail: lineDetail(item, opts?.keepDeliveryDetail),
+      // What of this line's money was a named service rather than the goods.
+      // Recorded on the line because that is where it was earned, and because
+      // an invoice is a snapshot: the order it was taken from can be edited
+      // afterwards, and the document must not quietly follow it.
+      charges: lineCharges(item, lineTotal),
       // Which order line this is, so a credit note can find it again without
       // matching on a product name that may since have been edited.
       orderItemId: item.id,

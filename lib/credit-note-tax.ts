@@ -69,6 +69,26 @@ function matchLine(
   return index >= 0 && index < lines.length ? lines[index]! : null
 }
 
+/** The share of the invoice line's named charges that goes back with a refund.
+ *
+ *  A delivery service priced per item is INSIDE the line's price, so refunding
+ *  a line refunds its delivery whether anybody says so or not - and a credit
+ *  note that showed the whole sum as goods would have the customer's accounts
+ *  department reclaiming VAT under the wrong heading. Split by the same
+ *  proportion the refund itself is: all of it on a whole line, a share of it on
+ *  a part refund, none of it on an invoice line that never carried one.
+ *
+ *  This is the SPLIT of money already being credited. It never adds a penny,
+ *  which is why nothing below has to reconcile against it. */
+function creditedCharges(source: ShpInvoiceLine, gross: number, sourceGross: number): ShpInvoiceLine['charges'] {
+  if (!source.charges?.length || !(sourceGross > 0) || !(gross > 0)) return undefined
+  const share = Math.min(gross / sourceGross, 1)
+  const rows = source.charges
+    .map((charge) => ({ label: charge.label, amount: money((Number(charge.amount) || 0) * share) }))
+    .filter((charge) => Number(charge.amount) > 0)
+  return rows.length > 0 ? rows : undefined
+}
+
 /**
  * Turns an invoice and a settled refund into credit note lines and a
  * net/tax/gross summary per rate.
@@ -129,6 +149,7 @@ export function buildCreditNoteMoney(
       tax: money(tax),
       gross: money(gross),
       detail: source.detail ?? [],
+      charges: creditedCharges(source, gross, sourceGross),
       orderItemId: item.orderItemId,
     })
   }

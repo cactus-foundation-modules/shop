@@ -622,12 +622,28 @@ export type ShpInvoiceLine = {
   gross: string
   /** Personalisation and options as they were recorded on the order line. */
   detail: { label: string; value: string }[]
+  /** Named slices of this line's own money that are a separate CHARGE rather
+   *  than part of what the goods cost - a delivery service, say. Already inside
+   *  `lineTotal`, so this never adds a penny: it only says what some of the
+   *  penn'orth already there was for, which is what lets the totals block print
+   *  "Subtotal / Delivery / Total" instead of folding a delivery charge into
+   *  the goods and then swearing on the same document that delivery was free.
+   *
+   *  These are LINE totals, clamped - not the per-unit unclamped figures that
+   *  sit on the order line's own meta (see CartLineCharge). Absent on every
+   *  invoice raised before this was recorded, which reads exactly as it always
+   *  did: no charge rows, and the delivery row is the carriage rate alone. */
+  charges?: ShpInvoiceLineCharge[] | null
   /** Which order line this came from, so a credit note can find the invoice line
    *  a refund is against without matching on name. Optional: invoices raised
    *  before credit notes existed do not carry it, and those fall back to
    *  position (see lib/credit-note-tax.ts). */
   orderItemId?: string | null
 }
+
+/** One named slice of a line's money - see ShpInvoiceLine.charges. Money as a
+ *  string, like every other figure on the document. */
+export type ShpInvoiceLineCharge = { label: string; amount: string }
 
 /** Net, tax and gross at one rate. The part an accountant actually reads, and
  *  what a bookkeeping module needs to file a return - which is why it is stored
