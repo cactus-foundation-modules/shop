@@ -34,6 +34,28 @@ export const INVOICE_DOC_CSS = `
 .shp-inv-h1 { font-family: var(--shp-inv-head-font, var(--h1-family, var(--font-heading, var(--font-body, inherit)))); font-weight: var(--h1-weight, 700); letter-spacing: var(--h1-letter-spacing, normal); text-transform: var(--h1-transform, none); }
 .shp-inv-h2 { font-family: var(--shp-inv-head-font, var(--h2-family, var(--font-heading, var(--font-body, inherit)))); font-weight: var(--h2-weight, 700); letter-spacing: var(--h2-letter-spacing, normal); text-transform: var(--h2-transform, none); }
 
+/* Leading, stated by the document rather than inherited from the page it is
+   sitting on.
+
+   A site's body typography is written for a web page, and Appearance > Styles
+   lets an owner set it as an exact line height in PIXELS - "16px text, 24px
+   leading", which is how a type scale is normally written. A px line-height is
+   inherited as a LENGTH, so it arrives unchanged on a run of text an owner has
+   set to 11px here, and the document prints with two lines of air between every
+   address line. The small headings are worse: 'main h2' carries the site's own
+   h2 leading (36px, under a 13px label) and an INHERITED value cannot beat a
+   rule that matches, so the parts had to say it themselves.
+
+   Unitless on purpose. That is the whole fix: every size field on every block
+   now gets leading in proportion to the size an owner picked, on screen and on
+   paper alike. --shp-inv-leading is the Document style block's Line spacing
+   field; the fallbacks below are what each part reads best at, and the parts
+   that want a little more air (the notice, the small print) keep it. */
+.shp-inv-head, .shp-inv-intro, .shp-inv-lead, .shp-inv-parties, .shp-inv-lines,
+.shp-inv-totals, .shp-inv-paid, .shp-inv-vat, .shp-inv-pay, .shp-inv-foot,
+.shp-inv-notice, .shp-inv-footer, .shp-inv-rule, .shp-inv-pageno,
+.shp-inv-h1, .shp-inv-h2 { line-height: var(--shp-inv-leading, 1.4); }
+
 .shp-inv-head { display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: space-between; align-items: flex-start; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border); }
 /* The rule under the heading, as three looks rather than three fields. A hairline
    is what it has always been; the accent is the document's own colour at the
@@ -65,7 +87,7 @@ export const INVOICE_DOC_CSS = `
 /* Stacked facts read "Issued 6 April 2026" on one line instead of ruling the
    labels and the values into two columns. Same <dl>, same source order: the
    grid collapses to one column and each pair is laid inline. */
-.shp-inv-facts.shp-inv-facts-stack { display: block; text-align: right; line-height: 1.5; }
+.shp-inv-facts.shp-inv-facts-stack { display: block; text-align: right; line-height: var(--shp-inv-leading, 1.5); }
 /* The wrapper is the line here, so each pair breaks after itself. It used to be
    an empty ::after block on every <dd>, which put one blank line under the last
    row of every stacked heading - the last thing anybody looks for when an
@@ -102,9 +124,14 @@ export const INVOICE_DOC_CSS = `
 .shp-inv-party .shp-inv-strong { font-weight: 600; }
 .shp-inv-reg { margin: 0.5rem 0 0; display: grid; gap: 0.125rem; font-size: var(--shp-inv-reg-size, 0.8125rem); color: var(--color-text-muted); }
 
+/* 'font-size: inherit' on the cells is load-bearing, not tidying. globals.css
+   styles bare 'td' for the site's own tables, font size included, and an element
+   selector beats a size INHERITED from the table above it - so the Items block's
+   row size moved the <table> and every cell on the page carried on at the site's
+   table size. It looked exactly like a field that did nothing. */
 .shp-inv-lines { width: 100%; border-collapse: collapse; margin: var(--shp-inv-gap, 1.5rem) 0 0; font-size: var(--shp-inv-row-size, 0.9375rem); }
-.shp-inv-lines th { text-align: left; padding: 0.5rem 0.5rem 0.5rem 0; border-bottom: 1px solid var(--color-border); color: var(--shp-inv-thead-ink, var(--color-text-muted)); font-weight: 600; font-size: var(--shp-inv-thead-size, 0.8125rem); text-transform: uppercase; letter-spacing: 0.02em; }
-.shp-inv-lines td { padding: var(--shp-inv-row-y, 0.625rem) 0.5rem var(--shp-inv-row-y, 0.625rem) 0; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); vertical-align: top; color: var(--color-text); }
+.shp-inv-lines th { background: transparent; text-align: left; padding: 0.5rem 0.5rem 0.5rem 0; border-bottom: 1px solid var(--color-border); color: var(--shp-inv-thead-ink, var(--color-text-muted)); font-weight: 600; font-size: var(--shp-inv-thead-size, 0.8125rem); text-transform: uppercase; letter-spacing: 0.02em; }
+.shp-inv-lines td { padding: var(--shp-inv-row-y, 0.625rem) 0.5rem var(--shp-inv-row-y, 0.625rem) 0; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); vertical-align: top; color: var(--color-text); font-size: inherit; }
 .shp-inv-lines th:last-child, .shp-inv-lines td:last-child { padding-right: 0; }
 /* A banded head. The fill needs padding inside the cells to sit in, which the
    ruled head does not, so the whole treatment is one class rather than a colour
@@ -136,6 +163,27 @@ export const INVOICE_DOC_CSS = `
    line is one line too many. */
 .shp-inv-lines.shp-inv-rows-none td { border-bottom: 0; }
 .shp-inv-lines.shp-inv-rows-none tbody tr:last-child td { border-bottom: 1px solid var(--color-border); }
+/* Three of the site's own table rules reach into the document and beat what the
+   rules above say, because a bare element selector still outranks a value that
+   was merely INHERITED, and app/globals.css styles tables for the site's own
+   content:
+
+    - 'tr:last-child td { border-bottom: none }' outranks '.shp-inv-lines td'
+      (two elements and a pseudo-class against one class and an element), so the
+      rule that closes the table never printed at all.
+    - bare 'th' carries the site's subtle fill, and nothing above says anything
+      about a heading's background, so a head set to "Ruled underneath" came out
+      on a grey band anyway.
+    - 'tbody tr:hover' lit the rows up under the pointer on the document page. A
+      printed document is not a data table somebody is picking a row out of.
+
+   Each is answered at the specificity it takes to win and no more, so the items
+   block's own filled band, its zebra shading and its "rules under the last row
+   only" all still outrank these. */
+.shp-inv-lines tbody tr:last-child td { border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); }
+.shp-inv-lines tbody tr:hover { background: transparent; }
+.shp-inv-vat tbody tr:last-child td { border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); }
+.shp-inv-vat tbody tr:hover { background: transparent; }
 .shp-inv-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .shp-inv-name { display: block; font-weight: 500; }
 .shp-inv-sku { display: block; font-size: var(--shp-inv-sku-size, 0.8125rem); color: var(--color-text-muted); }
@@ -162,9 +210,9 @@ export const INVOICE_DOC_CSS = `
 
 .shp-inv-vat { margin: var(--shp-inv-gap, 1.5rem) 0 0; }
 .shp-inv-vat table { width: 100%; border-collapse: collapse; font-size: var(--shp-inv-vat-size, 0.875rem); max-width: 30rem; margin-left: auto; }
-.shp-inv-vat th { text-align: right; padding: 0.375rem 0.5rem 0.375rem 0; border-bottom: 1px solid var(--color-border); color: var(--shp-inv-thead-ink, var(--color-text-muted)); font-weight: 600; font-size: var(--shp-inv-vat-head-size, 0.75rem); text-transform: uppercase; letter-spacing: 0.02em; }
+.shp-inv-vat th { background: transparent; text-align: right; padding: 0.375rem 0.5rem 0.375rem 0; border-bottom: 1px solid var(--color-border); color: var(--shp-inv-thead-ink, var(--color-text-muted)); font-weight: 600; font-size: var(--shp-inv-vat-head-size, 0.75rem); text-transform: uppercase; letter-spacing: 0.02em; }
 .shp-inv-vat th:first-child { text-align: left; }
-.shp-inv-vat td { padding: 0.375rem 0.5rem 0.375rem 0; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); color: var(--color-text); text-align: right; font-variant-numeric: tabular-nums; }
+.shp-inv-vat td { padding: 0.375rem 0.5rem 0.375rem 0; border-bottom: 1px solid var(--color-border-subtle, var(--color-border)); color: var(--color-text); text-align: right; font-variant-numeric: tabular-nums; font-size: inherit; }
 .shp-inv-vat td:first-child { text-align: left; }
 .shp-inv-vat th:last-child, .shp-inv-vat td:last-child { padding-right: 0; }
 /* The same banded head as the item table, on the smaller table. Its own rule
@@ -188,7 +236,7 @@ export const INVOICE_DOC_CSS = `
    Notice panel - a sentence the document needs said before the figures: how to
    pay, what the order was, how long a price holds.
    --------------------------------------------------------------------------- */
-.shp-inv-notice { margin: var(--shp-inv-gap, 1.5rem) 0 0; font-size: var(--shp-inv-notice-size, 0.9375rem); line-height: 1.55; color: var(--shp-inv-panel-ink, var(--color-text)); }
+.shp-inv-notice { margin: var(--shp-inv-gap, 1.5rem) 0 0; font-size: var(--shp-inv-notice-size, 0.9375rem); line-height: var(--shp-inv-leading, 1.55); color: var(--shp-inv-panel-ink, var(--color-text)); }
 .shp-inv-notice p { margin: 0 0 0.5rem; }
 .shp-inv-notice p:last-child { margin-bottom: 0; }
 .shp-inv-notice .shp-inv-notice-lead { font-weight: 700; }
@@ -205,7 +253,7 @@ export const INVOICE_DOC_CSS = `
 .shp-inv-footer.shp-inv-align-left { text-align: left; }
 .shp-inv-footer.shp-inv-align-right { text-align: right; }
 .shp-inv-footer .shp-inv-contact { margin: 0 0 0.5rem; font-size: var(--shp-inv-footer-contact-size, 0.875rem); font-weight: 700; color: var(--shp-inv-accent, var(--color-text)); }
-.shp-inv-footer .shp-inv-small { margin: 0; font-size: var(--shp-inv-footer-small-size, 0.75rem); line-height: 1.6; color: var(--color-text-muted); }
+.shp-inv-footer .shp-inv-small { margin: 0; font-size: var(--shp-inv-footer-small-size, 0.75rem); line-height: var(--shp-inv-leading, 1.6); color: var(--color-text-muted); }
 
 /* ---------------------------------------------------------------------------
    Page number - "Page 2 of 3" in the running footer. The two spans are empty
