@@ -38,21 +38,26 @@ import type {
 export async function listOrdersForMember(
   member: { id: string; email: string; emailVerified: boolean },
 ): Promise<ShpOrder[]> {
-  const claimed = member.emailVerified ? await claimGuestOrdersForMember(member.id, member.email) : 0
+  if (member.emailVerified) await claimGuestOrdersForMember(member.id, member.email)
   const orders = await listOrdersByMemberId(member.id)
 
-  // The moment a guest order becomes theirs is the moment the shop learns their
-  // name and their company - which is exactly what the account they just signed
-  // up for has neither of. Core decides what happens with them (blanks only,
-  // see lib/members/contact.ts); the shop only says what the order was made out
-  // to. Newest first, so somebody who has moved firms is carried over as the
-  // firm they bought from last.
+  // An order is where the shop learns a member's name and their company - which
+  // is exactly what an account signed up for at a checkout has neither of. Core
+  // decides what happens with them (blanks only, see lib/members/contact.ts);
+  // the shop only says what the order was made out to. Newest first, so somebody
+  // who has moved firms is carried over as the firm they bought from last.
   //
-  // Only where something was actually claimed. Every other visit to the orders
-  // page has nothing new to say, and a lookup per page view to say it would be
-  // a query spent on nothing.
+  // On any order they own, not only on one claimed by this very call. The claim
+  // is a one-off - it happens on the first visit and returns 0 for ever after -
+  // so gating on it meant a member whose orders were claimed before there was
+  // anything to copy across, or on a visit where the copy failed, stayed blank
+  // permanently with the answer sitting in their own order history. The cost of
+  // getting that wrong is a member typing their company in at every checkout;
+  // the cost of getting it right is one lookup by primary key on a page that
+  // already runs a dozen, and core drops out of that lookup the moment it finds
+  // nothing to fill.
   const newest = orders[0]
-  if (claimed > 0 && newest) {
+  if (newest) {
     await fillBlankMemberContactDetails(member.id, {
       fullName: newest.customerName,
       organisation: orderCompanyName(newest),
