@@ -259,6 +259,15 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
       // "Place order" acts on.
       if (getCheckoutState().paymentMethod !== next) return prepared
 
+      // Remembered HERE, before the mounting and the notes below, rather than
+      // at the end of this function. An order exists on the server from the
+      // moment that fetch came back, and anything that throws between there and
+      // the end - Stripe's script refusing to load, a field component blowing up
+      // as it mounts - used to lose the only reference to it. The shopper sees
+      // the failure, presses again, and the next press starts a second order for
+      // the same basket. Recording it first means a retry finds this one.
+      preparedRef.current = prepared
+
       // Recorded in both storages: the confirmation page uses it to recognise
       // the shopper who placed this order, and a payment taken on the
       // provider's own site can hand the browser back with a fresh session.
@@ -287,7 +296,6 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         setInstructions(data.instructions)
       }
 
-      preparedRef.current = prepared
       return prepared
     } finally {
       setLoading(false)

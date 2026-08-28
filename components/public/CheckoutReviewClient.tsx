@@ -41,6 +41,23 @@ const PRE_ORDER_NOTICE: Record<'HOLD_ALL' | 'PROMPT_SPLIT', string> = {
   PROMPT_SPLIT: 'This order contains a pre-order item. Anything in stock can be sent straight away, with the pre-order to follow.',
 }
 
+// The turning ring beside "Placing order…", and nothing else - everything else
+// on this block is inline-styled, and an animation cannot be. Injected with the
+// block rather than written into core's globals.css, same discipline as
+// order-confirmation-css.ts: a module styles its own furniture.
+//
+// `currentColor` throughout, so the ring is whatever the button's text is in
+// either theme and no hex has to guess. Anyone who has asked not to be moved
+// about gets a slow turn rather than a still ring: the point of it is that
+// something is still happening, and a frozen spinner says the opposite.
+const PLACE_ORDER_SPINNER_CSS = `
+.scr-spinner{width:1em;height:1em;border-radius:var(--radius-full,9999px);
+  border:2px solid currentColor;border-top-color:transparent;
+  animation:scr-spin 0.7s linear infinite;flex:0 0 auto}
+@keyframes scr-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.scr-spinner{animation-duration:2.4s}}
+`
+
 // A checkout tickbox as the shop has resolved it (see resolveCheckoutAgreements).
 type Agreement = { id: string; statement: string; linkUrl: string; required: boolean }
 
@@ -137,6 +154,13 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
   // its answers out of order.
   const lastQueryRef = useRef<string | null>(null)
   const requestRef = useRef(0)
+  // The same flag as `placing`, kept where it can be read in the click itself.
+  // `disabled` on the button only shuts the door on the render AFTER the state
+  // change, and a second press - a double tap, a wallet button of its own, a
+  // browser firing touch and click for one finger - can land inside that gap.
+  // Every press it lets through starts a fresh order at the payment step, which
+  // is how one shopper ends up in the orders list three times.
+  const placingRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -226,7 +250,11 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
     loadSummary()
     const unsubscribe = subscribeCheckoutState(loadSummary)
 
-    function onError(e: Event) { setPlacing(false); setError((e as CustomEvent).detail) }
+    // An attempt that failed genuinely is over: the shopper has to be able to
+    // try again with another card. The ref is released with the state it
+    // mirrors, never separately - a button that says "Place order" while the
+    // guard is still shut would take a press and do nothing with it.
+    function onError(e: Event) { placingRef.current = false; setPlacing(false); setError((e as CustomEvent).detail) }
     window.addEventListener('cactus-shop-order-error', onError)
     return () => {
       unsubscribe()
@@ -272,6 +300,12 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
     // guards the wallet buttons too, which are disabled by the same test: a
     // shopper must not skip the terms tickbox by paying with their watch.
     if (outstandingDecisions().length > 0 || missingCheckoutFields(getCheckoutState(), { organisationRequired, organisationLabel, customerReferenceRequired: referenceRequired, customerReferenceLabel: referenceLabel, phoneRequired }).length > 0) return
+    // Silently, and before anything else: the press that is already running has
+    // the button saying so, and a second one has nothing to add. Read from the
+    // ref rather than the `placing` state because this runs inside the click,
+    // where the state is still whatever the last render saw.
+    if (placingRef.current) return
+    placingRef.current = true
     setPlacing(true)
     setError(null)
     window.dispatchEvent(new CustomEvent('cactus-shop-place-order', {
@@ -460,11 +494,20 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
           shopper had seen the total, and skipped entirely by anyone who
           scrolled straight to the button. */}
       <CheckoutPaymentFieldsSlot />
+      <style dangerouslySetInnerHTML={{ __html: PLACE_ORDER_SPINNER_CSS }} />
       <button
+        type="button"
         onClick={() => placeOrder()}
         disabled={placing || blocked}
+        // Says the press was taken even to a shopper who cannot see the ring
+        // turning, and stops a screen reader announcing the changed label as a
+        // button that is ready for another go.
+        aria-busy={placing || undefined}
         aria-describedby={notice ? 'shop-place-order-blocked' : undefined}
         style={{
+          // The spinner sits beside the words rather than in front of them, and
+          // the whole lot stays centred as the label changes length.
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
           background: blocked ? 'var(--color-bg-subtle)' : 'var(--color-primary)',
           // Secondary rather than muted: a disabled control still has to be
           // readable, and muted-on-subtle misses AA in both themes.
@@ -473,12 +516,19 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
           // when it becomes placeable.
           border: `1px solid ${blocked ? 'var(--color-border)' : 'transparent'}`,
           borderRadius: 8, padding: '0.75rem 1.25rem', fontWeight: 600,
-          cursor: blocked ? 'not-allowed' : 'pointer',
+          // Three states, three cursors: shut because something is outstanding,
+          // working, and ready. A payment being taken is a wait, not a refusal.
+          cursor: placing ? 'progress' : blocked ? 'not-allowed' : 'pointer',
         }}
       >
         {/* The button states exactly what happens, amount included - no
-            surprises on the far side of a click. */}
-        {placing ? 'Placing order…' : `${buttonLabel || 'Place order'} - ${money(summary.total)}`}
+            surprises on the far side of a click. Once pressed it says so and
+            keeps saying so: the confirm can be several seconds of a provider
+            talking to a bank, and a button that just sits there looking pressable
+            is exactly what gets pressed again. */}
+        {placing
+          ? (<><span className="scr-spinner" aria-hidden="true" />Placing order…</>)
+          : `${buttonLabel || 'Place order'} - ${money(summary.total)}`}
       </button>
       {/* Nothing unless the owner writes something. The block used to supply a
           padlock-and-reassurance line of its own, which said something about
