@@ -12,6 +12,7 @@ import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { applyOrderPaymentState, previewOrderPaymentNotes } from '@/modules/shop/lib/order-payment-state'
 import { signOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
 import { getMemberFromCookie } from '@/lib/members/session'
+import { fillBlankMemberContactDetails } from '@/lib/members/contact'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 import { isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
 import type { ShpAddress } from '@/modules/shop/lib/types'
@@ -194,6 +195,20 @@ export async function POST(request: NextRequest) {
 
   const shippingRate = data.shippingRateId ? await getShippingRateById(data.shippingRateId) : null
   const member = await getMemberFromCookie().catch(() => null)
+
+  // A signed-in shopper who has just typed their name and their company into
+  // the checkout should not be asked for them again next time. Core fills in
+  // blanks only, so anything already on their account stands (see
+  // lib/members/contact.ts). Before the order rather than after, so the two
+  // payment paths below - the drafted one and the created one - both get it
+  // without saying it twice.
+  if (member) {
+    await fillBlankMemberContactDetails(member.id, {
+      fullName: data.customerName,
+      organisation: config.organisationFieldEnabled ? data.customerOrganisation : null,
+    })
+  }
+
   const orderNumber = await generateOrderNumber()
 
   const orderInput: CreateOrderInput = {

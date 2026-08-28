@@ -5,6 +5,8 @@ import { listRefundsForOrder, listRefundItemsForOrder } from '@/modules/shop/lib
 import { listDownloadsForOrder } from '@/modules/shop/lib/db/digital'
 import { listRequestsForOrder } from '@/modules/shop/lib/db/order-requests'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { fillBlankMemberContactDetails } from '@/lib/members/contact'
+import { orderCompanyName } from '@/modules/shop/lib/order-display'
 import { canRequestCancel, canRequestReturn, returnDeadline, type RequestEligibility } from '@/modules/shop/lib/order-requests'
 import type {
   ShpDigitalDownload,
@@ -36,8 +38,28 @@ import type {
 export async function listOrdersForMember(
   member: { id: string; email: string; emailVerified: boolean },
 ): Promise<ShpOrder[]> {
-  if (member.emailVerified) await claimGuestOrdersForMember(member.id, member.email)
-  return listOrdersByMemberId(member.id)
+  const claimed = member.emailVerified ? await claimGuestOrdersForMember(member.id, member.email) : 0
+  const orders = await listOrdersByMemberId(member.id)
+
+  // The moment a guest order becomes theirs is the moment the shop learns their
+  // name and their company - which is exactly what the account they just signed
+  // up for has neither of. Core decides what happens with them (blanks only,
+  // see lib/members/contact.ts); the shop only says what the order was made out
+  // to. Newest first, so somebody who has moved firms is carried over as the
+  // firm they bought from last.
+  //
+  // Only where something was actually claimed. Every other visit to the orders
+  // page has nothing new to say, and a lookup per page view to say it would be
+  // a query spent on nothing.
+  const newest = orders[0]
+  if (claimed > 0 && newest) {
+    await fillBlankMemberContactDetails(member.id, {
+      fullName: newest.customerName,
+      organisation: orderCompanyName(newest),
+    })
+  }
+
+  return orders
 }
 
 /** One line of an order as a shopper sees it: what they bought, a picture of
