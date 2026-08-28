@@ -10,6 +10,7 @@ import { customerReferenceVars, sendShopEmail } from '@/modules/shop/lib/email'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { getPaymentProvider, resolveProviderLabel } from '@/modules/shop/lib/payments/registry'
 import { issueInvoiceForOrder, shouldIssueOn } from '@/modules/shop/lib/invoices'
+import { notifyOrderPaid } from '@/modules/shop/lib/order-paid-hooks'
 import { formatMoney } from '@/modules/shop/lib/money'
 
 function formatAddress(address: { line1: string; line2?: string; city: string; postcode: string; country: string }): string {
@@ -141,5 +142,22 @@ export async function fulfillPaidOrder(
       shopName: config.shopTitle || 'Shop',
       shopUrl: `${siteUrl}/shop`,
     })
+  }
+
+  // Last, and after everything the shopper and the owner were owed. Whatever a
+  // module wants to do about the money having landed - buy the goods in, tell a
+  // warehouse - is its own business, and by this point nothing it does can cost
+  // anybody their order. notifyOrderPaid swallows its own observers' failures;
+  // this catch is for the gather itself, so a broken manifest cannot fail a
+  // payment webhook either.
+  try {
+    await notifyOrderPaid({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      paymentMethod: order.paymentMethod,
+      clearedManually: provider?.confirmMode === 'manual',
+    })
+  } catch (err) {
+    console.error('[shop] order-paid observers could not be gathered', order.id, err)
   }
 }
