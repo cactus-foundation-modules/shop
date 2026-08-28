@@ -174,6 +174,15 @@ export const ShpConfigSchema = z.object({
   // shopper's order page still print them, so nothing is lost.
   bankTransferInstructionsOnCheckout: z.boolean().default(true),
   cashInstructionsOnCheckout: z.boolean().default(true),
+  // Whether an unpaid order settled by hand - a bank transfer, cash on
+  // collection - offers the customer the automated methods on their own order
+  // page, so they can pay it there and then instead of going and finding their
+  // banking app. On by default: the methods offered are the ones this shop
+  // already takes at checkout, so nothing new is being asked of the owner, and
+  // an order that gets paid sooner is the point of the exercise. An owner who
+  // offers bank transfer precisely to keep the card fees off has one switch to
+  // say so. See lib/order-pay-online.ts.
+  payOnlineOnOrderPage: z.boolean().default(true),
 
   // Notifications
   adminOrderAlertEmail: z.string().default(''),

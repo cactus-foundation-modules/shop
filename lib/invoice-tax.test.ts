@@ -16,7 +16,7 @@ function order(overrides: Partial<ShpOrder> = {}): ShpOrder {
     billingAddress: null,
     subtotal: '1000.00', discountAmount: '0.00', shippingAmount: '0.00', taxAmount: '200.00', total: '1200.00',
     taxMode: 'EXCLUSIVE', currency: 'GBP', couponId: null, couponCode: null,
-    paymentMethod: 'STRIPE', paymentStatus: 'PAID', paymentReference: null, paidAt: null,
+    paymentMethod: 'STRIPE', originalPaymentMethod: null, paymentStatus: 'PAID', paymentReference: null, paidAt: null,
     shippingRateId: null, shippingRateName: null, agreements: null,
     notifyEmail: true, notifySms: false, notifyPhone: null,
     createdAt: new Date(0), updatedAt: new Date(0),

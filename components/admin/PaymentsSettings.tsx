@@ -433,6 +433,7 @@ export function PaymentsSettings({ config, set, methods, hostedPanels, activeTab
       {showing === PAYMENT_METHODS_TAB && (
         <MethodList
           config={config}
+          set={set}
           ordered={ordered}
           loading={methods === null}
           liveMethods={liveMethods}
@@ -498,10 +499,11 @@ export function PaymentsSettings({ config, set, methods, hostedPanels, activeTab
 }
 
 function MethodList({
-  config, ordered, loading, liveMethods, methodTabs,
+  config, set, ordered, loading, liveMethods, methodTabs,
   dragFrom, dragOver, onDragStart, onDragOver, onDragEnd, onDrop, onMove, onToggle, onOpen, onDescriptionChange, onLogoShownChange,
 }: {
   config: ShpConfig
+  set: <K extends keyof ShpConfig>(key: K, value: ShpConfig[K]) => void
   ordered: ShpAdminPaymentMethod[]
   loading: boolean
   liveMethods: ShpAdminPaymentMethod[]
@@ -658,6 +660,21 @@ function MethodList({
           </div>
         </div>
       ))}
+
+      <hr style={hr} />
+      <h3 style={sectionHeading}>Paying an order after it has been placed</h3>
+      <p className="field-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
+        Bank transfer and cash both end the same way: the order sits there until somebody sends the money, and a fair few of
+        them never do. On, and an unpaid order offers the automated methods above on the customer&apos;s own order page, so they
+        can settle it there and then. The bank details stay put either way - this is another door, not a replacement one.
+      </p>
+      <div style={{ marginBottom: '1rem' }}>
+        <Switch
+          checked={config.payOnlineOnOrderPage}
+          onChange={(next) => set('payOnlineOnOrderPage', next)}
+          label="Let customers pay an unpaid order from their order page"
+        />
+      </div>
 
       <hr style={hr} />
       <h3 style={sectionHeading}>What a shopper will see</h3>

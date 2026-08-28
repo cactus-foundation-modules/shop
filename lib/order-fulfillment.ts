@@ -35,7 +35,6 @@ export async function fulfillPaidOrder(
   orderId: string,
   opts: { customerNotice?: CustomerPaymentNotice } = {},
 ): Promise<void> {
-  const customerNotice = opts.customerNotice ?? 'ORDER_CONFIRMED'
   // Before anything is read: the money has just landed, so let any module that
   // wrote a line snapshot conditional on payment say the true thing now (a
   // delivery date counted from today rather than a lead time). Done first so the
@@ -91,6 +90,20 @@ export async function fulfillPaidOrder(
   // this line that is addressed to the OWNER stays on plain email: an admin
   // alert is not something anybody asked to be texted about.
   const provider = getPaymentProvider(order.paymentMethod)
+
+  // Which email the buyer gets, where the caller has not said.
+  //
+  // 'ORDER_CONFIRMED' for the ordinary case: the money and the order arrived in
+  // the same breath, so one email covers both. An order carrying an
+  // `originalPaymentMethod` is not that case - it was placed on one method days
+  // or weeks ago, confirmed by email at the time, and has only now been settled
+  // from the customer's own order page. Telling that person their order has been
+  // placed, a second time, reads as a duplicate order rather than a receipt. The
+  // news today is that the money arrived, which is exactly what PAYMENT_RECEIVED
+  // says - and is what the owner's own mark-as-paid button has always sent for
+  // the same situation.
+  const customerNotice = opts.customerNotice
+    ?? (order.originalPaymentMethod ? 'PAYMENT_RECEIVED' : 'ORDER_CONFIRMED')
 
   if (customerNotice !== 'NONE') {
     await notifyOrderCustomer(customerNotice, order, {

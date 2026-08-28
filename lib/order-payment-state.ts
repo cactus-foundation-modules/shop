@@ -147,6 +147,8 @@ function prospectiveOrder(paymentMethod: string): ShpOrder {
     subtotal: '0', discountAmount: '0', shippingAmount: '0', taxAmount: '0', total: '0',
     taxMode: 'INCLUSIVE', currency: '', couponId: null, couponCode: null,
     paymentMethod,
+    // Nothing has changed it, because nothing has happened to it yet.
+    originalPaymentMethod: null,
     // The point of the whole exercise: nothing has been paid, which is what
     // makes a pay-later method worth saying anything about at all.
     paymentStatus: 'PENDING',

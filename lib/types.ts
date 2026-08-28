@@ -460,6 +460,13 @@ export type ShpOrder = {
   couponId: string | null
   couponCode: string | null
   paymentMethod: ShpPaymentMethod
+  // The method the order was PLACED with, kept only where a later payment
+  // attempt changed the one above - a bank transfer the customer decided to
+  // settle by card from their own order page. NULL on every order that has only
+  // ever had the one method, which is nearly all of them. See
+  // lib/order-pay-online.ts, and `settlementMethod` there for which of the two
+  // any given surface should be reading.
+  originalPaymentMethod: ShpPaymentMethod | null
   paymentStatus: ShpPaymentStatus
   paymentReference: string | null
   paidAt: Date | null

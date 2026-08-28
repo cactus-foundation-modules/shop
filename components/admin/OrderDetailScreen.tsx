@@ -32,6 +32,9 @@ type Address = { firstName?: string; lastName?: string; company?: string; line1:
 type OrderDetail = {
   order: {
     id: string; orderNumber: string; status: string; paymentStatus: string; paymentMethod: string; paymentReference: string | null
+    // The method the order was PLACED with, where a later payment attempt moved
+    // paymentMethod on. Optional so an older response still renders.
+    originalPaymentMethod?: string | null
     memberId: string | null; customerName: string; customerOrganisation: string | null; customerEmail: string; customerPhone: string | null
     // The customer's OWN reference for the order - their purchase order number.
     // Editable here because it routinely arrives after the order does: somebody
@@ -400,8 +403,13 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   const statusBadge = badgeFor(ORDER_STATUS_BADGE, order.status)
   const paymentBadge = badgeFor(PAYMENT_STATUS_BADGE, order.paymentStatus)
   const dispatchBadge = fulfilmentBadge(dispatch ? { dispatchedUnits, outstandingUnits } : undefined)
+  // The method it was PLACED with, not necessarily the one on it now: a customer
+  // who started a card payment from their own order page and thought better of
+  // it may well have gone and done the transfer instead, and this button is how
+  // that gets recorded.
+  const placedMethod = order.originalPaymentMethod ?? order.paymentMethod
   const awaitingManualPayment =
-    (order.paymentMethod === 'BANK_TRANSFER' || order.paymentMethod === 'CASH') &&
+    (placedMethod === 'BANK_TRANSFER' || placedMethod === 'CASH') &&
     (order.paymentStatus === 'AWAITING_CONFIRMATION' || order.paymentStatus === 'PENDING')
 
   // Everything that has happened to this order, in one list, newest first.

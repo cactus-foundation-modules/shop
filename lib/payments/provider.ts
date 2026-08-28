@@ -8,6 +8,20 @@ export type ShpOrderDraft = {
   currency: string
   customerEmail: string
   customerName: string
+  // Where to put the shopper down afterwards, for a provider that sends them
+  // off to its own site. Absent on an ordinary checkout, which is the case every
+  // provider already handles: the shop's own confirmation page.
+  //
+  // Set when the payment is being taken against an order that already exists -
+  // the customer settling a bank transfer from their own order page - because a
+  // thank-you page for an order placed a fortnight ago is not where that person
+  // was going. A same-site path beginning with a single '/', never a URL: it is
+  // pasted into a redirect the provider will send the shopper to, and a provider
+  // that accepted an absolute one would happily forward them anywhere.
+  //
+  // Optional, and safely ignored: a provider that has not been taught about it
+  // simply lands them on the confirmation page as it always did.
+  returnPath?: string
 }
 
 export interface ShpPaymentProvider {
@@ -71,6 +85,23 @@ export interface ShpPaymentProvider {
   // the confirm route parks the order at AWAITING_CONFIRMATION for an admin to
   // clear, rather than calling confirmPayment. Defaults to 'auto' when unset.
   confirmMode?: 'auto' | 'manual'
+  // Whether this provider can take payment for an order that ALREADY EXISTS -
+  // an unpaid bank transfer the customer would rather settle by card from their
+  // own order page (see lib/order-pay-online.ts).
+  //
+  // Opt-in, and false when unset, because it is a promise about the whole
+  // settlement path rather than about createIntent alone. A provider claiming it
+  // undertakes that:
+  //   - createIntent works against an order that is already a row, not a draft;
+  //   - every path that settles it (return route, webhook, confirmPayment) is
+  //     content to find the order already there - materialiseDraftOrder returns
+  //     the existing order, so a provider that goes through it already is;
+  //   - nothing it does assumes the shopper is mid-checkout with a basket.
+  //
+  // Shop's own STRIPE and PAYPAL are deliberately not claiming it yet: both need
+  // client-side glue that lives in the checkout block and nowhere else, and half
+  // a payment path is worse than none.
+  settlesExistingOrder?: boolean
   // Module-contributed providers self-gate on their own env/settings so a method
   // can never reach checkout without being configured. Built-in providers are
   // gated by lib/env.ts instead; when unset the method is treated as available.

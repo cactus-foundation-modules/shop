@@ -19,7 +19,11 @@ export async function GET() {
     `,
     prisma.$queryRaw<{ count: bigint }[]>`
       SELECT COUNT(*)::bigint AS count FROM "shp_orders"
-      WHERE "payment_method" IN ('BANK_TRANSFER', 'CASH') AND "payment_status" = 'AWAITING_CONFIRMATION'
+      -- COALESCE, not payment_method alone: a customer who started a card
+      -- payment from their own order page and thought better of it has moved
+      -- payment_method on, while the transfer this queue is about is still owed.
+      WHERE COALESCE("original_payment_method", "payment_method") IN ('BANK_TRANSFER', 'CASH')
+        AND "payment_status" = 'AWAITING_CONFIRMATION'
     `,
     prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*)::bigint AS count FROM "shp_products" WHERE "is_pre_order" = true`,
   ])

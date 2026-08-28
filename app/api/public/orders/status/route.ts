@@ -8,6 +8,7 @@ import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/l
 import { verifyOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
 import { getOrderNotifyChannels } from '@/modules/shop/lib/order-notify'
 import { manualPaymentInstructions, paymentOutstanding } from '@/modules/shop/lib/payment-instructions'
+import { settlementMethod } from '@/modules/shop/lib/order-pay-online'
 import { proformaAvailable } from '@/modules/shop/lib/proforma'
 import { proformaPath, proformaPdfPath } from '@/modules/shop/lib/invoice-token'
 import { isSmsAvailable } from '@/lib/sms/send'
@@ -80,7 +81,11 @@ export async function GET(request: NextRequest) {
   // details should stop travelling to anyone holding an order number and an
   // email address for the rest of time.
   const outstanding = paymentOutstanding(order)
-  const instructions = outstanding ? (manualPaymentInstructions(order.paymentMethod, config) || null) : null
+  // The method to speak about, which on an unpaid order is the one it was PLACED
+  // with - a customer who started a card payment from their order page and
+  // abandoned it still wants the bank details here. See lib/order-pay-online.ts.
+  const shownMethod = settlementMethod(order)
+  const instructions = outstanding ? (manualPaymentInstructions(shownMethod, config) || null) : null
 
   // The proforma, where the shop raises them and this is a pay-later order. The
   // link is signed rather than session-bound, because the person who needs it is
@@ -185,9 +190,9 @@ export async function GET(request: NextRequest) {
       taxMode: order.taxMode,
       couponCode: order.couponCode,
       shippingRateName: order.shippingRateName,
-      paymentMethod: order.paymentMethod,
+      paymentMethod: shownMethod,
       paymentMethodLabel:
-        BUILT_IN_METHOD_LABELS[order.paymentMethod] ?? moduleMethodLabels[order.paymentMethod] ?? order.paymentMethod,
+        BUILT_IN_METHOD_LABELS[shownMethod] ?? moduleMethodLabels[shownMethod] ?? shownMethod,
       paymentStatus: order.paymentStatus,
       createdAt: order.createdAt,
     },

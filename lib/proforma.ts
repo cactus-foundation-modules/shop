@@ -4,6 +4,7 @@ import { getOrderByNumber, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { buildCustomer, buildSeller, addDays, dateInZone } from '@/modules/shop/lib/invoices'
 import { buildInvoiceMoney } from '@/modules/shop/lib/invoice-tax'
 import { manualPaymentInstructions } from '@/modules/shop/lib/payment-instructions'
+import { settlementMethod } from '@/modules/shop/lib/order-pay-online'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import type { InvoiceDocContext } from '@/modules/shop/lib/invoice-doc-context'
 import type { ShpInvoice, ShpInvoiceWording, ShpOrder, ShpOrderItem } from '@/modules/shop/lib/types'
@@ -45,15 +46,22 @@ import type { ShpInvoice, ShpInvoiceWording, ShpOrder, ShpOrderItem } from '@/mo
  *  week still has a proforma in their filing, and losing the link the moment the
  *  payment cleared would take their own paperwork off them - the document simply
  *  restates itself as paid. */
-export function proformaApplies(order: Pick<ShpOrder, 'status' | 'paymentMethod'>): boolean {
+export function proformaApplies(order: Pick<ShpOrder, 'status' | 'paymentMethod' | 'originalPaymentMethod'>): boolean {
   if (order.status === 'CANCELLED') return false
-  return getPaymentProvider(order.paymentMethod)?.confirmMode === 'manual'
+  // The method it was PLACED with. A customer who has since chosen to settle it
+  // by card from their own order page has moved paymentMethod on, and the
+  // accounts department that asked for this document has not stopped needing it.
+  // Which is the same instinct as the paragraph above: a proforma is somebody's
+  // filing, and taking it off them because the money arrived a different way
+  // would be the same discourtesy in a new place.
+  const placed = order.originalPaymentMethod ?? order.paymentMethod
+  return getPaymentProvider(placed)?.confirmMode === 'manual'
 }
 
 /** Whether this order should be offered one at all, settings included. */
 export function proformaAvailable(
   config: Pick<ShpConfig, 'proformaEnabled'>,
-  order: Pick<ShpOrder, 'status' | 'paymentMethod'>,
+  order: Pick<ShpOrder, 'status' | 'paymentMethod' | 'originalPaymentMethod'>,
 ): boolean {
   return config.proformaEnabled && proformaApplies(order)
 }
@@ -66,7 +74,7 @@ function buildWording(config: ShpConfig, order: ShpOrder, paid: boolean): ShpInv
   // pay" email print, so a customer holding all three is not reading three
   // different sets of bank details. Falls back to the invoice's own payment
   // wording for a method shop holds no instructions for.
-  const instructions = manualPaymentInstructions(order.paymentMethod, config)
+  const instructions = manualPaymentInstructions(settlementMethod(order), config)
   return {
     heading: config.proformaHeading.trim() || 'Proforma invoice',
     intro: '',

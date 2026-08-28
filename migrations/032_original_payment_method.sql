@@ -1,0 +1,22 @@
+-- The method an order was PLACED with, kept when a later payment attempt
+-- changes the method it will be paid by.
+--
+-- A shop that takes bank transfer hands the customer an order and a set of bank
+-- details, and then waits. Plenty of those customers would rather not go and
+-- find their banking app a week later, so their own order page offers to settle
+-- it there and then by card or by instant bank payment (see
+-- lib/order-pay-online.ts). Taking that offer up switches "payment_method" to
+-- whichever method is actually going to move the money - it has to, because
+-- that column is what every settlement, webhook and refund path resolves the
+-- provider from, and a card payment refunded down the bank-transfer path is a
+-- refund nobody actually sends.
+--
+-- Which leaves the question this column answers: what did they choose at
+-- checkout? Without it, a customer who starts a card payment and thinks better
+-- of it comes back to an order that has quietly forgotten it was ever a bank
+-- transfer - no account details on the page, and nothing to pay against.
+--
+-- Written once, on the first switch, and never again: it is the original, not
+-- the previous. NULL on every order that has only ever had the one method,
+-- which is nearly all of them.
+ALTER TABLE "shp_orders" ADD COLUMN IF NOT EXISTS "original_payment_method" TEXT;

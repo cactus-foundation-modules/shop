@@ -26,6 +26,10 @@ import {
   creditNotePath, creditNotePdfPath, invoicePath, invoicePdfPath, proformaPath, proformaPdfPath,
 } from '@/modules/shop/lib/invoice-token'
 import { manualPaymentInstructions, paymentOutstanding } from '@/modules/shop/lib/payment-instructions'
+import { payOnlineMethodsForOrder, settlementMethod } from '@/modules/shop/lib/order-pay-online'
+import { getPaymentMethodLabels, getPaymentMethodClientFields } from '@/modules/shop/lib/payments/registry'
+import { resolveCheckoutPaymentFields } from '@/modules/shop/lib/checkout-payment-fields'
+import { OrderPayOnlinePanel } from '@/modules/shop/components/public/OrderPayOnlinePanel'
 import { proformaAvailable } from '@/modules/shop/lib/proforma'
 import OrderRequestPanel from '@/modules/shop/components/public/OrderRequestPanel'
 import WithdrawRequestButton from '@/modules/shop/components/public/WithdrawRequestButton'
@@ -43,6 +47,9 @@ const INVOICE_WHEN: Record<string, string> = {
   MANUAL: 'will appear here once it has been raised',
 }
 
+// Preferred wording for the four shop ships with. Anything else - a method a
+// module contributed - is named by the registry, so a paid order never reads
+// "GOCARDLESS_IBP" at its customer.
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   STRIPE: 'Card',
   PAYPAL: 'PayPal',
@@ -68,7 +75,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 // arrived there is no job left, and a panel of bank details on a settled order
 // reads as a second demand for a bill already paid - so the whole thing goes
 // rather than softening into a "how you paid" note nobody asked for.
-function PaymentInstructions({ instructions, amount }: { instructions: string; amount: string }) {
+function PaymentInstructions({ instructions, amount, payNow }: {
+  instructions: string
+  amount: string
+  /** The offer to settle it here and now, where the shop makes one. Inside this
+   *  panel rather than beside it: it is the same question - how does this get
+   *  paid - and two boxes asking it would read as two different bills. */
+  payNow?: React.ReactNode
+}) {
   return (
     <div
       className="alert alert-warning"
@@ -81,7 +95,12 @@ function PaymentInstructions({ instructions, amount }: { instructions: string; a
       <p style={{ margin: 0 }}>
         Your order is awaiting payment confirmation. We will be in touch once it clears.
       </p>
-      <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{instructions}</p>
+      {instructions && <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{instructions}</p>}
+      {payNow && (
+        <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)', marginTop: 'var(--space-1)' }}>
+          {payNow}
+        </div>
+      )}
     </div>
   )
 }
@@ -141,8 +160,20 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
   const itemsById = new Map(lines.map((line) => [line.item.id, line.item]))
   const decided = requests.filter((request) => request.status !== 'PENDING')
 
-  const paymentInstructions = manualPaymentInstructions(order.paymentMethod, config)
+  // The method to SPEAK about, which on an unpaid order is the one it was placed
+  // with. A customer who started a card payment here and thought better of it
+  // still wants the bank details on the page. See lib/order-pay-online.ts.
+  const shownMethod = settlementMethod(order)
+  const paymentInstructions = manualPaymentInstructions(shownMethod, config)
   const outstanding = paymentOutstanding(order)
+  // The ways this order could be settled here and now, and the two things a
+  // method's own on-page fields need to draw. Only looked up while money is
+  // actually owed, so a settled order's page costs exactly what it always did.
+  const payOnline = outstanding ? await payOnlineMethodsForOrder(order, config) : []
+  const payOnlineFields = payOnline.length > 0 ? await getPaymentMethodClientFields() : {}
+  // Every registered method's name, so a method a module contributed is named
+  // rather than shouted in upper case.
+  const methodLabels = await getPaymentMethodLabels()
   // The proforma, on a pay-later order, until the real invoice exists.
   //
   // A proforma is a request for money; a VAT invoice is the record of the sale,
@@ -241,8 +272,28 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
       </div>
 
       <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
-        {paymentInstructions && outstanding && (
-          <PaymentInstructions instructions={paymentInstructions} amount={formatMoney(order.total, symbol)} />
+        {outstanding && (paymentInstructions || payOnline.length > 0) && (
+          <PaymentInstructions
+            instructions={paymentInstructions}
+            amount={formatMoney(order.total, symbol)}
+            payNow={payOnline.length > 0 ? (
+              <OrderPayOnlinePanel
+                orderId={order.id}
+                amount={formatMoney(order.total, symbol)}
+                methods={payOnline}
+                // Who is paying, for a card SDK that has to send a name and an
+                // address with its 3D Secure request. The billing address where
+                // the order carries one, since that is the one the bank checks.
+                payer={{
+                  email: order.customerEmail,
+                  name: order.customerName,
+                  address: order.billingAddress ?? order.shippingAddress,
+                }}
+                methodClientFields={payOnlineFields}
+                paymentFields={resolveCheckoutPaymentFields()}
+              />
+            ) : null}
+          />
         )}
 
         {openRequest && (
@@ -402,7 +453,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
             )}
           </div>
           <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-            Paid by {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
+            Paid by {PAYMENT_METHOD_LABELS[shownMethod] ?? methodLabels[shownMethod] ?? shownMethod}
             {order.paidAt
               ? ` on ${formatOrderDate(order.paidAt)}`
               : order.paymentStatus === 'PENDING'

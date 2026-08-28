@@ -27,6 +27,9 @@ function mapOrder(r: Record<string, unknown>): ShpOrder {
     couponId: (r.coupon_id as string | null) ?? null,
     couponCode: (r.coupon_code as string | null) ?? null,
     paymentMethod: r.payment_method as ShpPaymentMethod,
+    // Migration 032. Set only where a later payment attempt changed the method
+    // above, so NULL is the ordinary answer rather than a missing value.
+    originalPaymentMethod: (r.original_payment_method as ShpPaymentMethod | null) ?? null,
     paymentStatus: r.payment_status as ShpPaymentStatus,
     paymentReference: (r.payment_reference as string | null) ?? null,
     paidAt: (r.paid_at as Date | null) ?? null,
@@ -364,6 +367,50 @@ export async function confirmManualPayment(id: string): Promise<boolean> {
     WHERE "id" = ${id} AND "payment_status" != 'PAID'
   `
   return result > 0
+}
+
+// Point an unpaid order at the method that is actually going to pay for it.
+//
+// Every settlement, webhook and refund path resolves its provider from
+// `payment_method`, so an order the customer has chosen to settle by card must
+// say card by the time the money moves - a card payment later refunded down the
+// bank-transfer path is a refund nobody actually sends.
+//
+// The method it was placed with is kept in `original_payment_method`, and kept
+// only the first time: COALESCE makes this the ORIGINAL rather than the
+// previous, so a customer who tries a card, gives up, tries instant bank pay and
+// gives up again still has their bank details on their order page at the end of
+// it. A no-op when the method is already the one asked for, which is what a
+// second attempt on the same method is.
+export async function adoptOrderPaymentMethod(id: string, method: string): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "shp_orders"
+       SET "original_payment_method" = COALESCE("original_payment_method", "payment_method"),
+           "payment_method" = ${method},
+           "updated_at" = CURRENT_TIMESTAMP
+     WHERE "id" = ${id} AND "payment_method" <> ${method}
+  `
+}
+
+// Put an unpaid order back on the method it was placed with, and forget that it
+// ever moved.
+//
+// The owner ticking "payment received" on a bank transfer is saying the money
+// came by bank transfer - which settles the question left open by a customer who
+// started a card payment from their own order page and never finished it. The
+// order has to say so before it is marked paid, or its refund would be sent
+// looking for a card payment that does not exist.
+//
+// Only while the money is still owed. Once an order is PAID the method on it is
+// the one that paid, and nothing here may quietly rewrite that.
+export async function restoreOriginalPaymentMethod(id: string): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "shp_orders"
+       SET "payment_method" = "original_payment_method",
+           "original_payment_method" = NULL,
+           "updated_at" = CURRENT_TIMESTAMP
+     WHERE "id" = ${id} AND "original_payment_method" IS NOT NULL AND "payment_status" <> 'PAID'
+  `
 }
 
 export async function setOrderPaymentReference(id: string, reference: string): Promise<void> {
