@@ -32,8 +32,13 @@ const SUB_TABS: { key: SubTab; label: string }[] = [
 //
 // Both are empty on a shop with no add-ons installed, and an empty slot renders
 // nothing: no extra tab, no gap, no diff for a shop-only site owner.
+// - 'shop.settings-notifications' puts a panel at the foot of the Notifications
+//   sub-tab, where the rest of "who gets told, and when" already lives. Taken as
+//   one merged node: it sits under a heading of its own, and shop has nothing to
+//   say about it.
 const HOSTED_SUB_TAB_SLOT = 'shop.settings-sub-tabs'
 const HOSTED_PAYMENTS_SLOT = 'shop.payments'
+const HOSTED_NOTIFICATIONS_SLOT = 'shop.settings-notifications'
 
 const checkboxRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)', cursor: 'pointer' }
 const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.5rem 0' }
@@ -55,7 +60,7 @@ function newAgreementId(): string {
 // above, and lib/modules/hosted-settings.ts for the two shapes). Both slots take
 // the labelled shape: each contributed panel gets a tab, or a chip on Payments,
 // and a tab strip needs the labels up front.
-export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps = {}) {
+export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: ModuleSettingsTabProps = {}) {
   const router = useRouter()
   const [config, setConfig] = useState<ShpConfig | null>(null)
   // Every payment method registered on this site, shop's own and any a module
@@ -979,6 +984,11 @@ export function ShopSettingsTab({ hostedSettingsPanels }: ModuleSettingsTabProps
             <label>Low stock alert email</label>
             <input type="email" value={config.lowStockAlertEmail} onChange={(e) => set('lowStockAlertEmail', e.target.value)} />
           </div>
+
+          {/* Rendered by the core config page, so shop hands it the space and
+              asks nothing else about it. Its own fetch, its own save, its own
+              permission check - all its module's business, not shop's. */}
+          {hostedSettingsSlots?.[HOSTED_NOTIFICATIONS_SLOT]}
         </div>
       )}
 

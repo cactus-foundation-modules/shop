@@ -44,6 +44,7 @@ async function handle(request: NextRequest) {
         // operational notice to the owner, not one of the shop's editable
         // customer templates, so it should not need a template row to exist.
         await sendEmail({
+          moduleName: 'shop',
           to,
           subject: `${unresolved.length} ${plural} checking by hand`,
           html:

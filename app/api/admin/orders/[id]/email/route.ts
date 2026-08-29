@@ -18,7 +18,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const parsed = Body.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: 'Invalid email' }, { status: 400 })
 
-  await sendEmail({ to: order.customerEmail, subject: parsed.data.subject, html: parsed.data.body, text: parsed.data.body.replace(/<[^>]+>/g, ' ') })
+  await sendEmail({ moduleName: 'shop', to: order.customerEmail, subject: parsed.data.subject, html: parsed.data.body, text: parsed.data.body.replace(/<[^>]+>/g, ' ') })
   await logOrderEmail(order.id, parsed.data.subject, order.customerEmail, 'MANUAL')
 
   return NextResponse.json({ success: true })

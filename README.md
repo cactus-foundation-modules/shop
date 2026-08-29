@@ -32,4 +32,5 @@ manifest. Every one of them is inert on a shop with no add-ons installed.
 | `shop.payment-providers` | Adds a payment method. |
 | `shop.tax-shipping-tabs` | Adds an admin tab under Shop > Tax & shipping. |
 | `shop.settings-sub-tabs` / `shop.payments` | Hosts another module's settings panel inside Shop's own settings tab (`host` on its manifest `settingsTabs` entry). |
+| `shop.settings-notifications` | Hosts another module's settings panel at the foot of Shop's **Notifications** settings sub-tab, for anything that has something to say about the shop's outgoing email. Merged shape - the panel writes its own heading. |
 | `shop.product-editor-sections` / `-media-sections` | Adds a tab to the product editor, or a panel at the foot of its Images tab, for something that belongs with the pictures already on that screen. Both are server components rendered by the editor page, and both save on the editor's own Save button through `useProductEditorSave`. |

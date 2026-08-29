@@ -41,6 +41,11 @@ export async function sendShopEmail(
   const rendered = await renderShopEmail(trigger, vars)
   if (!rendered) return
   await sendEmail({
+    // Names the module in the email log, and lets a site say on the shop's
+    // settings tab which of its own addresses these go out as - so a customer
+    // replying to their confirmation reaches the people who deal with orders
+    // rather than the site's general post. Say nothing and nothing changes.
+    moduleName: 'shop',
     to,
     subject: rendered.subject,
     html: rendered.html,
