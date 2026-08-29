@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
-import { injectInvoiceDocContext, type InvoiceDocContext } from '@/modules/shop/lib/invoice-doc-context'
+import { injectInvoiceDocContext, withOrderCustomerReference, type InvoiceDocContext } from '@/modules/shop/lib/invoice-doc-context'
 import { INVOICE_FALLBACK_DATA } from '@/modules/shop/lib/starterLayouts'
 import { docPageSetupFromLayout, type DocPageSetup } from '@/modules/shop/lib/doc-page-settings'
 import { renderDocumentRunningFooter as renderCoreDocumentRunningFooter } from '@/lib/documents/footer'
@@ -27,9 +27,18 @@ import type { ShpInvoice } from '@/modules/shop/lib/types'
 // given on a fresh install anyway.
 
 /** Everything the document's blocks need. The invoice is already a complete
- *  snapshot, so there is nothing else to gather. */
-export function invoiceDocContext(invoice: ShpInvoice, opts?: { print?: boolean; paid?: boolean }): InvoiceDocContext {
-  return { invoice, print: opts?.print ?? false, ...(opts?.paid === undefined ? {} : { paid: opts.paid }) }
+ *  snapshot, so the only thing gathered from anywhere else is whether the money
+ *  has since arrived - and the customer's own reference where the invoice was
+ *  raised before they had one to give (see withOrderCustomerReference). */
+export function invoiceDocContext(
+  invoice: ShpInvoice,
+  opts?: { print?: boolean; paid?: boolean; orderCustomerReference?: string | null },
+): InvoiceDocContext {
+  return {
+    invoice: withOrderCustomerReference(invoice, opts?.orderCustomerReference),
+    print: opts?.print ?? false,
+    ...(opts?.paid === undefined ? {} : { paid: opts.paid }),
+  }
 }
 
 /** The document as a React tree: the published `shopInvoice` layout with the

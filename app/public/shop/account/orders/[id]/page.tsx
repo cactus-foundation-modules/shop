@@ -32,6 +32,12 @@ import { resolveCheckoutPaymentFields } from '@/modules/shop/lib/checkout-paymen
 import { OrderPayOnlinePanel } from '@/modules/shop/components/public/OrderPayOnlinePanel'
 import { proformaAvailable } from '@/modules/shop/lib/proforma'
 import OrderRequestPanel from '@/modules/shop/components/public/OrderRequestPanel'
+import OrderReferencePanel from '@/modules/shop/components/public/OrderReferencePanel'
+import {
+  customerCanSetReference,
+  customerReferenceLabel,
+  customerReferenceOfferedAfterOrder,
+} from '@/modules/shop/lib/customer-reference'
 import WithdrawRequestButton from '@/modules/shop/components/public/WithdrawRequestButton'
 import BuyAgainButton from '@/modules/shop/components/public/BuyAgainButton'
 
@@ -135,7 +141,18 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
   // Only looked up on a shop that invoices AND is willing to show it, so an
   // ordinary shop's order page costs exactly what it always did.
   const showPaperwork = config.invoicesEnabled && config.invoiceShowToCustomer
-  const invoice = showPaperwork ? await getInvoiceForOrder(order.id) : null
+  // Whether this shop lets the customer put their own reference on afterwards.
+  // Read first because it is the other reason the invoice is worth looking up:
+  // an invoice already sent with a number on it is what closes the box (see
+  // lib/customer-reference.ts), and that is true whether or not the shop shows
+  // the invoice to the customer at all.
+  const referenceOffered = customerReferenceOfferedAfterOrder(config)
+  const invoiceRecord = showPaperwork || (referenceOffered && config.invoicesEnabled)
+    ? await getInvoiceForOrder(order.id)
+    : null
+  // The one the paperwork links read. A shop that raises invoices and keeps them
+  // to itself still has none to offer here, exactly as before.
+  const invoice = showPaperwork ? invoiceRecord : null
   // Money that went back is paperwork the buyer is owed just as much as the
   // invoice - more so for a business buyer, whose own accountant needs the
   // document rather than a line on a card statement. Only read where there is
@@ -190,6 +207,17 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
   // and the proforma rightly stays there - it is then the only paperwork the
   // customer has, and taking it away would leave them with nothing.
   const proforma = config.proformaShowToCustomer && proformaAvailable(config, order) && !invoice
+
+  // Their own reference for the order, and whether they may still move it.
+  // Shown read-only on a shop that asks for one at checkout but does not take
+  // changes afterwards: somebody who typed a purchase order number in on the day
+  // should still be able to see it on their own order.
+  const referenceLabel = customerReferenceLabel(config)
+  const referenceEditable: { allowed: boolean; reason?: string } = referenceOffered
+    ? customerCanSetReference({ config, order, invoiceReference: invoiceRecord?.customer?.reference ?? null })
+    : { allowed: false }
+  const showReference = config.customerReferenceFieldEnabled
+    && (referenceOffered || Boolean(order.customerReference?.trim()))
 
   return (
     <MemberAccountShell member={member} maxWidth={880}>
@@ -305,6 +333,17 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
               <WithdrawRequestButton requestId={openRequest.id} />
             </div>
           </div>
+        )}
+
+        {showReference && (
+          <Section title={referenceLabel}>
+            <OrderReferencePanel
+              orderId={order.id}
+              label={referenceLabel}
+              reference={order.customerReference ?? ''}
+              editable={referenceEditable}
+            />
+          </Section>
         )}
 
         <Section title="What you ordered">

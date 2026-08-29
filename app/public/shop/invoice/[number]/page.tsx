@@ -90,7 +90,14 @@ export default async function ShopInvoicePage({
   if (!allowed) notFound()
 
   const config = await getShopConfigCached()
-  const ctx = invoiceDocContext(invoice, { print, paid: order?.paymentStatus === 'PAID' })
+  const ctx = invoiceDocContext(invoice, {
+    print,
+    paid: order?.paymentStatus === 'PAID',
+    // Their own reference as it stands today, for an invoice raised before
+    // they had a purchase order number to give. Only ever fills a blank -
+    // see withOrderCustomerReference.
+    orderCustomerReference: order?.customerReference ?? null,
+  })
   const document = await renderInvoiceDocument(ctx)
   // Only when printing: it is a region for the printing browser to lift out, and
   // rendering it for a reader on screen would be a layout resolved and a tree

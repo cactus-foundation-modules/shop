@@ -4,6 +4,7 @@ import { listOrderSummariesForMember } from '@/modules/shop/lib/member-orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { OrderSummaryCard } from '@/modules/shop/components/public/OrderSummaryCard'
+import { customerReferenceLabel } from '@/modules/shop/lib/customer-reference'
 import { OrdersFilterList, type OrdersBucket } from '@/modules/shop/components/public/OrdersFilterList'
 
 // The order history, drawn into the account rather than sitting behind a tab of
@@ -47,7 +48,13 @@ export async function ShopOrdersSection() {
           items={summaries.map((summary) => ({
             id: summary.order.id,
             bucket: bucketOf(summary.order.status),
-            card: <OrderSummaryCard summary={summary} currencySymbol={config.currencySymbol} />,
+            card: (
+              <OrderSummaryCard
+                summary={summary}
+                currencySymbol={config.currencySymbol}
+                referenceLabel={config.customerReferenceFieldEnabled ? customerReferenceLabel(config) : undefined}
+              />
+            ),
           }))}
         />
       )}

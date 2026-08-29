@@ -9,6 +9,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { OrderSummaryCard } from '@/modules/shop/components/public/OrderSummaryCard'
+import { customerReferenceLabel } from '@/modules/shop/lib/customer-reference'
 
 export const metadata = { title: 'Your orders' }
 export const dynamic = 'force-dynamic'
@@ -105,7 +106,12 @@ export default async function ShopAccountOrdersPage({ searchParams }: Props) {
 
       <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
         {visible.map((summary) => (
-          <OrderSummaryCard key={summary.order.id} summary={summary} currencySymbol={config.currencySymbol} />
+          <OrderSummaryCard
+            key={summary.order.id}
+            summary={summary}
+            currencySymbol={config.currencySymbol}
+            referenceLabel={config.customerReferenceFieldEnabled ? customerReferenceLabel(config) : undefined}
+          />
         ))}
       </div>
     </MemberAccountShell>

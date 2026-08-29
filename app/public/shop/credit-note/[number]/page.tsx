@@ -67,19 +67,23 @@ export default async function ShopCreditNotePage({
   // The signed link, the member whose order it is, or a staff session. Anything
   // else is a 404 rather than a 403 - the numbers run in sequence, so "wrong
   // token" and "not yours" must look identical from outside.
+  //
+  // The order is loaded either way, and once, exactly as the invoice page does
+  // it. It is what says whether the customer has since given a reference for the
+  // order - a credit note raised before their finance team produced a purchase
+  // order number is one their finance team cannot match to anything.
+  const order = await getOrderById(note.orderId)
   let allowed = verifyCreditNoteToken(note.creditNoteNumber, token)
   if (!allowed) {
     const [member, user] = await Promise.all([getMemberFromCookie(), getSessionFromCookie()])
-    if (member) {
-      const order = await getOrderById(note.orderId)
-      allowed = Boolean(order?.memberId && order.memberId === member.id)
-    }
+    if (member) allowed = Boolean(order?.memberId && order.memberId === member.id)
     if (!allowed && user) allowed = true
   }
   if (!allowed) notFound()
 
   const config = await getShopConfigCached()
-  const ctx = creditNoteDocContext(note, { print })
+  // Only ever fills a blank - see withOrderCustomerReference.
+  const ctx = creditNoteDocContext(note, { print, orderCustomerReference: order?.customerReference ?? null })
   const document = await renderInvoiceDocument(ctx)
   // The one shared PDF footer, same layout every document uses.
   const runningFooter = print ? await renderDocumentRunningFooter(ctx) : null

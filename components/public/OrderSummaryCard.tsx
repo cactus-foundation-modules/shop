@@ -9,9 +9,15 @@ import type { MemberOrderSummary } from '@/modules/shop/lib/member-orders'
 export function OrderSummaryCard({
   summary,
   currencySymbol,
+  referenceLabel,
 }: {
   summary: MemberOrderSummary
   currencySymbol: string
+  /** What this shop calls the customer's own reference, where it asks for one.
+   *  Absent on a shop that does not, and the line goes with it - a card that
+   *  says "Purchase order number: —" to somebody buying a pair of socks is
+   *  noise on every order they have ever placed. */
+  referenceLabel?: string
 }) {
   const { order, lines, itemCount, fulfilment, hasOpenRequest } = summary
   const status = ORDER_STATUS_DISPLAY[order.status]
@@ -39,6 +45,15 @@ export function OrderSummaryCard({
           {formatOrderDate(order.createdAt)}
         </span>
       </div>
+
+      {/* Their own reference, where they have given one. A business buyer looks
+          down this list for a purchase order number rather than for our order
+          number, which is a number their finance system has never heard of. */}
+      {referenceLabel && order.customerReference?.trim() && (
+        <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', marginTop: '-0.5rem' }}>
+          {referenceLabel}: {order.customerReference.trim()}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>

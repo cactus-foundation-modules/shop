@@ -9,6 +9,7 @@ import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice } from '@/modules/shop/components/public/ShopClosedNotice'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { addressLines, formatOrderDate } from '@/modules/shop/lib/order-display'
+import { customerReferenceLabel } from '@/modules/shop/lib/customer-reference'
 import PrintButton from '@/modules/shop/components/public/PrintButton'
 
 export const metadata = { title: 'Receipt' }
@@ -85,6 +86,16 @@ export default async function ShopAccountOrderReceiptPage({ params }: { params: 
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontWeight: 'var(--font-semibold)' }}>{order.orderNumber}</div>
             <div style={{ color: 'var(--color-text-muted)' }}>{formatOrderDate(order.createdAt)}</div>
+            {/* Their own number for the order, where they gave one. The receipt
+                is the document a business buyer staples to their own purchase
+                order, so leaving it off is the one omission that makes the page
+                useless to them. Nothing printed where there is nothing to
+                print, so an ordinary shop's receipt is unchanged. */}
+            {order.customerReference?.trim() && (
+              <div style={{ color: 'var(--color-text-muted)' }}>
+                {customerReferenceLabel(config)}: {order.customerReference.trim()}
+              </div>
+            )}
           </div>
         </div>
 

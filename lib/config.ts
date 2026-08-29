@@ -121,6 +121,16 @@ export const ShpConfigSchema = z.object({
   customerReferenceFieldEnabled: z.boolean().default(false),
   customerReferenceRequired: z.boolean().default(false),
   customerReferenceLabel: z.string().default('Purchase order number'),
+  // Whether the customer may add or correct it themselves after the order has
+  // been placed, from their own order page.
+  //
+  // Worth its own switch rather than following the checkout box: a great many
+  // business buyers do not have the number on the day. They buy, their finance
+  // team raises the purchase order the week after, and the invoice sits unpaid
+  // in a tray until that number is on it. Off by default all the same, because
+  // a shop that would rather hear about it on the telephone should not have a
+  // box quietly changing its paperwork.
+  customerReferenceAfterOrder: z.boolean().default(false),
 
   // Terms and conditions tickbox at checkout. Kept apart from the owner's own
   // tickboxes below because it is the one nearly every shop wants and it can

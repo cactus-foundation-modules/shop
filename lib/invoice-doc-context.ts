@@ -84,6 +84,31 @@ const DOC_PART_TYPES = [
   'ShopInvoiceFooter',
 ]
 
+/**
+ * The document with the ORDER's customer reference filled in, where the document
+ * itself was raised without one.
+ *
+ * A business buyer very often has no purchase order number on the day they buy -
+ * their own finance team raises it the week after - and an invoice arriving
+ * without that number sits in a tray rather than getting paid. So a reference
+ * added to the order afterwards is printed on the paperwork that went out with
+ * the box empty.
+ *
+ * Note what this does NOT do: it never overwrites a reference the document was
+ * issued with. The snapshot is the record of what was sent, and this module has
+ * never rewritten one - a wrong invoice is voided and reissued, not quietly
+ * edited under the person holding it. Filling a blank contradicts nothing;
+ * changing a number somebody has already filed would. The same rule stops the
+ * customer editing theirs once it is on an issued invoice - see
+ * lib/customer-reference.ts.
+ */
+export function withOrderCustomerReference<T extends ShpInvoice>(invoice: T, reference: string | null | undefined): T {
+  const own = invoice.customer?.reference?.trim()
+  const fallback = reference?.trim()
+  if (own || !fallback) return invoice
+  return { ...invoice, customer: { ...invoice.customer, reference: fallback } }
+}
+
 /** Clones the saved layout (pure JSON) and attaches the context by reference, so
  *  one object is shared by every part rather than serialised per block.
  *
@@ -191,7 +216,15 @@ export const SAMPLE_INVOICE_CONTEXT: InvoiceDocContext = {
  *
  *  - `dueDate` is null, always. Nothing on a credit note falls due.
  */
-export function creditNoteDocContext(note: ShpCreditNote, opts?: { print?: boolean }): InvoiceDocContext {
+export function creditNoteDocContext(
+  note: ShpCreditNote,
+  opts?: {
+    print?: boolean
+    /** The order's reference as it stands today, for a credit note raised
+     *  before the customer gave one. See withOrderCustomerReference. */
+    orderCustomerReference?: string | null
+  },
+): InvoiceDocContext {
   const invoice: ShpInvoice = {
     id: note.id,
     orderId: note.orderId,
@@ -226,7 +259,7 @@ export function creditNoteDocContext(note: ShpCreditNote, opts?: { print?: boole
     updatedAt: note.updatedAt,
   }
   return {
-    invoice,
+    invoice: withOrderCustomerReference(invoice, opts?.orderCustomerReference),
     print: opts?.print ?? false,
     // Nothing on a credit note is owed, so nothing on one is unpaid. Blocks that
     // hide themselves once the money is in - the bank details in particular -

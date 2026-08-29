@@ -549,6 +549,15 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 <input type="text" value={config.customerReferenceLabel} onChange={(e) => set('customerReferenceLabel', e.target.value)} placeholder="Purchase order number" />
                 <p className="field-hint">Whatever your customers call it. This is the wording on the checkout box and on the paperwork.</p>
               </div>
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.customerReferenceAfterOrder} onChange={(e) => set('customerReferenceAfterOrder', e.target.checked)} />
+                Let customers add it later, from their own order page
+              </label>
+              <p className="field-hint" style={{ marginTop: '-0.25rem' }}>
+                For the buyer whose finance team raises the number a week after they ordered. It goes on their invoice the moment they add it - unless
+                the invoice already went out with a number on it, in which case they are asked to ring you rather than quietly change paperwork you
+                have already sent.
+              </p>
             </>
           )}
 
