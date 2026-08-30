@@ -134,12 +134,19 @@ export function ShopCardMedia({
   // link covers the picture (it is a sibling ABOVE it in the stacking order, see
   // card-template renderCards): a listener on the island would never hear a mouseenter
   // over the image the link sits on, while `.shop-card` is an ancestor of that link and
-  // hears it. Touch devices never fire these, so a phone opens on the main photo and
-  // the arrows do the flicking. Leave always returns to the main, so a shopper who
-  // flicked into the colours with the arrows finds the hero back when they move off.
+  // hears it. Leave always returns to the main, so a shopper who flicked into the
+  // colours with the arrows finds the hero back when they move off.
+  //
+  // Bound only where there is a real pointer to hover with. "Touch devices never
+  // fire these" was wrong: a phone fires the whole emulated mouse sequence after
+  // touchend, so the first tap swapped the picture, and Safari answers a tap that
+  // changed the page under the finger by withholding the click - the shopper had
+  // to tap a product twice to open it. The card's own hover CSS is fenced the same
+  // way, for the same reason (shopCardCss).
   useEffect(() => {
     const card = rootRef.current?.closest('.shop-card')
     if (!card) return
+    if (!window.matchMedia('(hover:hover) and (pointer:fine)').matches) return
     const onEnter = () => { if (hasHoverSecond) setIndex(1) }
     const onLeave = () => setIndex(0)
     card.addEventListener('mouseenter', onEnter)

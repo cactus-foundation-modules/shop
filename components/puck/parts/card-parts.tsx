@@ -54,7 +54,15 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
    restating a dozen rules - that is what the two-up mobile grid does (scale .5).
    The picture, the badge and the card's own chrome stay put; only the words move. */
 .shop-card{position:relative;display:flex;flex-direction:column;font-size:calc(16px * var(--shop-card-scale,1));background:var(--color-surface);border:1px solid var(--color-border);border-radius:12px;overflow:hidden;text-decoration:none;color:inherit;box-shadow:0 1px 3px rgba(0,0,0,.06);padding-bottom:1em;transition:box-shadow .25s ease,transform .25s ease}
+/* Every hover flourish on the card is fenced behind a real pointer. On a phone
+   the first tap does not open the product, it "hovers" it: the browser applies
+   :hover, the card lifts 4px and its picture scales under the finger, and Safari
+   answers a tap that changed the page like that by withholding the click
+   entirely - so the shopper taps twice to open one product. Nothing here is
+   worth that, and a touch device was never getting the hover anyway. */
+@media (hover:hover) and (pointer:fine){
 .shop-card:hover{transform:translateY(-4px);box-shadow:0 8px 30px rgba(0,0,0,.10)}
+}
 /* Stretched navigation link. Covers the whole card (so tapping the picture or the
    text follows the product) but sits UNDER the carousel arrows and the 3D overlay
    (z-index), so those controls take their own taps. Rendered as a sibling of the
@@ -69,12 +77,12 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
    design, not a shape. */
 .shop-card-img{position:relative;aspect-ratio:var(--shop-card-ratio,1/1);background:var(--color-bg-subtle);overflow:hidden}
 .shop-card-img img{width:100%;height:100%;object-fit:var(--shop-card-fit,cover);display:block;transition:transform .4s ease}
-.shop-card:hover .shop-card-img img{transform:scale(1.03)}
+@media (hover:hover) and (pointer:fine){.shop-card:hover .shop-card-img img{transform:scale(1.03)}}
 /* Carousel arrows + overlay slot (the ShopCardMedia island). Shared rules live in
    shopCardMediaCss; the arrows stay hidden until the card is hovered (the same hover
    that swaps in the second photo), and are revealed here on card-hover. */
 ${shopCardMediaCss}
-.shop-card:hover .shop-card-nav-btn{opacity:1}
+@media (hover:hover) and (pointer:fine){.shop-card:hover .shop-card-nav-btn{opacity:1}}
 /* !important: the editor sets position:relative inline on every part root (see
    dragRefOf). The badge stack and the fill image are the two that must position
    against the card instead, so they have to outrank it. No-op on the live page,
@@ -134,7 +142,7 @@ ${shopCardMediaCss}
    is inherited into - size it here so it shrinks with the label rather than
    towering over it on the two-up mobile grid. */
 .shop-card-cta svg{width:.923em;height:.923em;transition:transform .2s ease}
-.shop-card:hover .shop-card-cta svg{transform:translateX(3px)}
+@media (hover:hover) and (pointer:fine){.shop-card:hover .shop-card-cta svg{transform:translateX(3px)}}
 
 /* Image beside text: image spans the left column, text stacks in the right. */
 .shop-card:has(.shop-card-img.beside-mode){display:grid;grid-template-columns:40% 1fr;padding-bottom:0}

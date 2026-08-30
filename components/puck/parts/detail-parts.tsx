@@ -901,8 +901,24 @@ const buyCss = `
 .spd-minqty{margin:10px 0 0;color:var(--color-text-muted);font-size:14px}
 /* The Tabs strip's "Configure" action jumps here; clear the site header (the
    strip itself is below this point on the page, so its height need not be in
-   the offset). */
-.spd-buy-anchor{scroll-margin-top:calc(var(--spd-header-h,72px) + 16px)}
+   the offset).
+   Also the measuring stick for the rule below - hence container-type, which is
+   the point of putting it on the anchor rather than the row: the row is drawn by
+   whichever provider owns the purchase area (shop's own button, or the
+   variations slot), and the anchor is the one element shop draws either way. */
+.spd-buy-anchor{scroll-margin-top:calc(var(--spd-header-h,72px) + 16px);container-type:inline-size}
+/* Below 360px the stepper (146px) plus the gap plus the button's own 200px
+   minimum no longer fit side by side, and the button drops onto its own line -
+   leaving the quantity pill stranded at its natural width with half the row
+   empty beside it. Once they are stacked there is nothing to sit beside, so the
+   pill takes the full width and the typed count spreads into the room, which is
+   a bigger tap target on exactly the screens that need one. Measured off the
+   row's own container rather than the viewport, so it fires when the two really
+   have run out of room and not at a width guessed from the screen. */
+@container (max-width:359.98px){
+  .spd-stepper{display:flex;width:100%}
+  .spd-stepper input{flex:1;width:auto;min-width:0}
+}
 `
 
 type AddProps = { _ctx?: DetailPartContext; showStepper?: string; buttonLabel?: string }
