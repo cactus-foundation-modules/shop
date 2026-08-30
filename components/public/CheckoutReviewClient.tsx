@@ -13,6 +13,7 @@ import {
   CHECKOUT_PAYMENT_SLOT_ID, announceCheckoutPaymentSlot,
 } from '@/modules/shop/components/public/checkout-payment-slot'
 import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
+import { publishCheckoutTotal } from '@/modules/shop/components/public/checkout-total-bus'
 
 type SessionSummary = {
   subtotal: number; discountAmount: number; shippingAmount: number; taxAmount: number; total: number
@@ -119,6 +120,15 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
   const populated = useCartPopulated(preview)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // The payment step may only offer certain methods on an order of a certain
+  // size, and this is the block that knows what the order comes to. Published
+  // rather than handed over: the two are separate Puck blocks with no state
+  // between them. Cleared on the way out, so a total does not outlive the
+  // summary that produced it. See checkout-total-bus.ts.
+  useEffect(() => {
+    publishCheckoutTotal(summary ? summary.total : null)
+  }, [summary])
+  useEffect(() => () => publishCheckoutTotal(null), [])
   // Which compulsory boxes above are still outstanding, named as their own
   // labels name them. The shopper reads this instead of being left to hunt for
   // whichever field is holding the button shut. It gates the button; it no

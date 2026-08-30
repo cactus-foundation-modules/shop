@@ -155,6 +155,13 @@ async function buildConfigPayload() {
     // The line under each method's name: the owner's wording where they have
     // written one, the provider's where they have not.
     paymentMethodDescriptions: resolvePaymentMethodDescriptions(config.paymentMethodDescriptions),
+    // How big an order has to be for each method to be offered - see
+    // lib/payments/order-value-limits.ts. The rules ride along here rather than
+    // the answer, because the answer depends on the basket and this response is
+    // shop-wide and cached for every shopper at once. The checkout applies them
+    // against its own total; the route that creates the order applies them again
+    // for real, because a rule the browser is told about is one it can ignore.
+    paymentMethodOrderValueLimits: config.paymentMethodOrderValueLimits,
     // The publishable, order-independent half of what a method's own on-page
     // fields need to draw - see getClientFields on ShpPaymentProvider. Here
     // rather than only on the payment intent because an intent cannot be made

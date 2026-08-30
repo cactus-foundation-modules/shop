@@ -18,6 +18,11 @@ import {
   CHECKOUT_PAYMENT_SLOT_EVENT, findCheckoutPaymentSlot,
 } from '@/modules/shop/components/public/checkout-payment-slot'
 import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
+import { getCheckoutTotal, subscribeCheckoutTotal } from '@/modules/shop/components/public/checkout-total-bus'
+import {
+  filterMethodsByOrderValue, orderValueLimitFor, orderValueLimitSentence, type ShpOrderValueLimits,
+} from '@/modules/shop/lib/payments/order-value-limits'
+import { formatMoney } from '@/modules/shop/lib/money'
 // One drawing of a brand mark, shared with the order page's own method list.
 import { PaymentMethodLogo } from '@/modules/shop/components/public/PaymentMethodLogo'
 
@@ -34,6 +39,10 @@ type ShopClientConfig = {
   // The publishable, order-independent config a method's own on-page fields
   // draw from. Optional so a response from an older cached bundle still works.
   paymentMethodClientFields?: Record<string, Record<string, unknown>>
+  // How big an order has to be for a method to be offered at all. Optional so a
+  // response from an older cached bundle still works: no limits is what every
+  // shop had until now, and the order-creating route checks them again anyway.
+  paymentMethodOrderValueLimits?: ShpOrderValueLimits
   stripePublishableKey: string | null
   currencySymbol: string
   // Optional so a response from an older cached bundle still works - the
@@ -111,6 +120,10 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
   const populated = useCartPopulated(preview)
   const [config, setConfig] = useState<ShopClientConfig | null>(null)
   const [method, setMethod] = useState<string | null>(getCheckoutState().paymentMethod)
+  // See the effect below: the order's own size, and the sentence explaining a
+  // method that has just been taken off the table because of it.
+  const [orderTotal, setOrderTotal] = useState<number | null>(getCheckoutTotal)
+  const [withdrawn, setWithdrawn] = useState<string | null>(null)
   const [instructions, setInstructions] = useState<string | null>(null)
   // Sentences an installed module offered about what this payment method means
   // for this order - a pay-later method's effect on delivery dates, say. Shop
@@ -175,6 +188,17 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
 
   useEffect(() => {
     void fetchShopPublicConfig<ShopClientConfig>().then(setConfig)
+  }, [])
+
+  // What this order comes to, VAT and delivery included, as the order summary
+  // last had it back from the server. A method may be limited to orders above or
+  // below a certain size, and this is the figure that decides. Null while nobody
+  // has worked one out - an early checkout with no address on it, or a layout
+  // with no summary block - and nothing is hidden while it is.
+  useEffect(() => {
+    function sync() { setOrderTotal(getCheckoutTotal()) }
+    sync()
+    return subscribeCheckoutTotal(sync)
   }, [])
 
   useEffect(() => {
@@ -293,6 +317,14 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
   }, [config])
 
   function chooseMethod(next: string) {
+    setWithdrawn(null)
+    applyMethod(next)
+  }
+
+  // Moving off a method - to another one, or to none at all when the order has
+  // grown past what this one may be used for. Everything the old method put on
+  // screen goes with it.
+  function applyMethod(next: string | null) {
     setMethod(next)
     setError(null)
     // Instructions belong to the method that was showing a moment ago - leaving
@@ -307,7 +339,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
     moduleSubmitRef.current = null
     preparedRef.current = null
     attemptedForRef.current = null
-    pickedThisMountRef.current = true
+    if (next !== null) pickedThisMountRef.current = true
     updateCheckoutState({ paymentMethod: next })
     // No prepareIntent call here on purpose: the effect below owns preparing, so
     // there is exactly one place that can create an order and no way for a click
@@ -350,6 +382,45 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
     sync()
     return subscribeCheckoutState(sync)
   }, [config, method, outstandingRequirement, prepareIntent])
+
+  // The methods this order may actually be paid with. A shop can say that a
+  // method is only for orders above (or below) a certain size - a flat fee is
+  // the cheaper way to take a big order and a percentage the cheaper way to take
+  // a small one - and a method that would be refused is not worth offering. See
+  // lib/payments/order-value-limits.ts.
+  const offeredMethods = filterMethodsByOrderValue(
+    config?.enabledPaymentMethods ?? [],
+    config?.paymentMethodOrderValueLimits,
+    orderTotal,
+  )
+  // Joined rather than the array itself: the filter above builds a new one every
+  // render, and the effect below must run when the ANSWER changes, not when the
+  // reference does.
+  const offeredKey = offeredMethods.join('|')
+
+  // A basket that has grown (or shrunk) past what the chosen method may be used
+  // for. The choice is dropped rather than left to fail at the till, and the
+  // shopper is told why in the same terms the method was offered in - a radio
+  // button that silently unpicks itself is a bug from where they are sitting.
+  useEffect(() => {
+    if (!config) return
+    const chosen = getCheckoutState().paymentMethod
+    if (!chosen || offeredMethods.includes(chosen)) return
+    const sentence = orderValueLimitSentence(
+      orderValueLimitFor(config.paymentMethodOrderValueLimits, chosen),
+      (amount) => formatMoney(amount, config.currencySymbol),
+    )
+    const name = BUILT_IN_METHOD_LABELS[chosen] ?? config.paymentMethodLabels?.[chosen] ?? chosen
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the extra render is the point: the basket changed underneath a choice that is no longer allowed, and it only fires when that answer actually changes.
+    setWithdrawn(
+      sentence
+        ? `${name} is only available for ${sentence}, so it is no longer selected. Please choose another way to pay.`
+        : `${name} is not available for an order of this size, so it is no longer selected. Please choose another way to pay.`,
+    )
+    applyMethod(null)
+    // offeredKey rather than the array: see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- applyMethod is re-made every render; naming it here would re-run this on every keystroke.
+  }, [config, offeredKey])
 
   // What the chosen method's own fields draw from, worked out during render
   // rather than held in state: the publishable half is a plain function of the
@@ -632,8 +703,22 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480, marginTop: '2rem' }}>
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Payment method'}</h2>
       {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
+      {/* The chosen method has just stopped being one this order may use. Said
+          plainly, above the list, because the shopper is about to find their
+          selection gone and should not have to work out why. */}
+      {withdrawn && (
+        <p role="status" style={{ color: 'var(--color-text)', fontSize: '0.875rem', margin: 0 }}>{withdrawn}</p>
+      )}
+      {/* Nothing at all fits this order. Rare, and only reachable on a shop that
+          has put a size limit on every method it takes, but a payment step with
+          an empty list and no explanation is the worst way to find out. */}
+      {config && offeredMethods.length === 0 && (
+        <p style={{ color: 'var(--color-danger)', margin: 0 }}>
+          There is no way to pay for an order of this size online. Please get in touch and we will sort it out.
+        </p>
+      )}
       <div style={{ display: 'grid', gap: '0.5rem' }}>
-        {(config?.enabledPaymentMethods ?? []).map((m, i) => {
+        {offeredMethods.map((m, i) => {
           const logo = config?.paymentMethodLogos?.[m]
           const description = config?.paymentMethodDescriptions?.[m]
           return (

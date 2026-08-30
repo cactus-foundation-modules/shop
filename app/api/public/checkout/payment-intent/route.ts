@@ -5,7 +5,7 @@ import { findShippingZoneForPostcode, getShippingRateById } from '@/modules/shop
 import { createPendingOrder, type CreateOrderInput } from '@/modules/shop/lib/db/orders'
 import { createCheckoutDraft } from '@/modules/shop/lib/checkout-draft'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
-import { getShopConfigCached, getAvailablePaymentMethods, resolveCheckoutAgreements } from '@/modules/shop/lib/config'
+import { getShopConfigCached, getAvailablePaymentMethods, orderValueRefusal, resolveCheckoutAgreements } from '@/modules/shop/lib/config'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
@@ -171,6 +171,15 @@ export async function POST(request: NextRequest) {
   if (config.maximumOrderValue != null && totals.subtotal > config.maximumOrderValue) {
     return NextResponse.json({ error: `Maximum order value is ${formatMoney(config.maximumOrderValue, config.currencySymbol)}` }, { status: 400 })
   }
+
+  // And the per-method size limits, against what this order actually comes to -
+  // VAT and delivery included, discount taken off, which is the figure the
+  // provider is about to be handed. The checkout only offers the methods that
+  // fit; this is where the rule is actually kept, because the list the browser
+  // was given is a list the browser can ignore, and a page left open while the
+  // basket changed in another tab was given a list that was true at the time.
+  const refusal = await orderValueRefusal(data.paymentMethod, totals.total)
+  if (refusal) return NextResponse.json({ error: refusal }, { status: 400 })
 
   // No mixed-cart gate here, and that is deliberate rather than an oversight.
   // `preOrderMixedCartBehaviour` has exactly two values and neither one forbids

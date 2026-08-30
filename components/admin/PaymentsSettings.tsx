@@ -330,6 +330,21 @@ export function PaymentsSettings({ config, set, methods, hostedPanels, activeTab
   // as the list of the ones that do not, so a method nobody has an opinion about
   // keeps showing its mark - including one arriving with a module installed
   // later, which nothing here could have listed in advance.
+  // How big an order has to be - and how big it may be - for a method to be
+  // offered at all. An emptied box is stored as "no limit that way" rather than
+  // as zero, and a method left with neither end set drops out of the map
+  // entirely, so clearing both boxes genuinely puts the method back to being
+  // offered on everything.
+  function setMethodOrderValueLimit(id: string, end: 'min' | 'max', value: string) {
+    const amount = value.trim() === '' ? null : Number(value)
+    if (amount !== null && (!Number.isFinite(amount) || amount < 0)) return
+    const next = { ...config.paymentMethodOrderValueLimits }
+    const updated = { ...(next[id] ?? { min: null, max: null }), [end]: amount }
+    if (updated.min == null && updated.max == null) delete next[id]
+    else next[id] = updated
+    set('paymentMethodOrderValueLimits', next)
+  }
+
   function setMethodLogoShown(id: string, shown: boolean) {
     const hidden = config.hiddenPaymentMethodLogos.filter((m) => m !== id)
     if (!shown) hidden.push(id)
@@ -449,6 +464,7 @@ export function PaymentsSettings({ config, set, methods, hostedPanels, activeTab
           onOpen={onTabChange}
           onDescriptionChange={setMethodDescription}
           onLogoShownChange={setMethodLogoShown}
+          onOrderValueLimitChange={setMethodOrderValueLimit}
         />
       )}
 
@@ -501,6 +517,7 @@ export function PaymentsSettings({ config, set, methods, hostedPanels, activeTab
 function MethodList({
   config, set, ordered, loading, liveMethods, methodTabs,
   dragFrom, dragOver, onDragStart, onDragOver, onDragEnd, onDrop, onMove, onToggle, onOpen, onDescriptionChange, onLogoShownChange,
+  onOrderValueLimitChange,
 }: {
   config: ShpConfig
   set: <K extends keyof ShpConfig>(key: K, value: ShpConfig[K]) => void
@@ -519,6 +536,7 @@ function MethodList({
   onOpen: (tab: string) => void
   onDescriptionChange: (id: string, text: string) => void
   onLogoShownChange: (id: string, shown: boolean) => void
+  onOrderValueLimitChange: (id: string, end: 'min' | 'max', value: string) => void
 }) {
   const tabForMethod = new Map(methodTabs.filter((t) => t.method).map((t) => [t.method!.id, t.key]))
 
@@ -662,6 +680,58 @@ function MethodList({
       ))}
 
       <hr style={hr} />
+      <h3 style={sectionHeading}>When each method is offered</h3>
+      <p className="field-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
+        Leave both boxes empty and the method is offered on every order, which is what they all do until you say otherwise.
+        Fill one in and the method only appears on orders of that size - handy where one way of taking money is cheaper on a
+        big order and dearer on a small one. Both figures are the order total the customer pays, VAT and delivery included,
+        and both ends count: put {formatLimitExample(config.currencySymbol)} and an order of exactly that amount still
+        qualifies.
+      </p>
+      {ordered.map((method) => {
+        const limit = config.paymentMethodOrderValueLimits[method.id]
+        return (
+          <div
+            key={method.id}
+            style={{
+              display: 'flex', alignItems: 'flex-end', gap: '0.75rem', flexWrap: 'wrap',
+              padding: '0.875rem 1rem',
+              marginBottom: '0.625rem',
+              borderRadius: 10,
+              border: '1px solid var(--color-border)',
+              background: 'var(--color-surface)',
+            }}
+          >
+            <strong style={{ fontSize: 'var(--text-base)', flex: '1 1 10rem', paddingBottom: '0.5rem' }}>{method.label}</strong>
+            <div className="field" style={{ marginBottom: 0, flex: '0 1 10rem' }}>
+              <label className="field-label" htmlFor={`shp-method-min-${method.id}`}>Smallest order</label>
+              <input
+                id={`shp-method-min-${method.id}`}
+                type="number"
+                step="0.01"
+                min={0}
+                value={limit?.min ?? ''}
+                placeholder="No minimum"
+                onChange={(e) => onOrderValueLimitChange(method.id, 'min', e.target.value)}
+              />
+            </div>
+            <div className="field" style={{ marginBottom: 0, flex: '0 1 10rem' }}>
+              <label className="field-label" htmlFor={`shp-method-max-${method.id}`}>Largest order</label>
+              <input
+                id={`shp-method-max-${method.id}`}
+                type="number"
+                step="0.01"
+                min={0}
+                value={limit?.max ?? ''}
+                placeholder="No maximum"
+                onChange={(e) => onOrderValueLimitChange(method.id, 'max', e.target.value)}
+              />
+            </div>
+          </div>
+        )
+      })}
+
+      <hr style={hr} />
       <h3 style={sectionHeading}>Paying an order after it has been placed</h3>
       <p className="field-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
         Bank transfer and cash both end the same way: the order sits there until somebody sends the money, and a fair few of
@@ -691,6 +761,13 @@ function MethodList({
       )}
     </div>
   )
+}
+
+// The worked example in the hint above, in the shop's own currency rather than
+// a hardcoded pound sign - the same figure said twice reads as one rule, which
+// is what it is.
+function formatLimitExample(symbol: string): string {
+  return `a largest order of ${symbol}571 on one method and a smallest order of ${symbol}571.01 on another`
 }
 
 const arrowStyle = (disabled: boolean): CSSProperties => ({

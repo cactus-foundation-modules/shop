@@ -2,6 +2,10 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db/prisma'
 import { isPayPalConfigured, isStripeConfigured } from '@/modules/shop/lib/env'
 import { resolvePaymentMethodOrder, sortPaymentMethods } from '@/modules/shop/lib/payments/admin-methods'
+import {
+  filterMethodsByOrderValue, isWithinOrderValueLimit, orderValueLimitFor, orderValueLimitSentence,
+} from '@/modules/shop/lib/payments/order-value-limits'
+import { formatMoney } from '@/modules/shop/lib/money'
 
 // Shop config, stored as a single JSON column on the shp_settings singleton
 // row (Q2 - no shopConfig column on core SiteConfig). Same "corrupted/partial
@@ -174,6 +178,24 @@ export const ShpConfigSchema = z.object({
   // marks it already has, and a method whose provider ships no mark at all is
   // simply unaffected by being named here.
   hiddenPaymentMethodLogos: z.array(z.string()).default([]),
+  // How big an order has to be - and how big it may be - for each method to be
+  // offered at all, keyed by method id. Measured against the total the customer
+  // pays, VAT and delivery included. Both ends optional, and a method left out
+  // of this map has no limits at all, which is every method until somebody sets
+  // one. Free-form keys for the same reason as the maps above.
+  //
+  // The rule this exists for: a card fee is a percentage and an open-banking fee
+  // is often flat, so above some figure the shop would rather be paid one way
+  // and below it the other. See lib/payments/order-value-limits.ts.
+  paymentMethodOrderValueLimits: z
+    .record(
+      z.string(),
+      z.object({
+        min: z.number().min(0).nullable().default(null),
+        max: z.number().min(0).nullable().default(null),
+      }),
+    )
+    .default({}),
   bankTransferInstructions: z.string().default(''),
   cashInstructions: z.string().default(''),
   // Whether those same words also appear on the checkout page the moment the
@@ -625,4 +647,30 @@ export async function getAvailablePaymentMethods(): Promise<string[]> {
   }
 
   return sortPaymentMethods(available, resolvePaymentMethodOrder(config))
+}
+
+// The same list, narrowed to the methods this shop is willing to take an order
+// of THIS SIZE with - see lib/payments/order-value-limits.ts. `total` is what
+// the customer pays, VAT and delivery included; null where nothing has worked
+// one out yet, which allows everything.
+//
+// Kept apart from getAvailablePaymentMethods deliberately: that answer is
+// shop-wide and cacheable (the public config route holds it for seconds at a
+// time, for every shopper at once), and this one is about one basket.
+export async function getPaymentMethodsForOrderValue(total: number | null): Promise<string[]> {
+  const config = await getShopConfigCached()
+  const available = await getAvailablePaymentMethods()
+  return filterMethodsByOrderValue(available, config.paymentMethodOrderValueLimits, total)
+}
+
+/** Why a method was refused for an order of this size, in the shopper's terms.
+ *  Null where the method has no limits, or the order is inside them. */
+export async function orderValueRefusal(method: string, total: number | null): Promise<string | null> {
+  const config = await getShopConfigCached()
+  const limit = orderValueLimitFor(config.paymentMethodOrderValueLimits, method)
+  if (isWithinOrderValueLimit(limit, total)) return null
+  const sentence = orderValueLimitSentence(limit, (amount) => formatMoney(amount, config.currencySymbol))
+  return sentence
+    ? `That way of paying is only available for ${sentence}.`
+    : 'That way of paying is not available for an order of this size.'
 }

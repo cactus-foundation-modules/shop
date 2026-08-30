@@ -14,6 +14,9 @@ const providers = vi.hoisted(() => vi.fn())
 vi.mock('@/modules/shop/lib/config', () => ({
   getShopConfigCached: vi.fn(),
   getAvailablePaymentMethods: availableMethods,
+  // Only assertPayableOnline reaches for this, and only to word a refusal these
+  // tests never ask for - but a missing export is a missing export.
+  orderValueRefusal: vi.fn(async () => null),
 }))
 
 vi.mock('@/modules/shop/lib/payments/registry', () => ({
@@ -54,6 +57,9 @@ const unpaidBankTransfer = {
   paymentStatus: 'AWAITING_CONFIRMATION' as const,
   paymentMethod: 'BANK_TRANSFER',
   originalPaymentMethod: null,
+  // Only the per-method size limits read this, and the config these tests hand
+  // in sets none - so any figure does, as long as there is one.
+  total: '250.00',
 }
 
 beforeEach(() => {
@@ -76,6 +82,7 @@ describe('settlementMethod', () => {
   it('is the method that actually paid, once something has', () => {
     expect(settlementMethod({
       status: 'PROCESSING', paymentStatus: 'PAID', paymentMethod: 'SQUARE', originalPaymentMethod: 'BANK_TRANSFER',
+      total: '250.00',
     })).toBe('SQUARE')
   })
 })
@@ -140,6 +147,24 @@ describe('payOnlineMethodsForOrder', () => {
     )
     // BANK_TRANSFER is what it was placed on, so it is not on offer - but the
     // half-finished GoCardless attempt is perfectly fine to start again.
+    expect(methods.map((m) => m.id)).toEqual(['SQUARE', 'GOCARDLESS_IBP'])
+  })
+
+  it('leaves out a method this order is too small for', async () => {
+    // The £571 rule the shop set at checkout holds here too: a £250 order is
+    // below GoCardless's floor, so settling it that way was never on offer.
+    const methods = await payOnlineMethodsForOrder(
+      unpaidBankTransfer,
+      asConfig({ paymentMethodOrderValueLimits: { GOCARDLESS_IBP: { min: 571.01, max: null } } }),
+    )
+    expect(methods.map((m) => m.id)).toEqual(['SQUARE'])
+  })
+
+  it('offers it again once the order is big enough', async () => {
+    const methods = await payOnlineMethodsForOrder(
+      { ...unpaidBankTransfer, total: '600.00' },
+      asConfig({ paymentMethodOrderValueLimits: { GOCARDLESS_IBP: { min: 571.01, max: null } } }),
+    )
     expect(methods.map((m) => m.id)).toEqual(['SQUARE', 'GOCARDLESS_IBP'])
   })
 

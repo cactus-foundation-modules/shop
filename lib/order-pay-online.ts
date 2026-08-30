@@ -16,7 +16,10 @@
 //
 // What this file decides is only WHETHER and WHICH. The routes under
 // app/api/public/orders/[id]/pay do the taking.
-import { getShopConfigCached, getAvailablePaymentMethods, type ShpConfig } from '@/modules/shop/lib/config'
+import {
+  getShopConfigCached, getAvailablePaymentMethods, orderValueRefusal, type ShpConfig,
+} from '@/modules/shop/lib/config'
+import { filterMethodsByOrderValue } from '@/modules/shop/lib/payments/order-value-limits'
 import {
   getPaymentProvider, getAllPaymentProviders, resolveProviderLabel, resolvePaymentMethodDescriptions,
 } from '@/modules/shop/lib/payments/registry'
@@ -27,7 +30,10 @@ import type { ShpOrder } from '@/modules/shop/lib/types'
 /** Enough of an order to decide any of this. Kept narrow so the checks can be
  *  reasoned about (and tested) without a whole order row. */
 export type PayableOrder = Pick<
-  ShpOrder, 'status' | 'paymentStatus' | 'paymentMethod' | 'originalPaymentMethod'
+  // `total` is here for the per-method size limits: a shop that only takes
+  // instant bank payment above a certain figure means it here too, not only at
+  // checkout. Held as a decimal string, as every money column is.
+  ShpOrder, 'status' | 'paymentStatus' | 'paymentMethod' | 'originalPaymentMethod' | 'total'
 >
 
 /** One method on offer, in the shape the order page draws it. */
@@ -84,7 +90,15 @@ export async function payOnlineMethodsForOrder(
 ): Promise<PayOnlineMethod[]> {
   if (!(await orderAcceptsOnlinePayment(order, config))) return []
 
-  const available = await getAvailablePaymentMethods()
+  // Narrowed to what an order of this size may be settled with, exactly as the
+  // checkout narrows it - see lib/payments/order-value-limits.ts. An order below
+  // a method's floor was never going to be taken by it, and offering it on the
+  // order page only moves the refusal further along.
+  const available = filterMethodsByOrderValue(
+    await getAvailablePaymentMethods(),
+    config.paymentMethodOrderValueLimits,
+    Number(order.total),
+  )
   const placed = settlementMethod(order)
   const descriptions = resolvePaymentMethodDescriptions(config.paymentMethodDescriptions)
   const hidden = config.hiddenPaymentMethodLogos
@@ -135,7 +149,11 @@ export async function assertPayableOnline(
   }
   const methods = await payOnlineMethodsForOrder(order, config)
   if (!methods.some((candidate) => candidate.id === method)) {
-    return { ok: false, status: 400, error: 'That way of paying is not available for this order.' }
+    // Where the method was ruled out on the size of the order, say so in those
+    // terms: "not available for this order" on a £40 order that needs £571 of
+    // goods to qualify tells the customer nothing they can act on.
+    const refusal = await orderValueRefusal(method, Number(order.total))
+    return { ok: false, status: 400, error: refusal ?? 'That way of paying is not available for this order.' }
   }
   return { ok: true }
 }
