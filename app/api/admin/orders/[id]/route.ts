@@ -6,6 +6,8 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, setOrderCustomerReference } from '@/modules/shop/lib/db/orders'
 import { listRefundsForOrder, listRefundItemsForOrder } from '@/modules/shop/lib/db/refunds'
 import { listDownloadsForOrder } from '@/modules/shop/lib/db/digital'
+import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
+import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
 
 // Everything the order screen shows in one call, apart from dispatch progress -
 // that rides on its own route so the dispatch block can refresh itself after a
@@ -47,7 +49,19 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   // and the storefront each having a name of their own for the same field.
   const customerReferenceLabel = config.customerReferenceLabel.trim() || 'Purchase order number'
 
-  return NextResponse.json({ order, items, notes, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel })
+  // What the refund modal is allowed to promise about the money. Taken from the
+  // provider that took the payment rather than from a list of method names kept
+  // in the modal: that list had two entries in it and told the owner of every
+  // other method that their refund was going back through PayPal. `refundMode`
+  // defaults to 'provider', exactly as the contract says. Null where no provider
+  // is registered for the method at all - the contributing module has been
+  // removed, say - and the modal then promises nothing in either direction.
+  const provider = getPaymentProvider(order.paymentMethod)
+  const refundNotice: ShpRefundNoticeSource = provider
+    ? { mode: provider.refundMode ?? 'provider', label: provider.label }
+    : null
+
+  return NextResponse.json({ order, items, notes, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, refundNotice })
 }
 
 const PatchBody = z.object({

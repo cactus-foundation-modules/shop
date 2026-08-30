@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { RefundModal } from '@/modules/shop/components/admin/RefundModal'
+import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
 import { DispatchModal } from '@/modules/shop/components/admin/DispatchModal'
 import { EmailCustomerModal } from '@/modules/shop/components/admin/EmailCustomerModal'
 import { ordersScreenCss } from '@/modules/shop/components/admin/orders-screen-css'
@@ -61,6 +62,10 @@ type OrderDetail = {
   // What this shop calls that reference. Sent with the order so the screen and
   // the checkout call it the same thing.
   customerReferenceLabel?: string
+  // How the provider that took this payment handles refunds, worked out on the
+  // server where the provider registry lives. Optional so a response from an
+  // older deployment still renders.
+  refundNotice?: ShpRefundNoticeSource
 }
 
 // Dispatch progress is worked out from the shipment lines every time it is
@@ -1066,6 +1071,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
           orderId={orderId}
           items={data.items}
           paymentMethod={order.paymentMethod}
+          refundNotice={data.refundNotice}
           taxMode={order.taxMode === 'INCLUSIVE' ? 'INCLUSIVE' : 'EXCLUSIVE'}
           onClose={() => setRefundOpen(false)}
           onDone={() => { setRefundOpen(false); refresh() }}

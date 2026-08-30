@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
+import { refundNoticeText, type ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
 
 type OrderItem = { id: string; productName: string; quantity: number; unitPrice: string; total: string; taxAmount: string; refundedQty: number; isPreOrder: boolean }
 
@@ -17,25 +18,29 @@ function grossPerUnit(item: OrderItem, taxOnTop: boolean): number {
   return item.quantity > 0 ? gross / item.quantity : Number(item.unitPrice)
 }
 
-const MANUAL_METHOD_COPY: Record<string, string> = {
-  BANK_TRANSFER:
-    'This is a bank transfer order. Recording it here takes the items off the order, credits your books and sends the customer a credit note - but the money itself is yours to send. Nothing leaves your bank account by pressing this.',
-  CASH:
-    'This is a cash order. Recording it here takes the items off the order, credits your books and sends the customer a credit note - but the cash itself is yours to hand back.',
-}
-
 // Per-item refund modal: quantity per item pre-filled against the remaining
 // refundable amount, a reason, and provider-aware copy for manual methods.
-export function RefundModal({ orderId, items, paymentMethod, taxMode, onClose, onDone }: {
+export function RefundModal({ orderId, items, paymentMethod, refundNotice, taxMode, onClose, onDone }: {
   orderId: string
   items: OrderItem[]
   paymentMethod: string
+  // How the provider that took this payment handles refunds, from the order
+  // route. Optional so an older response - or a screen that has not been taught
+  // to pass it - still renders: the wording then promises nothing rather than
+  // guessing, which is the whole point of the change.
+  refundNotice?: ShpRefundNoticeSource
   taxMode: 'INCLUSIVE' | 'EXCLUSIVE'
   onClose: () => void
   onDone: () => void
 }) {
   const taxOnTop = taxMode === 'EXCLUSIVE'
   const currencySymbol = useCurrencySymbol()
+  const notice = refundNoticeText(paymentMethod, refundNotice ?? null)
+  // A refund somebody has to send themselves is the one worth reading, so it
+  // keeps the boxed treatment the two hardcoded methods used to get - and now
+  // any provider that declares itself manual gets it, as does a method whose
+  // provider cannot be found at all, where the owner has something to check.
+  const isManualRefund = !refundNotice || refundNotice.mode === 'manual'
   const refundable = items.filter((i) => i.refundedQty < i.quantity)
   const [quantities, setQuantities] = useState<Record<string, number>>(Object.fromEntries(refundable.map((i) => [i.id, 0])))
   const [reason, setReason] = useState('')
@@ -83,11 +88,10 @@ export function RefundModal({ orderId, items, paymentMethod, taxMode, onClose, o
           <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--color-text-secondary)' }}>×</button>
         </div>
         <div style={{ padding: '1.25rem', overflowY: 'auto', display: 'grid', gap: '0.75rem' }}>
-          {MANUAL_METHOD_COPY[paymentMethod] && (
-            <p style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>{MANUAL_METHOD_COPY[paymentMethod]}</p>
-          )}
-          {!MANUAL_METHOD_COPY[paymentMethod] && (
-            <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>This will be refunded automatically via {paymentMethod === 'STRIPE' ? 'Stripe' : 'PayPal'}.</p>
+          {isManualRefund ? (
+            <p style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>{notice}</p>
+          ) : (
+            <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>{notice}</p>
           )}
           {error && <p style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}>{error}</p>}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
