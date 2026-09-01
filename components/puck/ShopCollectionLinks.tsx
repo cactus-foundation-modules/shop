@@ -78,8 +78,9 @@ export const shopCollectionLinksPuckComponent = {
       ],
     },
     allLabel: { type: 'text' as const, label: '"View all" link wording (blank for none)' },
+    allHref: { type: 'text' as const, label: '"View all" link destination' },
     ...colourFields,
   },
-  defaultProps: { title: 'Collections', count: 6, layout: 'stacked', allLabel: 'View all collections', textColor: '', linkColor: '', linkHoverColor: '', bulletColor: '' },
+  defaultProps: { title: 'Collections', count: 6, layout: 'stacked', allLabel: 'View all collections', allHref: '/collections', textColor: '', linkColor: '', linkHoverColor: '', bulletColor: '' },
   render: ShopCollectionLinks,
 }

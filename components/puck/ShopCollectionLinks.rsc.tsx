@@ -24,6 +24,10 @@ export async function ShopCollectionLinksRsc(props: RscProps) {
   // trips the Next.js no-html-link-for-pages lint rule that a computed one
   // doesn't.
   const base = '/shop/collections'
+  // The "view all" link is its own destination: the individual links go to the
+  // shop's collection pages, but the site's index of them is a page the owner
+  // builds, so it is a field rather than `base` with the slug lopped off.
+  const allHref = typeof props.allHref === 'string' && props.allHref.trim() ? props.allHref.trim() : '/collections'
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: shopCollectionLinksCss(props.id, props) }} />
@@ -38,7 +42,7 @@ export async function ShopCollectionLinksRsc(props: RscProps) {
           {links.map((c) => (
             <li key={c.slug}><a href={`${base}/${c.slug}`}>{c.name}</a></li>
           ))}
-          {props.allLabel ? <li><a href={base}>{props.allLabel}</a></li> : null}
+          {props.allLabel ? <li><a href={allHref}>{props.allLabel}</a></li> : null}
         </ul>
       </nav>
     </>

@@ -8,6 +8,7 @@ export type ShopCollectionLinksProps = {
   count?: number
   layout?: string
   allLabel?: string
+  allHref?: string
   textColor?: string
   linkColor?: string
   linkHoverColor?: string
