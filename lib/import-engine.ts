@@ -40,6 +40,7 @@ type ImportFields = Partial<{
   relatedMode: ShpRecommendationMode; upsellMode: ShpRecommendationMode; relatedLimit: number; upsellLimit: number
   metaTitle: string | null; metaDescription: string | null; barcode: string | null
   supplier: string | null; saleSku: string | null; supplierSku: string | null
+  featuredHidden: boolean
 }>
 
 // Fields stored as SQL numeric, so Prisma hands them back as decimal strings
@@ -316,6 +317,10 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       // point of this column is that the two are allowed to differ.
       put('sale_sku', 'saleSku', cell(row, 'sale_sku') || null)
       put('supplier_sku', 'supplierSku', cell(row, 'supplier_sku') || null)
+      // Anything other than a plain "true" is read as "show it": a blank cell in
+      // a sheet is far more often an owner who never touched the column than one
+      // asking for the product to be hidden.
+      put('featured_hidden', 'featuredHidden', cell(row, 'featured_hidden').toLowerCase() === 'true')
       // Smallest order. A sheet saying 1 (or 0) means "no minimum", so it lands
       // as null rather than as a figure every reader then has to see past.
       put('min_order_quantity', 'minOrderQuantity', (() => {

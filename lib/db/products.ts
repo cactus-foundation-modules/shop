@@ -53,6 +53,7 @@ function mapProduct(r: Record<string, unknown>): ShpProduct {
     relatedLimit: r.related_limit as number,
     upsellLimit: r.upsell_limit as number,
     catalogueHidden: (r.catalogue_hidden as boolean | null) ?? false,
+    featuredHidden: (r.featured_hidden as boolean | null) ?? false,
     popularitySeed: (r.popularity_seed as number | null) ?? null,
     popularity: (r.popularity as number | null) ?? null,
     createdAt: r.created_at as Date,
@@ -339,6 +340,11 @@ export type ListProductsFilter = {
   // grid, search and admin product list pass true; variations' own queries
   // pass false to reach the children.
   excludeHidden?: boolean
+  // Leave out the products whose owner has ticked "keep off the featured
+  // shelves". Only the promotional shelves pass true - a category page, a
+  // search, the sitemap and the admin list all still show them, which is the
+  // whole difference between this and excludeHidden above.
+  excludeFeaturedHidden?: boolean
   // The ceiling `perPage` is clamped to. Defaults to DEFAULT_MAX_PER_PAGE, which
   // is what every caller got before this existed, so nothing moves by adding it.
   //
@@ -381,6 +387,7 @@ export async function listProducts(filter: ListProductsFilter): Promise<{ produc
   if (filter.stock === 'low') conditions.push(Prisma.sql`(p."track_inventory" = true AND p."low_stock_threshold" IS NOT NULL AND p."stock_count" IS NOT NULL AND p."stock_count" > 0 AND p."stock_count" <= p."low_stock_threshold")`)
   if (filter.stock === 'in') conditions.push(Prisma.sql`(p."track_inventory" = true AND p."stock_count" IS NOT NULL AND p."stock_count" > 0 AND (p."low_stock_threshold" IS NULL OR p."stock_count" > p."low_stock_threshold"))`)
   if (filter.excludeHidden) conditions.push(Prisma.sql`p."catalogue_hidden" = false`)
+  if (filter.excludeFeaturedHidden) conditions.push(Prisma.sql`p."featured_hidden" = false`)
   if (filter.storefront) {
     // In the WHERE rather than filtered out of the rows afterwards, so a page of
     // 24 is 24 products and the total underneath it counts the same ones.
@@ -503,6 +510,7 @@ export type CreateProductInput = {
   upsellLimit?: number | null
   // Create the row hidden from the catalogue (used for variation child products).
   catalogueHidden?: boolean
+  featuredHidden?: boolean
 }
 
 export async function createProduct(data: CreateProductInput): Promise<{ id: string }> {
@@ -514,7 +522,7 @@ export async function createProduct(data: CreateProductInput): Promise<{ id: str
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
       "download_limit", "download_expiry", "meta_title", "meta_description",
       "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity", "min_order_quantity",
-      "related_mode", "upsell_mode", "related_limit", "upsell_limit", "catalogue_hidden"
+      "related_mode", "upsell_mode", "related_limit", "upsell_limit", "catalogue_hidden", "featured_hidden"
     ) VALUES (
       ${data.name}, ${data.slug}, ${data.type}, ${data.status ?? 'DRAFT'}, ${data.description ?? null}, ${data.shortDescription ?? null}, ${data.sku ?? null}, ${data.saleSku ?? null}, ${data.supplierSku ?? null}, ${data.barcode ?? null}, ${data.supplier ?? null},
       ${data.price}, ${data.salePrice ?? null}, ${data.retailPrice ?? null}, ${data.tradePrice ?? null}, ${data.costPrice ?? null}, ${data.taxClassId ?? null},
@@ -522,7 +530,7 @@ export async function createProduct(data: CreateProductInput): Promise<{ id: str
       ${data.weight ?? null}, ${data.weightUnit ?? null}, ${data.dimensionL ?? null}, ${data.dimensionW ?? null}, ${data.dimensionH ?? null}, ${data.dimensionUnit ?? null},
       ${data.downloadLimit ?? null}, ${data.downloadExpiry ?? null}, ${data.metaTitle ?? null}, ${data.metaDescription ?? null},
       ${data.isPreOrder ?? false}, ${data.preOrderDispatchDate ?? null}, ${data.preOrderNote ?? null}, ${data.preOrderMaxQuantity ?? null}, ${data.minOrderQuantity ?? null},
-      ${data.relatedMode ?? 'AUTOMATIC'}, ${data.upsellMode ?? 'AUTOMATIC'}, ${data.relatedLimit ?? 4}, ${data.upsellLimit ?? 4}, ${data.catalogueHidden ?? false}
+      ${data.relatedMode ?? 'AUTOMATIC'}, ${data.upsellMode ?? 'AUTOMATIC'}, ${data.relatedLimit ?? 4}, ${data.upsellLimit ?? 4}, ${data.catalogueHidden ?? false}, ${data.featuredHidden ?? false}
     )
     RETURNING "id"
   `
@@ -577,6 +585,7 @@ export type UpdateProductInput = Partial<{
   relatedLimit: number
   upsellLimit: number
   catalogueHidden: boolean
+  featuredHidden: boolean
 }>
 
 // descriptionPuck is jsonb and needs an explicit ::jsonb cast, so it is set by a
@@ -594,6 +603,7 @@ const COLUMN_MAP: Record<Exclude<keyof UpdateProductInput, 'descriptionPuck'>, s
   preOrderMaxQuantity: 'pre_order_max_quantity', minOrderQuantity: 'min_order_quantity',
   relatedMode: 'related_mode', upsellMode: 'upsell_mode',
   relatedLimit: 'related_limit', upsellLimit: 'upsell_limit', catalogueHidden: 'catalogue_hidden',
+  featuredHidden: 'featured_hidden',
 }
 
 export async function updateProduct(id: string, fields: UpdateProductInput): Promise<void> {
@@ -756,6 +766,9 @@ export async function getPrimaryProductImages(productIds: string[]): Promise<Rec
 // Copies media, category/tag/collection membership and the manual
 // recommendation lists. catalogue_hidden is omitted from the INSERT so the copy
 // defaults to visible - a duplicate is a real product, never a variant child.
+// featured_hidden does come across: it is the owner's own decision about the
+// product, and a copy of something kept off the shelves is meant to be kept off
+// the shelves too.
 // Returns the new id, or null if the source is gone.
 export async function duplicateProduct(sourceId: string, next: { name: string; slug: string }): Promise<{ id: string } | null> {
   const created = await prisma.$queryRaw<{ id: string }[]>`
@@ -767,7 +780,7 @@ export async function duplicateProduct(sourceId: string, next: { name: string; s
       "digital_file_id", "download_limit", "download_expiry",
       "meta_title", "meta_description", "og_image_id", "master_category_id",
       "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity", "min_order_quantity",
-      "related_mode", "upsell_mode", "related_limit", "upsell_limit"
+      "related_mode", "upsell_mode", "related_limit", "upsell_limit", "featured_hidden"
     )
     SELECT
       ${next.name}, ${next.slug}, "type", 'DRAFT', "description", "short_description", NULL, "sale_sku", "supplier_sku", "barcode", "supplier",
@@ -777,7 +790,7 @@ export async function duplicateProduct(sourceId: string, next: { name: string; s
       "digital_file_id", "download_limit", "download_expiry",
       "meta_title", "meta_description", "og_image_id", "master_category_id",
       "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity", "min_order_quantity",
-      "related_mode", "upsell_mode", "related_limit", "upsell_limit"
+      "related_mode", "upsell_mode", "related_limit", "upsell_limit", "featured_hidden"
     FROM "shp_products" WHERE "id" = ${sourceId}
     RETURNING "id"
   `

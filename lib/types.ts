@@ -175,6 +175,11 @@ export type ShpProduct = {
   // Purchasable but hidden from the catalogue (grid/search/sitemap/own URL).
   // Backs shop-variations child rows; false for ordinary products.
   catalogueHidden: boolean
+  // The owner's tick for "keep this one off the featured shelves" - the
+  // promotional blocks a page carries (Best sellers, Just in, Staff picks, On
+  // offer). Everything else still lists it: categories, collections, tags,
+  // search, the sitemap and its own page. false for all but the odd product.
+  featuredHidden: boolean
   // Best-seller ordering (lib/popularity.ts). The seed is given, the other is
   // derived from it plus real sales and is what the grids sort on. Higher is
   // better; null means nothing has ranked this product either way.

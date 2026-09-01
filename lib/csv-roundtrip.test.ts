@@ -141,6 +141,7 @@ describe('product CSV format coverage', () => {
       'download_limit', 'download_expiry', 'is_pre_order', 'pre_order_dispatch_date',
       'pre_order_note', 'pre_order_max_quantity', 'related_mode', 'related_limit',
       'upsell_mode', 'upsell_limit', 'min_order_quantity', 'supplier_sku',
+      'featured_hidden',
     ]) {
       expect(CSV_COLUMNS).toContain(column)
     }
@@ -172,6 +173,6 @@ describe('product CSV format coverage', () => {
     // Leading zeros are meaningful on both, so neither may become a number.
     expect(NUMERIC_CSV_COLUMNS).not.toContain('sku')
     expect(NUMERIC_CSV_COLUMNS).not.toContain('barcode')
-    expect(BOOLEAN_CSV_COLUMNS).toEqual(['track_inventory', 'is_pre_order'])
+    expect(BOOLEAN_CSV_COLUMNS).toEqual(['track_inventory', 'is_pre_order', 'featured_hidden'])
   })
 })

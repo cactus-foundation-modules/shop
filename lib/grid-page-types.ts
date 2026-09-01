@@ -23,6 +23,11 @@ export type ShopGridScope = {
   sort?: string
   /** The block's own ceiling, already clamped by the caller. */
   fetchCount: number
+  /** Leave out the products an owner has kept off the featured shelves. The
+   *  showcase blocks pass true; a browse-and-filter grid does not, because a
+   *  shopper narrowing a category is not being shown a showcase. Absent means
+   *  false, which is what every scope meant before this existed. */
+  excludeFeaturedHidden?: boolean
 }
 
 /** Which slice of the scope's products a caller wants cards for. Shop's own grid

@@ -86,6 +86,7 @@ export async function buildProductCsvRows(opts?: { status?: ShpProductStatus; ca
       sale_sku: p.saleSku ?? '',
       supplier_sku: p.supplierSku ?? '',
       min_order_quantity: num(p.minOrderQuantity),
+      featured_hidden: String(p.featuredHidden),
     })
   }
   return rows

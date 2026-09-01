@@ -48,6 +48,7 @@ export async function listGridProducts(scope: ShopGridScope): Promise<ShpProduct
     // spelling it out here keeps the two callers honest.
     ...(scope.sort ? { sort: scope.sort as ProductSort } : {}),
     excludeHidden: true,
+    excludeFeaturedHidden: scope.excludeFeaturedHidden === true,
     storefront: true,
   })
   return products

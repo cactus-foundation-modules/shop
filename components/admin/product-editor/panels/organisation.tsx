@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Field, Grid, Section, Select } from '@/modules/shop/components/admin/product-editor/fields'
+import { Field, Grid, Section, Select, Switch } from '@/modules/shop/components/admin/product-editor/fields'
 import type { CategoryTerm, EditorState, PanelProps, TagTerm, Term } from '@/modules/shop/components/admin/product-editor/model'
 
 function toggle(list: string[], id: string): string[] {
@@ -153,6 +153,15 @@ export function OrganisationPanel({ state, setField, patch, categories, tags, co
 
       <Section title="Collections" blurb="Hand-picked groupings, like Summer Sale or Staff Picks.">
         <CheckList items={collections} selected={state.collectionIds} onToggle={setIds('collectionIds')} empty="No collections yet. Add some under Shop, then Collections." />
+      </Section>
+
+      <Section title="Featured shelves" blurb="The showcase rows a page puts up front - Best sellers, Just in, Staff picks, On offer and the like.">
+        <Switch
+          checked={f.featuredHidden}
+          onChange={(v) => setField('featuredHidden', v)}
+          label="Keep this product off the featured shelves"
+          hint="It carries on as normal everywhere else: its categories, collections, tags, search and its own page. This only stops it being paraded on a showcase row."
+        />
       </Section>
     </div>
   )

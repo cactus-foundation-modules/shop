@@ -29,6 +29,9 @@ export const CSV_COLUMNS = [
   // for the same column-order reason as `sale_sku` above. Text, never numeric -
   // a supplier code is free to carry leading zeros.
   'supplier_sku',
+  // The owner's "keep this one off the featured shelves" tick. Appended for the
+  // same column-order reason as `sale_sku` above.
+  'featured_hidden',
 ] as const
 
 export type CsvColumn = (typeof CSV_COLUMNS)[number]
@@ -49,7 +52,7 @@ const OPTIONAL_CSV_COLUMNS: readonly CsvColumn[] = [
   'download_limit', 'download_expiry',
   'is_pre_order', 'pre_order_dispatch_date', 'pre_order_note', 'pre_order_max_quantity',
   'related_mode', 'related_limit', 'upsell_mode', 'upsell_limit',
-  'supplier', 'sale_sku', 'min_order_quantity', 'supplier_sku',
+  'supplier', 'sale_sku', 'min_order_quantity', 'supplier_sku', 'featured_hidden',
 ]
 
 // Columns whose values are numbers, not text. The CSV writer does not care (every
@@ -63,7 +66,7 @@ export const NUMERIC_CSV_COLUMNS: readonly CsvColumn[] = [
 
 // Columns whose values are booleans. `sku` and `barcode` are excluded from the
 // numeric list on purpose - they are identifiers that may carry leading zeros.
-export const BOOLEAN_CSV_COLUMNS: readonly CsvColumn[] = ['track_inventory', 'is_pre_order']
+export const BOOLEAN_CSV_COLUMNS: readonly CsvColumn[] = ['track_inventory', 'is_pre_order', 'featured_hidden']
 
 // The three media kinds shp_product_media.type may hold. Kept here (not just in
 // the DB CHECK) because the CSV format encodes the kind as a `TYPE:url` prefix.

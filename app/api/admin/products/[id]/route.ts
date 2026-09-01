@@ -77,6 +77,10 @@ const Body = z.object({
   // The fewest the shop will sell in one go. Null clears it; 1 and below mean
   // the same thing as null and are normalised on the way in.
   minOrderQuantity: z.number().int().nullable().optional(),
+  // "Keep this one off the featured shelves." Nothing to do with
+  // catalogueHidden, which is shop-variations' own state and is not editable
+  // from here at all.
+  featuredHidden: z.boolean().optional(),
   regenerateSlug: z.boolean().optional(),
   media: z.array(MediaItem).optional(),
   categoryIds: z.array(z.string()).optional(),

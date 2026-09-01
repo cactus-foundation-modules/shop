@@ -42,6 +42,13 @@ export type ShopProductGridProps = {
   // 1 unless `?page=` says otherwise. See lib/page-href.ts for why the link a
   // crawler follows and the scroll a shopper does are the same control.
   page?: number
+  // What to do with the products whose owner has ticked "keep this off the
+  // featured shelves" on the product itself. Blank - which is every grid saved
+  // before this existed - means leave them out, because that is the whole point
+  // of the tick and nobody has ticked one on the day this ships. 'include' is
+  // the escape hatch for a grid being used as a plain catalogue listing rather
+  // than a showcase row.
+  hiddenProducts?: string
 }
 
 // Section heading above the grid - shared by both halves so the editor canvas
@@ -139,6 +146,10 @@ export const shopProductGridPuckComponent = {
     ] },
     moreLabel: { type: 'text' as const, label: '"Show more" button label' },
     countTemplate: { type: 'text' as const, label: 'Count wording ({shown} and {total}, blank for none)' },
+    hiddenProducts: { type: 'select' as const, label: 'Products kept off the featured shelves', options: [
+      { value: 'exclude', label: 'Leave them out' },
+      { value: 'include', label: 'Show them here anyway' },
+    ] },
     emptyText: { type: 'text' as const, label: 'Wording when there are no products' },
     layoutRef: layoutField,
   },
@@ -147,6 +158,6 @@ export const shopProductGridPuckComponent = {
   // anybody having to find the setting. `limit: 12` is the opening screenful for
   // the same reason. Neither touches a layout already saved - defaults apply to
   // a block being added, not to one already on a page.
-  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, pageLoad: 'ondemand', moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', emptyText: 'No products to show yet.', layoutRef: null },
+  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, pageLoad: 'ondemand', moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', hiddenProducts: 'exclude', emptyText: 'No products to show yet.', layoutRef: null },
   render: ShopProductGrid,
 }

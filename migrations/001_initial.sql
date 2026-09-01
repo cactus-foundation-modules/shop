@@ -178,6 +178,12 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
     -- purchasable. Backs the shop-variations child rows; false for everything else.
     "catalogue_hidden" BOOLEAN NOT NULL DEFAULT false,
 
+    -- The owner's own "keep this one off the featured shelves" tick. Nothing to
+    -- do with catalogue_hidden above: the product stays in its categories,
+    -- collections, search and its own page, it just never appears on a
+    -- promotional shelf (Best sellers, Just in, Staff picks, On offer).
+    "featured_hidden" BOOLEAN NOT NULL DEFAULT false,
+
     -- Best-seller ordering. The seed is given (an imported supplier rank, an
     -- owner's hand-set favourite), the other is derived from it plus real sales
     -- and is what everything sorts on. Higher is better, NULL is "no opinion".
@@ -206,6 +212,7 @@ CREATE INDEX IF NOT EXISTS "shp_products_tax_class_id_idx" ON "shp_products" ("t
 CREATE INDEX IF NOT EXISTS "shp_products_digital_file_id_idx" ON "shp_products" ("digital_file_id");
 CREATE INDEX IF NOT EXISTS "shp_products_is_pre_order_idx" ON "shp_products" ("is_pre_order");
 CREATE INDEX IF NOT EXISTS "shp_products_catalogue_hidden_idx" ON "shp_products" ("catalogue_hidden");
+CREATE INDEX IF NOT EXISTS "shp_products_featured_hidden_idx" ON "shp_products" ("featured_hidden");
 
 -- ---------------------------------------------------------------------------
 -- Product media

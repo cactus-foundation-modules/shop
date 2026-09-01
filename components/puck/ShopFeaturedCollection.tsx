@@ -11,6 +11,10 @@ export type ShopFeaturedCollectionProps = {
   sort?: string
   showViewAll?: string
   viewAllLabel?: string
+  // Products whose owner has ticked "keep this off the featured shelves". Blank
+  // means leave them out, which is what this block is for; 'include' is there
+  // for a collection row being used as a plain listing. See ShopProductGrid.tsx.
+  hiddenProducts?: string
 }
 
 export function ShopFeaturedCollection(props: ShopFeaturedCollectionProps) {
@@ -39,9 +43,13 @@ export const shopFeaturedCollectionPuckComponent = {
       { value: 'price-desc', label: 'Price - high to low' },
       { value: 'name-asc', label: 'Name - A to Z' },
     ] },
+    hiddenProducts: { type: 'select' as const, label: 'Products kept off the featured shelves', options: [
+      { value: 'exclude', label: 'Leave them out' },
+      { value: 'include', label: 'Show them here anyway' },
+    ] },
     showViewAll: { type: 'select' as const, label: 'Link to the full collection', options: [{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }] },
     viewAllLabel: { type: 'text' as const, label: 'Link wording' },
   },
-  defaultProps: { collectionSlug: '', heading: '', subheading: '', layout: 'Grid', limit: 4, sort: 'newest', showViewAll: 'no', viewAllLabel: 'View all' },
+  defaultProps: { collectionSlug: '', heading: '', subheading: '', layout: 'Grid', limit: 4, sort: 'newest', hiddenProducts: 'exclude', showViewAll: 'no', viewAllLabel: 'View all' },
   render: ShopFeaturedCollection,
 }

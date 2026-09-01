@@ -41,6 +41,8 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
     // newest), so the block prop can pass straight through.
     sort: props.sort || 'newest',
     fetchCount,
+    // Absent means leave them out - see the prop's note in ShopProductGrid.tsx.
+    excludeFeaturedHidden: props.hiddenProducts !== 'include',
   }
 
   const [bp, products, template] = await Promise.all([
