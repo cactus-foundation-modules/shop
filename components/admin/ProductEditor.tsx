@@ -388,6 +388,7 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
     if (!res.ok) { await alert('Could not duplicate this product.'); return }
     const { id } = await res.json()
     dirtyRef.current = false
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- see the note above - hard load on purpose, and adminPath is resolved server-side
     window.location.href = `/${adminPath}/m/shop/products/${id}`
   }, [productId, adminPath, alert, dirtyRef])
 
@@ -401,6 +402,7 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
     const res = await fetch(`/api/m/shop/admin/products/${productId}`, { method: 'DELETE' })
     if (!res.ok) { await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'Could not delete this product.'); return }
     dirtyRef.current = false
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- see the note above - hard load on purpose, and adminPath is resolved server-side
     window.location.href = `/${adminPath}/m/shop/products`
   }, [productId, adminPath, confirm, alert, dirtyRef])
 

@@ -614,6 +614,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         // The signed token, never the customer's email: a URL ends up in access
         // logs, browser history and the Referer sent to every third party this
         // page loads. See lib/order-receipt-token.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- see the note above - the cart subscription on this page must be torn down, not re-rendered
         window.location.href = `/shop/checkout/confirmation?orderNumber=${encodeURIComponent(prepared.orderNumber)}&t=${encodeURIComponent(prepared.receiptToken)}`
       } catch (err) {
         window.dispatchEvent(new CustomEvent('cactus-shop-order-error', { detail: err instanceof Error ? err.message : 'Payment failed' }))

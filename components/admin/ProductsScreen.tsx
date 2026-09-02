@@ -144,6 +144,7 @@ export function ProductsScreen({ toolbarExtras }: {
     })
     if (res.ok) {
       const { id } = await res.json()
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- adminPath is resolved server-side, so the admin shell has to render it again
       window.location.href = `/${adminPath}/m/shop/products/${id}`
     } else {
       await alert('Could not create the product.')
@@ -157,6 +158,7 @@ export function ProductsScreen({ toolbarExtras }: {
     setBusy(false)
     if (res.ok) {
       const { id } = await res.json()
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- adminPath is resolved server-side, so the admin shell has to render it again
       window.location.href = `/${adminPath}/m/shop/products/${id}`
     } else {
       await alert('Could not duplicate the product.')
@@ -411,7 +413,10 @@ export function ProductsScreen({ toolbarExtras }: {
         <>
           <div className="sps-menu-overlay" onClick={() => setMenuFor(null)} />
           <div className="sps-menu" role="menu" style={{ left: menuFor.x, top: menuFor.y }}>
-            <button role="menuitem" onClick={() => { window.location.href = `/${adminPath}/m/shop/products/${menuProduct.id}` }}>✏️ Edit</button>
+            <button role="menuitem" onClick={() => {
+              // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- adminPath is resolved server-side, so the admin shell has to render it again
+              window.location.href = `/${adminPath}/m/shop/products/${menuProduct.id}`
+            }}>✏️ Edit</button>
             <button role="menuitem" disabled={busy} onClick={() => duplicate(menuProduct)}>⧉ Duplicate</button>
             <div className="sps-menu-sep" />
             <button role="menuitem" className="sps-menu-danger" disabled={busy} onClick={() => remove(menuProduct)}>🗑 Delete</button>
