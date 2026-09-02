@@ -12,6 +12,9 @@ export type ShopProductGridProps = {
   categorySlug?: string
   collectionSlug?: string
   tagSlug?: string
+  /** Everything from one supplier. Filled in for you on a supplier's own page
+   *  (lib/inject-supplier-context.ts); typed by hand anywhere else. */
+  supplierSlug?: string
   limit?: number
   columns?: number
   showFilters?: string
@@ -111,6 +114,7 @@ export const shopProductGridPuckComponent = {
     categorySlug: { type: 'text' as const, label: 'Category slug (optional)' },
     collectionSlug: { type: 'text' as const, label: 'Collection slug (optional)' },
     tagSlug: { type: 'text' as const, label: 'Tag slug (optional)' },
+    supplierSlug: { type: 'text' as const, label: 'Supplier slug (optional)' },
     limit: { type: 'number' as const, label: 'Number of products' },
     columns: { type: 'number' as const, label: 'Columns' },
     // Order the shelf is stacked in. 'Newest first' is what the grid always did.
@@ -158,6 +162,6 @@ export const shopProductGridPuckComponent = {
   // anybody having to find the setting. `limit: 12` is the opening screenful for
   // the same reason. Neither touches a layout already saved - defaults apply to
   // a block being added, not to one already on a page.
-  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, pageLoad: 'ondemand', moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', hiddenProducts: 'exclude', emptyText: 'No products to show yet.', layoutRef: null },
+  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', supplierSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, pageLoad: 'ondemand', moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', hiddenProducts: 'exclude', emptyText: 'No products to show yet.', layoutRef: null },
   render: ShopProductGrid,
 }

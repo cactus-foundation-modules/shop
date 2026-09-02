@@ -37,6 +37,7 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
     categorySlug: props.categorySlug || undefined,
     collectionSlug: props.collectionSlug || undefined,
     tagSlug: props.tagSlug || undefined,
+    supplierSlug: props.supplierSlug || undefined,
     // listProducts whitelists the sort key itself (unknown values fall back to
     // newest), so the block prop can pass straight through.
     sort: props.sort || 'newest',

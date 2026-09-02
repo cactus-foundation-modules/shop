@@ -35,6 +35,31 @@ export const SupplierCatalogueInput = z.object({
 
 export const SupplierBody = z.object({
   name: z.string().min(1, 'Give the supplier a name').max(200).transform((v) => v.trim()),
+  // The supplier page's address. Blank falls back to the name, and the database
+  // layer both tidies the shape and settles collisions - see
+  // supplierSlugFromName / ensureUniqueSupplierSlug. Absent means "leave it
+  // alone", which is what a caller editing only contact details sends.
+  slug: optionalText(200),
+  storefrontVisible: z.boolean().optional(),
+  shortDescription: optionalText(300),
+  description: optionalText(20000),
+  // The designed write-up, saved by the pop-out page builder rather than the
+  // supplier form. Shape-checked to the same depth core checks a page document
+  // (app/api/admin/pages/[id]/publish) and no further: passthrough throughout,
+  // because the rest of a Puck document belongs to Puck, and an object schema
+  // that stripped unknown keys would quietly discard whatever Puck adds next.
+  // null blanks the design and hands the plain-text box back its job.
+  descriptionPuck: z
+    .object({
+      root: z.object({ props: z.record(z.unknown()).optional() }).passthrough(),
+      content: z.array(z.unknown()),
+      zones: z.record(z.unknown()).optional(),
+    })
+    .passthrough()
+    .nullable()
+    .optional(),
+  metaTitle: optionalText(200),
+  metaDescription: optionalText(500),
   accountNumber: optionalText(100),
   // null = no discount recorded, which is a different thing from a recorded 0%.
   discountPercent: z

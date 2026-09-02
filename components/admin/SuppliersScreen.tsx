@@ -12,6 +12,13 @@ type Catalogue = {
 type Supplier = {
   id: string
   name: string
+  slug: string | null
+  storefrontVisible: boolean
+  shortDescription: string | null
+  description: string | null
+  hasDesignedDescription: boolean
+  metaTitle: string | null
+  metaDescription: string | null
   accountNumber: string | null
   discountPercent: number | null
   status: 'ENABLED' | 'DISABLED'
@@ -31,6 +38,12 @@ type CatalogueRow = { name: string; sheetUrl: string }
 
 type SupplierForm = {
   name: string
+  slug: string
+  storefrontVisible: boolean
+  shortDescription: string
+  description: string
+  metaTitle: string
+  metaDescription: string
   accountNumber: string
   discountPercent: string
   status: 'ENABLED' | 'DISABLED'
@@ -43,7 +56,8 @@ type SupplierForm = {
 }
 
 const emptyForm: SupplierForm = {
-  name: '', accountNumber: '', discountPercent: '', status: 'ENABLED',
+  name: '', slug: '', storefrontVisible: false, shortDescription: '', description: '',
+  metaTitle: '', metaDescription: '', accountNumber: '', discountPercent: '', status: 'ENABLED',
   contactName: '', phone: '', email: '', address: '', notes: '', catalogues: [],
 }
 
@@ -51,7 +65,15 @@ function numOrNull(v: string): number | null {
   return v.trim() === '' ? null : Number(v)
 }
 
-export function SuppliersScreen({ label, enabled }: { label: string; enabled: boolean }) {
+export function SuppliersScreen({ label, enabled, pagesEnabled, adminPath }: {
+  label: string
+  enabled: boolean
+  /** Whether supplier pages are switched on shop-wide. Off, and the page fields
+   *  below are pointless furniture, so they are not shown at all. */
+  pagesEnabled: boolean
+  /** The install's own admin prefix, for linking out to the write-up builder. */
+  adminPath: string
+}) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loaded, setLoaded] = useState(false)
   const [form, setForm] = useState<SupplierForm | null>(null)
@@ -73,6 +95,12 @@ export function SuppliersScreen({ label, enabled }: { label: string; enabled: bo
       setEditingId(s.id)
       setForm({
         name: s.name,
+        slug: s.slug ?? '',
+        storefrontVisible: s.storefrontVisible,
+        shortDescription: s.shortDescription ?? '',
+        description: s.description ?? '',
+        metaTitle: s.metaTitle ?? '',
+        metaDescription: s.metaDescription ?? '',
         accountNumber: s.accountNumber ?? '',
         discountPercent: s.discountPercent == null ? '' : String(s.discountPercent),
         status: s.status,
@@ -147,6 +175,12 @@ export function SuppliersScreen({ label, enabled }: { label: string; enabled: bo
         </div>
       )}
 
+      {enabled && !pagesEnabled && (
+        <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
+          Supplier pages are switched off, so none of these has a page on your site. Turn them on under Settings, Shop, General and you can give any supplier a page of their own, with their range on it and a write-up above it.
+        </div>
+      )}
+
       {loaded && suppliers.length === 0 && !form && (
         <p style={{ color: 'var(--color-text-secondary)' }}>
           Nobody in the list yet. Add one and it becomes pickable on every product and variation.
@@ -163,6 +197,7 @@ export function SuppliersScreen({ label, enabled }: { label: string; enabled: bo
                 <th style={cell}>Discount</th>
                 <th style={cell}>Contact</th>
                 <th style={cell}>Catalogues</th>
+                {pagesEnabled && <th style={cell}>Page</th>}
                 <th style={cell}>Products</th>
                 <th style={cell}>Variations</th>
                 <th style={cell}>Status</th>
@@ -189,6 +224,18 @@ export function SuppliersScreen({ label, enabled }: { label: string; enabled: bo
                       </div>
                     ))}
                   </td>
+                  {pagesEnabled && (
+                    <td style={cell}>
+                      {s.storefrontVisible && s.slug ? (
+                        <>
+                          <a href={`/shop/suppliers/${s.slug}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)' }}>View</a>
+                          {s.hasDesignedDescription && (
+                            <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>Designed</div>
+                          )}
+                        </>
+                      ) : '—'}
+                    </td>
+                  )}
                   <td style={cell}>{s.productCount}</td>
                   <td style={cell}>{s.variationCount}</td>
                   <td style={cell}>{s.status === 'ENABLED' ? 'Enabled' : 'Disabled'}</td>
@@ -211,6 +258,36 @@ export function SuppliersScreen({ label, enabled }: { label: string; enabled: bo
             <p className="field-hint" style={{ margin: 0 }}>
               Renaming moves every product and variation filed under the old name across with it.
             </p>
+          )}
+          {pagesEnabled && (
+            <fieldset style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.75rem', margin: 0, display: 'grid', gap: '0.5rem' }}>
+              <legend style={{ padding: '0 0.375rem', fontSize: '0.875rem' }}>Their page on your site</legend>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={form.storefrontVisible}
+                  onChange={(e) => setForm({ ...form, storefrontVisible: e.target.checked })}
+                />
+                Give them a page listing everything of theirs
+              </label>
+              <label>Web address<input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} style={inputStyle} placeholder="Leave empty to use their name" /></label>
+              <p className="field-hint" style={{ margin: 0 }}>
+                The page lives at /shop/suppliers/{form.slug.trim() || 'their-name'}. Changing it stops old links working, so it is yours to type rather than something that follows the name around.
+              </p>
+              <label>One-line description<input value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} style={inputStyle} placeholder="Printed under the heading" /></label>
+              <label>Write-up<textarea rows={5} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} style={inputStyle} placeholder="A paragraph or two about them" /></label>
+              {editingId && (
+                <p className="field-hint" style={{ margin: 0 }}>
+                  Want pictures, columns or a callout in that write-up?{' '}
+                  <a href={`/${adminPath}/m/shop/suppliers/${editingId}/description`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)' }}>
+                    Design it with the page builder
+                  </a>
+                  . Anything you build there is shown instead of the plain version. Save this form first - the builder opens the write-up as it was last saved.
+                </p>
+              )}
+              <label>Search engine title<input value={form.metaTitle} onChange={(e) => setForm({ ...form, metaTitle: e.target.value })} style={inputStyle} placeholder="Blank uses their name" /></label>
+              <label>Search engine description<textarea rows={2} value={form.metaDescription} onChange={(e) => setForm({ ...form, metaDescription: e.target.value })} style={inputStyle} placeholder="Blank uses the one-liner above" /></label>
+            </fieldset>
           )}
           <label>Account number<input value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} style={inputStyle} placeholder="Your account with them" /></label>
           <label>Discount (%)<input type="number" step="0.01" min="0" max="100" value={form.discountPercent} onChange={(e) => setForm({ ...form, discountPercent: e.target.value })} style={inputStyle} placeholder="Leave empty for none" /></label>

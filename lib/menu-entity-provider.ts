@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client'
 import type { MenuEntityKind, MenuEntitySearchResult, MenuEntityProvider, ResolvedMenuEntity } from '@/lib/modules/menu-entity-provider'
 import { productHref } from '@/modules/shop/lib/product-url'
 import { getProductUrlStyle } from '@/modules/shop/lib/product-url-server'
+import { supplierHref } from '@/modules/shop/lib/supplier-url'
+import { getShopConfigCached } from '@/modules/shop/lib/config'
 
 // Contributes to the "core.menu-entity-provider" extension point so the admin
 // menu builder can link to shop content. URL scheme mirrors lib/sitemap.ts:
@@ -12,7 +14,18 @@ const KINDS: MenuEntityKind[] = [
   { id: 'product', label: 'Product' },
   { id: 'category', label: 'Category' },
   { id: 'collection', label: 'Collection' },
+  { id: 'supplier', label: 'Supplier' },
 ]
+
+/**
+ * Whether supplier pages are switched on at all. listKinds is synchronous by
+ * contract, so the Supplier kind is always offered - the search below is where
+ * a shop that has not switched them on finds out there is nothing to link to.
+ */
+async function supplierPagesOn(): Promise<boolean> {
+  const config = await getShopConfigCached()
+  return config.supplierFieldEnabled && config.supplierPagesEnabled
+}
 
 function listKinds(): MenuEntityKind[] {
   return KINDS
@@ -38,6 +51,17 @@ async function searchEntities(kind: string, query: string): Promise<MenuEntitySe
   if (kind === 'collection') {
     const rows = await prisma.$queryRaw<Array<{ id: string; name: string }>>`
       SELECT "id", "name" FROM "shp_collections" WHERE "name" ILIKE ${q} ORDER BY "name" ASC LIMIT 20
+    `
+    return rows.map((r) => ({ id: r.id, label: r.name }))
+  }
+  if (kind === 'supplier') {
+    if (!(await supplierPagesOn())) return []
+    // Only the ones with a page. A supplier kept as filing has no address to
+    // point a menu item at, and offering it would build a link to a 404.
+    const rows = await prisma.$queryRaw<Array<{ id: string; name: string }>>`
+      SELECT "id", "name" FROM "shp_suppliers"
+       WHERE "name" ILIKE ${q} AND "storefront_visible" = true AND "slug" IS NOT NULL
+       ORDER BY "name" ASC LIMIT 20
     `
     return rows.map((r) => ({ id: r.id, label: r.name }))
   }
@@ -68,6 +92,18 @@ async function resolveEntity(kind: string, id: string): Promise<ResolvedMenuEnti
     const rows = await prisma.$queryRaw<Array<{ name: string; slug: string }>>`SELECT "name", "slug" FROM "shp_collections" WHERE "id" = ${id} LIMIT 1`
     if (!rows[0]) return null
     return { label: rows[0].name, href: `/shop/collections/${rows[0].slug}`, publiclyVisible: true }
+  }
+  if (kind === 'supplier') {
+    const rows = await prisma.$queryRaw<Array<{ name: string; slug: string | null; storefront_visible: boolean }>>`
+      SELECT "name", "slug", "storefront_visible" FROM "shp_suppliers" WHERE "id" = ${id} LIMIT 1
+    `
+    const supplier = rows[0]
+    if (!supplier || !supplier.slug) return null
+    // Resolved live, so unpublishing a supplier - or switching supplier pages
+    // off shop-wide - drops its link out of the public menu without anyone
+    // having to go and re-save the menu. The admin table still lists it.
+    const on = supplier.storefront_visible && (await supplierPagesOn())
+    return { label: supplier.name, href: supplierHref(supplier.slug), publiclyVisible: on }
   }
   return null
 }
@@ -123,6 +159,22 @@ async function resolveEntities(kind: string, ids: string[]): Promise<Map<string,
       SELECT "id", "name", "slug" FROM "shp_collections" WHERE "id" IN (${Prisma.join(unique)})
     `
     for (const r of rows) out.set(r.id, { label: r.name, href: `/shop/collections/${r.slug}`, publiclyVisible: true })
+    return out
+  }
+
+  if (kind === 'supplier') {
+    // One config read for the whole batch, exactly as the product branch above
+    // reads the url style once rather than once per link.
+    const [rows, on] = await Promise.all([
+      prisma.$queryRaw<Array<{ id: string; name: string; slug: string | null; storefront_visible: boolean }>>`
+        SELECT "id", "name", "slug", "storefront_visible" FROM "shp_suppliers" WHERE "id" IN (${Prisma.join(unique)})
+      `,
+      supplierPagesOn(),
+    ])
+    for (const r of rows) {
+      if (!r.slug) continue
+      out.set(r.id, { label: r.name, href: supplierHref(r.slug), publiclyVisible: r.storefront_visible && on })
+    }
     return out
   }
 

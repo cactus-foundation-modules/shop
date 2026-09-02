@@ -286,6 +286,15 @@ export const ShpConfigSchema = z.object({
   // different decisions, so the storefront gets its own switch.
   supplierShowOnFrontend: z.boolean().default(false),
   supplierFieldScope: z.enum(['PRODUCTS', 'PRODUCTS_AND_VARIATIONS']).default('PRODUCTS'),
+  // Whether suppliers get a page of their own on the site (/shop/suppliers/...).
+  // A third decision again: a shop can record who supplied something, print the
+  // name on the product, and still not want a page per supplier. Off by default
+  // so switching supplier support on never publishes pages nobody has written.
+  //
+  // Per-supplier publishing is a tick on the supplier itself
+  // (shp_suppliers.storefront_visible); this is the shop-wide master switch that
+  // decides whether that tick is offered at all.
+  supplierPagesEnabled: z.boolean().default(false),
 
   // Back-in-stock (addendum A)
   backInStockAccountPrompt: z.boolean().default(true),

@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.373",
+  "version": "0.1.374",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1383",
@@ -99,7 +99,8 @@
         "shopIndex",
         "shopCategory",
         "shopCollection",
-        "shopTag"
+        "shopTag",
+        "shopSupplier"
       ]
     },
     {
@@ -112,7 +113,8 @@
         "shopIndex",
         "shopCategory",
         "shopCollection",
-        "shopTag"
+        "shopTag",
+        "shopSupplier"
       ]
     },
     {
@@ -123,7 +125,8 @@
       "rscImport": "./components/puck/ShopFeaturedCollection.rsc",
       "layoutTypes": [
         "shopIndex",
-        "shopTag"
+        "shopTag",
+        "shopSupplier"
       ]
     },
     {
@@ -147,7 +150,8 @@
         "shopIndex",
         "shopCategory",
         "shopCollection",
-        "shopTag"
+        "shopTag",
+        "shopSupplier"
       ]
     },
     {
@@ -167,7 +171,8 @@
       "rscComponent": "shopPromoBannerPuckRscComponent",
       "layoutTypes": [
         "shopIndex",
-        "shopTag"
+        "shopTag",
+        "shopSupplier"
       ]
     },
     {
@@ -353,6 +358,26 @@
       "rscImport": "./components/puck/ShopTagHeader.rsc",
       "layoutTypes": [
         "shopTag"
+      ]
+    },
+    {
+      "type": "ShopSupplierHeader",
+      "import": "./components/puck/ShopSupplierHeader",
+      "component": "shopSupplierHeaderPuckComponent",
+      "rscComponent": "shopSupplierHeaderPuckRscComponent",
+      "rscImport": "./components/puck/ShopSupplierHeader.rsc",
+      "layoutTypes": [
+        "shopSupplier"
+      ]
+    },
+    {
+      "type": "ShopSupplierDescription",
+      "import": "./components/puck/ShopSupplierDescription",
+      "component": "shopSupplierDescriptionPuckComponent",
+      "rscComponent": "shopSupplierDescriptionPuckRscComponent",
+      "rscImport": "./components/puck/ShopSupplierDescription.rsc",
+      "layoutTypes": [
+        "shopSupplier"
       ]
     },
     {
@@ -711,6 +736,12 @@
         "label": "Tag",
         "starterImport": "./lib/starterLayouts",
         "starterExport": "shopTagStarters"
+      },
+      {
+        "key": "shopSupplier",
+        "label": "Supplier",
+        "starterImport": "./lib/starterLayouts",
+        "starterExport": "shopSupplierStarters"
       },
       {
         "key": "shopProduct",

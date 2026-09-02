@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
-import type { ShpSupplier, ShpSupplierCatalogue, ShpSupplierWithCounts } from '@/modules/shop/lib/types'
+import type { PuckData, ShpSupplier, ShpSupplierCatalogue, ShpSupplierWithCounts } from '@/modules/shop/lib/types'
 
 // ---------------------------------------------------------------------------
 // Suppliers
@@ -31,9 +31,53 @@ function mapSupplier(r: Record<string, unknown>): ShpSupplier {
     email: (r.email as string | null) ?? null,
     address: (r.address as string | null) ?? null,
     notes: (r.notes as string | null) ?? null,
+    slug: (r.slug as string | null) ?? null,
+    storefrontVisible: r.storefront_visible === true,
+    shortDescription: (r.short_description as string | null) ?? null,
+    description: (r.description as string | null) ?? null,
+    // jsonb comes back from Prisma raw already parsed, and can be a bare scalar
+    // if something ever wrote one - only an object is a Puck document.
+    descriptionPuck: r.description_puck && typeof r.description_puck === 'object' ? (r.description_puck as PuckData) : null,
+    metaTitle: (r.meta_title as string | null) ?? null,
+    metaDescription: (r.meta_description as string | null) ?? null,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
   }
+}
+
+/**
+ * A supplier name as a page address: lower case, punctuation collapsed to single
+ * hyphens, trimmed. The same shape migrations/034_supplier_pages.sql derives, so
+ * a supplier added afterwards gets the address it would have been back-filled.
+ * A name with nothing slug-shaped in it falls back to 'supplier', which
+ * ensureUniqueSupplierSlug then numbers.
+ */
+export function supplierSlugFromName(name: string): string {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  return slug || 'supplier'
+}
+
+/**
+ * The given slug, or the first free numbering of it. The unique index is the
+ * real guard - this only keeps the owner from being bounced with "that address
+ * is taken" when they never chose the address in the first place.
+ */
+export async function ensureUniqueSupplierSlug(slug: string, exceptId?: string): Promise<string> {
+  const taken = await prisma.$queryRaw<Array<{ slug: string }>>`
+    SELECT "slug" FROM "shp_suppliers"
+     WHERE "slug" IS NOT NULL
+       AND (LOWER("slug") = LOWER(${slug}) OR LOWER("slug") LIKE LOWER(${slug + '-%'}))
+       AND ("id" <> ${exceptId ?? ''})
+  `
+  const used = new Set(taken.map((t) => t.slug.toLowerCase()))
+  if (!used.has(slug.toLowerCase())) return slug
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${slug}-${n}`
+    if (!used.has(candidate)) return candidate
+  }
+  // A thousand suppliers sharing one name shape is not a real shop. Fall back to
+  // something certainly free rather than looping forever.
+  return `${slug}-${Date.now()}`
 }
 
 function mapCatalogue(r: Record<string, unknown>): ShpSupplierCatalogue {
@@ -46,6 +90,15 @@ function mapCatalogue(r: Record<string, unknown>): ShpSupplierCatalogue {
   }
 }
 
+// Every column except description_puck. A designed write-up is a whole Puck
+// document, and the list screen only needs to know whether there is one - the
+// same reason CATEGORY_LIST_COLUMNS exists.
+const SUPPLIER_LIST_COLUMNS = Prisma.sql`
+  "id", "name", "slug", "storefront_visible", "short_description", "description",
+  "meta_title", "meta_description", "account_number", "discount_percent", "status",
+  "contact_name", "phone", "email", "address", "notes", "created_at", "updated_at"
+`
+
 export type SupplierCatalogueFields = {
   name: string
   sheetUrl?: string | null
@@ -53,6 +106,13 @@ export type SupplierCatalogueFields = {
 
 export type SupplierFields = {
   name: string
+  slug?: string | null
+  storefrontVisible?: boolean
+  shortDescription?: string | null
+  description?: string | null
+  descriptionPuck?: PuckData | null
+  metaTitle?: string | null
+  metaDescription?: string | null
   accountNumber?: string | null
   discountPercent?: number | null
   status?: 'ENABLED' | 'DISABLED'
@@ -75,7 +135,10 @@ export type SupplierFields = {
  */
 export async function listSuppliersWithCounts(): Promise<ShpSupplierWithCounts[]> {
   const [rows, counts, catalogues] = await Promise.all([
-    prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_suppliers" ORDER BY "name" ASC`,
+    prisma.$queryRaw<Record<string, unknown>[]>`
+      SELECT ${SUPPLIER_LIST_COLUMNS}, ("description_puck" IS NOT NULL) AS has_designed_description
+        FROM "shp_suppliers" ORDER BY "name" ASC
+    `,
     prisma.$queryRaw<Array<{ supplier: string; products: bigint; variations: bigint }>>`
       SELECT LOWER("supplier") AS supplier,
              COUNT(*) FILTER (WHERE "catalogue_hidden" = false) AS products,
@@ -105,6 +168,7 @@ export async function listSuppliersWithCounts(): Promise<ShpSupplierWithCounts[]
     const hit = byName.get(supplier.name.toLowerCase())
     return {
       ...supplier,
+      hasDesignedDescription: r.has_designed_description === true,
       productCount: Number(hit?.products ?? 0),
       variationCount: Number(hit?.variations ?? 0),
       catalogues: bySupplier.get(supplier.id) ?? [],
@@ -191,12 +255,22 @@ export async function getSupplierByName(name: string): Promise<ShpSupplier | nul
 }
 
 export async function createSupplier(data: SupplierFields): Promise<{ id: string }> {
+  // Every supplier gets an address whether or not its page is ever published, so
+  // switching one on later is one tick rather than a tick and a decision. An
+  // address the owner typed is taken as typed (bar the tidy-up); one they left
+  // blank is derived from the name, exactly as the back-fill did.
+  const slug = await ensureUniqueSupplierSlug(supplierSlugFromName(data.slug?.trim() || data.name))
   const rows = await prisma.$queryRaw<[{ id: string }]>`
     INSERT INTO "shp_suppliers" (
-      "name", "account_number", "discount_percent", "status",
+      "name", "slug", "storefront_visible", "short_description", "description",
+      "description_puck", "meta_title", "meta_description",
+      "account_number", "discount_percent", "status",
       "contact_name", "phone", "email", "address", "notes"
     ) VALUES (
-      ${data.name}, ${data.accountNumber ?? null}, ${data.discountPercent ?? null}, ${data.status ?? 'ENABLED'},
+      ${data.name}, ${slug}, ${data.storefrontVisible === true},
+      ${data.shortDescription ?? null}, ${data.description ?? null},
+      ${data.descriptionPuck ? JSON.stringify(data.descriptionPuck) : null}::jsonb, ${data.metaTitle ?? null}, ${data.metaDescription ?? null},
+      ${data.accountNumber ?? null}, ${data.discountPercent ?? null}, ${data.status ?? 'ENABLED'},
       ${data.contactName ?? null}, ${data.phone ?? null}, ${data.email ?? null}, ${data.address ?? null}, ${data.notes ?? null}
     )
     RETURNING "id"
@@ -218,6 +292,20 @@ export async function updateSupplier(id: string, fields: Partial<Omit<SupplierFi
   if (fields.email !== undefined) sets.push(Prisma.sql`"email" = ${fields.email}`)
   if (fields.address !== undefined) sets.push(Prisma.sql`"address" = ${fields.address}`)
   if (fields.notes !== undefined) sets.push(Prisma.sql`"notes" = ${fields.notes}`)
+  if (fields.slug !== undefined) {
+    // Blanking the address is not an option - the page has to live somewhere -
+    // so an empty box falls back to the name, same as it did on create.
+    const wanted = supplierSlugFromName(fields.slug?.trim() || '')
+    sets.push(Prisma.sql`"slug" = ${await ensureUniqueSupplierSlug(wanted, id)}`)
+  }
+  if (fields.storefrontVisible !== undefined) sets.push(Prisma.sql`"storefront_visible" = ${fields.storefrontVisible}`)
+  if (fields.shortDescription !== undefined) sets.push(Prisma.sql`"short_description" = ${fields.shortDescription}`)
+  if (fields.description !== undefined) sets.push(Prisma.sql`"description" = ${fields.description}`)
+  if (fields.descriptionPuck !== undefined) {
+    sets.push(Prisma.sql`"description_puck" = ${fields.descriptionPuck ? JSON.stringify(fields.descriptionPuck) : null}::jsonb`)
+  }
+  if (fields.metaTitle !== undefined) sets.push(Prisma.sql`"meta_title" = ${fields.metaTitle}`)
+  if (fields.metaDescription !== undefined) sets.push(Prisma.sql`"meta_description" = ${fields.metaDescription}`)
   if (sets.length === 0) return
   sets.push(Prisma.sql`"updated_at" = CURRENT_TIMESTAMP`)
   await prisma.$executeRaw`UPDATE "shp_suppliers" SET ${Prisma.join(sets, ', ')} WHERE "id" = ${id}`
@@ -243,4 +331,40 @@ export async function renameSupplier(id: string, oldName: string, newName: strin
  */
 export async function deleteSupplier(id: string): Promise<void> {
   await prisma.$executeRaw`DELETE FROM "shp_suppliers" WHERE "id" = ${id}`
+}
+
+
+/**
+ * The supplier behind a page address, published or not. Case-insensitive, the
+ * same way getSupplierByName is, because the unique index is on LOWER(slug) and
+ * a shopper typing the address in capitals should still land on the page.
+ *
+ * Deliberately does NOT check storefront_visible: the page route decides what an
+ * unpublished supplier means (a 404 for a shopper), and the admin screens want
+ * the row regardless.
+ */
+export async function getSupplierBySlug(slug: string): Promise<ShpSupplier | null> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "shp_suppliers" WHERE LOWER("slug") = LOWER(${slug}) LIMIT 1
+  `
+  return rows[0] ? mapSupplier(rows[0]) : null
+}
+
+/**
+ * The suppliers with a page on the site, name-ordered. What the sitemap lists,
+ * what the menu builder offers and what a supplier index prints.
+ *
+ * DISABLED suppliers are included where their page is published: disabling stops
+ * the name being offered on new products, which says nothing about whether the
+ * range they supplied is still on sale. Unpublishing the page is the switch for
+ * that, and it is right here beside it.
+ */
+export async function listStorefrontSuppliers(): Promise<Array<{ id: string; name: string; slug: string; shortDescription: string | null }>> {
+  const rows = await prisma.$queryRaw<Array<{ id: string; name: string; slug: string; short_description: string | null }>>`
+    SELECT "id", "name", "slug", "short_description"
+      FROM "shp_suppliers"
+     WHERE "storefront_visible" = true AND "slug" IS NOT NULL
+     ORDER BY "name" ASC
+  `
+  return rows.map((r) => ({ id: r.id, name: r.name, slug: r.slug, shortDescription: r.short_description }))
 }

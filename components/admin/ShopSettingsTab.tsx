@@ -381,6 +381,13 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 </select>
                 <span className="field-hint">Pick the second one when different variations of the same product come from different places.</span>
               </div>
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.supplierPagesEnabled} onChange={(e) => set('supplierPagesEnabled', e.target.checked)} />
+                Give suppliers a page of their own
+              </label>
+              <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
+                Adds a page per supplier at /shop/suppliers, listing everything of theirs with your filters on it and room for a write-up above. Each supplier still has to be switched on individually on the Suppliers screen, so turning this on publishes nothing by itself.
+              </p>
             </>
           )}
 

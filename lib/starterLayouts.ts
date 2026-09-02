@@ -237,6 +237,47 @@ export function shopTagStarters() {
 }
 
 // ---------------------------------------------------------------------------
+// Supplier templates (2) - shopSupplier
+//
+// One layout serves every supplier: the page fills in which supplier each block
+// is looking at (lib/inject-supplier-context.ts), so no starter carries a slug.
+// Two rather than three, and the second is the one most shops will want - a
+// supplier page whose whole point is the write-up above the range.
+// ---------------------------------------------------------------------------
+
+export function shopSupplierStarters() {
+  return [
+    {
+      id: 'starter-shop-supplier-grid',
+      name: 'Header and Grid',
+      description: 'The supplier\'s name and one-liner, then everything of theirs in a three-across grid.',
+      data: {
+        content: [
+          block('ShopSupplierHeader', 'header-1'),
+          block('ShopProductGrid', 'grid-1', { columns: 3, limit: 24, showFilters: 'no' }),
+        ],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+    {
+      id: 'starter-shop-supplier-writeup',
+      name: 'Header, Write-up and Grid',
+      description: 'Name, the write-up you gave the supplier, then their range below it.',
+      data: {
+        content: [
+          block('ShopSupplierHeader', 'header-1'),
+          block('ShopSupplierDescription', 'description-1'),
+          block('ShopProductGrid', 'grid-1', { columns: 3, limit: 24, showFilters: 'no' }),
+        ],
+        root: { props: {} },
+        zones: {},
+      },
+    },
+  ]
+}
+
+// ---------------------------------------------------------------------------
 // Product templates (3) - shopProduct
 // ---------------------------------------------------------------------------
 

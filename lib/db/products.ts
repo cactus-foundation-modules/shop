@@ -332,6 +332,13 @@ export type ListProductsFilter = {
   categoryIds?: string[]
   tagSlug?: string
   collectionSlug?: string
+  /**
+   * Everything filed against one supplier's page address. Matched through
+   * shp_suppliers on the slug, then against the free-text name products carry
+   * (migrations/007_suppliers.sql) - the link has always been the name, so this
+   * is the same join the admin counts do, entered from the address instead.
+   */
+  supplierSlug?: string
   search?: string
   preOrder?: boolean
   stock?: ProductStockFilter
@@ -446,6 +453,14 @@ export async function listProducts(filter: ListProductsFilter): Promise<{ produc
       SELECT "product_id" FROM "shp_product_collections" pcol
       JOIN "shp_collections" col ON col."id" = pcol."collection_id"
       WHERE col."slug" = ${filter.collectionSlug}
+    )`)
+  }
+  if (filter.supplierSlug) {
+    // LOWER on both sides because that is how the two uniqueness indexes are
+    // built (slug and name alike), and because the name on a product was typed
+    // by whoever imported the spreadsheet.
+    conditions.push(Prisma.sql`LOWER(p."supplier") = (
+      SELECT LOWER(s."name") FROM "shp_suppliers" s WHERE LOWER(s."slug") = LOWER(${filter.supplierSlug}) LIMIT 1
     )`)
   }
 

@@ -39,6 +39,7 @@ export async function listGridProducts(scope: ShopGridScope): Promise<ShpProduct
     ...categoryFilter,
     collectionSlug: scope.collectionSlug || undefined,
     tagSlug: scope.tagSlug || undefined,
+    supplierSlug: scope.supplierSlug || undefined,
     perPage: fetchCount,
     maxPerPage: fetchCount,
     // listProducts whitelists the sort key itself (unknown values fall back to

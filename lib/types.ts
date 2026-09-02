@@ -308,6 +308,22 @@ export type ShpCollection = {
 export type ShpSupplier = {
   id: string
   name: string
+  /**
+   * The supplier's own page address, /shop/suppliers/<slug>. Typed rather than
+   * following the name around, because changing it breaks links (see
+   * migrations/034_supplier_pages.sql).
+   */
+  slug: string | null
+  /** Whether that page is published. False keeps the supplier as filing only. */
+  storefrontVisible: boolean
+  /** The one-liner under the heading on the supplier's page. */
+  shortDescription: string | null
+  /** The write-up, plain text. Overridden by descriptionPuck where there is one. */
+  description: string | null
+  /** Opt-in designed write-up, built in the pop-out page builder. */
+  descriptionPuck: PuckData | null
+  metaTitle: string | null
+  metaDescription: string | null
   accountNumber: string | null
   discountPercent: number | null
   status: 'ENABLED' | 'DISABLED'
@@ -336,6 +352,9 @@ export type ShpSupplierCatalogue = {
 
 /** A supplier plus how much of the catalogue is filed against its name. */
 export type ShpSupplierWithCounts = ShpSupplier & {
+  /** Whether a designed write-up exists. The list never carries the document
+   *  itself - see SUPPLIER_LIST_COLUMNS - only whether there is one to open. */
+  hasDesignedDescription: boolean
   /** Catalogue products (catalogue_hidden = false) naming this supplier. */
   productCount: number
   /** Variation child rows (catalogue_hidden = true) naming this supplier. */

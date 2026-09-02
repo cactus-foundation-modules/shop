@@ -18,6 +18,7 @@ export type ShopGridScope = {
   categorySlug?: string
   collectionSlug?: string
   tagSlug?: string
+  supplierSlug?: string
   /** Absent means "listProducts' own default", which is what the filter grid has
    *  always passed. Shop's own grid always names one. */
   sort?: string

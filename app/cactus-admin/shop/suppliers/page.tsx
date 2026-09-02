@@ -1,3 +1,4 @@
+import { headers } from 'next/headers'
 import { getSessionFromCookie } from '@/lib/auth/session'
 import { hasShopPermission } from '@/modules/shop/lib/access'
 import { getShopConfig, resolveSupplierLabel } from '@/modules/shop/lib/config'
@@ -17,12 +18,18 @@ export default async function ShopSuppliersPage() {
   const canAccess = await hasShopPermission(user, 'shop.products', { allowAccess: true })
   if (!canAccess) return <div className="alert alert-danger">You do not have permission to view Shop suppliers.</div>
 
-  const [config, navTabs] = await Promise.all([getShopConfig(), resolveTradingNavTabs(user)])
+  const [config, navTabs, headerList] = await Promise.all([getShopConfig(), resolveTradingNavTabs(user), headers()])
+  const adminPath = headerList.get('x-cactus-admin-path') ?? ''
 
   return (
     <div>
       <ShopSectionNav tabs={navTabs} active="suppliers" />
-      <SuppliersScreen label={resolveSupplierLabel(config)} enabled={config.supplierFieldEnabled} />
+      <SuppliersScreen
+        label={resolveSupplierLabel(config)}
+        enabled={config.supplierFieldEnabled}
+        pagesEnabled={config.supplierFieldEnabled && config.supplierPagesEnabled}
+        adminPath={adminPath}
+      />
     </div>
   )
 }
