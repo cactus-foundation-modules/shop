@@ -1,3 +1,4 @@
+import { getSiteTimezone } from '@/lib/config/timezone'
 import Link from 'next/link'
 import { redirect, notFound } from 'next/navigation'
 import { getMemberFromCookie } from '@/lib/members/session'
@@ -38,6 +39,7 @@ const PRINT_CSS = `
 `
 
 export default async function ShopAccountOrderReceiptPage({ params }: { params: Promise<{ id: string }> }) {
+  const timezone = await getSiteTimezone()
   const membersConfig = await getMembersConfig()
   if (!membersConfig.enabled) notFound()
 
@@ -85,7 +87,7 @@ export default async function ShopAccountOrderReceiptPage({ params }: { params: 
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontWeight: 'var(--font-semibold)' }}>{order.orderNumber}</div>
-            <div style={{ color: 'var(--color-text-muted)' }}>{formatOrderDate(order.createdAt)}</div>
+            <div style={{ color: 'var(--color-text-muted)' }}>{formatOrderDate(order.createdAt, timezone)}</div>
             {/* Their own number for the order, where they gave one. The receipt
                 is the document a business buyer staples to their own purchase
                 order, so leaving it off is the one omission that makes the page
@@ -181,7 +183,7 @@ export default async function ShopAccountOrderReceiptPage({ params }: { params: 
         </div>
 
         <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-          {order.paidAt ? `Paid ${formatOrderDate(order.paidAt)}.` : 'Payment outstanding.'} Thanks for your order.
+          {order.paidAt ? `Paid ${formatOrderDate(order.paidAt, timezone)}.` : 'Payment outstanding.'} Thanks for your order.
         </p>
       </div>
     </div>

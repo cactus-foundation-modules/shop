@@ -1,3 +1,4 @@
+import { getSiteTimezone } from '@/lib/config/timezone'
 import Link from 'next/link'
 import { redirect, notFound } from 'next/navigation'
 import { getMemberFromCookie } from '@/lib/members/session'
@@ -37,6 +38,7 @@ function matchesFilter(summary: MemberOrderSummary, filter: FilterKey): boolean 
 type Props = { searchParams: Promise<{ show?: string }> }
 
 export default async function ShopAccountOrdersPage({ searchParams }: Props) {
+  const timezone = await getSiteTimezone()
   const membersConfig = await getMembersConfig()
   if (!membersConfig.enabled) notFound()
 
@@ -110,6 +112,7 @@ export default async function ShopAccountOrdersPage({ searchParams }: Props) {
             key={summary.order.id}
             summary={summary}
             currencySymbol={config.currencySymbol}
+            timezone={timezone}
             referenceLabel={config.customerReferenceFieldEnabled ? customerReferenceLabel(config) : undefined}
           />
         ))}

@@ -9,10 +9,15 @@ import type { MemberOrderSummary } from '@/modules/shop/lib/member-orders'
 export function OrderSummaryCard({
   summary,
   currencySymbol,
+  timezone,
   referenceLabel,
 }: {
   summary: MemberOrderSummary
   currencySymbol: string
+  /** The site's timezone. This card is server-rendered, so a date left to the
+   *  machine's own clock is a UTC date, which is the wrong day either side of
+   *  a British midnight. */
+  timezone: string
   /** What this shop calls the customer's own reference, where it asks for one.
    *  Absent on a shop that does not, and the line goes with it - a card that
    *  says "Purchase order number: —" to somebody buying a pair of socks is
@@ -42,7 +47,7 @@ export function OrderSummaryCard({
           {hasOpenRequest && <span className="badge badge-warning">Request open</span>}
         </div>
         <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-          {formatOrderDate(order.createdAt)}
+          {formatOrderDate(order.createdAt, timezone)}
         </span>
       </div>
 

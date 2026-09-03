@@ -1,3 +1,4 @@
+import { getSiteTimezone } from '@/lib/config/timezone'
 import Link from 'next/link'
 import { redirect, notFound } from 'next/navigation'
 import { getMemberFromCookie } from '@/lib/members/session'
@@ -121,6 +122,7 @@ function TotalRow({ label, value, strong }: { label: string; value: string; stro
 }
 
 export default async function ShopAccountOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const timezone = await getSiteTimezone()
   const membersConfig = await getMembersConfig()
   if (!membersConfig.enabled) notFound()
 
@@ -234,7 +236,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
           <span className={badgeClass(status.tone)}>{status.label}</span>
         </div>
         <p style={{ color: 'var(--color-text-muted)', margin: '0.25rem 0 0', fontSize: 'var(--text-sm)' }}>
-          Placed {formatOrderDate(order.createdAt)}
+          Placed {formatOrderDate(order.createdAt, timezone)}
           {' · '}
           {/* Its own tab: printing is a detour, and a member who came to look at
               their order should still have it there when the print dialog has
@@ -327,7 +329,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
         {openRequest && (
           <div className="alert alert-warning">
             <strong>{REQUEST_TYPE_LABEL[openRequest.type]} request sent.</strong>{' '}
-            You asked on {formatOrderDate(openRequest.createdAt)} - reason given: {reasonLabel(openRequest.type, openRequest.reason)}.
+            You asked on {formatOrderDate(openRequest.createdAt, timezone)} - reason given: {reasonLabel(openRequest.type, openRequest.reason)}.
             We will email you as soon as somebody has looked at it.
             <div style={{ marginTop: 'var(--space-2)' }}>
               <WithdrawRequestButton requestId={openRequest.id} />
@@ -402,7 +404,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
                     {line.item.refundedQty > 0 && <span className="badge badge-warning">{line.item.refundedQty} refunded</span>}
                     {line.item.isPreOrder && (
                       <span className="badge badge-info">
-                        Pre-order{line.item.preOrderDispatchDate ? ` · expected ${formatOrderDate(line.item.preOrderDispatchDate)}` : ''}
+                        Pre-order{line.item.preOrderDispatchDate ? ` · expected ${formatOrderDate(line.item.preOrderDispatchDate, timezone)}` : ''}
                       </span>
                     )}
                     {config.buyAgainEnabled && (
@@ -427,7 +429,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
               {shipments.map((shipment, index) => (
                 <div key={shipment.id} style={{ display: 'grid', gap: '0.25rem' }}>
                   <span style={{ fontWeight: 'var(--font-medium)' }}>
-                    {shipments.length === 1 ? 'Sent' : `Parcel ${index + 1}, sent`} {formatOrderDate(shipment.shippedAt)}
+                    {shipments.length === 1 ? 'Sent' : `Parcel ${index + 1}, sent`} {formatOrderDate(shipment.shippedAt, timezone)}
                     {shipment.carrier ? ` with ${shipment.carrier}` : ''}
                   </span>
                   {shipment.trackingNumber && (
@@ -494,7 +496,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
           <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
             Paid by {PAYMENT_METHOD_LABELS[shownMethod] ?? methodLabels[shownMethod] ?? shownMethod}
             {order.paidAt
-              ? ` on ${formatOrderDate(order.paidAt)}`
+              ? ` on ${formatOrderDate(order.paidAt, timezone)}`
               : order.paymentStatus === 'PENDING'
                 ? ' - not received yet'
                 : ''}
@@ -507,7 +509,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
               {completedRefunds.map((refund) => (
                 <li key={refund.id} style={{ display: 'grid', gap: '0.125rem' }}>
                   <span style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{formatOrderDate(refund.createdAt)}</span>
+                    <span>{formatOrderDate(refund.createdAt, timezone)}</span>
                     <span>{formatMoney(refund.amount, symbol)}</span>
                   </span>
                   <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
@@ -552,7 +554,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
               productName: line.item.productName,
               returnableQty: line.returnableQty,
             }))}
-            returnBy={detail.returnBy ? formatOrderDate(detail.returnBy) : null}
+            returnBy={detail.returnBy ? formatOrderDate(detail.returnBy, timezone) : null}
           />
         )}
 
@@ -567,7 +569,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
                       <strong>{REQUEST_TYPE_LABEL[request.type]}</strong>
                       <span className={badgeClass(state.tone)}>{state.label}</span>
                       <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-                        asked {formatOrderDate(request.createdAt)}
+                        asked {formatOrderDate(request.createdAt, timezone)}
                       </span>
                     </span>
                     <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>

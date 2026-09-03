@@ -1,3 +1,4 @@
+import { getSiteTimezone } from '@/lib/config/timezone'
 import Link from 'next/link'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { listOrderSummariesForMember } from '@/modules/shop/lib/member-orders'
@@ -22,6 +23,7 @@ function bucketOf(status: string): OrdersBucket {
 }
 
 export async function ShopOrdersSection() {
+  const timezone = await getSiteTimezone()
   const member = await getMemberFromCookie()
   if (!member) return null
 
@@ -52,6 +54,7 @@ export async function ShopOrdersSection() {
               <OrderSummaryCard
                 summary={summary}
                 currencySymbol={config.currencySymbol}
+                timezone={timezone}
                 referenceLabel={config.customerReferenceFieldEnabled ? customerReferenceLabel(config) : undefined}
               />
             ),

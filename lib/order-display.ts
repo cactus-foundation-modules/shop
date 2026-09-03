@@ -1,3 +1,4 @@
+import { formatInSiteTimezone } from '@/lib/config/timezone'
 import type { ShpAddress, ShpOrderRequestStatus, ShpOrderRequestType, ShpOrderStatus } from '@/modules/shop/lib/types'
 import type { MemberOrderFulfilment } from '@/modules/shop/lib/member-orders'
 
@@ -56,9 +57,12 @@ export function addressLines(address: ShpAddress): string[] {
   ].filter((line): line is string => !!line && line.trim().length > 0)
 }
 
-/** "3 August 2026" - the format a British shopper reads without thinking. */
-export function formatOrderDate(date: Date): string {
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+/** "3 August 2026" - the format a British shopper reads without thinking. Takes
+ *  the site's timezone because these pages are server-rendered and the machine's
+ *  own clock is UTC: an order placed at half past midnight in a British summer
+ *  was being dated the day before on the customer's own order page. */
+export function formatOrderDate(date: Date, timezone: string): string {
+  return formatInSiteTimezone(date, timezone, { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
 /** The organisation an order was placed on behalf of, if one was given.

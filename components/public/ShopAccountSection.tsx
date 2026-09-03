@@ -1,3 +1,4 @@
+import { getSiteTimezone } from '@/lib/config/timezone'
 import Link from 'next/link'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { getMembersConfig } from '@/lib/members/config'
@@ -15,6 +16,7 @@ import { ORDER_STATUS_DISPLAY, badgeClass, formatOrderDate } from '@/modules/sho
 // by answering the question somebody actually opens their account to ask: where
 // has my last order got to?
 export async function ShopAccountSection() {
+  const timezone = await getSiteTimezone()
   const member = await getMemberFromCookie()
   if (!member) return null
 
@@ -57,7 +59,7 @@ export async function ShopAccountSection() {
             {latest.hasOpenRequest && <span className="badge badge-warning">Request open</span>}
           </div>
           <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-            {formatOrderDate(latest.order.createdAt)} · {latest.itemCount} {latest.itemCount === 1 ? 'item' : 'items'} ·{' '}
+            {formatOrderDate(latest.order.createdAt, timezone)} · {latest.itemCount} {latest.itemCount === 1 ? 'item' : 'items'} ·{' '}
             {formatMoney(latest.order.total, config.currencySymbol)}
           </span>
         </Link>
