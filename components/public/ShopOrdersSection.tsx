@@ -1,4 +1,4 @@
-import { getSiteTimezone } from '@/lib/config/timezone'
+import { getSiteTimezone } from '@/lib/config/timezone.server'
 import Link from 'next/link'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { listOrderSummariesForMember } from '@/modules/shop/lib/member-orders'

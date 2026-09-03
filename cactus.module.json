@@ -1,9 +1,9 @@
 {
   "name": "shop",
-  "version": "0.1.375",
+  "version": "0.1.376",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
-  "requiresCoreVersion": "0.5.1469",
+  "requiresCoreVersion": "0.5.1470",
   "publicBasePath": "shop",
   "publicRootSlug": {
     "page": "./app/root/[slug]/page",

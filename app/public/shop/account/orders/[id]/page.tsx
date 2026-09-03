@@ -1,4 +1,4 @@
-import { getSiteTimezone } from '@/lib/config/timezone'
+import { getSiteTimezone } from '@/lib/config/timezone.server'
 import Link from 'next/link'
 import { redirect, notFound } from 'next/navigation'
 import { getMemberFromCookie } from '@/lib/members/session'
