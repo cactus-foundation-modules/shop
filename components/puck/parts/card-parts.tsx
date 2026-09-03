@@ -6,6 +6,7 @@ import { ShopCardMedia } from '@/modules/shop/components/public/ShopCardMedia'
 import { packCardImages } from '@/modules/shop/lib/card-media-pack'
 import { ShopCardFillBlurb } from '@/modules/shop/components/public/ShopCardFillBlurb'
 import type { CardBadge, CardPartContext } from '@/modules/shop/components/puck/parts/part-context'
+import { SHOP_SECTION_HEAD_CSS } from '@/modules/shop/components/puck/parts/section-head-css'
 
 // Product Card part-blocks. These make up a Product Card layout (admin >
 // Layouts > Shop > Product Card), which is then stamped once per product by
@@ -46,9 +47,7 @@ export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
 .shop-grid{display:grid;grid-template-columns:repeat(var(--shop-cols,3),minmax(0,1fr));gap:24px;margin-top:8px}
 .shop-scroller{display:flex;gap:20px;overflow-x:auto;margin-top:8px;padding-bottom:4px}
 .shop-scroller .shop-card{min-width:240px;flex:none}
-.shop-sec-head{display:flex;align-items:baseline;gap:16px;margin:8px 0 20px;flex-wrap:wrap}
-.shop-sec-head h2{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:26px;margin:0;color:var(--color-fg);line-height:1.2}
-.shop-sec-head span{font-size:13px;color:var(--color-text-muted)}
+${SHOP_SECTION_HEAD_CSS}
 /* One knob for the whole text block. Every type size, gap and inset below is in
    em off this base, so a surface can shrink the card's wording as a unit without
    restating a dozen rules - that is what the two-up mobile grid does (scale .5).

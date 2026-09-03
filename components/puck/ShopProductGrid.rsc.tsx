@@ -7,7 +7,7 @@ import { listGridProducts, buildGridCardItems } from '@/modules/shop/lib/grid-pa
 import { loadShopGridCards } from '@/modules/shop/lib/grid-cards-action'
 import type { ShopGridScope } from '@/modules/shop/lib/grid-page-types'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
-import { shopProductGridPuckComponent, GridSectionHead, type ShopProductGridProps } from './ShopProductGrid'
+import { shopProductGridPuckComponent, GridSectionHead, gridViewAll, type ShopProductGridProps } from './ShopProductGrid'
 
 // Server (RSC) half of Shop: Product Grid. Kept out of the client editor bundle
 // - lib/card-template dynamically imports lib/puck/config.rsc, which depends on
@@ -87,7 +87,7 @@ export async function ShopProductGridRsc(props: ShopProductGridProps) {
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
-      <GridSectionHead heading={props.heading} subheading={props.subheading} />
+      <GridSectionHead heading={props.heading} subheading={props.subheading} viewAll={gridViewAll(props)} />
       {paginate ? (
         <ShopGridPager
           cards={cards}

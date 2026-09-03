@@ -1,4 +1,5 @@
 import type { LayoutRef } from '@/lib/puck/LayoutPickerField'
+import { SHOP_SECTION_HEAD_CSS } from '@/modules/shop/components/puck/parts/section-head-css'
 import { ShopLayoutPicker } from '@/modules/shop/components/public/ShopLayoutPicker'
 
 // Grid-level props (data source + layout) stay here; the card-internal design
@@ -52,17 +53,62 @@ export type ShopProductGridProps = {
   // the escape hatch for a grid being used as a plain catalogue listing rather
   // than a showcase row.
   hiddenProducts?: string
+  // The "View all" link on the far end of the heading strip. Off unless asked
+  // for, because a shelf pointing at nowhere in particular is what every grid
+  // saved before this existed already is.
+  //
+  // It lives in the heading strip, so a grid with no heading has nowhere to put
+  // one and shows none - see GridSectionHead.
+  showViewAll?: string
+  viewAllLabel?: string
+  // Where it goes. Blank works it out from whatever the grid is already scoped
+  // to (see gridViewAllHref), which is the right answer for a shelf cut to one
+  // tag, category, collection or supplier. A shelf cut to none of those - "Best
+  // sellers", the whole catalogue in popularity order - has no such page until
+  // the owner builds one, so that is the case this field is for.
+  viewAllHref?: string
+}
+
+// Where the "View all" link points. Typed address wins; otherwise the grid's own
+// scope names the page that holds the rest of the shelf, in the order the block
+// resolves a scope everywhere else (a grid carrying two is showing the overlap,
+// and the narrower of the two is the honest destination).
+//
+// Shared by both halves so the editor canvas and the storefront can never
+// disagree about the target.
+export function gridViewAllHref(props: ShopProductGridProps): string {
+  const typed = (props.viewAllHref ?? '').trim()
+  if (typed) return typed
+  if (props.tagSlug) return `/shop/tag/${props.tagSlug}`
+  if (props.categorySlug) return `/shop/categories/${props.categorySlug}`
+  if (props.collectionSlug) return `/shop/collections/${props.collectionSlug}`
+  if (props.supplierSlug) return `/shop/suppliers/${props.supplierSlug}`
+  return '/shop'
+}
+
+export type GridViewAll = { href: string; label: string }
+
+/** The link's target and wording, or null when this grid is not showing one. */
+export function gridViewAll(props: ShopProductGridProps): GridViewAll | null {
+  if (props.showViewAll !== 'yes') return null
+  return { href: gridViewAllHref(props), label: (props.viewAllLabel ?? '').trim() || 'View all' }
 }
 
 // Section heading above the grid - shared by both halves so the editor canvas
 // and the storefront print the same markup. Nothing at all when no heading is
 // set, which is the default and the pre-setting behaviour.
-export function GridSectionHead({ heading, subheading }: { heading?: string; subheading?: string }) {
+export function GridSectionHead({ heading, subheading, viewAll }: { heading?: string; subheading?: string; viewAll?: GridViewAll | null }) {
   if (!heading) return null
   return (
     <div className="shop-sec-head">
       <h2>{heading}</h2>
       {subheading && <span>{subheading}</span>}
+      {viewAll && (
+        // data-cactus-unstyled: core paints every link inside <main> with the
+        // theme's link colour, and this one has already chosen its own - see
+        // section-head-css.ts, which then owns every state of it.
+        <a className="shop-sec-more" data-cactus-unstyled="" href={viewAll.href}>{viewAll.label}</a>
+      )}
     </div>
   )
 }
@@ -92,9 +138,9 @@ export function ShopProductGrid(props: ShopProductGridProps) {
   return (
     <>
       {props.heading && (
-        <style dangerouslySetInnerHTML={{ __html: '.shop-sec-head{display:flex;align-items:baseline;gap:16px;margin:8px 0 20px;flex-wrap:wrap}.shop-sec-head h2{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:26px;margin:0;color:var(--color-fg);line-height:1.2}.shop-sec-head span{font-size:13px;color:var(--color-text-muted)}' }} />
+        <style dangerouslySetInnerHTML={{ __html: SHOP_SECTION_HEAD_CSS }} />
       )}
-      <GridSectionHead heading={props.heading} subheading={props.subheading} />
+      <GridSectionHead heading={props.heading} subheading={props.subheading} viewAll={gridViewAll(props)} />
       <GridSkeleton columns={props.columns ?? 3} />
     </>
   )
@@ -154,6 +200,14 @@ export const shopProductGridPuckComponent = {
       { value: 'exclude', label: 'Leave them out' },
       { value: 'include', label: 'Show them here anyway' },
     ] },
+    // Only ever seen when the grid has a heading - the link lives in the heading
+    // strip, and a strip with nothing in it is not drawn at all.
+    showViewAll: { type: 'select' as const, label: '"View all" link beside the heading', options: [
+      { value: 'no', label: 'No' },
+      { value: 'yes', label: 'Yes' },
+    ] },
+    viewAllLabel: { type: 'text' as const, label: '"View all" wording' },
+    viewAllHref: { type: 'text' as const, label: '"View all" address (blank uses this grid\u2019s own category, collection, tag or supplier page)' },
     emptyText: { type: 'text' as const, label: 'Wording when there are no products' },
     layoutRef: layoutField,
   },
@@ -162,6 +216,6 @@ export const shopProductGridPuckComponent = {
   // anybody having to find the setting. `limit: 12` is the opening screenful for
   // the same reason. Neither touches a layout already saved - defaults apply to
   // a block being added, not to one already on a page.
-  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', supplierSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, pageLoad: 'ondemand', moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', hiddenProducts: 'exclude', emptyText: 'No products to show yet.', layoutRef: null },
+  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', supplierSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, pageLoad: 'ondemand', moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', hiddenProducts: 'exclude', showViewAll: 'no', viewAllLabel: 'View all', viewAllHref: '', emptyText: 'No products to show yet.', layoutRef: null },
   render: ShopProductGrid,
 }
