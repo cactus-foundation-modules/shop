@@ -254,6 +254,16 @@ type PartiesProps = PartyLook & {
   showPhone?: string; showCustomerPhone?: string
 }
 
+export type AddressedTo = 'person' | 'organisation' | 'organisation-only'
+
+/** What the layout's "Address it to" field means, with anything unrecognised -
+ *  an older layout, a hand-edited page - reading as the original behaviour. */
+function addressedTo(props: { leadWith?: string }): AddressedTo {
+  return props.leadWith === 'organisation' || props.leadWith === 'organisation-only'
+    ? props.leadWith
+    : 'person'
+}
+
 /**
  * The address block for whoever the document is addressed to, with the
  * organisation lifted to the top line when the layout asks for it.
@@ -267,11 +277,28 @@ type PartiesProps = PartyLook & {
  * The organisation is deduped rather than prepended blindly. It usually IS one of
  * the address lines already - `addressLines` puts `company` second - and the one
  * thing worse than the wrong first line is the right one printed twice.
+ *
+ * "organisation-only" goes one further and drops the individual entirely, for a
+ * shop whose invoices are read by a finance department that has never heard of
+ * whoever placed the order.
  */
-export function addressedLines(lines: string[], company: string | undefined, leadWithOrg: boolean): string[] {
+export function addressedLines(
+  lines: string[],
+  company: string | undefined,
+  leadWith: AddressedTo,
+  personName?: string,
+): string[] {
   const org = company?.trim()
-  if (!leadWithOrg || !org) return lines
-  return [org, ...lines.filter((line) => line.trim() !== org)]
+  if (leadWith === 'person' || !org) return lines
+  const body = lines.filter((line) => line.trim() !== org)
+  if (leadWith === 'organisation') return [org, ...body]
+  // Organisation only: the individual comes off the document altogether. Matched
+  // by name rather than by position, and only on the first line, so an address
+  // that never carried a name keeps its first line - printing "Acme Ltd" over a
+  // missing street is a worse invoice than one with a name on it. Case-insensitive
+  // because plenty of address books shout the name and the order does not.
+  const person = personName?.trim().toLowerCase()
+  return [org, ...body.filter((line, i) => !(i === 0 && person && line.trim().toLowerCase() === person))]
 }
 
 /** The size properties every party block sets, so the three of them cannot
@@ -329,7 +356,7 @@ function CustomerParty({
 }) {
   const font = fontStyle(props)
   const customer = invoice.customer ?? ({} as typeof invoice.customer)
-  const billTo = addressedLines(customer.billingAddress ?? [], customer.company, props.leadWith === 'organisation')
+  const billTo = addressedLines(customer.billingAddress ?? [], customer.company, addressedTo(props), customer.name)
   return (
     <div className="shp-inv-party" key="to">
       <h2 className="shp-inv-h2" style={font}>{heading}</h2>
@@ -363,7 +390,7 @@ function deliveryParty(
     <div className="shp-inv-party" key="deliver">
       <h2 className="shp-inv-h2" style={font}>{heading}</h2>
       <address>
-        {addressedLines(shipping, customer.company, props.leadWith === 'organisation')
+        {addressedLines(shipping, customer.company, addressedTo(props), customer.name)
           .map((line, i) => <span key={i} className={i === 0 ? 'shp-inv-strong' : undefined}>{line}</span>)}
       </address>
     </div>
@@ -432,6 +459,7 @@ export const shopInvoicePartiesPuckComponent = {
     leadWith: { type: 'select' as const, label: 'Address it to', options: [
       { value: 'person', label: 'The person, then their organisation' },
       { value: 'organisation', label: 'The organisation, on the top line' },
+      { value: 'organisation-only', label: 'The organisation only, without a person' },
     ] },
     showRegistration: { type: 'select' as const, label: 'VAT and company numbers', options: yesNo },
     ...PARTY_SIZE_FIELDS,
@@ -549,6 +577,7 @@ export const shopInvoiceToPuckComponent = {
     leadWith: { type: 'select' as const, label: 'Address it to', options: [
       { value: 'person', label: 'The person, then their organisation' },
       { value: 'organisation', label: 'The organisation, on the top line' },
+      { value: 'organisation-only', label: 'The organisation only, without a person' },
     ] },
     showDelivery: { type: 'select' as const, label: 'Delivery address, when it differs', options: yesNo },
     deliverLabel: { type: 'text' as const, label: '"Delivered to" heading' },
