@@ -928,6 +928,15 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                     <input type="checkbox" checked={config.creditNoteEmailCustomer} onChange={(e) => set('creditNoteEmailCustomer', e.target.checked)} />
                     Email the customer a copy
                   </label>
+                  <label style={checkboxRow}>
+                    <input
+                      type="checkbox"
+                      checked={config.creditNoteAttachToEmail}
+                      disabled={!config.creditNoteEmailCustomer || !config.invoicePdfEnabled}
+                      onChange={(e) => set('creditNoteAttachToEmail', e.target.checked)}
+                    />
+                    Attach it to that email as a PDF
+                  </label>
                   <div className="field">
                     <label>PDF filename prefix</label>
                     <input value={config.creditNotePdfFilenamePrefix} onChange={(e) => set('creditNotePdfFilenamePrefix', e.target.value)} />

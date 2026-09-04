@@ -1,10 +1,10 @@
 import { getInvoiceForOrder } from '@/modules/shop/lib/db/invoices'
 import { invoicePdfFilename, printPath } from '@/modules/shop/lib/invoice-pdf'
-import { signInvoiceToken } from '@/modules/shop/lib/invoice-token'
+import { signCreditNoteToken, signInvoiceToken } from '@/modules/shop/lib/invoice-token'
 import type { EmailAttachment } from '@/lib/email/index'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 
-// The VAT invoice as a file travelling with an order email.
+// The shop's documents as files travelling with an email.
 //
 // Its own module rather than a helper inside order-status.ts, for the same
 // reason renderProformaPdf has one: a route may only export HTTP methods, the
@@ -58,6 +58,45 @@ export async function invoiceEmailAttachment(orderId: string, config: ShpConfig)
     }
   } catch (error) {
     console.error('[shop] could not print the invoice for order', orderId, error)
+    return null
+  }
+}
+
+/**
+ * A credit note as an email attachment, or null where there is not one to send.
+ *
+ * The invoice's opposite number, and the same reasoning: money has gone back
+ * and the customer needs the paperwork for it, which their own accountant will
+ * want as a file rather than a page somebody has to visit and save from. A
+ * refund on a card statement with nothing on paper against it is the next
+ * support ticket, and a link is one step more than the person filing it will
+ * take.
+ *
+ * Null where the setting is off or PDFs are off. Never throws: the credit note
+ * is raised and readable either way, and paperwork that would not print is not
+ * a reason to lose the message that says money is on its way back.
+ */
+export async function creditNoteEmailAttachment(
+  creditNoteNumber: string,
+  config: ShpConfig,
+): Promise<EmailAttachment | null> {
+  if (!config.creditNoteAttachToEmail || !config.invoicePdfEnabled) return null
+  try {
+    const [{ renderInvoicePdf }, { documentPageSetup }] = await Promise.all([
+      import('@/modules/shop/lib/invoice-pdf'),
+      import('@/modules/shop/lib/invoice-document'),
+    ])
+    const path = printPath(`/shop/credit-note/${encodeURIComponent(creditNoteNumber)}`, signCreditNoteToken(creditNoteNumber))
+    // A credit note is drawn on the invoice's layout, so it is printed on the
+    // invoice's sheet - exactly as the download route prints it.
+    const bytes = await renderInvoicePdf(path, await documentPageSetup('shopInvoice'))
+    return {
+      filename: invoicePdfFilename(config.creditNotePdfFilenamePrefix, creditNoteNumber),
+      content: Buffer.from(bytes),
+      contentType: 'application/pdf',
+    }
+  } catch (error) {
+    console.error('[shop] could not print the credit note', creditNoteNumber, error)
     return null
   }
 }

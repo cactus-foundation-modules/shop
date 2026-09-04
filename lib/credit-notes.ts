@@ -18,6 +18,8 @@ import { invoicePdfFilename, printPath } from '@/modules/shop/lib/invoice-pdf'
 import { dispatchInvoiceCredited, type ShopInvoiceCreditedPayload } from '@/modules/shop/lib/invoice-sinks'
 import { creditNotePath, signCreditNoteToken } from '@/modules/shop/lib/invoice-token'
 import { sendShopEmail } from '@/modules/shop/lib/email'
+import { creditNoteEmailAttachment } from '@/modules/shop/lib/invoice-attachment'
+import type { ShpConfig } from '@/modules/shop/lib/config'
 import { formatMoney } from '@/modules/shop/lib/money'
 import type { ShpCreditNote, ShpInvoiceWording } from '@/modules/shop/lib/types'
 
@@ -252,7 +254,7 @@ export async function issueCreditNoteForRefund(
     }
 
     const withResults = await tellTheBooks(note, invoice.total)
-    await emailCustomer(withResults, config.creditNoteEmailCustomer)
+    await emailCustomer(withResults, config.creditNoteEmailCustomer, config)
     return { ok: true, creditNote: withResults, created: true }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -279,15 +281,22 @@ async function tellTheBooks(note: ShpCreditNote, invoiceTotal: string): Promise<
   return { ...note, sinkResults: results }
 }
 
-/** Sends the customer their copy. Never fails the credit note: the document is
- *  raised and readable either way, and a bounced email is not a reason to lose
- *  the paperwork. */
-async function emailCustomer(note: ShpCreditNote, wanted: boolean): Promise<void> {
+/** Sends the customer their copy, with the document attached. Never fails the
+ *  credit note: it is raised and readable either way, and a bounced email is not
+ *  a reason to lose the paperwork.
+ *
+ *  The file is the point. It used to be a link, and a link is one step more
+ *  than the person who has to file it will take - the same lesson the proforma
+ *  and the invoice both taught. Where there is no file to send (PDFs switched
+ *  off, the setting off, or a printer having a bad day) the link goes in its
+ *  place, because a customer with neither has nothing at all. */
+async function emailCustomer(note: ShpCreditNote, wanted: boolean, config: ShpConfig): Promise<void> {
   if (!wanted) return
   const to = note.customer?.email?.trim()
   if (!to) return
   try {
     const siteUrl = note.seller?.siteUrl || getSiteUrl()
+    const attachment = await creditNoteEmailAttachment(note.creditNoteNumber, config)
     await sendShopEmail(
       'CREDIT_NOTE_ISSUED',
       to,
@@ -299,8 +308,14 @@ async function emailCustomer(note: ShpCreditNote, wanted: boolean): Promise<void
         creditNoteUrl: siteUrl ? `${siteUrl}${creditNotePath(note.creditNoteNumber)}` : '',
         creditAmount: formatMoney(note.total, note.currencySymbol || '£'),
         creditReason: note.reason ?? '',
+        // The template has always had a {{#if hasReason}} block and nothing has
+        // ever set the flag, so the reason a refund was given has never once
+        // been printed. A conditional whose flag is missing drops silently.
+        hasReason: note.reason?.trim() ? 'true' : 'false',
+        hasCreditNotePdf: attachment ? 'true' : 'false',
+        hasCreditNoteLink: !attachment && siteUrl ? 'true' : 'false',
       },
-      { orderId: note.orderId },
+      { orderId: note.orderId, attachments: attachment ? [attachment] : undefined },
     )
   } catch (error) {
     console.error('[shop] could not email credit note', note.creditNoteNumber, error)

@@ -426,6 +426,11 @@ export const ShpConfigSchema = z.object({
   // Whether the customer is emailed a copy when one is raised. On by default: a
   // refund the buyer has no paperwork for is the next support ticket.
   creditNoteEmailCustomer: z.boolean().default(true),
+  // Whether that email carries the document itself. On by default, and for the
+  // reason the invoice's does: a refund on a card statement with nothing on
+  // paper against it is the next support ticket, and whoever files it wants a
+  // file rather than a page to go and save from.
+  creditNoteAttachToEmail: z.boolean().default(true),
   creditNotePdfFilenamePrefix: z.string().default('credit-note'),
 
   // -------------------------------------------------------------------------
