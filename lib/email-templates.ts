@@ -240,13 +240,19 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
   // nothing is coming back here - the sale is unchanged, only the name on the
   // paperwork. Transactional: it is the record of documents that replace ones
   // the buyer's accounts department has already filed.
+  //
+  // BOTH documents travel with it as files, and neither is linked. The credit
+  // note is not a courtesy copy here: it is the thing that cancels a document
+  // the buyer's accounts department has already filed, and it is no use to them
+  // as a page somebody has to visit and save from. `invoiceUrl` and
+  // `creditNoteUrl` stay offered as tags for an owner who wants them back.
   {
     key: 'shop.invoice-reissued',
     label: 'Invoice reissued in a new name',
     subject: 'New invoice {{invoiceNumber}} for order {{orderNumber}}',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>You asked us to change the company on your paperwork for order <strong>{{orderNumber}}</strong> to <strong>{{companyName}}</strong>.</p><p>We cannot rewrite an invoice that has already gone out, so we have done it the proper way instead: credit note <strong>{{creditNoteNumber}}</strong> cancels invoice {{oldInvoiceNumber}}, and invoice <strong>{{invoiceNumber}}</strong> replaces it in the new name.</p><p>Nothing about what you paid has changed, and there is nothing for you to do. Your accounts department will want both.</p><p><a href="{{invoiceUrl}}">View invoice {{invoiceNumber}}</a><br /><a href="{{creditNoteUrl}}">View credit note {{creditNoteNumber}}</a></p>',
-    mergeTags: ['customerName', 'orderNumber', 'companyName', 'oldInvoiceNumber', 'creditNoteNumber', 'invoiceNumber', 'invoiceUrl', 'creditNoteUrl', 'shopName'],
+      '<p>Hi {{customerName}},</p><p>You asked us to change the company on your paperwork for order <strong>{{orderNumber}}</strong> to <strong>{{companyName}}</strong>.</p><p>We cannot rewrite an invoice that has already gone out, so we have done it the proper way instead: credit note <strong>{{creditNoteNumber}}</strong> cancels invoice {{oldInvoiceNumber}}, and invoice <strong>{{invoiceNumber}}</strong> replaces it in the new name.</p><p>Nothing about what you paid has changed, and there is nothing for you to do. Your accounts department will want both.</p>{{#if hasInvoicePdf}}<p>Invoice <strong>{{invoiceNumber}}</strong> is attached to this email as a PDF.</p>{{/if}}{{#if hasCreditNotePdf}}<p>Credit note <strong>{{creditNoteNumber}}</strong> is attached to this email as a PDF.</p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'companyName', 'oldInvoiceNumber', 'creditNoteNumber', 'invoiceNumber', 'invoiceUrl', 'creditNoteUrl', 'hasInvoicePdf', 'hasCreditNotePdf', 'shopName'],
     transactional: true,
   },
   {

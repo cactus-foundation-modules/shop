@@ -23,7 +23,7 @@ import {
 } from '@/modules/shop/lib/invoices'
 import { dispatchInvoiceIssued } from '@/modules/shop/lib/invoice-sinks'
 import { creditNotePath, invoicePath } from '@/modules/shop/lib/invoice-token'
-import { invoiceEmailAttachment } from '@/modules/shop/lib/invoice-attachment'
+import { creditNoteEmailAttachment, invoiceEmailAttachment } from '@/modules/shop/lib/invoice-attachment'
 import { sendShopEmail } from '@/modules/shop/lib/email'
 import { addressLines } from '@/modules/shop/lib/order-display'
 import {
@@ -33,6 +33,7 @@ import {
   reissueAvailable,
   type BillingIdentity,
 } from '@/modules/shop/lib/customer-billing'
+import type { EmailAttachment } from '@/lib/email/index'
 import type { ShpCreditNote, ShpInvoice } from '@/modules/shop/lib/types'
 
 // Changing who an order is invoiced to, once it has been invoiced.
@@ -291,7 +292,15 @@ async function reissue(
  *  One email covering both documents, never the credit note's own: a bare
  *  "credit note issued" says money is coming back, and nothing is coming back
  *  here. Never fails the change - the documents are raised and on their order
- *  page either way. */
+ *  page either way.
+ *
+ *  Both files travel with it. The credit note matters as much as the
+ *  replacement does - it is what cancels the invoice the buyer's accounts
+ *  department has already filed - and sending one without the other leaves them
+ *  holding a second invoice for the same sale and no paper saying the first is
+ *  dead. Printed in parallel because each one is a headless browser, and either
+ *  may come back null (setting off, PDFs off, printer having a bad day) without
+ *  stopping the email or the other file. */
 async function emailTheCustomer(
   to: string,
   vars: {
@@ -309,7 +318,11 @@ async function emailTheCustomer(
   try {
     const config = await getShopConfigCached()
     const siteUrl = getSiteUrl()
-    const attachment = await invoiceEmailAttachment(vars.orderId, config)
+    const [invoiceFile, creditNoteFile] = await Promise.all([
+      invoiceEmailAttachment(vars.orderId, config),
+      creditNoteEmailAttachment(vars.creditNoteNumber, config),
+    ])
+    const attachments = [invoiceFile, creditNoteFile].filter((file): file is EmailAttachment => file !== null)
     await sendShopEmail(
       'INVOICE_REISSUED',
       address,
@@ -320,10 +333,15 @@ async function emailTheCustomer(
         oldInvoiceNumber: vars.oldInvoiceNumber,
         creditNoteNumber: vars.creditNoteNumber,
         invoiceNumber: vars.newInvoiceNumber,
+        // Still passed though the default wording no longer links either
+        // document: an owner who has already edited this email keeps whatever
+        // they put in it, rather than having their links render empty.
         invoiceUrl: siteUrl ? `${siteUrl}${invoicePath(vars.newInvoiceNumber)}` : '',
         creditNoteUrl: siteUrl ? `${siteUrl}${creditNotePath(vars.creditNoteNumber)}` : '',
+        hasInvoicePdf: invoiceFile ? 'true' : 'false',
+        hasCreditNotePdf: creditNoteFile ? 'true' : 'false',
       },
-      { orderId: vars.orderId, ...(attachment ? { attachments: [attachment] } : {}) },
+      { orderId: vars.orderId, ...(attachments.length ? { attachments } : {}) },
     )
   } catch (error) {
     console.error('[shop] could not email the replacement invoice for order', vars.orderNumber, error)
