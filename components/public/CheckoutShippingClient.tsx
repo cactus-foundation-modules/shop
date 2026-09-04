@@ -24,6 +24,76 @@ const REQUIRED_MESSAGES: Partial<Record<keyof ShpAddressForm, string>> = {
   postcode: 'Enter your postcode.',
 }
 
+// The same again for the billing address underneath, worded so a shopper told
+// off twice on one page can tell which of the two forms is being complained
+// about. Only the boxes an invoice cannot do without are in here; the billing
+// form asks for no phone number, because the number on the order belongs to the
+// door the parcel goes to.
+const BILLING_REQUIRED_MESSAGES: Partial<Record<keyof ShpAddressForm, string>> = {
+  firstName: 'Enter the first name on the billing address.',
+  lastName: 'Enter the last name on the billing address.',
+  line1: 'Enter the first line of the billing address.',
+  city: 'Enter the billing town or city.',
+  postcode: 'Enter the billing postcode.',
+}
+
+// How the review step names a billing box when it lists what is still
+// outstanding: the delivery form and the billing form both have a "line1", and
+// unprefixed they would send a shopper to whichever the browser found first.
+// Matches the keys missingCheckoutFields uses - see checkout-state.ts.
+function billingFieldKey(key: keyof ShpAddressForm): string {
+  return `billing${key.charAt(0).toUpperCase()}${key.slice(1)}`
+}
+
+// One drawing of an address box, used by the delivery form and by the billing
+// form under it. Shared rather than copied so the two cannot drift apart: a
+// message under one of them has to sit exactly as it sits under the other.
+//
+// Real <label>s, not placeholder-as-label: a placeholder vanishes the moment
+// typing starts and never reaches a screen reader as the field's name.
+// `extra` lets an address-lookup provider layer combobox behaviour onto the
+// input while this file keeps sole ownership of the markup; the form's own
+// handlers run first, then the provider's.
+function addressInput(opts: {
+  fieldKey: string
+  label: string
+  value: string
+  error: string | null
+  autoComplete: string
+  required: boolean
+  onChange: (value: string) => void
+  onBlur: () => void
+  extra?: InputHTMLAttributes<HTMLInputElement>
+}) {
+  const { extra } = opts
+  return (
+    // alignContent start, not the default stretch: two of these sit side by
+    // side in a 1fr 1fr row, and a message under one of them makes that row
+    // taller. Stretched auto rows would spend the extra height on the other
+    // box, so the pair drift out of line the moment one is told off.
+    <label style={{ display: 'grid', gap: '0.25rem', alignContent: 'start' }}>
+      <span>{opts.label}</span>
+      <input
+        {...extra}
+        type="text"
+        required={opts.required}
+        autoComplete={extra?.autoComplete ?? opts.autoComplete}
+        // How the review step finds this box when it lists what is still
+        // outstanding (see focusCheckoutField). After the spread on purpose:
+        // an address-lookup provider layering itself onto line 1 must not be
+        // able to take the marker off it.
+        data-shop-field={opts.fieldKey}
+        value={opts.value}
+        onChange={(e) => { opts.onChange(e.target.value); extra?.onChange?.(e) }}
+        onBlur={(e) => { opts.onBlur(); extra?.onBlur?.(e) }}
+        aria-invalid={opts.error ? true : undefined}
+        style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: `1px solid ${opts.error ? 'var(--color-danger)' : 'var(--color-border)'}`, ...extra?.style }}
+      />
+      {opts.error && <span role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{opts.error}</span>}
+    </label>
+  )
+}
+
 // An address the shopper has ordered to before. Stored fields are all optional
 // (the account page's own form asks for fewer than checkout does), so nothing
 // here may assume a field is present.
@@ -88,6 +158,7 @@ export function CheckoutShippingClient({
   addressLookup = null,
   heading,
   methodHeading,
+  billingHeading,
 }: {
   preview?: boolean
   // Resolved server-side from the 'shop.checkout-address-lookup' extension
@@ -96,6 +167,7 @@ export function CheckoutShippingClient({
   addressLookup?: ComponentType<ShopCheckoutAddressLookupProps> | null
   heading?: string
   methodHeading?: string
+  billingHeading?: string
 }) {
   const populated = useCartPopulated(preview)
   const initial = getCheckoutState()
@@ -114,6 +186,13 @@ export function CheckoutShippingClient({
   // for them.
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
   const [choice, setChoice] = useState<AddressChoice | null>(null)
+  // Whether this shop offers a billing address at all, from shop settings.
+  // Assumed off until the answer arrives, so a shop that has never switched it
+  // on never flashes a tickbox nobody asked for.
+  const [billingEnabled, setBillingEnabled] = useState(false)
+  const [billingDifferent, setBillingDifferent] = useState(initial.billingAddressDifferent)
+  const [billing, setBilling] = useState<ShpAddressForm>(initial.billingAddress)
+  const [billingTouched, setBillingTouched] = useState<Partial<Record<keyof ShpAddressForm, boolean>>>({})
 
   useEffect(() => {
     // No fetch in the editor preview: nobody drawing this block in Puck is a
@@ -155,10 +234,13 @@ export function CheckoutShippingClient({
 
   useEffect(() => {
     let cancelled = false
-    fetchShopPublicConfig<{ requirePhone?: boolean }>()
+    fetchShopPublicConfig<{ requirePhone?: boolean; billingAddress?: { enabled?: boolean } }>()
       .then((d) => {
         if (cancelled || !d) return
         setPhoneRequired(d.requirePhone === true)
+        // Optional so a response from an older cached bundle still works: no
+        // billing address is what every shop had until now.
+        setBillingEnabled(d.billingAddress?.enabled === true)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -254,39 +336,54 @@ export function CheckoutShippingClient({
     if (choice?.kind !== 'saved') setChoice({ kind: 'new' })
   }
 
-  // Real <label>s, not placeholder-as-label: a placeholder vanishes the moment
-  // typing starts and never reaches a screen reader as the field's name.
-  // `extra` lets an address-lookup provider layer combobox behaviour onto the
-  // input while this component keeps sole ownership of the markup; shop's own
-  // handlers run first, then the provider's.
+  function setBillingField<K extends keyof ShpAddressForm>(key: K, value: ShpAddressForm[K]) {
+    const next = { ...billing, [key]: value }
+    setBilling(next)
+    updateCheckoutState({ billingAddress: next })
+  }
+
+  // Kept rather than cleared when the box is unticked: a shopper who ticks,
+  // types, unticks and thinks better of it should not have to type it again.
+  // Nothing unticked ever leaves the browser - the payment step only sends a
+  // billing address while the box is ticked.
+  function toggleBillingDifferent(next: boolean) {
+    setBillingDifferent(next)
+    updateCheckoutState({ billingAddressDifferent: next })
+    if (!next) setBillingTouched({})
+  }
+
+  // As applyLookup above, for the billing form: one state update rather than
+  // several set() calls each spreading a stale address.
+  function applyBillingLookup(picked: ShpLookupAddress) {
+    const next = { ...billing, line1: picked.line1, line2: picked.line2, city: picked.city, county: picked.county, postcode: picked.postcode }
+    setBilling(next)
+    updateCheckoutState({ billingAddress: next })
+  }
+
   function field(key: keyof ShpAddressForm, label: string, autoComplete: string, required: boolean, extra?: InputHTMLAttributes<HTMLInputElement>) {
-    const error = fieldError(key)
-    return (
-      // alignContent start, not the default stretch: two of these sit side by
-      // side in a 1fr 1fr row, and a message under one of them makes that row
-      // taller. Stretched auto rows would spend the extra height on the other
-      // box, so the pair drift out of line the moment one is told off.
-      <label style={{ display: 'grid', gap: '0.25rem', alignContent: 'start' }}>
-        <span>{label}</span>
-        <input
-          {...extra}
-          type="text"
-          required={required}
-          autoComplete={extra?.autoComplete ?? autoComplete}
-          // How the review step finds this box when it lists what is still
-          // outstanding (see focusCheckoutField). After the spread on purpose:
-          // an address-lookup provider layering itself onto line 1 must not be
-          // able to take the marker off it.
-          data-shop-field={key}
-          value={address[key]}
-          onChange={(e) => { set(key, e.target.value); extra?.onChange?.(e) }}
-          onBlur={(e) => { setTouched((t) => ({ ...t, [key]: true })); extra?.onBlur?.(e) }}
-          aria-invalid={error ? true : undefined}
-          style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`, ...extra?.style }}
-        />
-        {error && <span role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{error}</span>}
-      </label>
-    )
+    return addressInput({
+      fieldKey: key, label, autoComplete, required, extra,
+      value: address[key],
+      error: fieldError(key),
+      onChange: (value) => set(key, value),
+      onBlur: () => setTouched((t) => ({ ...t, [key]: true })),
+    })
+  }
+
+  // The billing form's half of the same. Its own touched map, because being
+  // told off for a blank delivery postcode is not being told off for a blank
+  // billing one, and its own message set, because on a page carrying both a
+  // bare "enter your postcode" names neither of them.
+  function billingField(key: keyof ShpAddressForm, label: string, autoComplete: string, required: boolean, extra?: InputHTMLAttributes<HTMLInputElement>) {
+    const message = BILLING_REQUIRED_MESSAGES[key]
+    const error = message && billingTouched[key] && billing[key].trim().length === 0 ? message : null
+    return addressInput({
+      fieldKey: billingFieldKey(key), label, autoComplete, required, extra,
+      value: billing[key],
+      error,
+      onChange: (value) => setBillingField(key, value),
+      onBlur: () => setBillingTouched((t) => ({ ...t, [key]: true })),
+    })
   }
 
   const AddressLookup = addressLookup
@@ -438,6 +535,50 @@ export function CheckoutShippingClient({
               <span>{rate.name}{rate.estimatedDays ? ` - ${rate.estimatedDays}` : ''}</span>
             </label>
           ))}
+        </div>
+      )}
+
+      {/* Only on a shop that asks for one. Last on the step on purpose: it is
+          about the invoice rather than the parcel, so it comes after everything
+          the delivery itself needs. The form appears only once the shopper says
+          the two addresses differ - an empty second address on every checkout
+          is exactly what the setting exists to keep off the page. */}
+      {billingEnabled && (
+        <div style={{ display: 'grid', gap: '0.75rem' }}>
+          <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+            <input
+              type="checkbox"
+              checked={billingDifferent}
+              onChange={(e) => toggleBillingDifferent(e.target.checked)}
+              data-shop-field="billingAddressDifferent"
+              style={{ marginTop: '0.2rem' }}
+            />
+            <span>My billing address is different to the delivery address</span>
+          </label>
+
+          {billingDifferent && (
+            <>
+              <h3 style={{ fontSize: '0.9375rem', margin: 0 }}>{billingHeading || 'Billing address'}</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                {billingField('firstName', 'First name', 'billing given-name', true)}
+                {billingField('lastName', 'Last name', 'billing family-name', true)}
+              </div>
+              {AddressLookup ? (
+                <AddressLookup
+                  value={billing.line1}
+                  onSelect={applyBillingLookup}
+                  renderInput={(inputProps) => billingField('line1', 'Address line 1', 'billing address-line1', true, inputProps)}
+                />
+              ) : (
+                billingField('line1', 'Address line 1', 'billing address-line1', true)
+              )}
+              {billingField('line2', 'Address line 2 (optional)', 'billing address-line2', false)}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                {billingField('city', 'Town or city', 'billing address-level2', true)}
+                {billingField('postcode', 'Postcode', 'billing postal-code', true)}
+              </div>
+            </>
+          )}
         </div>
       )}
     </section>

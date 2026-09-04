@@ -144,6 +144,11 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
   const [referenceRequired, setReferenceRequired] = useState(false)
   const [referenceLabel, setReferenceLabel] = useState('')
   const [phoneRequired, setPhoneRequired] = useState(false)
+  // Whether the shop offers a separate billing address. Only bears on this
+  // block through the outstanding list: the boxes themselves live on the
+  // delivery step, and this is what stops the button going live while one of
+  // them is empty.
+  const [billingEnabled, setBillingEnabled] = useState(false)
   // The shop's ISO currency code, and the publishable per-method config a
   // payment module's own components draw from. Both come off the same config
   // read as everything else here, and both are only of interest to the wallet
@@ -178,6 +183,7 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
       checkoutAgreements?: Agreement[]
       organisation?: { required?: boolean; label?: string }
       customerReference?: { required?: boolean; label?: string }
+      billingAddress?: { enabled?: boolean }
       requirePhone?: boolean
       currency?: string
       paymentMethodClientFields?: Record<string, Record<string, unknown>>
@@ -197,6 +203,7 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
         setReferenceRequired(d.customerReference?.required === true)
         setReferenceLabel(d.customerReference?.label ?? '')
         setPhoneRequired(d.requirePhone === true)
+        setBillingEnabled(d.billingAddress?.enabled === true)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -210,7 +217,7 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
       const lines = getCart()
       setTicked(state.agreements ?? {})
       setPaymentMethod(state.paymentMethod)
-      setMissing(missingCheckoutFields(state, { organisationRequired, organisationLabel, customerReferenceRequired: referenceRequired, customerReferenceLabel: referenceLabel, phoneRequired }))
+      setMissing(missingCheckoutFields(state, { organisationRequired, organisationLabel, customerReferenceRequired: referenceRequired, customerReferenceLabel: referenceLabel, phoneRequired, billingAddressEnabled: billingEnabled }))
       if (lines.length === 0) { setSummary(null); return }
 
       // Carriage is only priced once there is a postcode and a service picked,
@@ -274,7 +281,7 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
     // Re-runs when the business-name and phone rules arrive from config: the
     // completeness test above closes over them, so a stale `false` would wave
     // through a checkout the order route is about to refuse.
-  }, [organisationRequired, organisationLabel, referenceRequired, referenceLabel, phoneRequired])
+  }, [organisationRequired, organisationLabel, referenceRequired, referenceLabel, phoneRequired, billingEnabled])
 
   function setAgreement(id: string, accepted: boolean) {
     const next = { ...getCheckoutState().agreements, [id]: accepted }
@@ -309,7 +316,7 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
     // rather than a code path - it exists so a stale render can never post. It
     // guards the wallet buttons too, which are disabled by the same test: a
     // shopper must not skip the terms tickbox by paying with their watch.
-    if (outstandingDecisions().length > 0 || missingCheckoutFields(getCheckoutState(), { organisationRequired, organisationLabel, customerReferenceRequired: referenceRequired, customerReferenceLabel: referenceLabel, phoneRequired }).length > 0) return
+    if (outstandingDecisions().length > 0 || missingCheckoutFields(getCheckoutState(), { organisationRequired, organisationLabel, customerReferenceRequired: referenceRequired, customerReferenceLabel: referenceLabel, phoneRequired, billingAddressEnabled: billingEnabled }).length > 0) return
     // Silently, and before anything else: the press that is already running has
     // the button saying so, and a second one has nothing to add. Read from the
     // ref rather than the `placing` state because this runs inside the click,

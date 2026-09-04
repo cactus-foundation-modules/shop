@@ -136,6 +136,19 @@ export const ShpConfigSchema = z.object({
   // box quietly changing its paperwork.
   customerReferenceAfterOrder: z.boolean().default(false),
 
+  // A billing address that is not the delivery address. Off by default: most
+  // shops post the goods to whoever paid for them, and an address nobody needs
+  // is one more thing between a shopper and the button.
+  //
+  // Switched on, the delivery step grows a tickbox and a second address form
+  // under it, and whatever is filled in there rides on the order as its billing
+  // address - which is what the invoice, the proforma and the receipt already
+  // print when an order carries one. Nothing is stored when the box is left
+  // unticked: an order with no billing address of its own bills to the delivery
+  // address exactly as it always did, so switching this on changes nothing for
+  // the shoppers who do not need it.
+  billingAddressEnabled: z.boolean().default(false),
+
   // Terms and conditions tickbox at checkout. Kept apart from the owner's own
   // tickboxes below because it is the one nearly every shop wants and it can
   // point at the site's own terms page without anyone typing a URL - leave

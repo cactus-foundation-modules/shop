@@ -141,6 +141,11 @@ async function buildConfigPayload() {
       required: config.customerReferenceRequired,
       label: config.customerReferenceLabel.trim() || 'Purchase order number',
     },
+    // Whether checkout offers a billing address separate from the delivery one.
+    // The delivery step draws the tickbox from this; the route that creates the
+    // order applies the same setting again, because a setting the browser is
+    // told about is a setting the browser can ignore.
+    billingAddress: { enabled: config.billingAddressEnabled },
     // Checkout tickboxes, already resolved: disabled and blank ones dropped,
     // and the terms link filled in from the site's own terms page where the
     // owner left the URL blank.

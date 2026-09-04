@@ -120,6 +120,49 @@ describe('missingCheckoutFields', () => {
   })
 })
 
+describe('the billing address', () => {
+  const TICKED: CheckoutState = { ...FILLED, billingAddressDifferent: true }
+
+  it('is never asked for on a shop that does not offer one, however the box is left', () => {
+    expect(missingCheckoutFields(TICKED)).toEqual([])
+    expect(isContactAndShippingComplete(TICKED)).toBe(true)
+  })
+
+  it('is never asked for while the shopper says it is the delivery address', () => {
+    expect(missingCheckoutFields(FILLED, { billingAddressEnabled: true })).toEqual([])
+  })
+
+  it('names its own boxes, and only once the shopper says the two differ', () => {
+    expect(labels(TICKED, { billingAddressEnabled: true })).toEqual([
+      'Billing first name', 'Billing last name', 'Billing address line 1', 'Billing town or city', 'Billing postcode',
+    ])
+  })
+
+  it('sends the shopper to the billing box rather than the delivery box of the same name', () => {
+    const keys = missingCheckoutFields(TICKED, { billingAddressEnabled: true }).map((f) => f.key)
+    expect(keys).toContain('billingLine1')
+    expect(keys).not.toContain('line1')
+  })
+
+  it('comes last, after everything the delivery itself needs', () => {
+    const asked = labels({ ...EMPTY_CHECKOUT_STATE, billingAddressDifferent: true }, { billingAddressEnabled: true })
+    expect(asked.indexOf('Billing first name')).toBeGreaterThan(asked.indexOf('Postcode'))
+  })
+
+  it('holds the order up until it is filled in', () => {
+    expect(isContactAndShippingComplete(TICKED, { billingAddressEnabled: true })).toBe(false)
+    const done: CheckoutState = {
+      ...TICKED,
+      billingAddress: {
+        firstName: 'A', lastName: 'Shopper',
+        line1: 'Accounts, 90 Example Street', line2: '', city: 'Sheffield', county: '',
+        postcode: 'S1 1AA', country: 'GB', phone: '',
+      },
+    }
+    expect(isContactAndShippingComplete(done, { billingAddressEnabled: true })).toBe(true)
+  })
+})
+
 describe('isContactAndShippingComplete', () => {
   it('refuses a checkout that is missing one box, whichever box it is', () => {
     expect(isContactAndShippingComplete({ ...FILLED, customerName: '' })).toBe(false)

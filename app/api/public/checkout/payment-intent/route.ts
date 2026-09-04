@@ -234,7 +234,12 @@ export async function POST(request: NextRequest) {
     customerReference: config.customerReferenceFieldEnabled ? (data.customerReference?.trim() || null) : null,
     customerPhone: data.customerPhone ?? null,
     shippingAddress: data.shippingAddress as ShpAddress,
-    billingAddress: (data.billingAddress as ShpAddress | null) ?? null,
+    // Same rule as the two fields above: only kept while the shop is actually
+    // asking for one, so switching the setting off stops orders carrying
+    // whatever a stale page still had in it. An order without one bills to the
+    // delivery address, which is what every screen that prints a billing
+    // address already falls back to.
+    billingAddress: config.billingAddressEnabled ? ((data.billingAddress as ShpAddress | null) ?? null) : null,
     subtotal: totals.subtotal,
     discountAmount: totals.discountAmount,
     shippingAmount: totals.shippingAmount,

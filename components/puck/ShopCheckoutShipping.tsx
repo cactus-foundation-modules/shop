@@ -2,7 +2,7 @@ import { CheckoutShippingClient } from '@/modules/shop/components/public/Checkou
 
 // [ANCHOR] - core checkout step (shipping address + method).
 // Wording only; absent props = the historical strings (pre-settings layouts).
-export type ShopCheckoutShippingProps = { heading?: string; methodHeading?: string }
+export type ShopCheckoutShippingProps = { heading?: string; methodHeading?: string; billingHeading?: string }
 
 // Registered as a SERVER component so Puck's RSC <Render> serialises only plain
 // props (never its renderDropZone function bag, which a client-registered block
@@ -12,7 +12,7 @@ export type ShopCheckoutShippingProps = { heading?: string; methodHeading?: stri
 // island hides itself when the basket is empty, so without the flag every
 // checkout step would vanish from the layout editor.
 export function ShopCheckoutShipping(props: ShopCheckoutShippingProps) {
-  return <CheckoutShippingClient preview heading={props.heading} methodHeading={props.methodHeading} />
+  return <CheckoutShippingClient preview heading={props.heading} methodHeading={props.methodHeading} billingHeading={props.billingHeading} />
 }
 
 export const shopCheckoutShippingPuckComponent = {
@@ -20,8 +20,11 @@ export const shopCheckoutShippingPuckComponent = {
   fields: {
     heading: { type: 'text' as const, label: 'Heading' },
     methodHeading: { type: 'text' as const, label: 'Delivery method heading' },
+    // Only ever seen on a shop that has switched a separate billing address on
+    // in its checkout settings; harmless wording on every other one.
+    billingHeading: { type: 'text' as const, label: 'Billing address heading' },
   },
-  defaultProps: { heading: 'Delivery address', methodHeading: 'Delivery method' },
+  defaultProps: { heading: 'Delivery address', methodHeading: 'Delivery method', billingHeading: 'Billing address' },
   permissions: { delete: false, duplicate: false },
   render: ShopCheckoutShipping,
 }

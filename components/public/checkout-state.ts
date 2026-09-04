@@ -36,6 +36,13 @@ export type CheckoutState = {
   customerReference: string
   customerPhone: string
   shippingAddress: ShpAddressForm
+  // Where the invoice goes, when that is not where the parcel goes. Two fields
+  // rather than a nullable address on purpose: a shopper who ticks the box,
+  // fills it in and then unticks it keeps what they typed, so changing their
+  // mind twice does not cost them the typing. Only the address of a ticked box
+  // ever leaves the browser - see CheckoutPaymentClient.
+  billingAddressDifferent: boolean
+  billingAddress: ShpAddressForm
   shippingRateId: string | null
   couponCode: string | null
   // Any registered provider id, not just the four built in - a module can
@@ -58,7 +65,8 @@ export const EMPTY_ADDRESS: ShpAddressForm = {
 
 export const EMPTY_CHECKOUT_STATE: CheckoutState = {
   customerEmail: '', customerName: '', customerOrganisation: '', customerReference: '', customerPhone: '',
-  shippingAddress: EMPTY_ADDRESS, shippingRateId: null, couponCode: null, paymentMethod: null,
+  shippingAddress: EMPTY_ADDRESS, billingAddressDifferent: false, billingAddress: EMPTY_ADDRESS,
+  shippingRateId: null, couponCode: null, paymentMethod: null,
   agreements: {},
 }
 
@@ -207,6 +215,11 @@ export type CheckoutFieldRules = {
   customerReferenceRequired?: boolean
   customerReferenceLabel?: string
   phoneRequired?: boolean
+  // Whether this shop offers a separate billing address at all. The boxes are
+  // only owed when the shop asks for them AND the shopper has ticked the box
+  // saying theirs is different, so a shop with the setting switched off is
+  // never held up by an address it does not collect.
+  billingAddressEnabled?: boolean
 }
 
 // Everything still owed before an order can be placed, in the order the page
@@ -263,6 +276,19 @@ export function missingCheckoutFields(
   if (a.line1.trim().length === 0) add('line1', 'Address line 1')
   if (a.city.trim().length === 0) add('city', 'Town or city')
   if (a.postcode.trim().length === 0) add('postcode', 'Postcode')
+
+  // Last, because it is the last thing on the page: a billing address only
+  // exists once the shopper has said theirs is different. Its keys are prefixed
+  // so the review step sends them to the billing boxes rather than to the
+  // delivery ones of the same name - both sets are on screen together.
+  if (opts?.billingAddressEnabled && state.billingAddressDifferent) {
+    const b = state.billingAddress
+    if (b.firstName.trim().length === 0) add('billingFirstName', 'Billing first name')
+    if (b.lastName.trim().length === 0) add('billingLastName', 'Billing last name')
+    if (b.line1.trim().length === 0) add('billingLine1', 'Billing address line 1')
+    if (b.city.trim().length === 0) add('billingCity', 'Billing town or city')
+    if (b.postcode.trim().length === 0) add('billingPostcode', 'Billing postcode')
+  }
 
   return missing
 }

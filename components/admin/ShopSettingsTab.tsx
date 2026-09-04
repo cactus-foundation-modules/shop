@@ -569,6 +569,18 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
           )}
 
           <hr style={hr} />
+          <h3 style={sectionHeading}>Billing address</h3>
+          <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
+            Adds a tickbox under the delivery address for customers whose invoice goes somewhere other than the parcel - a head office, an accounts
+            department, a landlord. Leave it off if the two are always the same, which for most shops they are. Nothing is recorded unless a customer
+            ticks the box, and what they fill in is what prints on their invoice and receipt.
+          </p>
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.billingAddressEnabled} onChange={(e) => set('billingAddressEnabled', e.target.checked)} />
+            Let customers give a different billing address
+          </label>
+
+          <hr style={hr} />
           <h3 style={sectionHeading}>Tickboxes at checkout</h3>
           <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
             These appear just above the Place order button. A required one has to be ticked before the order will go through, and what was ticked is

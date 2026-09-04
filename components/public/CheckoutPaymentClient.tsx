@@ -51,6 +51,11 @@ type ShopClientConfig = {
   // And the customer's own reference box. Optional for the same reason: a
   // response from a cached bundle that predates it means the rule as it was.
   customerReference?: { required?: boolean }
+  // Whether the shop offers a billing address separate from the delivery one.
+  // Optional for the same reason as the two above: a response from a cached
+  // bundle that predates it means the rule as it was, which is no billing
+  // address at all.
+  billingAddress?: { enabled?: boolean }
   // Whether the contact step's phone number is compulsory. Same reason as
   // above: the order-creating route refuses without one, so this block has to
   // know before it is worth calling.
@@ -234,6 +239,13 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
           customerReference: state.customerReference.trim() || undefined,
           customerPhone: (formatUkPhone(state.customerPhone) ?? state.customerPhone) || undefined,
           shippingAddress: state.shippingAddress, shippingRateId: state.shippingRateId, couponCode: state.couponCode, paymentMethod: next,
+          // Only where the shop asks for one and the shopper has said theirs is
+          // different. Null otherwise, which is what an order that bills to the
+          // delivery address has always carried - and what every screen that
+          // prints one already falls back to.
+          billingAddress: config?.billingAddress?.enabled === true && state.billingAddressDifferent
+            ? state.billingAddress
+            : null,
           // Which tickboxes the shopper ticked on the review step. Sent as ids,
           // never as statements: the wording the order records has to be the
           // shop's own copy of it, not whatever the browser claims it read.
@@ -311,6 +323,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
       organisationRequired: config?.organisation?.required === true,
       customerReferenceRequired: config?.customerReference?.required === true,
       phoneRequired: config?.requirePhone === true,
+      billingAddressEnabled: config?.billingAddress?.enabled === true,
     })) return 'details'
     if (!areAgreementsAccepted(state.agreements, config?.checkoutAgreements ?? [])) return 'agreements'
     return null

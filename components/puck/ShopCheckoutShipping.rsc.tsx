@@ -10,7 +10,7 @@ import { shopCheckoutShippingPuckComponent, type ShopCheckoutShippingProps } fro
 
 // Explicit props only across the client boundary - never a spread of the puck bag.
 export function ShopCheckoutShippingRsc(props: ShopCheckoutShippingProps) {
-  return <CheckoutShippingClient addressLookup={resolveCheckoutAddressLookup()} heading={props.heading} methodHeading={props.methodHeading} />
+  return <CheckoutShippingClient addressLookup={resolveCheckoutAddressLookup()} heading={props.heading} methodHeading={props.methodHeading} billingHeading={props.billingHeading} />
 }
 
 export const shopCheckoutShippingPuckRscComponent = {
