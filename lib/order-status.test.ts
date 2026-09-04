@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { dispatchDetails } from '@/modules/shop/lib/order-status'
+import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
 
 const NONE = { trackingUrl: '', trackingLinks: '' }
 
@@ -90,5 +91,28 @@ describe('dispatchDetails - tracking links', () => {
     const out = dispatchDetails([{ trackingNumber: 'A&B"<x>', trackingUrl: 'https://a.test/?a=1&b=2', carrier: null }])
     expect(out.trackingLinks).toContain('&amp;b=2')
     expect(out.trackingLinks).not.toContain('<x>')
+  })
+})
+
+describe('safeTrackingUrl', () => {
+  it('passes an ordinary carrier link through untouched', () => {
+    expect(safeTrackingUrl('https://dpd.test/track/AB123')).toBe('https://dpd.test/track/AB123')
+    expect(safeTrackingUrl('http://royalmail.test/x')).toBe('http://royalmail.test/x')
+  })
+
+  // The dispatch route refuses these on the way in. This is the same rule on
+  // the way out, because a row written before that check existed has never
+  // been past it and both the email and the order page render it as an href.
+  it('refuses anything that is not an http or https address', () => {
+    for (const url of ['javascript:alert(1)', 'data:text/html,x', 'ftp://a.test/1', 'file:///etc/passwd', '/parcels/1', 'not a url']) {
+      expect(safeTrackingUrl(url), url).toBe('')
+    }
+  })
+
+  it('treats nothing at all as nothing', () => {
+    expect(safeTrackingUrl('')).toBe('')
+    expect(safeTrackingUrl('   ')).toBe('')
+    expect(safeTrackingUrl(null)).toBe('')
+    expect(safeTrackingUrl(undefined)).toBe('')
   })
 })

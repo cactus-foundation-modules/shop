@@ -44,6 +44,7 @@ import {
 } from '@/modules/shop/lib/customer-reference'
 import WithdrawRequestButton from '@/modules/shop/components/public/WithdrawRequestButton'
 import BuyAgainButton from '@/modules/shop/components/public/BuyAgainButton'
+import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
 
 export const metadata = { title: 'Order detail' }
 export const dynamic = 'force-dynamic'
@@ -481,6 +482,21 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
                     <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
                       Tracking number: {shipment.trackingNumber}
                     </span>
+                  )}
+                  {/* The carrier's own page for this parcel. Re-checked here
+                      rather than trusted: the dispatch route refuses anything
+                      that is not http(s), but a row written before that check
+                      existed has never been past it, and this is an href in
+                      front of somebody who trusts the shop. */}
+                  {safeTrackingUrl(shipment.trackingUrl) && (
+                    <a
+                      href={safeTrackingUrl(shipment.trackingUrl)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', justifySelf: 'start' }}
+                    >
+                      Track {shipments.length === 1 ? 'your parcel' : `parcel ${index + 1}`}
+                    </a>
                   )}
                   <ul style={{ listStyle: 'none', margin: 0, padding: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
                     {shipment.items.map((item) => (

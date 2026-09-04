@@ -15,6 +15,7 @@ import { customerReferenceVars } from '@/modules/shop/lib/email'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { getSiteUrl } from '@/lib/config/env'
 import { escapeHtml } from '@/lib/email/blocks'
+import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
 import type { ShpEmailTemplateTrigger, ShpOrderItem, ShpOrderStatus } from '@/modules/shop/lib/types'
 
 // Everything that happens when an order's status changes, in one place.
@@ -67,26 +68,6 @@ export type DispatchDetails = {
   trackingUrl: string
   /** Every tracking link as ready-made markup, one per parcel. */
   trackingLinks: string
-}
-
-/**
- * Only what a customer may safely be handed as a link.
- *
- * A tracking URL ends up as an `href` in front of a shopper who trusts the
- * sender, which is the worst possible place for a `javascript:` one. The
- * dispatch route already refuses anything that is not http(s), but a row
- * written before that check existed - or by hand - has never been past it, so
- * it is checked again on the way out rather than trusted on the way in.
- */
-function safeTrackingUrl(value: string | null): string {
-  const url = value?.trim() ?? ''
-  if (!url) return ''
-  try {
-    const parsed = new URL(url)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? url : ''
-  } catch {
-    return ''
-  }
 }
 
 /**
