@@ -5,11 +5,15 @@ import {
   releasePreOrderAllocationForOrder,
   updateOrderStatus,
 } from '@/modules/shop/lib/db/orders'
-import { createShipment, getOrderDispatchSummary } from '@/modules/shop/lib/db/shipments'
+import { createShipment, getOrderDispatchSummary, getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { issueInvoiceForOrder, shouldIssueOn, type InvoiceTrigger } from '@/modules/shop/lib/invoices'
 import { invoiceEmailAttachment } from '@/modules/shop/lib/invoice-attachment'
+import { renderOrderItemsEmailTable } from '@/modules/shop/lib/order-items-email'
+import { customerReferenceVars } from '@/modules/shop/lib/email'
+import { formatMoney } from '@/modules/shop/lib/money'
+import { getSiteUrl } from '@/lib/config/env'
 import type { ShpEmailTemplateTrigger, ShpOrderItem, ShpOrderStatus } from '@/modules/shop/lib/types'
 
 // Everything that happens when an order's status changes, in one place.
@@ -51,10 +55,41 @@ export type ApplyOrderStatusResult =
   | { ok: true; changed: boolean }
   | { ok: false; status: number; error: string }
 
-export async function applyOrderStatusChange({ orderId, status, sendEmail }: {
+function formatAddress(address: { line1: string; line2?: string; city: string; postcode: string; country: string }): string {
+  return [address.line1, address.line2, address.city, address.postcode, address.country].filter(Boolean).join(', ')
+}
+
+/**
+ * The carrier and tracking number to quote in a dispatch email.
+ *
+ * An order can have gone out in several parcels, and the customer being told
+ * the whole order is dispatched wants every number, not the first one recorded
+ * - so the distinct values are joined. Parcels with nothing recorded against
+ * them simply contribute nothing; an order dispatched by hand with no numbers
+ * at all comes back with two empty strings, and the template's `{{#if}}` drops
+ * the line rather than printing "Tracking number:" followed by a blank.
+ */
+export function dispatchDetails(
+  shipments: Array<{ trackingNumber: string | null; carrier: string | null }>,
+): { trackingNumber: string; carrier: string } {
+  const unique = (values: Array<string | null>): string =>
+    [...new Set(values.map((v) => v?.trim() ?? '').filter(Boolean))].join(', ')
+  return {
+    trackingNumber: unique(shipments.map((s) => s.trackingNumber)),
+    carrier: unique(shipments.map((s) => s.carrier)),
+  }
+}
+
+export async function applyOrderStatusChange({ orderId, status, sendEmail, trackingNumber, carrier }: {
   orderId: string
   status: ShpOrderStatus
   sendEmail?: boolean
+  /** Recorded against the parcel this change implies, and quoted in the email.
+   *  Only meaningful on SHIPPED - an owner marking a whole order as dispatched
+   *  in one go has had nowhere to type them, so the customer was told their
+   *  order was on its way and given no way to follow it. */
+  trackingNumber?: string | null
+  carrier?: string | null
 }): Promise<ApplyOrderStatusResult> {
   const order = await getOrderById(orderId)
   if (!order) return { ok: false, status: 404, error: 'Order not found' }
@@ -99,6 +134,8 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail }: {
         const recorded = await createShipment({
           orderId,
           items: remaining,
+          trackingNumber: trackingNumber?.trim() || null,
+          carrier: carrier?.trim() || null,
           notes: 'Recorded automatically when the order was marked as dispatched.',
         })
         if (!recorded.ok) {
@@ -144,10 +181,36 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail }: {
       // filing paperwork yet.
       const invoice = status === 'COMPLETED' ? await invoiceEmailAttachment(orderId, config) : null
 
+      // The parcels' own numbers, read back off the order rather than taken
+      // from the argument, so the email quotes everything that has gone out
+      // and not merely whatever was typed into this one change. Only gathered
+      // on a dispatch: no other status has anything to say about parcels.
+      const dispatch = status === 'SHIPPED'
+        ? dispatchDetails(await getShipmentsForOrder(orderId).catch(() => []))
+        : { trackingNumber: '', carrier: '' }
+
+      // A status email used to carry three values - the customer's name, the
+      // order number and the shop's. Any owner who put the order's contents,
+      // its total or the delivery address into their own wording got a blank
+      // where each one should have been, because an unknown merge tag collapses
+      // to nothing rather than complaining. They are all filled in now, so a
+      // dispatch notice can say what is in the parcel and where it is going.
+      const items = await getOrderItems(orderId)
+
       await notifyOrderCustomer(trigger, order, {
         orderNumber: order.orderNumber,
         customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        orderTotal: formatMoney(order.total, config.currencySymbol),
+        orderItems: await renderOrderItemsEmailTable(items, config),
+        shippingAddress: formatAddress(order.shippingAddress),
+        trackingNumber: dispatch.trackingNumber,
+        carrier: dispatch.carrier,
+        hasTracking: dispatch.trackingNumber ? 'true' : 'false',
+        hasCarrier: dispatch.carrier ? 'true' : 'false',
+        ...customerReferenceVars(order, config),
         shopName: config.shopTitle || 'Shop',
+        shopUrl: `${getSiteUrl()}/shop`,
       }, invoice ? { attachments: [invoice] } : undefined)
     }
   }

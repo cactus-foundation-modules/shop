@@ -78,15 +78,23 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Order processing',
     subject: 'Your order {{orderNumber}} is being processed',
     bodyHtml: '<p>Hi {{customerName}},</p><p>Your order <strong>{{orderNumber}}</strong> is now being processed.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'shopName'],
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'customerReference', 'customerReferenceLabel', 'shopName'],
+    rawTags: ['orderItems'],
     transactional: false,
   },
   {
+    // The whole order, out in one go. Carries everything a dispatch notice
+    // wants: what is in it, where it is going, and the numbers to follow it
+    // with. Those last two were passed to nobody before, so an owner who put
+    // {{trackingNumber}} in their own wording got a blank line - a merge tag
+    // nothing fills collapses to nothing rather than complaining.
     key: 'shop.status-shipped',
     label: 'Order shipped',
     subject: 'Your order {{orderNumber}} is on its way',
-    bodyHtml: '<p>Hi {{customerName}},</p><p>Your order <strong>{{orderNumber}}</strong> is on its way.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'shopName'],
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>Your order <strong>{{orderNumber}}</strong> is on its way.</p>{{orderItems}}{{#if hasCarrier}}<p>Sent with {{carrier}}.</p>{{/if}}{{#if hasTracking}}<p>Tracking number: <strong>{{trackingNumber}}</strong></p>{{/if}}<p>Shipping to: {{shippingAddress}}</p>',
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'carrier', 'trackingNumber', 'hasCarrier', 'hasTracking', 'customerReference', 'customerReferenceLabel', 'shopName'],
+    rawTags: ['orderItems'],
     transactional: false,
   },
   {
@@ -94,7 +102,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Order completed',
     subject: 'Your order {{orderNumber}} is complete',
     bodyHtml: '<p>Hi {{customerName}},</p><p>Your order <strong>{{orderNumber}}</strong> is now complete. Thanks for shopping with us.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'shopName'],
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'customerReference', 'customerReferenceLabel', 'shopName'],
+    rawTags: ['orderItems'],
     transactional: false,
   },
   {
@@ -102,7 +111,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Order cancelled',
     subject: 'Your order {{orderNumber}} has been cancelled',
     bodyHtml: '<p>Hi {{customerName}},</p><p>Your order <strong>{{orderNumber}}</strong> has been cancelled.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'shopName'],
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'customerReference', 'customerReferenceLabel', 'shopName'],
+    rawTags: ['orderItems'],
     transactional: false,
   },
   {
@@ -111,7 +121,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     subject: '{{#if hasOutstanding}}Part of your order {{orderNumber}} is on its way{{/if}}{{#if isFinalPart}}The last part of your order {{orderNumber}} is on its way{{/if}}',
     bodyHtml:
       '<p>Hi {{customerName}},</p>{{#if hasOutstanding}}<p>Good news - part of your order <strong>{{orderNumber}}</strong> is on its way. The rest of it is still with us, and we will email you again as soon as it is dispatched.</p>{{/if}}{{#if isFinalPart}}<p>Good news - the last part of your order <strong>{{orderNumber}}</strong> is on its way. That is everything from this order now dispatched.</p>{{/if}}<p><strong>In this parcel:</strong></p>{{dispatchedItems}}{{#if hasOutstanding}}<p><strong>Still to come:</strong></p>{{outstandingItems}}{{/if}}{{#if hasCarrier}}<p>Sent with {{carrier}}.</p>{{/if}}{{#if hasTracking}}<p>Tracking number: {{trackingNumber}}</p>{{/if}}<p>Parcels sent separately can arrive a day or two apart, so please do not worry if they turn up at different times.</p><p>Thanks for shopping with {{shopName}}.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'dispatchedItems', 'outstandingItems', 'carrier', 'trackingNumber', 'shopName'],
+    mergeTags: ['customerName', 'orderNumber', 'dispatchedItems', 'outstandingItems', 'carrier', 'trackingNumber', 'hasCarrier', 'hasTracking', 'hasOutstanding', 'isFinalPart', 'shopName'],
     // The item list is a table this module builds itself, photographs and
     // all, with every value escaped on the way in - see
     // lib/order-items-email.ts. As a plain value its markup would arrive as
