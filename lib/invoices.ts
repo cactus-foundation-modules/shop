@@ -11,7 +11,9 @@ import {
   voidInvoice,
   type InsertInvoiceInput,
 } from '@/modules/shop/lib/db/invoices'
+import { clearRefundsNettedOff, listUncreditedRefundLines, markRefundsNettedOff } from '@/modules/shop/lib/db/refunds'
 import { generateInvoiceNumber } from '@/modules/shop/lib/invoice-number'
+import { netOrderOfRefunds } from '@/modules/shop/lib/invoice-net-of-refunds'
 import { buildInvoiceMoney, ledgerItems } from '@/modules/shop/lib/invoice-tax'
 import { invoicePdfFilename, printPath } from '@/modules/shop/lib/invoice-pdf'
 import {
@@ -40,6 +42,12 @@ export type InvoiceTrigger = 'PAID' | 'DISPATCHED' | 'COMPLETED' | 'MANUAL' | 'R
 export type IssueInvoiceResult =
   | { ok: true; invoice: ShpInvoice; created: boolean }
   | { ok: false; status: number; error: string }
+
+/** A row ready to insert, and the settled refunds it was raised net of. The two
+ *  travel together because the second is only true of the first: those refunds
+ *  are marked against the invoice the moment it exists, so nothing credits money
+ *  that never went on the document in the first place. */
+export type BuiltInvoiceInput = { input: InsertInvoiceInput; nettedRefundIds: string[] }
 
 /** The tax point as a plain yyyy-mm-dd, worked out in the site's own timezone.
  *  A payment taken at half past midnight in London is that day's sale, and a
@@ -230,23 +238,53 @@ export async function siteTimezone(): Promise<string> {
  * today otherwise - so a replacement raised weeks later still belongs to the
  * quarter the sale happened in. An unpaid order invoiced on despatch is dated
  * the despatch, which is the ordinary rule for goods sent before payment.
+ *
+ * Money already handed back is taken off first. A line refunded before the order
+ * ever reached invoicing was never supplied and never paid for, and putting it
+ * on the document would hand the customer a VAT invoice for goods they do not
+ * have and declare output tax on money the shop has already returned. Those
+ * refunds get no credit note - there was no invoice to credit - so this is the
+ * only place they are dealt with. See lib/invoice-net-of-refunds.ts.
+ *
+ * `alsoNettedOffInvoiceId` is one invoice's own netting marks let back in, and
+ * only the reissue path passes it: a replacement must come out at the figures
+ * the document it replaces came out at, and those are exactly the refunds that
+ * invoice was raised net of. Anything refunded since has a credit note against
+ * the original and is not this document's business.
+ *
+ * Hands back the refunds it took off as well as the row to insert. They are
+ * marked against the invoice once it exists, so nothing ever credits them a
+ * second time - see markRefundsNettedOff.
  */
 export async function buildInvoiceInsertInput(
   order: ShpOrder,
   config: ShpConfig,
-  opts: { trigger: InvoiceTrigger; issuedBy: 'AUTO' | 'MANUAL'; userId: string | null; timezone?: string },
-): Promise<InsertInvoiceInput> {
-  const [items, timezone] = await Promise.all([
+  opts: {
+    trigger: InvoiceTrigger
+    issuedBy: 'AUTO' | 'MANUAL'
+    userId: string | null
+    timezone?: string
+    alsoNettedOffInvoiceId?: string | null
+  },
+): Promise<BuiltInvoiceInput> {
+  const [rawItems, timezone, refundLines] = await Promise.all([
     getOrderItems(order.id),
     opts.timezone ? Promise.resolve(opts.timezone) : siteTimezone(),
+    listUncreditedRefundLines(order.id, opts.alsoNettedOffInvoiceId ?? null),
   ])
   const taxPointDate = dateInZone(order.paidAt ?? new Date(), timezone)
   const dueDate = config.invoicePaymentTermsDays > 0 ? addDays(taxPointDate, config.invoicePaymentTermsDays) : null
 
-  const { lines, taxBreakdown } = buildInvoiceMoney(order, items)
+  const net = netOrderOfRefunds(
+    order,
+    rawItems,
+    refundLines.map((line) => ({ orderItemId: line.orderItemId, quantity: line.quantity, amount: Number(line.amount) })),
+  )
+
+  const { lines, taxBreakdown } = buildInvoiceMoney(net.order, net.items)
   const [seller, invoiceNumber] = await Promise.all([buildSeller(config), generateInvoiceNumber()])
 
-  return {
+  const input: InsertInvoiceInput = {
     orderId: order.id,
     orderNumber: order.orderNumber,
     invoiceNumber,
@@ -255,11 +293,11 @@ export async function buildInvoiceInsertInput(
     currency: order.currency,
     currencySymbol: config.currencySymbol,
     taxMode: order.taxMode,
-    subtotal: order.subtotal,
-    discountAmount: order.discountAmount,
-    shippingAmount: order.shippingAmount,
-    taxAmount: order.taxAmount,
-    total: order.total,
+    subtotal: net.order.subtotal,
+    discountAmount: net.order.discountAmount,
+    shippingAmount: net.order.shippingAmount,
+    taxAmount: net.order.taxAmount,
+    total: net.order.total,
     seller,
     customer: buildCustomer(order),
     lines,
@@ -269,6 +307,8 @@ export async function buildInvoiceInsertInput(
     issueTrigger: opts.trigger,
     createdByUserId: opts.userId,
   }
+
+  return { input, nettedRefundIds: [...new Set(refundLines.map((line) => line.refundId))] }
 }
 
 /**
@@ -299,7 +339,7 @@ export async function issueInvoiceForOrder(
   }
 
   const timezone = await siteTimezone()
-  const input = await buildInvoiceInsertInput(order, config, {
+  const built = await buildInvoiceInsertInput(order, config, {
     trigger: opts.trigger,
     issuedBy: opts.issuedBy,
     userId: opts.userId ?? null,
@@ -308,7 +348,7 @@ export async function issueInvoiceForOrder(
 
   let invoice: ShpInvoice
   try {
-    invoice = await insertInvoice(input)
+    invoice = await insertInvoice(built.input)
   } catch (error) {
     if (error instanceof InvoiceAlreadyIssuedError) {
       // Somebody beat us to it between the read above and the insert. Their
@@ -321,6 +361,15 @@ export async function issueInvoiceForOrder(
     console.error('[shop] could not issue an invoice for order', orderId, error)
     return { ok: false, status: 500, error: 'The invoice could not be raised. Please try again.' }
   }
+
+  // The refunds this document was raised without. Marked now the invoice exists,
+  // so the order screen can say they need no credit note and the credit note
+  // path refuses to raise one - money handed back once must not be relieved
+  // twice. Never fatal: the invoice is out, and an unmarked refund shows up as a
+  // credit note somebody can decline rather than as a lost sale.
+  await markRefundsNettedOff(built.nettedRefundIds, invoice.id).catch((error) => {
+    console.error('[shop] could not mark refunds netted off invoice', invoice.invoiceNumber, error)
+  })
 
   const settledDate = order.paidAt ? dateInZone(order.paidAt, timezone) : null
   const results = await dispatchInvoiceIssued(invoiceSinkPayload(invoice, order.orderNumber, settledDate))
@@ -379,6 +428,13 @@ export async function resendInvoiceToSinks(invoiceId: string): Promise<IssueInvo
 export async function voidInvoiceAndTellSinks(invoiceId: string, reason: string): Promise<IssueInvoiceResult> {
   const done = await voidInvoice(invoiceId, reason)
   if (!done) return { ok: false, status: 409, error: 'That invoice was not there to void.' }
+
+  // Any refunds this invoice was raised net of are undealt-with again: the
+  // document that took them off its face has been withdrawn, so the next
+  // invoice takes them off as this one did.
+  await clearRefundsNettedOff(invoiceId).catch((error) => {
+    console.error('[shop] could not release refunds netted off voided invoice', invoiceId, error)
+  })
 
   const invoice = await getInvoiceById(invoiceId)
   if (!invoice) return { ok: false, status: 404, error: 'Invoice not found.' }

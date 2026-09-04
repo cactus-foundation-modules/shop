@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { listCreditNotesForOrder } from '@/modules/shop/lib/db/credit-notes'
+import { getInvoiceForOrder } from '@/modules/shop/lib/db/invoices'
+import { listRefundsForOrder } from '@/modules/shop/lib/db/refunds'
 import { issueCreditNoteForRefund, resendCreditNoteToSinks } from '@/modules/shop/lib/credit-notes'
 import { hasCreditSinks } from '@/modules/shop/lib/invoice-sinks'
 import { signCreditNoteToken } from '@/modules/shop/lib/invoice-token'
@@ -44,10 +46,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   if (gate.error) return gate.error
 
   const { id } = await params
-  const [notes, config, sinks] = await Promise.all([
+  const [notes, config, sinks, refunds, invoice] = await Promise.all([
     listCreditNotesForOrder(id),
     getShopConfigCached(),
     hasCreditSinks(),
+    listRefundsForOrder(id),
+    getInvoiceForOrder(id),
   ])
 
   return NextResponse.json({
@@ -55,6 +59,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     pdfEnabled: config.invoicePdfEnabled,
     hasBookkeeping: sinks,
     creditNotes: notes.map(present),
+    // Refunds that were taken off an invoice's face instead of being credited
+    // off it - the money went back before the order was ever invoiced. They need
+    // no document, and the panel says so rather than offering a button that
+    // would credit the same money twice.
+    nettedRefundIds: refunds.filter((refund) => refund.nettedOffInvoiceId).map((refund) => refund.id),
+    // Whether there is anything to credit AGAINST yet. Nothing invoiced means a
+    // settled refund is simply waiting to be left off the invoice when it goes.
+    invoiced: Boolean(invoice),
   })
 }
 

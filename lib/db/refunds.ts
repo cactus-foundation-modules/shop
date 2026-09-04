@@ -9,6 +9,10 @@ function mapRefund(r: Record<string, unknown>): ShpRefund {
     reason: (r.reason as string | null) ?? null,
     providerRefundId: (r.provider_refund_id as string | null) ?? null,
     status: r.status as ShpRefund['status'],
+    // Absent on an install that has not taken migration 037 yet, which reads the
+    // same as "no invoice has taken this off its face" and is the right answer
+    // for every refund written before the column existed.
+    nettedOffInvoiceId: (r.netted_off_invoice_id as string | null) ?? null,
     createdBy: r.created_by as string,
     createdAt: r.created_at as Date,
   }
@@ -44,6 +48,72 @@ export async function listRefundItemsForOrder(orderId: string): Promise<ShpRefun
 export async function getRefundById(id: string): Promise<ShpRefund | null> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_refunds" WHERE "id" = ${id} LIMIT 1`
   return rows[0] ? mapRefund(rows[0]) : null
+}
+
+/** One line of a settled refund that has no credit note behind it, with the day
+ *  the refund happened so a caller can tell it apart from one that settled later. */
+export type UncreditedRefundLine = {
+  refundId: string
+  createdAt: Date
+  orderItemId: string
+  quantity: number
+  amount: string
+}
+
+/**
+ * Every settled refund line on an order that nothing has dealt with yet.
+ *
+ * The list an invoice is raised net of. A refund is either credited by a credit
+ * note or taken off an invoice before it goes out, never both, so a refund with
+ * either mark against it is already accounted for and must not be taken off
+ * again - crediting the same money twice is a wrong return in the direction
+ * that gets noticed by HMRC rather than by the owner.
+ *
+ * `alsoNettedOffInvoiceId` lets one invoice's own marks back in, which is what
+ * the reissue path needs: a replacement must come out at the figures the
+ * document it replaces came out at, and those are exactly the refunds that
+ * invoice was netted of.
+ */
+export async function listUncreditedRefundLines(
+  orderId: string,
+  alsoNettedOffInvoiceId?: string | null,
+): Promise<UncreditedRefundLine[]> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT r."id" AS refund_id, r."created_at", ri."order_item_id", ri."quantity", ri."amount"::text AS amount
+    FROM "shp_refunds" r
+    JOIN "shp_refund_items" ri ON ri."refund_id" = r."id"
+    LEFT JOIN "shp_credit_notes" cn ON cn."refund_id" = r."id"
+    WHERE r."order_id" = ${orderId} AND r."status" = 'COMPLETED' AND cn."id" IS NULL
+      AND (r."netted_off_invoice_id" IS NULL OR r."netted_off_invoice_id" = ${alsoNettedOffInvoiceId ?? null})
+    ORDER BY r."created_at" ASC
+  `
+  return rows.map((r) => ({
+    refundId: r.refund_id as string,
+    createdAt: r.created_at as Date,
+    orderItemId: r.order_item_id as string,
+    quantity: r.quantity as number,
+    amount: String(r.amount ?? '0'),
+  }))
+}
+
+/** Records that an invoice was raised with these refunds already taken off it,
+ *  so nothing credits them a second time. Written after the invoice row exists,
+ *  because that is what it points at. */
+export async function markRefundsNettedOff(refundIds: string[], invoiceId: string): Promise<void> {
+  if (refundIds.length === 0) return
+  await prisma.$executeRaw`
+    UPDATE "shp_refunds" SET "netted_off_invoice_id" = ${invoiceId}
+    WHERE "id" = ANY(${refundIds}::text[])
+  `
+}
+
+/** Undoes those marks when the invoice that carried them is voided. The document
+ *  that absorbed the refunds is gone, so they are undealt-with again and the
+ *  next invoice takes them off as this one did. */
+export async function clearRefundsNettedOff(invoiceId: string): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "shp_refunds" SET "netted_off_invoice_id" = NULL WHERE "netted_off_invoice_id" = ${invoiceId}
+  `
 }
 
 export async function getRefundItems(refundId: string): Promise<ShpRefundItem[]> {

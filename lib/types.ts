@@ -536,6 +536,11 @@ export type ShpRefund = {
   reason: string | null
   providerRefundId: string | null
   status: ShpRefundStatus
+  /** The invoice that was raised without this refund on it, where one was. A
+   *  refund is either credited by a credit note or taken off an invoice before
+   *  it goes out - never both - and this says which happened. Null until an
+   *  invoice nets it off, and null again if that invoice is voided. */
+  nettedOffInvoiceId: string | null
   createdBy: string
   createdAt: Date
 }

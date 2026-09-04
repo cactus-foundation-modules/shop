@@ -12,6 +12,7 @@ import {
   supersedeInvoice,
 } from '@/modules/shop/lib/db/invoices'
 import { insertCreditNote, listCreditNotesForOrder } from '@/modules/shop/lib/db/credit-notes'
+import { markRefundsNettedOff } from '@/modules/shop/lib/db/refunds'
 import { buildFullCreditNoteInput, tellTheBooks } from '@/modules/shop/lib/credit-notes'
 import { generateCreditNoteNumber } from '@/modules/shop/lib/credit-note-number'
 import {
@@ -191,13 +192,18 @@ async function reissue(
   // nextval does not roll back, and a rolled-back attempt spending a number is
   // a gap in the run rather than a collision in it - which is the trade this
   // module has made everywhere else too.
-  const [creditNoteNumber, replacementInput] = await Promise.all([
+  const [creditNoteNumber, replacementBuild] = await Promise.all([
     generateCreditNoteNumber(),
     buildInvoiceInsertInput(order, config, {
       trigger: 'REISSUE',
       issuedBy: opts.by === 'STAFF' ? 'MANUAL' : 'AUTO',
       userId: opts.userId ?? null,
       timezone,
+      // The replacement says what the original said, so it is netted of exactly
+      // the refunds the original was netted of - which is what letting that
+      // invoice's own marks back in means. Anything refunded since has a credit
+      // note against the original and is dealt with there.
+      alsoNettedOffInvoiceId: invoice.id,
     }),
   ])
 
@@ -224,7 +230,7 @@ async function reissue(
       // nothing and the whole transaction is thrown away.
       const marked = await supersedeInvoice(invoice.id, reason, tx)
       if (!marked) throw new Error('invoice was no longer live')
-      const fresh = await insertInvoice(replacementInput, tx)
+      const fresh = await insertInvoice(replacementBuild.input, tx)
       await linkSupersedingInvoice(invoice.id, fresh.id, tx)
       return { creditNote: note, replacement: fresh }
     }, { timeout: 15_000 }))
@@ -236,6 +242,13 @@ async function reissue(
     // pressing again will replace it.
     return { ok: false, status: 500, error: 'Your details are saved, but the new invoice could not be raised. Get in touch and we will send it over.' }
   }
+
+  // The netting marks move to the document that now carries them, so the refunds
+  // the original was raised without stay dealt-with rather than reappearing as
+  // credit notes waiting to be raised against an invoice that no longer stands.
+  await markRefundsNettedOff(replacementBuild.nettedRefundIds, replacement.id).catch((error) => {
+    console.error('[shop] could not move netting marks to invoice', replacement.invoiceNumber, error)
+  })
 
   // Past the point of no return for the paperwork. Everything below is telling
   // people about it, and none of it may undo any of the above.

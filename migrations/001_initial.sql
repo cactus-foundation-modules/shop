@@ -610,6 +610,11 @@ CREATE TABLE IF NOT EXISTS "shp_refunds" (
     -- Intent only, so a refund stranded mid-flight can still be settled later.
     -- shp_refund_items stays the record of what was actually refunded.
     "intended_items" JSONB,
+    -- The invoice that was raised without this refund on it, where one was.
+    -- A refund is either credited by a credit note or taken off the invoice
+    -- before it goes out, never both, and this is the record of which happened.
+    -- See migration 037 for why dates cannot answer it.
+    "netted_off_invoice_id" TEXT,
     "created_by" TEXT NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -619,6 +624,7 @@ CREATE TABLE IF NOT EXISTS "shp_refunds" (
 );
 
 CREATE INDEX IF NOT EXISTS "shp_refunds_order_id_idx" ON "shp_refunds" ("order_id");
+CREATE INDEX IF NOT EXISTS "shp_refunds_netted_off_invoice_id_idx" ON "shp_refunds" ("netted_off_invoice_id");
 
 CREATE TABLE IF NOT EXISTS "shp_refund_items" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,

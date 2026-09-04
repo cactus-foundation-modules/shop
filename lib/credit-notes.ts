@@ -154,12 +154,32 @@ export async function issueCreditNoteForRefund(
       return { ok: false, status: 409, error: 'That refund has not gone through, so there is nothing to credit yet.' }
     }
 
+    // Already taken off an invoice's face rather than credited off it. A refund
+    // that went back before the order was ever invoiced needs no document: the
+    // invoice was simply raised without those units on it. Crediting it now
+    // would hand the same money back twice in the books and reclaim VAT the
+    // shop never declared.
+    if (refund.nettedOffInvoiceId) {
+      return {
+        ok: false,
+        status: 409,
+        error: 'That refund went back before the invoice was raised, so it was left off the invoice altogether. There is nothing to credit.',
+      }
+    }
+
     const order = await getOrderById(refund.orderId)
     if (!order) return { ok: false, status: 404, error: 'That order could not be found.' }
 
     const invoice = await getInvoiceForOrder(refund.orderId)
     if (!invoice) {
-      return { ok: false, status: 409, error: 'This order has no live invoice, so there is nothing to raise a credit note against.' }
+      // Nothing has been invoiced, so nothing can be credited - and nothing
+      // needs to be. Whenever this order does reach invoicing, the invoice is
+      // raised without these units on it (see lib/invoice-net-of-refunds.ts).
+      return {
+        ok: false,
+        status: 409,
+        error: 'This order has not been invoiced yet, so there is nothing to credit. The refund will be left off the invoice when it goes out.',
+      }
     }
 
     const refundItems = await getRefundItems(refundId)

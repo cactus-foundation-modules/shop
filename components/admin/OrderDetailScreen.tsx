@@ -158,6 +158,12 @@ type CreditNoteState = {
   pdfEnabled: boolean
   hasBookkeeping: boolean
   creditNotes: OrderCreditNote[]
+  /** Refunds that were left off the invoice rather than credited off it. No
+   *  document is needed for those, and raising one would relieve the same money
+   *  twice. Absent from a server half that predates the field. */
+  nettedRefundIds?: string[]
+  /** Whether anything has been invoiced yet. */
+  invoiced?: boolean
 }
 
 export function OrderDetailScreen({ orderId, children }: { orderId: string; children?: React.ReactNode }) {
@@ -227,7 +233,21 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   // than on the server so the panel does not need a second round trip after
   // every refund - both lists are already on the screen.
   const creditedRefundIds = new Set((crediting?.creditNotes ?? []).map((note) => note.refundId).filter(Boolean))
-  const uncreditedRefunds = data.refunds.filter((refund) => refund.status === 'COMPLETED' && !creditedRefundIds.has(refund.id))
+  // Money handed back before the order was ever invoiced. The invoice was raised
+  // without it, so there is no credit note to raise and no button to press - the
+  // panel says what happened and leaves it there.
+  const nettedRefundIds = new Set(crediting?.nettedRefundIds ?? [])
+  const settledUncredited = data.refunds.filter((refund) => refund.status === 'COMPLETED' && !creditedRefundIds.has(refund.id))
+  const nettedRefunds = settledUncredited.filter((refund) => nettedRefundIds.has(refund.id))
+  // Nothing invoiced yet either, so these are on their way to being left off the
+  // invoice rather than missing a document.
+  const awaitingInvoice = crediting?.invoiced === false
+  const uncreditedRefunds = awaitingInvoice
+    ? []
+    : settledUncredited.filter((refund) => !nettedRefundIds.has(refund.id))
+  const preInvoiceRefunds = awaitingInvoice
+    ? settledUncredited.filter((refund) => !nettedRefundIds.has(refund.id))
+    : []
 
   async function setStatus(status: string) {
     setBusy(true)
@@ -984,7 +1004,11 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
               switched on, and quiet until there is something to show - a card
               saying "no refunds" on every order would be noise on the great
               majority of them. */}
-          {crediting?.enabled && (crediting.creditNotes.length > 0 || uncreditedRefunds.length > 0) && (
+          {crediting?.enabled
+            && (crediting.creditNotes.length > 0
+              || uncreditedRefunds.length > 0
+              || nettedRefunds.length > 0
+              || preInvoiceRefunds.length > 0) && (
             <section className="sox-card sox-noprint">
               <div className="sox-card-head"><h2>Credit notes</h2></div>
               <div className="sox-card-body" style={{ display: 'grid', gap: '0.75rem' }}>
@@ -1020,6 +1044,24 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                         </button>
                       )}
                     </div>
+                  </div>
+                ))}
+                {/* Money that went back before the invoice was raised. The
+                    invoice went out without those units on it, so there is
+                    nothing to credit and nothing to press - said plainly here
+                    so an empty credit note panel does not read as a job
+                    somebody forgot to do. */}
+                {nettedRefunds.map((refund) => (
+                  <div key={refund.id} className="sox-sub">
+                    The {formatMoney(refund.amount, currencySymbol)} refund of {formatDate(refund.createdAt)} went back before
+                    the invoice was raised, so it was left off the invoice. No credit note needed.
+                  </div>
+                ))}
+                {/* The same thing, before the invoice exists. */}
+                {preInvoiceRefunds.map((refund) => (
+                  <div key={refund.id} className="sox-sub">
+                    The {formatMoney(refund.amount, currencySymbol)} refund of {formatDate(refund.createdAt)} came back before
+                    this order was invoiced. It will be left off the invoice when it goes out, so no credit note is needed.
                   </div>
                 ))}
                 {/* A refund whose credit note never got raised - the books were
