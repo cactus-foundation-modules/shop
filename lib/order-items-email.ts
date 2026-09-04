@@ -1,7 +1,8 @@
 import { escapeHtml } from '@/lib/email/blocks'
 import { getSiteUrl } from '@/lib/config/env'
-import { getProductMediaForProducts } from '@/modules/shop/lib/db/products'
+import { getProductMediaForProducts, getProductSlugsByIds } from '@/modules/shop/lib/db/products'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { productUrl, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 import type { ShpOrderItem, ShpProductMedia } from '@/modules/shop/lib/types'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 
@@ -37,6 +38,10 @@ export type OrderEmailLine = {
   quantity: number
   price?: string
   imageUrl?: string | null
+  /** Absolute link to the page for this exact thing - the line's own product,
+   *  which for a variation is the child row whose slug the shop publishes. Null
+   *  where there is nothing safe to point at. */
+  url?: string | null
   /** Personalisation, options, delivery notes - whatever the line carries. */
   extras?: Array<{ label: string; value: string }>
 }
@@ -60,6 +65,33 @@ export function absoluteImageUrl(url: string | null | undefined, siteUrl: string
 }
 
 /**
+ * The absolute address of a line's own product page, or null where there is
+ * nothing to point at.
+ *
+ * The slug is the LINE'S OWN product, which for a variation is the
+ * catalogue-hidden child row - the same address the cart builds and a shopper
+ * shares. Shop's product page hands an unshowable slug to the
+ * `shop.product-page-resolver` point (see lib/product-page-resolver.ts), which
+ * is how shop-variations opens the parent's page with that variation already
+ * chosen. So one plain link covers "the exact product" and "the exact
+ * variation" without this module knowing how variations are wired, which it
+ * must not.
+ *
+ * An inbox has no origin, so a link with no site URL to hang off is dropped
+ * rather than sent as a relative path that resolves to nothing.
+ */
+export function productEmailUrl(
+  slug: string | null | undefined,
+  siteUrl: string,
+  style: ProductUrlStyle,
+): string | null {
+  const value = (slug ?? '').trim()
+  const base = siteUrl.trim().replace(/\/+$/, '')
+  if (!value || !base) return null
+  return productUrl(base, value, style)
+}
+
+/**
  * The order's lines with a photograph against each, ready for the table.
  *
  * Two bulk queries at most, whatever the size of the order - the picture is a
@@ -76,7 +108,7 @@ export function absoluteImageUrl(url: string | null | undefined, siteUrl: string
  */
 export async function orderEmailLines(
   items: ShpOrderItem[],
-  config: Pick<ShpConfig, 'currencySymbol'>,
+  config: Pick<ShpConfig, 'currencySymbol' | 'productUrlStyle'>,
 ): Promise<OrderEmailLine[]> {
   const siteUrl = getSiteUrl()
   const productIds = items.map((i) => i.productId).filter((id): id is string => !!id)
@@ -84,12 +116,22 @@ export async function orderEmailLines(
   // the email down with it.
   // A picture is a nicety and the email is not. A media read that will not
   // answer costs the thumbnails and nothing else.
-  const mediaByProduct: Map<string, ShpProductMedia[]> = productIds.length > 0
-    ? await getProductMediaForProducts(productIds).catch((error) => {
-        console.error('[shop] could not read product images for an order email', error)
-        return new Map<string, ShpProductMedia[]>()
-      })
-    : new Map()
+  const [mediaByProduct, slugByProduct] = await Promise.all([
+    productIds.length > 0
+      ? getProductMediaForProducts(productIds).catch((error) => {
+          console.error('[shop] could not read product images for an order email', error)
+          return new Map<string, ShpProductMedia[]>()
+        })
+      : Promise.resolve(new Map<string, ShpProductMedia[]>()),
+    // Same treatment as the pictures: a link is a nicety, and a read that will
+    // not answer costs the links and leaves the names as plain text.
+    productIds.length > 0
+      ? getProductSlugsByIds(productIds).catch((error) => {
+          console.error('[shop] could not read product slugs for an order email', error)
+          return new Map<string, string>()
+        })
+      : Promise.resolve(new Map<string, string>()),
+  ])
 
   return items.map((item) => {
     const media = item.productId ? mediaByProduct.get(item.productId) ?? [] : []
@@ -99,9 +141,20 @@ export async function orderEmailLines(
       quantity: item.quantity,
       price: formatMoney(item.total, config.currencySymbol),
       imageUrl: absoluteImageUrl(image?.url, siteUrl),
+      url: productEmailUrl(item.productId ? slugByProduct.get(item.productId) : null, siteUrl, config.productUrlStyle),
       extras: item.lineMeta?.fields?.map((f) => ({ label: f.label, value: f.value })) ?? [],
     }
   })
+}
+
+/** The name, linked to the product where there is a link to give. Underlined
+ *  rather than recoloured: the shop's own palette is not available in here (no
+ *  custom properties in an email), and a hardcoded brand blue would clash with
+ *  every wrapper that is not blue. */
+function linked(html: string, url: string | null | undefined): string {
+  const href = (url ?? '').trim()
+  if (!href) return html
+  return `<a href="${escapeHtml(href)}" style="color:${TEXT};text-decoration:underline;">${html}</a>`
 }
 
 function thumbCell(line: OrderEmailLine, style: string): string {
@@ -113,10 +166,15 @@ function thumbCell(line: OrderEmailLine, style: string): string {
   }
   // alt is deliberately empty: the name is in the cell beside it, and a client
   // with images switched off would otherwise print it twice.
+  const img =
+    `<img src="${escapeHtml(src)}" width="${THUMB}" height="${THUMB}" alt="" ` +
+    `style="display:block;width:${THUMB}px;height:${THUMB}px;border:1px solid ${RULE};border-radius:4px;object-fit:cover;" />`
   return (
     `<td width="${THUMB}" style="${style}width:${THUMB}px;">` +
-    `<img src="${escapeHtml(src)}" width="${THUMB}" height="${THUMB}" alt="" ` +
-    `style="display:block;width:${THUMB}px;height:${THUMB}px;border:1px solid ${RULE};border-radius:4px;object-fit:cover;" />` +
+    // The photograph goes to the same place the name does: it is the thing
+    // people click in an order email, and a picture that does nothing when the
+    // words beside it are a link reads as broken.
+    linked(img, line.url) +
     `</td>`
   )
 }
@@ -161,7 +219,7 @@ export function renderOrderItemsTable(lines: OrderEmailLine[]): string {
       '<tr>' +
       (withImages ? thumbCell(line, cell) : '') +
       `<td style="${cell}${withImages ? 'padding-left:12px;' : ''}">` +
-      `<strong>${escapeHtml(line.name)}</strong>` +
+      `<strong>${linked(escapeHtml(line.name), line.url)}</strong>` +
       (extras ? `<br />${extras}` : '') +
       '</td>' +
       `<td align="right" style="${cell}padding-left:12px;white-space:nowrap;">${escapeHtml(String(line.quantity))}</td>` +
@@ -184,7 +242,7 @@ export function renderOrderItemsTable(lines: OrderEmailLine[]): string {
 /** The two in one go, which is what every caller with an order actually wants. */
 export async function renderOrderItemsEmailTable(
   items: ShpOrderItem[],
-  config: Pick<ShpConfig, 'currencySymbol'>,
+  config: Pick<ShpConfig, 'currencySymbol' | 'productUrlStyle'>,
 ): Promise<string> {
   return renderOrderItemsTable(await orderEmailLines(items, config))
 }

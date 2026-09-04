@@ -80,16 +80,10 @@ export function dispatchDetails(
   }
 }
 
-export async function applyOrderStatusChange({ orderId, status, sendEmail, trackingNumber, carrier }: {
+export async function applyOrderStatusChange({ orderId, status, sendEmail }: {
   orderId: string
   status: ShpOrderStatus
   sendEmail?: boolean
-  /** Recorded against the parcel this change implies, and quoted in the email.
-   *  Only meaningful on SHIPPED - an owner marking a whole order as dispatched
-   *  in one go has had nowhere to type them, so the customer was told their
-   *  order was on its way and given no way to follow it. */
-  trackingNumber?: string | null
-  carrier?: string | null
 }): Promise<ApplyOrderStatusResult> {
   const order = await getOrderById(orderId)
   if (!order) return { ok: false, status: 404, error: 'Order not found' }
@@ -131,11 +125,13 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail, track
         .filter((l) => l.outstandingQty > 0)
         .map((l) => ({ orderItemId: l.orderItemId, quantity: l.outstandingQty }))
       if (remaining.length > 0) {
+        // No courier details: they belong to a parcel somebody actually
+        // packed, and this shipment is an accounting entry for whatever was
+        // left. An owner with a tracking number to quote records the parcel on
+        // the dispatch screen instead, and the email reads them back off there.
         const recorded = await createShipment({
           orderId,
           items: remaining,
-          trackingNumber: trackingNumber?.trim() || null,
-          carrier: carrier?.trim() || null,
           notes: 'Recorded automatically when the order was marked as dispatched.',
         })
         if (!recorded.ok) {

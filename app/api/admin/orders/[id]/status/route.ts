@@ -6,13 +6,12 @@ import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 const Body = z.object({
   status: z.enum(['PENDING', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'ON_HOLD']),
   sendEmail: z.boolean().optional(),
-  // Only read on SHIPPED, where they go onto the parcel this change records and
-  // into the dispatch email. Marking a whole order as dispatched had nowhere to
-  // put them, so the customer was told it was on its way and given no way to
-  // follow it.
-  trackingNumber: z.string().nullable().optional(),
-  carrier: z.string().nullable().optional(),
 })
+
+// Courier, tracking number and tracking link are per-parcel and are typed into
+// the dispatch screen, which records them on the shipment. A status change has
+// no parcel of its own to hang them on, so it does not take them: the dispatch
+// email still quotes whatever the order's parcels carry.
 
 // The pre-order hold, the implicit shipment on SHIPPED, the allocation released
 // on CANCELLED and the customer email all live in lib/order-status.ts, because
@@ -30,8 +29,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     orderId: id,
     status: parsed.data.status,
     sendEmail: parsed.data.sendEmail,
-    trackingNumber: parsed.data.trackingNumber,
-    carrier: parsed.data.carrier,
   })
   if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
 

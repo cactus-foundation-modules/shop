@@ -653,6 +653,10 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     -- When the parcel actually left, which is not always when it was recorded.
     "shipped_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "tracking_number" TEXT,
+    -- The carrier's own "where is my parcel" link, so the dispatch email can
+    -- offer a button rather than a number to paste somewhere. Also shipped as
+    -- migrations/035_shipment_tracking_url.sql for existing installs.
+    "tracking_url" TEXT,
     "carrier" TEXT,
     "notes" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1002,6 +1006,18 @@ CREATE TABLE IF NOT EXISTS "shp_invoices" (
     "issue_trigger" TEXT,
     "created_by_user_id" TEXT,
     "sink_results" JSONB NOT NULL DEFAULT '[]',
+    -- Corrections to who the document is made out to that do NOT change the
+    -- party being billed - an accounts department that has moved floor. What it
+    -- said before, per correction, so the trail survives the edit. See
+    -- migration 036 for why the other kind of correction is not an edit at all.
+    "customer_amendments" JSONB NOT NULL DEFAULT '[]',
+    -- Set when this invoice has been credited in full and replaced, because the
+    -- company being billed changed. It stays ISSUED - it WAS issued, and a
+    -- credit note has undone it; VOID would say it never took effect and would
+    -- have the books reverse the same sale twice.
+    "superseded_at" TIMESTAMP(3),
+    "superseded_by_invoice_id" TEXT,
+    "supersede_reason" TEXT,
     "voided_at" TIMESTAMP(3),
     "void_reason" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1012,11 +1028,19 @@ CREATE TABLE IF NOT EXISTS "shp_invoices" (
     CONSTRAINT "shp_invoices_status_check" CHECK ("status" IN ('ISSUED', 'VOID')),
     CONSTRAINT "shp_invoices_issued_by_check" CHECK ("issued_by" IN ('AUTO', 'MANUAL')),
     CONSTRAINT "shp_invoices_order_id_fkey"
-        FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE
+        FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE,
+    -- Self-referential and ON DELETE SET NULL: the replacement's number is
+    -- printed on a document that has already gone out, so losing the row must
+    -- never take the paperwork's own reference with it.
+    CONSTRAINT "shp_invoices_superseded_by_fkey"
+        FOREIGN KEY ("superseded_by_invoice_id") REFERENCES "shp_invoices"("id") ON DELETE SET NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS "shp_invoices_order_issued_key"
-    ON "shp_invoices" ("order_id") WHERE "status" = 'ISSUED';
+-- One LIVE invoice per order: a superseded one does not count, or a replacement
+-- could never be inserted at all.
+CREATE UNIQUE INDEX IF NOT EXISTS "shp_invoices_order_live_key"
+    ON "shp_invoices" ("order_id") WHERE "status" = 'ISSUED' AND "superseded_at" IS NULL;
+CREATE INDEX IF NOT EXISTS "shp_invoices_superseded_by_idx" ON "shp_invoices" ("superseded_by_invoice_id");
 CREATE INDEX IF NOT EXISTS "shp_invoices_order_id_idx" ON "shp_invoices" ("order_id");
 CREATE INDEX IF NOT EXISTS "shp_invoices_issued_at_idx" ON "shp_invoices" ("issued_at" DESC);
 CREATE INDEX IF NOT EXISTS "shp_invoices_tax_point_idx" ON "shp_invoices" ("tax_point_date");

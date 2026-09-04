@@ -28,6 +28,7 @@ export function DispatchModal({ orderId, lines, onClose, onDone }: {
     Object.fromEntries(lines.map((l) => [l.orderItemId, 0]))
   )
   const [trackingNumber, setTrackingNumber] = useState('')
+  const [trackingUrl, setTrackingUrl] = useState('')
   const [carrier, setCarrier] = useState('')
   const [notes, setNotes] = useState('')
   const [emailCustomer, setEmailCustomer] = useState(true)
@@ -49,6 +50,7 @@ export function DispatchModal({ orderId, lines, onClose, onDone }: {
       body: JSON.stringify({
         items: selected.map((x) => ({ orderItemId: x.line.orderItemId, quantity: x.quantity })),
         trackingNumber: trackingNumber.trim() || null,
+        trackingUrl: trackingUrl.trim() || null,
         carrier: carrier.trim() || null,
         notes: notes.trim() || null,
         emailCustomer,
@@ -110,6 +112,12 @@ export function DispatchModal({ orderId, lines, onClose, onDone }: {
           </table>
           <label>Tracking number (optional)
             <input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} style={fieldStyle} />
+          </label>
+          <label>Tracking link (optional)
+            <input value={trackingUrl} onChange={(e) => setTrackingUrl(e.target.value)} placeholder="https://…" inputMode="url" style={fieldStyle} />
+            <span style={{ display: 'block', marginTop: '0.25rem', fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+              The carrier&rsquo;s own page for this parcel. It becomes a &ldquo;Track your parcel&rdquo; link in the customer&rsquo;s email.
+            </span>
           </label>
           <label>Carrier (optional)
             <input value={carrier} onChange={(e) => setCarrier(e.target.value)} placeholder="Royal Mail, DPD, Evri…" style={fieldStyle} />

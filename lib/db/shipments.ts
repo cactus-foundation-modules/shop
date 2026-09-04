@@ -29,6 +29,7 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     orderId: r.order_id as string,
     shippedAt: r.shipped_at as Date,
     trackingNumber: (r.tracking_number as string | null) ?? null,
+    trackingUrl: (r.tracking_url as string | null) ?? null,
     carrier: (r.carrier as string | null) ?? null,
     notes: (r.notes as string | null) ?? null,
     createdAt: r.created_at as Date,
@@ -64,6 +65,7 @@ export type CreateShipmentInput = {
   // When the parcel actually went out. Defaults to now.
   shippedAt?: Date | null
   trackingNumber?: string | null
+  trackingUrl?: string | null
   carrier?: string | null
   notes?: string | null
   items: Array<{ orderItemId: string; quantity: number }>
@@ -222,8 +224,8 @@ export async function createShipment(input: CreateShipmentInput): Promise<Create
 
     const shippedAt = input.shippedAt ?? new Date()
     const created = await tx.$queryRaw<[Record<string, unknown>]>`
-      INSERT INTO "shp_shipments" ("order_id", "shipped_at", "tracking_number", "carrier", "notes")
-      VALUES (${input.orderId}, ${shippedAt}, ${input.trackingNumber ?? null}, ${input.carrier ?? null}, ${input.notes ?? null})
+      INSERT INTO "shp_shipments" ("order_id", "shipped_at", "tracking_number", "tracking_url", "carrier", "notes")
+      VALUES (${input.orderId}, ${shippedAt}, ${input.trackingNumber ?? null}, ${input.trackingUrl ?? null}, ${input.carrier ?? null}, ${input.notes ?? null})
       RETURNING *
     `
     const shipment = mapShipment(created[0])

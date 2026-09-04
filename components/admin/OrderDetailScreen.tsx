@@ -170,12 +170,6 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   const [loadError, setLoadError] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [sendEmailOnChange, setSendEmailOnChange] = useState(true)
-  // For marking the WHOLE order dispatched from the status list. Dispatching a
-  // few items at a time has had these fields on its own modal all along; doing
-  // the lot in one go had nowhere to put them, so the customer was told their
-  // order was on its way and given nothing to follow it with.
-  const [dispatchCarrier, setDispatchCarrier] = useState('')
-  const [dispatchTracking, setDispatchTracking] = useState('')
   const [busy, setBusy] = useState(false)
   const [refundOpen, setRefundOpen] = useState(false)
   const [dispatchOpen, setDispatchOpen] = useState(false)
@@ -235,16 +229,9 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
     setBusy(true)
     const res = await fetch(`/api/m/shop/admin/orders/${orderId}/status`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      // The courier details ride along only on a dispatch. The server ignores
-      // them on every other status, but sending them would still be saying
-      // something it has no business hearing.
-      body: JSON.stringify({
-        status,
-        sendEmail: sendEmailOnChange,
-        ...(status === 'SHIPPED'
-          ? { carrier: dispatchCarrier.trim() || null, trackingNumber: dispatchTracking.trim() || null }
-          : {}),
-      }),
+      // Courier and tracking belong to a parcel, not to a status: they are
+      // typed into Dispatch items, where each parcel carries its own.
+      body: JSON.stringify({ status, sendEmail: sendEmailOnChange }),
     })
     setBusy(false)
     if (!res.ok) {
@@ -731,21 +718,10 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                 </select>
               </label>
               {order.status !== 'SHIPPED' && (
-                <>
-                  <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.8125rem' }}>
-                    Courier
-                    <input className="sox-input" value={dispatchCarrier} disabled={busy} onChange={(e) => setDispatchCarrier(e.target.value)} />
-                  </label>
-                  <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.8125rem' }}>
-                    Tracking number
-                    <input className="sox-input" value={dispatchTracking} disabled={busy} onChange={(e) => setDispatchTracking(e.target.value)} />
-                  </label>
-                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                    Filled in before you set the status to Dispatched, these go on the parcel and into the customer&rsquo;s
-                    email. Sending the order out in more than one parcel? Use <strong>Dispatch items</strong> instead - each
-                    parcel carries its own.
-                  </p>
-                </>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                  Courier, tracking number and tracking link are recorded per parcel in <strong>Dispatch items</strong>,
+                  which is also what puts them into the customer&rsquo;s email.
+                </p>
               )}
               <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.8125rem' }}>
                 <input type="checkbox" checked={sendEmailOnChange} onChange={(e) => setSendEmailOnChange(e.target.checked)} />

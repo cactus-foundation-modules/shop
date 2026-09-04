@@ -97,6 +97,22 @@ export async function getProductsByIds(ids: string[]): Promise<Map<string, ShpPr
   return map
 }
 
+// Just the slugs, keyed by id. A link in an email needs a slug and nothing
+// else, and the email is assembled inside a payment webhook - reading whole
+// product rows (descriptions, spec blobs and all) to print one href is a cost
+// with nothing to show for it. Products that no longer exist simply do not
+// appear, so a caller reads it with `?? null` and prints plain text.
+export async function getProductSlugsByIds(ids: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  const unique = [...new Set(ids)].filter(Boolean)
+  if (unique.length === 0) return map
+  const rows = await prisma.$queryRaw<{ id: string; slug: string }[]>`
+    SELECT "id", "slug" FROM "shp_products" WHERE "id" IN (${Prisma.join(unique)})
+  `
+  for (const row of rows) map.set(row.id, row.slug)
+  return map
+}
+
 export async function getProductBySlug(slug: string): Promise<ShpProduct | null> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_products" WHERE "slug" = ${slug} LIMIT 1`
   return rows[0] ? mapProduct(rows[0]) : null

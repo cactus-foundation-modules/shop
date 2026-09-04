@@ -20,7 +20,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     subject: 'Your order {{orderNumber}} is confirmed',
     bodyHtml:
       "<p>Hi {{customerName}},</p><p>Thanks for your order <strong>{{orderNumber}}</strong> - we're getting it ready.</p>{{orderItems}}<p>Total: {{orderTotal}}</p>{{#if hasPreOrderItems}}<p>Pre-order notice: your order contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}",
-    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'customerReference', 'customerReferenceLabel', 'preOrderItemName', 'preOrderDispatchDate', 'shopName'],
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'customerReference', 'customerReferenceLabel', 'preOrderItemName', 'preOrderDispatchDate', 'shopName', 'hasCustomerReference', 'hasPreOrderItems'],
     // The item list is a table this module builds itself, photographs and
     // all, with every value escaped on the way in - see
     // lib/order-items-email.ts. As a plain value its markup would arrive as
@@ -44,7 +44,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     subject: 'Your order {{orderNumber}} - how to pay',
     bodyHtml:
       '<p>Hi {{customerName}},</p><p>Thanks - we have your order <strong>{{orderNumber}}</strong>. It is not on its way yet: we start work on it once your payment reaches us.</p>{{orderItems}}<p>Total to pay: <strong>{{orderTotal}}</strong></p>{{#if hasPaymentInstructions}}<p><strong>How to pay by {{paymentMethod}}</strong></p><p>{{paymentInstructions}}</p><p>Please quote <strong>{{orderNumber}}</strong> as the reference, so we can match your payment to your order.</p>{{/if}}<p><strong>Delivery times start from the day your payment reaches us</strong>, not the day you ordered - so the sooner it lands, the sooner your order goes out.</p>{{#if hasPreOrderItems}}<p>Your order also contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p><p>We will email you the moment your payment arrives.</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}',
-    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'paymentMethod', 'paymentInstructions', 'customerReference', 'customerReferenceLabel', 'preOrderItemName', 'preOrderDispatchDate', 'shopName'],
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'paymentMethod', 'paymentInstructions', 'customerReference', 'customerReferenceLabel', 'preOrderItemName', 'preOrderDispatchDate', 'shopName', 'hasCustomerReference', 'hasPaymentInstructions', 'hasPreOrderItems'],
     // Two lots of markup the sending code assembles itself. Bank details are
     // typed into a settings box over several lines and are useless run
     // together, so the sending code escapes them and puts the line breaks back;
@@ -65,7 +65,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     subject: 'We have received your payment for order {{orderNumber}}',
     bodyHtml:
       "<p>Hi {{customerName}},</p><p>Your payment of <strong>{{orderTotal}}</strong> for order <strong>{{orderNumber}}</strong> has landed with us - thank you.</p>{{#if hasPaymentReference}}<p>Payment reference: {{paymentReference}}</p>{{/if}}{{orderItems}}{{#if hasPreOrderItems}}<p>Your order contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p><p>We are getting it ready now and will be in touch when it is on its way.</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}",
-    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'paymentMethod', 'paymentReference', 'customerReference', 'customerReferenceLabel', 'preOrderItemName', 'preOrderDispatchDate', 'shopName'],
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'paymentMethod', 'paymentReference', 'customerReference', 'customerReferenceLabel', 'preOrderItemName', 'preOrderDispatchDate', 'shopName', 'hasCustomerReference', 'hasPaymentReference', 'hasPreOrderItems'],
     // The item list is a table this module builds itself, photographs and
     // all, with every value escaped on the way in - see
     // lib/order-items-email.ts. As a plain value its markup would arrive as
@@ -120,8 +120,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Part of an order dispatched',
     subject: '{{#if hasOutstanding}}Part of your order {{orderNumber}} is on its way{{/if}}{{#if isFinalPart}}The last part of your order {{orderNumber}} is on its way{{/if}}',
     bodyHtml:
-      '<p>Hi {{customerName}},</p>{{#if hasOutstanding}}<p>Good news - part of your order <strong>{{orderNumber}}</strong> is on its way. The rest of it is still with us, and we will email you again as soon as it is dispatched.</p>{{/if}}{{#if isFinalPart}}<p>Good news - the last part of your order <strong>{{orderNumber}}</strong> is on its way. That is everything from this order now dispatched.</p>{{/if}}<p><strong>In this parcel:</strong></p>{{dispatchedItems}}{{#if hasOutstanding}}<p><strong>Still to come:</strong></p>{{outstandingItems}}{{/if}}{{#if hasCarrier}}<p>Sent with {{carrier}}.</p>{{/if}}{{#if hasTracking}}<p>Tracking number: {{trackingNumber}}</p>{{/if}}<p>Parcels sent separately can arrive a day or two apart, so please do not worry if they turn up at different times.</p><p>Thanks for shopping with {{shopName}}.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'dispatchedItems', 'outstandingItems', 'carrier', 'trackingNumber', 'hasCarrier', 'hasTracking', 'hasOutstanding', 'isFinalPart', 'shopName'],
+      '<p>Hi {{customerName}},</p>{{#if hasOutstanding}}<p>Good news - part of your order <strong>{{orderNumber}}</strong> is on its way. The rest of it is still with us, and we will email you again as soon as it is dispatched.</p>{{/if}}{{#if isFinalPart}}<p>Good news - the last part of your order <strong>{{orderNumber}}</strong> is on its way. That is everything from this order now dispatched.</p>{{/if}}<p><strong>In this parcel:</strong></p>{{dispatchedItems}}{{#if hasOutstanding}}<p><strong>Still to come:</strong></p>{{outstandingItems}}{{/if}}{{#if hasCarrier}}<p>Sent with {{carrier}}.</p>{{/if}}{{#if hasTracking}}<p>Tracking number: {{trackingNumber}}</p>{{/if}}{{#if hasTrackingUrl}}<p><a href="{{trackingUrl}}">Track your parcel</a></p>{{/if}}<p>Parcels sent separately can arrive a day or two apart, so please do not worry if they turn up at different times.</p><p>Thanks for shopping with {{shopName}}.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'dispatchedItems', 'outstandingItems', 'carrier', 'trackingNumber', 'trackingUrl', 'hasCarrier', 'hasTracking', 'hasTrackingUrl', 'hasOutstanding', 'isFinalPart', 'shopName'],
     // The item list is a table this module builds itself, photographs and
     // all, with every value escaped on the way in - see
     // lib/order-items-email.ts. As a plain value its markup would arrive as
@@ -134,7 +134,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'New order (admin alert)',
     subject: 'New order received: {{orderNumber}}',
     bodyHtml: '<p>New order <strong>{{orderNumber}}</strong> from {{customerName}} ({{customerEmail}}).</p><p>Total: {{orderTotal}}</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}',
-    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'orderTotal', 'customerReference', 'customerReferenceLabel', 'shopName'],
+    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'orderTotal', 'customerReference', 'customerReferenceLabel', 'shopName', 'hasCustomerReference'],
     transactional: false,
   },
   {
@@ -147,7 +147,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     subject: 'New order awaiting payment: {{orderNumber}}',
     bodyHtml:
       '<p>New order <strong>{{orderNumber}}</strong> from {{customerName}} ({{customerEmail}}), placed by {{paymentMethod}}.</p><p>Total: {{orderTotal}} - <strong>not paid yet</strong>. They have been emailed how to pay, and the order sits in Awaiting payment until you mark it received.</p>{{orderItems}}{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}',
-    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'orderTotal', 'orderItems', 'paymentMethod', 'customerReference', 'customerReferenceLabel', 'shopName'],
+    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'orderTotal', 'orderItems', 'paymentMethod', 'customerReference', 'customerReferenceLabel', 'shopName', 'hasCustomerReference'],
     // The item list is a table this module builds itself, photographs and
     // all, with every value escaped on the way in - see
     // lib/order-items-email.ts. As a plain value its markup would arrive as
@@ -192,7 +192,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     subject: "We've got your {{requestType}} request for order {{orderNumber}}",
     bodyHtml:
       '<p>Hi {{customerName}},</p><p>Thanks - we have your {{requestType}} request for order <strong>{{orderNumber}}</strong> and someone will look at it shortly.</p><p>Reason given: {{requestReason}}</p>{{#if hasItems}}<p><strong>Items:</strong></p><p>{{requestItems}}</p>{{/if}}<p>We will email you as soon as there is a decision.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'requestType', 'requestReason', 'requestItems', 'shopName'],
+    mergeTags: ['customerName', 'orderNumber', 'requestType', 'requestReason', 'requestItems', 'shopName', 'hasItems'],
     transactional: false,
   },
   {
@@ -201,7 +201,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     subject: 'Your {{requestType}} request for order {{orderNumber}} is approved',
     bodyHtml:
       '<p>Hi {{customerName}},</p><p>Good news - we have approved your {{requestType}} request for order <strong>{{orderNumber}}</strong>.</p>{{#if hasAdminNote}}<p>{{adminNote}}</p>{{/if}}{{#if hasRefund}}<p>A refund of {{refundAmount}} is on its way back to you. Depending on your bank it can take a few working days to show up.</p>{{/if}}<p>Thanks for your patience.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'requestType', 'adminNote', 'refundAmount', 'shopName'],
+    mergeTags: ['customerName', 'orderNumber', 'requestType', 'adminNote', 'refundAmount', 'shopName', 'hasAdminNote', 'hasRefund'],
     transactional: false,
   },
   {
@@ -210,7 +210,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     subject: 'About your {{requestType}} request for order {{orderNumber}}',
     bodyHtml:
       '<p>Hi {{customerName}},</p><p>We have looked at your {{requestType}} request for order <strong>{{orderNumber}}</strong>, and unfortunately we are not able to accept it this time.</p>{{#if hasAdminNote}}<p>{{adminNote}}</p>{{/if}}<p>If you think that is wrong, reply to this email and we will take another look.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'requestType', 'adminNote', 'shopName'],
+    mergeTags: ['customerName', 'orderNumber', 'requestType', 'adminNote', 'shopName', 'hasAdminNote'],
     transactional: false,
   },
   // A refund the buyer has no paperwork for is the next support ticket, and a
@@ -221,9 +221,14 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     key: 'shop.credit-note-issued',
     label: 'Credit note issued',
     subject: 'Credit note {{creditNoteNumber}} for order {{orderNumber}}',
+    // The document travels with this one rather than sitting behind a link.
+    // Whoever files a refund wants a file, and the link was a step too many -
+    // the same lesson the proforma and the invoice both taught. The link block
+    // is the fallback for a shop with PDFs switched off, or a printer having a
+    // bad day: a customer with neither the file nor the link has nothing.
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>We have refunded {{creditAmount}} against order <strong>{{orderNumber}}</strong>, and here is the credit note for your records.</p>{{#if hasReason}}<p>Reason: {{creditReason}}</p>{{/if}}<p><a href="{{creditNoteUrl}}">View credit note {{creditNoteNumber}}</a></p><p>Depending on your bank the money can take a few working days to show up.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'creditNoteNumber', 'creditNoteUrl', 'creditAmount', 'creditReason', 'invoiceNumber', 'shopName'],
+      '<p>Hi {{customerName}},</p><p>We have refunded {{creditAmount}} against order <strong>{{orderNumber}}</strong>, and here is the credit note for your records.</p>{{#if hasReason}}<p>Reason: {{creditReason}}</p>{{/if}}{{#if hasCreditNotePdf}}<p>Credit note <strong>{{creditNoteNumber}}</strong> is attached to this email as a PDF.</p>{{/if}}{{#if hasCreditNoteLink}}<p><a href="{{creditNoteUrl}}">View credit note {{creditNoteNumber}}</a></p>{{/if}}<p>Depending on your bank the money can take a few working days to show up.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'creditNoteNumber', 'creditNoteUrl', 'creditAmount', 'creditReason', 'hasReason', 'hasCreditNotePdf', 'hasCreditNoteLink', 'invoiceNumber', 'shopName'],
     transactional: true,
   },
   {
@@ -232,7 +237,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     subject: 'New {{requestType}} request: order {{orderNumber}}',
     bodyHtml:
       '<p>{{customerName}} ({{customerEmail}}) has asked for a {{requestType}} on order <strong>{{orderNumber}}</strong>.</p><p>Reason: {{requestReason}}</p>{{#if hasItems}}<p><strong>Items:</strong></p><p>{{requestItems}}</p>{{/if}}{{#if hasCustomerNote}}<p>They said: {{customerNote}}</p>{{/if}}',
-    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'requestType', 'requestReason', 'requestItems', 'customerNote', 'shopName'],
+    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'requestType', 'requestReason', 'requestItems', 'customerNote', 'shopName', 'hasCustomerNote', 'hasItems'],
     transactional: false,
   },
 ]

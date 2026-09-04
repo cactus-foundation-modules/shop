@@ -12,9 +12,26 @@ import {
 import { sendShipmentDispatchedEmail } from '@/modules/shop/lib/shipment-email'
 import type { ShpOrderItem } from '@/modules/shop/lib/types'
 
+// A tracking link is offered to the customer as something to click, so only a
+// web address is accepted: anything else (a javascript: URL above all) would be
+// put in front of a shopper by the dispatch email. Blank comes through as null
+// rather than being rejected - most parcels go out without one.
+const TrackingUrl = z
+  .string()
+  .trim()
+  .refine((value) => {
+    try {
+      const parsed = new URL(value)
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+    } catch {
+      return false
+    }
+  }, 'The tracking link has to be a web address starting with http:// or https://')
+
 const Body = z.object({
   items: z.array(z.object({ orderItemId: z.string(), quantity: z.number().int().min(1) })).min(1),
   trackingNumber: z.string().nullable().optional(),
+  trackingUrl: TrackingUrl.nullable().optional(),
   carrier: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   // Owners back-date a parcel that went out on Friday and is only being
@@ -90,6 +107,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     orderId: id,
     shippedAt: parsed.data.shippedAt ?? null,
     trackingNumber: parsed.data.trackingNumber ?? null,
+    trackingUrl: parsed.data.trackingUrl ?? null,
     carrier: parsed.data.carrier ?? null,
     notes: parsed.data.notes ?? null,
     items: parsed.data.items,

@@ -547,6 +547,8 @@ export type ShpShipment = {
   orderId: string
   shippedAt: Date
   trackingNumber: string | null
+  /** The carrier's own tracking page for this parcel, when one was recorded. */
+  trackingUrl: string | null
   carrier: string | null
   notes: string | null
   createdAt: Date
@@ -763,10 +765,39 @@ export type ShpInvoice = {
   issueTrigger: string | null
   createdByUserId: string | null
   sinkResults: ShpInvoiceSinkResult[]
+  /** Corrections to the billing ADDRESS printed on the document, newest last.
+   *  See ShpInvoiceCustomerAmendment. Empty on nearly every invoice. */
+  customerAmendments: ShpInvoiceCustomerAmendment[]
+  /** Set when this invoice has been credited in full and replaced, because the
+   *  company being billed changed. It stays ISSUED - see
+   *  lib/invoice-reissue.ts. */
+  supersededAt: Date | null
+  supersededByInvoiceId: string | null
+  supersedeReason: string | null
   voidedAt: Date | null
   voidReason: string | null
   createdAt: Date
   updatedAt: Date
+}
+
+/** One correction to the billing address on an issued invoice.
+ *
+ *  Only ever the address. A change of NAME is a change of the party being
+ *  billed, which is credited and reissued rather than edited - see
+ *  lib/customer-billing.ts for where that line is drawn and why.
+ *
+ *  `was` is what the document said before the correction, so the trail survives
+ *  the edit: an invoice whose address has been corrected can still say what was
+ *  sent out on the day. */
+export type ShpInvoiceCustomerAmendment = {
+  /** ISO timestamp. A string rather than a Date: it lives inside JSONB, and a
+   *  Date would come back as one on the way in and a string on the way out. */
+  at: string
+  /** 'CUSTOMER' where the buyer corrected it from their own order page. */
+  by: 'CUSTOMER' | 'STAFF'
+  field: 'billingAddress'
+  was: string[]
+  now: string[]
 }
 
 // A credit note: the document that undoes an invoice, in whole or in part.
@@ -918,6 +949,12 @@ export type ShpEmailTemplateTrigger =
   | 'REQUEST_RECEIVED' | 'REQUEST_APPROVED' | 'REQUEST_DECLINED' | 'ADMIN_NEW_REQUEST'
   // The credit note raised when a refund goes through. See lib/credit-notes.ts.
   | 'CREDIT_NOTE_ISSUED'
+  // The pair of documents raised when the company an invoice is made out to
+  // changes: the credit note that undoes the old one and the invoice that
+  // replaces it. One email rather than two, because they are one event and a
+  // customer who gets a bare "credit note issued" thinks their money is coming
+  // back. See lib/invoice-reissue.ts.
+  | 'INVOICE_REISSUED'
 // ShpEmailTemplate is gone: the shop's email copy lives in core's single email
 // registry now (lib/email-templates.ts + the manifest's `emailTemplates` entry),
 // edited in Settings > Emails alongside every other email the site sends. The

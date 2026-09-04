@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { absoluteImageUrl, renderOrderItemsTable, type OrderEmailLine } from '@/modules/shop/lib/order-items-email'
+import { absoluteImageUrl, productEmailUrl, renderOrderItemsTable, type OrderEmailLine } from '@/modules/shop/lib/order-items-email'
 
 const line = (over: Partial<OrderEmailLine> = {}): OrderEmailLine => ({
   name: 'Capra Mesh Back Chair',
@@ -25,6 +25,28 @@ describe('absoluteImageUrl', () => {
     expect(absoluteImageUrl('javascript:alert(1)', 'https://shop.test')).toBeNull()
     expect(absoluteImageUrl('', 'https://shop.test')).toBeNull()
     expect(absoluteImageUrl(null, 'https://shop.test')).toBeNull()
+  })
+})
+
+describe('productEmailUrl', () => {
+  it('builds an absolute link in the shop’s chosen style', () => {
+    expect(productEmailUrl('capra-chair', 'https://shop.test', 'SHOP')).toBe('https://shop.test/shop/products/capra-chair')
+    expect(productEmailUrl('capra-chair', 'https://shop.test/', 'ROOT')).toBe('https://shop.test/capra-chair')
+  })
+
+  // A variation is a catalogue-hidden child product with its own slug, and the
+  // product page resolves it back to the parent with that variation chosen. So
+  // the link for a variation line is simply the line's own slug.
+  it('links a variation by its own slug, which is what the shop publishes', () => {
+    expect(productEmailUrl('capra-chair-black', 'https://shop.test', 'SHOP'))
+      .toBe('https://shop.test/shop/products/capra-chair-black')
+  })
+
+  it('gives nothing where there is nothing safe to point at', () => {
+    expect(productEmailUrl(null, 'https://shop.test', 'SHOP')).toBeNull()
+    expect(productEmailUrl('  ', 'https://shop.test', 'SHOP')).toBeNull()
+    // No site url means a relative path, which resolves to nothing in an inbox.
+    expect(productEmailUrl('capra-chair', '', 'SHOP')).toBeNull()
   })
 })
 
@@ -84,6 +106,24 @@ describe('renderOrderItemsTable', () => {
 
   it('escapes an image url rather than trusting it into an attribute', () => {
     const html = renderOrderItemsTable([line({ imageUrl: 'https://cdn.test/a.jpg?a=1&b="2' })])
+    expect(html).toContain('&amp;b=&quot;2')
+  })
+
+  it('links the name and the photograph to the product when there is a link', () => {
+    const html = renderOrderItemsTable([line({ url: 'https://shop.test/shop/products/capra-chair' })])
+    expect(html).toContain('<a href="https://shop.test/shop/products/capra-chair"')
+    // Both the words and the picture go to the same place.
+    expect(html.match(/<a href="https:\/\/shop\.test\/shop\/products\/capra-chair"/g)?.length).toBe(2)
+  })
+
+  it('leaves the name as plain text when there is no link', () => {
+    const html = renderOrderItemsTable([line({ url: null })])
+    expect(html).not.toContain('<a href')
+    expect(html).toContain('Capra Mesh Back Chair')
+  })
+
+  it('escapes a product link rather than trusting it into an attribute', () => {
+    const html = renderOrderItemsTable([line({ imageUrl: null, url: 'https://shop.test/p?a=1&b="2' })])
     expect(html).toContain('&amp;b=&quot;2')
   })
 
