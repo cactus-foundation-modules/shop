@@ -394,6 +394,16 @@ export const ShpConfigSchema = z.object({
   invoicePdfEnabled: z.boolean().default(true),
   invoicePdfFilenamePrefix: z.string().default('invoice'),
 
+  // Whether the invoice rides along on the email that tells a customer their
+  // order is complete. On by default, and for the same reason the proforma is
+  // attached to the "how to pay" email: the document is the thing. A buyer's
+  // accounts department files what arrives in the inbox, and a link they have
+  // to click, on a page they have to be shown, is a step too many.
+  //
+  // Nothing is attached where there is no live invoice to attach - a shop that
+  // raises them by hand and has not, or one whose only invoice has been voided.
+  invoiceAttachToEmail: z.boolean().default(true),
+
   // Credit notes: the document that undoes an invoice when money goes back.
   //
   // On by default wherever invoicing is on, because the alternative is the

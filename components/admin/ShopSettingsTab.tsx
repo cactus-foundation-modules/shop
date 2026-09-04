@@ -837,6 +837,15 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 <input type="checkbox" checked={config.invoicePdfEnabled} onChange={(e) => set('invoicePdfEnabled', e.target.checked)} />
                 Offer PDF downloads
               </label>
+              <label style={checkboxRow}>
+                <input
+                  type="checkbox"
+                  checked={config.invoiceAttachToEmail}
+                  disabled={!config.invoicePdfEnabled}
+                  onChange={(e) => set('invoiceAttachToEmail', e.target.checked)}
+                />
+                Attach the invoice to the &ldquo;your order is complete&rdquo; email
+              </label>
 
             </>
           )}

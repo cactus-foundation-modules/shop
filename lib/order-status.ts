@@ -9,6 +9,7 @@ import { createShipment, getOrderDispatchSummary } from '@/modules/shop/lib/db/s
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { issueInvoiceForOrder, shouldIssueOn, type InvoiceTrigger } from '@/modules/shop/lib/invoices'
+import { invoiceEmailAttachment } from '@/modules/shop/lib/invoice-attachment'
 import type { ShpEmailTemplateTrigger, ShpOrderItem, ShpOrderStatus } from '@/modules/shop/lib/types'
 
 // Everything that happens when an order's status changes, in one place.
@@ -131,11 +132,23 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail }: {
   if (sendEmail) {
     const trigger = STATUS_EMAIL_TRIGGER[status]
     if (trigger) {
+      // The invoice travels with the completion email, which is the one message
+      // in the order's life a customer files rather than reads. It is looked up
+      // after the block above rather than before, so an order invoiced on this
+      // very transition sends the invoice it has just been given rather than
+      // the nothing it had a moment earlier.
+      //
+      // COMPLETED only. An invoice on the despatch note would be the same
+      // document sent twice for shops that invoice on despatch and complete
+      // afterwards, and the shopper reading "your order is on its way" is not
+      // filing paperwork yet.
+      const invoice = status === 'COMPLETED' ? await invoiceEmailAttachment(orderId, config) : null
+
       await notifyOrderCustomer(trigger, order, {
         orderNumber: order.orderNumber,
         customerName: order.customerName,
         shopName: config.shopTitle || 'Shop',
-      })
+      }, invoice ? { attachments: [invoice] } : undefined)
     }
   }
 

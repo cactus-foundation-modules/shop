@@ -19,8 +19,13 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Order confirmed',
     subject: 'Your order {{orderNumber}} is confirmed',
     bodyHtml:
-      "<p>Hi {{customerName}},</p><p>Thanks for your order <strong>{{orderNumber}}</strong> - we're getting it ready.</p><p>{{orderItems}}</p><p>Total: {{orderTotal}}</p>{{#if hasPreOrderItems}}<p>Pre-order notice: your order contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}",
+      "<p>Hi {{customerName}},</p><p>Thanks for your order <strong>{{orderNumber}}</strong> - we're getting it ready.</p>{{orderItems}}<p>Total: {{orderTotal}}</p>{{#if hasPreOrderItems}}<p>Pre-order notice: your order contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}",
     mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'customerReference', 'customerReferenceLabel', 'preOrderItemName', 'preOrderDispatchDate', 'shopName'],
+    // The item list is a table this module builds itself, photographs and
+    // all, with every value escaped on the way in - see
+    // lib/order-items-email.ts. As a plain value its markup would arrive as
+    // visible angle brackets.
+    rawTags: ['orderItems'],
     transactional: false,
   },
   {
@@ -38,12 +43,15 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Order placed (payment still to come)',
     subject: 'Your order {{orderNumber}} - how to pay',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>Thanks - we have your order <strong>{{orderNumber}}</strong>. It is not on its way yet: we start work on it once your payment reaches us.</p><p>{{orderItems}}</p><p>Total to pay: <strong>{{orderTotal}}</strong></p>{{#if hasPaymentInstructions}}<p><strong>How to pay by {{paymentMethod}}</strong></p><p>{{paymentInstructions}}</p><p>Please quote <strong>{{orderNumber}}</strong> as the reference, so we can match your payment to your order.</p>{{/if}}<p><strong>Delivery times start from the day your payment reaches us</strong>, not the day you ordered - so the sooner it lands, the sooner your order goes out.</p>{{#if hasPreOrderItems}}<p>Your order also contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p><p>We will email you the moment your payment arrives.</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}',
+      '<p>Hi {{customerName}},</p><p>Thanks - we have your order <strong>{{orderNumber}}</strong>. It is not on its way yet: we start work on it once your payment reaches us.</p>{{orderItems}}<p>Total to pay: <strong>{{orderTotal}}</strong></p>{{#if hasPaymentInstructions}}<p><strong>How to pay by {{paymentMethod}}</strong></p><p>{{paymentInstructions}}</p><p>Please quote <strong>{{orderNumber}}</strong> as the reference, so we can match your payment to your order.</p>{{/if}}<p><strong>Delivery times start from the day your payment reaches us</strong>, not the day you ordered - so the sooner it lands, the sooner your order goes out.</p>{{#if hasPreOrderItems}}<p>Your order also contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p><p>We will email you the moment your payment arrives.</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}',
     mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'paymentMethod', 'paymentInstructions', 'customerReference', 'customerReferenceLabel', 'preOrderItemName', 'preOrderDispatchDate', 'shopName'],
-    // Bank details are typed into a settings box over several lines and are
-    // useless run together, so the sending code escapes them and puts the line
-    // breaks back itself. Nothing else here is pre-built markup.
-    rawTags: ['paymentInstructions'],
+    // Two lots of markup the sending code assembles itself. Bank details are
+    // typed into a settings box over several lines and are useless run
+    // together, so the sending code escapes them and puts the line breaks back;
+    // the item list is the photographed table from lib/order-items-email.ts.
+    // Both escape every value they print - nothing here is passed through from
+    // a form untouched.
+    rawTags: ['paymentInstructions', 'orderItems'],
     transactional: true,
   },
   {
@@ -56,8 +64,13 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Payment received',
     subject: 'We have received your payment for order {{orderNumber}}',
     bodyHtml:
-      "<p>Hi {{customerName}},</p><p>Your payment of <strong>{{orderTotal}}</strong> for order <strong>{{orderNumber}}</strong> has landed with us - thank you.</p>{{#if hasPaymentReference}}<p>Payment reference: {{paymentReference}}</p>{{/if}}<p>{{orderItems}}</p>{{#if hasPreOrderItems}}<p>Your order contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p><p>We are getting it ready now and will be in touch when it is on its way.</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}",
+      "<p>Hi {{customerName}},</p><p>Your payment of <strong>{{orderTotal}}</strong> for order <strong>{{orderNumber}}</strong> has landed with us - thank you.</p>{{#if hasPaymentReference}}<p>Payment reference: {{paymentReference}}</p>{{/if}}{{orderItems}}{{#if hasPreOrderItems}}<p>Your order contains a pre-order item ({{preOrderItemName}}), expected to dispatch on or before {{preOrderDispatchDate}}.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p><p>We are getting it ready now and will be in touch when it is on its way.</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}",
     mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'paymentMethod', 'paymentReference', 'customerReference', 'customerReferenceLabel', 'preOrderItemName', 'preOrderDispatchDate', 'shopName'],
+    // The item list is a table this module builds itself, photographs and
+    // all, with every value escaped on the way in - see
+    // lib/order-items-email.ts. As a plain value its markup would arrive as
+    // visible angle brackets.
+    rawTags: ['orderItems'],
     transactional: true,
   },
   {
@@ -97,8 +110,13 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Part of an order dispatched',
     subject: '{{#if hasOutstanding}}Part of your order {{orderNumber}} is on its way{{/if}}{{#if isFinalPart}}The last part of your order {{orderNumber}} is on its way{{/if}}',
     bodyHtml:
-      '<p>Hi {{customerName}},</p>{{#if hasOutstanding}}<p>Good news - part of your order <strong>{{orderNumber}}</strong> is on its way. The rest of it is still with us, and we will email you again as soon as it is dispatched.</p>{{/if}}{{#if isFinalPart}}<p>Good news - the last part of your order <strong>{{orderNumber}}</strong> is on its way. That is everything from this order now dispatched.</p>{{/if}}<p><strong>In this parcel:</strong></p><p>{{dispatchedItems}}</p>{{#if hasOutstanding}}<p><strong>Still to come:</strong></p><p>{{outstandingItems}}</p>{{/if}}{{#if hasCarrier}}<p>Sent with {{carrier}}.</p>{{/if}}{{#if hasTracking}}<p>Tracking number: {{trackingNumber}}</p>{{/if}}<p>Parcels sent separately can arrive a day or two apart, so please do not worry if they turn up at different times.</p><p>Thanks for shopping with {{shopName}}.</p>',
+      '<p>Hi {{customerName}},</p>{{#if hasOutstanding}}<p>Good news - part of your order <strong>{{orderNumber}}</strong> is on its way. The rest of it is still with us, and we will email you again as soon as it is dispatched.</p>{{/if}}{{#if isFinalPart}}<p>Good news - the last part of your order <strong>{{orderNumber}}</strong> is on its way. That is everything from this order now dispatched.</p>{{/if}}<p><strong>In this parcel:</strong></p>{{dispatchedItems}}{{#if hasOutstanding}}<p><strong>Still to come:</strong></p>{{outstandingItems}}{{/if}}{{#if hasCarrier}}<p>Sent with {{carrier}}.</p>{{/if}}{{#if hasTracking}}<p>Tracking number: {{trackingNumber}}</p>{{/if}}<p>Parcels sent separately can arrive a day or two apart, so please do not worry if they turn up at different times.</p><p>Thanks for shopping with {{shopName}}.</p>',
     mergeTags: ['customerName', 'orderNumber', 'dispatchedItems', 'outstandingItems', 'carrier', 'trackingNumber', 'shopName'],
+    // The item list is a table this module builds itself, photographs and
+    // all, with every value escaped on the way in - see
+    // lib/order-items-email.ts. As a plain value its markup would arrive as
+    // visible angle brackets.
+    rawTags: ['dispatchedItems', 'outstandingItems'],
     transactional: false,
   },
   {
@@ -118,8 +136,13 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'New order, payment still to come (admin alert)',
     subject: 'New order awaiting payment: {{orderNumber}}',
     bodyHtml:
-      '<p>New order <strong>{{orderNumber}}</strong> from {{customerName}} ({{customerEmail}}), placed by {{paymentMethod}}.</p><p>Total: {{orderTotal}} - <strong>not paid yet</strong>. They have been emailed how to pay, and the order sits in Awaiting payment until you mark it received.</p><p>{{orderItems}}</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}',
+      '<p>New order <strong>{{orderNumber}}</strong> from {{customerName}} ({{customerEmail}}), placed by {{paymentMethod}}.</p><p>Total: {{orderTotal}} - <strong>not paid yet</strong>. They have been emailed how to pay, and the order sits in Awaiting payment until you mark it received.</p>{{orderItems}}{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}',
     mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'orderTotal', 'orderItems', 'paymentMethod', 'customerReference', 'customerReferenceLabel', 'shopName'],
+    // The item list is a table this module builds itself, photographs and
+    // all, with every value escaped on the way in - see
+    // lib/order-items-email.ts. As a plain value its markup would arrive as
+    // visible angle brackets.
+    rawTags: ['orderItems'],
     transactional: false,
   },
   {

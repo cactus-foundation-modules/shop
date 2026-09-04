@@ -3,16 +3,26 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { getOrderDispatchSummary, getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
+import { getOrderItems } from '@/modules/shop/lib/db/orders'
+import { absoluteImageUrl, renderOrderItemsTable, type OrderEmailLine } from '@/modules/shop/lib/order-items-email'
+import { getProductMediaForProducts } from '@/modules/shop/lib/db/products'
+import type { ShpProductMedia } from '@/modules/shop/lib/types'
 
-// Item lists go into the template as ONE plain-text variable, because
-// lib/email.ts HTML-escapes every {{variable}} on the way into the body - any
-// <br> or <li> built here would reach the customer as visible angle brackets.
-// So each entry is prefixed and newline-joined: the newlines give a proper list
-// in the text part, and the "- " prefix keeps the entries apart in the HTML
-// part, where the newlines collapse to spaces. Same trade-off ORDER_CONFIRMED
-// already makes in lib/order-fulfillment.ts.
-function formatItemList(entries: Array<{ productName: string; quantity: number }>): string {
-  return entries.map((e) => `- ${e.productName} x${e.quantity}`).join('\n')
+// The two lists go into the template as pre-built markup, declared as rawTags
+// on shop.partial-shipped. They were plain strings, prefixed and newline-joined
+// - which gave a proper list in the text part and one run-on line in the HTML
+// part, where every newline collapses to a space. The table is the same one the
+// confirmation uses, minus the prices: what a thing cost is not the question
+// somebody has when they are looking at what is in the box.
+function formatItemList(
+  entries: Array<{ productName: string; quantity: number; imageUrl?: string | null }>,
+): string {
+  const lines: OrderEmailLine[] = entries.map((e) => ({
+    name: e.productName,
+    quantity: e.quantity,
+    imageUrl: e.imageUrl ?? null,
+  }))
+  return renderOrderItemsTable(lines)
 }
 
 // Tells the customer that ONE shipment has gone out, listing what was in it and
@@ -42,12 +52,31 @@ export async function sendShipmentDispatchedEmail(params: { orderId: string; shi
   const summary = await getOrderDispatchSummary(params.orderId)
   const lineByOrderItemId = new Map(summary.lines.map((l) => [l.orderItemId, l]))
 
+  // Thumbnails, by the line's own product exactly as the confirmation resolves
+  // them. The dispatch summary carries names and quantities but no product id,
+  // so the order's items come along to supply it; a picture that will not read
+  // costs the thumbnails and never the dispatch note.
+  const orderItems = await getOrderItems(params.orderId).catch(() => [])
+  const productByOrderItemId = new Map(orderItems.map((i) => [i.id, i.productId]))
+  const productIds = orderItems.map((i) => i.productId).filter((id): id is string => !!id)
+  const mediaByProduct: Map<string, ShpProductMedia[]> = productIds.length > 0
+    ? await getProductMediaForProducts(productIds).catch(() => new Map<string, ShpProductMedia[]>())
+    : new Map()
+  const imageForOrderItem = (orderItemId: string): string | null => {
+    const productId = productByOrderItemId.get(orderItemId) ?? null
+    const media = productId ? mediaByProduct.get(productId) ?? [] : []
+    const image = media.find((m) => m.type === 'IMAGE' && m.isPrimary) ?? media.find((m) => m.type === 'IMAGE')
+    return absoluteImageUrl(image?.url, getSiteUrl())
+  }
+
   const dispatched = shipment.items
     .map((item) => {
       const line = lineByOrderItemId.get(item.orderItemId)
-      return line ? { productName: line.productName, quantity: item.quantity } : null
+      return line
+        ? { productName: line.productName, quantity: item.quantity, imageUrl: imageForOrderItem(item.orderItemId) }
+        : null
     })
-    .filter((entry): entry is { productName: string; quantity: number } => entry !== null)
+    .filter((entry): entry is { productName: string; quantity: number; imageUrl: string | null } => entry !== null)
     .sort((a, b) => a.productName.localeCompare(b.productName))
   if (dispatched.length === 0) return
 
@@ -69,7 +98,11 @@ export async function sendShipmentDispatchedEmail(params: { orderId: string; shi
     customerEmail: order.customerEmail,
     dispatchedItems: formatItemList(dispatched),
     outstandingItems: formatItemList(
-      outstanding.map((l) => ({ productName: l.productName, quantity: l.outstandingQty }))
+      outstanding.map((l) => ({
+        productName: l.productName,
+        quantity: l.outstandingQty,
+        imageUrl: imageForOrderItem(l.orderItemId),
+      }))
     ),
     hasOutstanding: isFinalPart ? 'false' : 'true',
     isFinalPart: isFinalPart ? 'true' : 'false',

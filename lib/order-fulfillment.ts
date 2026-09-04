@@ -11,6 +11,7 @@ import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { getPaymentProvider, resolveProviderLabel } from '@/modules/shop/lib/payments/registry'
 import { issueInvoiceForOrder, shouldIssueOn } from '@/modules/shop/lib/invoices'
 import { notifyOrderPaid } from '@/modules/shop/lib/order-paid-hooks'
+import { renderOrderItemsEmailTable } from '@/modules/shop/lib/order-items-email'
 import { formatMoney } from '@/modules/shop/lib/money'
 
 function formatAddress(address: { line1: string; line2?: string; city: string; postcode: string; country: string }): string {
@@ -77,14 +78,11 @@ export async function fulfillPaidOrder(
   }
 
   const preOrderItem = items.find((i) => i.isPreOrder)
-  const itemsList = items.map((i) => {
-    const base = `${i.productName} x${i.quantity} - ${formatMoney(i.total, config.currencySymbol)}`
-    // Personalisation (engraving, options, upload names) listed under the item.
-    const extras = i.lineMeta?.fields?.length
-      ? '\n' + i.lineMeta.fields.map((f) => `    ${f.label}: ${f.value}`).join('\n')
-      : ''
-    return base + extras
-  }).join('\n')
+  // A table with each product's photograph beside it, built as markup here and
+  // declared a rawTag on the templates. It was a newline-joined string, which
+  // reads as one run-on paragraph in every HTML mail client - see
+  // lib/order-items-email.ts. Personalisation still sits under its own line.
+  const itemsList = await renderOrderItemsEmailTable(items, config)
 
   // Email, text, or both - whichever the customer asked for. Everything below
   // this line that is addressed to the OWNER stays on plain email: an admin

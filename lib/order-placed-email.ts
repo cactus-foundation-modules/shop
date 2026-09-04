@@ -8,6 +8,7 @@ import { getPaymentProvider, resolveProviderLabel } from '@/modules/shop/lib/pay
 import { manualPaymentInstructions } from '@/modules/shop/lib/payment-instructions'
 import { proformaAvailable } from '@/modules/shop/lib/proforma'
 import { invoicePdfFilename } from '@/modules/shop/lib/invoice-pdf'
+import { renderOrderItemsEmailTable } from '@/modules/shop/lib/order-items-email'
 import type { EmailAttachment } from '@/lib/email/index'
 import { formatMoney } from '@/modules/shop/lib/money'
 import type { ShpOrder } from '@/modules/shop/lib/types'
@@ -74,13 +75,9 @@ export async function announceOrderAwaitingPayment(order: ShpOrder): Promise<voi
     const items = await getOrderItems(order.id)
     const siteUrl = getSiteUrl()
 
-    const itemsList = items.map((i) => {
-      const base = `${i.productName} x${i.quantity} - ${formatMoney(i.total, config.currencySymbol)}`
-      const extras = i.lineMeta?.fields?.length
-        ? '\n' + i.lineMeta.fields.map((f) => `    ${f.label}: ${f.value}`).join('\n')
-        : ''
-      return base + extras
-    }).join('\n')
+    // The same photographed table the confirmation uses. See
+    // lib/order-items-email.ts for why it is markup rather than a plain string.
+    const itemsList = await renderOrderItemsEmailTable(items, config)
 
     // Owner-typed, and bank details are the one merge value in the shop that is
     // useless as a single run-on line. Escaped here and turned into real breaks,
