@@ -8,7 +8,6 @@ import { moduleAccountSectionAnchor } from '@/lib/members/account-layout'
 import MemberAccountShell from '@/components/members/account/MemberAccountShell'
 import { getMemberOrderDetail } from '@/modules/shop/lib/member-orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { productHref } from '@/modules/shop/lib/product-url'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { formatMoney } from '@/modules/shop/lib/money'
@@ -22,6 +21,7 @@ import {
   formatOrderDate,
   orderCompanyName,
 } from '@/modules/shop/lib/order-display'
+import { orderProgressSteps, orderStopped } from '@/modules/shop/lib/order-progress'
 import { listInvoicesForOrder } from '@/modules/shop/lib/db/invoices'
 import { listCreditNotesForOrder } from '@/modules/shop/lib/db/credit-notes'
 import {
@@ -43,11 +43,34 @@ import {
   customerReferenceOfferedAfterOrder,
 } from '@/modules/shop/lib/customer-reference'
 import WithdrawRequestButton from '@/modules/shop/components/public/WithdrawRequestButton'
-import BuyAgainButton from '@/modules/shop/components/public/BuyAgainButton'
 import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
+import { ORDER_DETAIL_CSS } from '@/modules/shop/components/public/order-detail-css'
+import { Icon, ICON_DOWNLOAD, OrderCard, OrderNote } from '@/modules/shop/components/public/OrderDetailChrome'
+import { OrderProgressRail } from '@/modules/shop/components/public/OrderProgressRail'
+import { OrderItemList } from '@/modules/shop/components/public/OrderItemList'
+import { OrderDocuments, type OrderDocument } from '@/modules/shop/components/public/OrderDocuments'
 
 export const metadata = { title: 'Order detail' }
 export const dynamic = 'force-dynamic'
+
+// A member's own order, a week after they placed it.
+//
+// The page had grown a section at a time until it was eleven identical grey
+// cards in one column - pay online, proforma, invoice address, purchase order
+// number, items, parcels, downloads, totals, refunds, addresses, requests - all
+// at the same volume, with the paperwork strung off the date line as middot
+// separated links. Everything on it was needed; none of it was ranked.
+//
+// It now reads in the order somebody actually wants it:
+//
+//   1. Which order is this          - number, state, date, size, money
+//   2. Where has it got to          - the progress rail
+//   3. Anything still to do         - money owed, a request in flight
+//   4. What was bought and paid     - the receipt, items and totals in one card
+//   5. Everything else              - paired cards, two up on a desktop
+//
+// Layout classes come from order-detail-css.ts, injected once here. Nothing on
+// this page carries a hardcoded colour.
 
 // When an invoice turns up, in the buyer's words rather than the setting's.
 // MANUAL promises no moment because the shop has not committed to one.
@@ -68,59 +91,19 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: 'Cash',
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="card" style={{ padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-3)' }}>
-      <h2 className="card-title" style={{ margin: 0 }}>{title}</h2>
-      {children}
-    </div>
-  )
+// What a stopped order says instead of a progress rail. There is no next step
+// to point at, and four greyed-out circles under "Cancelled" reads as a page
+// that has not noticed.
+const STOPPED_MESSAGE: Record<string, string> = {
+  CANCELLED: 'This order was cancelled, so nothing further will be sent.',
+  REFUNDED: 'This order was refunded in full.',
 }
 
-// How to pay, for the methods where paying is still a job the shopper has to go
-// and do. The thank-you page says this once, at a moment nobody is reading
-// carefully; this is where they come back to it a week later with their banking
-// app open, so it sits above everything else the page has to say.
-//
-// It is an outstanding task or it is nothing. Once the money has been marked as
-// arrived there is no job left, and a panel of bank details on a settled order
-// reads as a second demand for a bill already paid - so the whole thing goes
-// rather than softening into a "how you paid" note nobody asked for.
-function PaymentInstructions({ instructions, amount, payNow }: {
-  instructions: string
-  amount: string
-  /** The offer to settle it here and now, where the shop makes one. Inside this
-   *  panel rather than beside it: it is the same question - how does this get
-   *  paid - and two boxes asking it would read as two different bills. */
-  payNow?: React.ReactNode
-}) {
+function TotalRow({ label, value, variant }: { label: React.ReactNode; value: string; variant?: string }) {
   return (
-    <div
-      className="alert alert-warning"
-      // `.alert` carries its own bottom margin, which inside this grid would sit
-      // on top of the gap and open a hole under the panel. The grid decides the
-      // spacing here, as it does for every other block on the page.
-      style={{ padding: 'var(--space-4)', marginBottom: 0, display: 'grid', gap: 'var(--space-2)' }}
-    >
-      <strong>How to pay - {amount} still to reach us</strong>
-      <p style={{ margin: 0 }}>
-        Your order is awaiting payment confirmation. We will be in touch once it clears.
-      </p>
-      {instructions && <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{instructions}</p>}
-      {payNow && (
-        <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)', marginTop: 'var(--space-1)' }}>
-          {payNow}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function TotalRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: strong ? 'var(--font-semibold)' : undefined }}>
-      <span>{label}</span>
-      <span>{value}</span>
+    <div className={variant ? `sod-row ${variant}` : 'sod-row'}>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
     </div>
   )
 }
@@ -201,6 +184,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
   const refundedTotal = completedRefunds.reduce((sum, refund) => sum + Number(refund.amount), 0)
   const itemsById = new Map(lines.map((line) => [line.item.id, line.item]))
   const decided = requests.filter((request) => request.status !== 'PENDING')
+  const itemCount = lines.reduce((sum, line) => sum + line.item.quantity, 0)
 
   // The method to SPEAK about, which on an unpaid order is the one it was placed
   // with. A customer who started a card payment here and thought better of it
@@ -244,365 +228,397 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
   const showReference = config.customerReferenceFieldEnabled
     && (referenceOffered || Boolean(order.customerReference?.trim()))
 
+  // The latest parcel out, which is what the rail dates its dispatch step from.
+  const lastShippedAt = shipments.reduce<Date | null>(
+    (latest, shipment) => (!latest || shipment.shippedAt > latest ? shipment.shippedAt : latest),
+    null,
+  )
+  const stopped = orderStopped(order.status)
+  const steps = orderProgressSteps({ order, lines, lastShippedAt })
+
+  // How this order was settled, in a sentence rather than a status code.
+  const methodName = PAYMENT_METHOD_LABELS[shownMethod] ?? methodLabels[shownMethod] ?? shownMethod
+  const paymentWhen = order.paidAt
+    ? `Paid on ${formatOrderDate(order.paidAt, timezone)}`
+    : order.paymentStatus === 'PENDING'
+      ? 'Not received yet'
+      : order.paymentStatus === 'AWAITING_CONFIRMATION'
+        ? 'Waiting to clear'
+        : order.paymentStatus === 'FAILED'
+          ? 'That payment did not go through'
+          : null
+
+  // Every piece of paper this order has, in the order it came into existence.
+  // The receipt is always first because it is the only one every shop has.
+  const documents: OrderDocument[] = [{
+    key: 'receipt',
+    name: 'Printable receipt',
+    href: `/shop/account/orders/${order.id}/receipt`,
+    action: 'Print',
+    newTab: true,
+    icon: 'print',
+    internal: true,
+  }]
+  for (const record of issuedInvoices) {
+    documents.push({
+      key: record.id,
+      name: `Invoice ${record.invoiceNumber}`,
+      // Said plainly rather than left for somebody to work out from two invoice
+      // numbers on one order.
+      note: record.supersededAt ? 'Cancelled and replaced' : null,
+      href: pdfDownloads ? invoicePdfPath(record.invoiceNumber) : invoicePath(record.invoiceNumber),
+      action: pdfDownloads ? 'Download' : 'Open',
+      icon: 'doc',
+    })
+  }
+  if (proforma) {
+    documents.push({
+      key: 'proforma',
+      name: 'Proforma invoice',
+      href: pdfDownloads ? proformaPdfPath(order.orderNumber) : proformaPath(order.orderNumber),
+      action: pdfDownloads ? 'Download' : 'Open',
+      icon: 'doc',
+    })
+  }
+  for (const note of creditNotes) {
+    documents.push({
+      key: note.id,
+      name: `Credit note ${note.creditNoteNumber}`,
+      href: pdfDownloads ? creditNotePdfPath(note.creditNoteNumber) : creditNotePath(note.creditNoteNumber),
+      action: pdfDownloads ? 'Download' : 'Open',
+      icon: 'doc',
+    })
+  }
+  if (invoicePromise) {
+    documents.push({
+      key: 'invoice-promise',
+      name: `Your ${config.invoiceTaxLabel || 'VAT'} invoice ${invoicePromise}`,
+      icon: 'doc',
+    })
+  }
+
   return (
     <MemberAccountShell member={member} maxWidth={880}>
+      <style dangerouslySetInnerHTML={{ __html: ORDER_DETAIL_CSS }} />
       {gate.staffPreview && <ShopStaffPreviewBanner />}
 
-      <div style={{ marginBottom: 'var(--space-4)' }}>
-        <Link href={allOrdersHref} prefetch={false} style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', textDecoration: 'none' }}>
-          ← All orders
+      <div className="sod">
+        <Link href={allOrdersHref} prefetch={false} className="sod-back">
+          <span aria-hidden="true">←</span> All orders
         </Link>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', alignItems: 'center', marginTop: 'var(--space-2)' }}>
-          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-semibold)', margin: 0, color: 'var(--color-text)' }}>
-            Order {order.orderNumber}
-          </h1>
-          <span className={badgeClass(status.tone)}>{status.label}</span>
-        </div>
-        <p style={{ color: 'var(--color-text-muted)', margin: '0.25rem 0 0', fontSize: 'var(--text-sm)' }}>
-          Placed {formatOrderDate(order.createdAt, timezone)}
-          {' · '}
-          {/* Its own tab: printing is a detour, and a member who came to look at
-              their order should still have it there when the print dialog has
-              been dealt with. rel="noopener" as ever on a target of _blank. */}
-          <Link
-            href={`/shop/account/orders/${order.id}/receipt`}
-            prefetch={false}
-            target="_blank"
-            rel="noopener"
-            style={{ color: 'var(--color-primary)' }}
-          >
-            Printable receipt
-          </Link>
-          {/* The invoice, once one has been raised and the shop is willing to
-              show it. Straight to the PDF where the shop makes them: somebody
-              opening their own paperwork wants the file, not a web page to save
-              it from. Off, it falls back to the on-screen copy.
-              A plain <a>: both are signed rather than session-bound, so
-              prefetching would put the token in the browser's speculation cache
-              for no gain, and an attachment is not a route to prefetch at all. */}
-          {issuedInvoices.map((record) => (
-            <span key={record.id}>
-              {' · '}
-              <a
-                href={pdfDownloads ? invoicePdfPath(record.invoiceNumber) : invoicePath(record.invoiceNumber)}
-                style={{ color: 'var(--color-primary)' }}
-              >
-                Invoice {record.invoiceNumber}
-              </a>
-              {/* Said plainly rather than left for somebody to work out from
-                  two invoice numbers on one order. */}
-              {record.supersededAt && (
-                <span style={{ color: 'var(--color-text-muted)' }}> (cancelled)</span>
-              )}
-            </span>
-          ))}
-          {proforma && (
-            <>
-              {' · '}
-              <a
-                href={pdfDownloads ? proformaPdfPath(order.orderNumber) : proformaPath(order.orderNumber)}
-                style={{ color: 'var(--color-primary)' }}
-              >
-                Proforma invoice
-              </a>
-            </>
-          )}
-          {invoicePromise && (
-            <>
-              {' · '}
-              <span>
-                Your {config.invoiceTaxLabel || 'VAT'} invoice {invoicePromise}
-              </span>
-            </>
-          )}
-          {creditNotes.map((note) => (
-            <span key={note.id}>
-              {' · '}
-              <a
-                href={pdfDownloads ? creditNotePdfPath(note.creditNoteNumber) : creditNotePath(note.creditNoteNumber)}
-                style={{ color: 'var(--color-primary)' }}
-              >
-                Credit note {note.creditNoteNumber}
-              </a>
-            </span>
-          ))}
-        </p>
-      </div>
 
-      <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
+        <header className="sod-head">
+          <div className="sod-head-top">
+            <h1 className="sod-title">Order {order.orderNumber}</h1>
+            <span className={badgeClass(status.tone)}>{status.label}</span>
+          </div>
+          {/* The three facts that identify an order, and nothing to click. The
+              links that used to live on this line have a card of their own. */}
+          <p className="sod-facts">
+            <span>Placed <strong>{formatOrderDate(order.createdAt, timezone)}</strong></span>
+            <span><strong>{itemCount}</strong> {itemCount === 1 ? 'item' : 'items'}</span>
+            <span>Total <strong>{formatMoney(order.total, symbol)}</strong></span>
+            {showReference && order.customerReference?.trim() && (
+              <span>{referenceLabel} <strong>{order.customerReference.trim()}</strong></span>
+            )}
+          </p>
+        </header>
+
+        {stopped ? (
+          <OrderNote tone="warn">
+            <p>{STOPPED_MESSAGE[order.status] ?? status.label}</p>
+          </OrderNote>
+        ) : (
+          <OrderProgressRail steps={steps} timezone={timezone} />
+        )}
+
+        {order.status === 'ON_HOLD' && (
+          <OrderNote tone="warn">
+            <p>
+              <strong>This order is on hold.</strong> We have paused it while something is sorted
+              out, and we will be in touch as soon as it is moving again.
+            </p>
+          </OrderNote>
+        )}
+
+        {/* How to pay, for the methods where paying is still a job the shopper
+            has to go and do. The thank-you page says this once, at a moment
+            nobody is reading carefully; this is where they come back to it a
+            week later with their banking app open, so it sits above everything
+            else the page has to say.
+
+            It is an outstanding task or it is nothing. Once the money has been
+            marked as arrived there is no job left, and a panel of bank details
+            on a settled order reads as a second demand for a bill already paid. */}
         {outstanding && (paymentInstructions || payOnline.length > 0) && (
-          <PaymentInstructions
-            instructions={paymentInstructions}
-            amount={formatMoney(order.total, symbol)}
-            payNow={payOnline.length > 0 ? (
-              <OrderPayOnlinePanel
-                orderId={order.id}
-                amount={formatMoney(order.total, symbol)}
-                methods={payOnline}
-                // Who is paying, for a card SDK that has to send a name and an
-                // address with its 3D Secure request. The billing address where
-                // the order carries one, since that is the one the bank checks.
-                payer={{
-                  email: order.customerEmail,
-                  name: order.customerName,
-                  address: order.billingAddress ?? order.shippingAddress,
-                }}
-                methodClientFields={payOnlineFields}
-                paymentFields={resolveCheckoutPaymentFields()}
-              />
-            ) : null}
-          />
+          <OrderNote tone="warn">
+            <p>
+              <strong>How to pay - {formatMoney(order.total, symbol)} still to reach us</strong>
+            </p>
+            <p>Your order is awaiting payment confirmation. We will be in touch once it clears.</p>
+            {paymentInstructions && <p className="sod-instructions">{paymentInstructions}</p>}
+            {payOnline.length > 0 && (
+              <>
+                {/* Inside this callout rather than beside it: it is the same
+                    question - how does this get paid - and two boxes asking it
+                    would read as two different bills. */}
+                <div className="sod-note-sep" />
+                <OrderPayOnlinePanel
+                  orderId={order.id}
+                  amount={formatMoney(order.total, symbol)}
+                  methods={payOnline}
+                  // Who is paying, for a card SDK that has to send a name and an
+                  // address with its 3D Secure request. The billing address where
+                  // the order carries one, since that is the one the bank checks.
+                  payer={{
+                    email: order.customerEmail,
+                    name: order.customerName,
+                    address: order.billingAddress ?? order.shippingAddress,
+                  }}
+                  methodClientFields={payOnlineFields}
+                  paymentFields={resolveCheckoutPaymentFields()}
+                />
+              </>
+            )}
+          </OrderNote>
         )}
 
         {openRequest && (
-          <div className="alert alert-warning">
-            <strong>{REQUEST_TYPE_LABEL[openRequest.type]} request sent.</strong>{' '}
-            You asked on {formatOrderDate(openRequest.createdAt, timezone)} - reason given: {reasonLabel(openRequest.type, openRequest.reason)}.
-            We will email you as soon as somebody has looked at it.
-            <div style={{ marginTop: 'var(--space-2)' }}>
-              <WithdrawRequestButton requestId={openRequest.id} />
-            </div>
-          </div>
+          <OrderNote tone="info">
+            <p>
+              <strong>{REQUEST_TYPE_LABEL[openRequest.type]} request sent.</strong>{' '}
+              You asked on {formatOrderDate(openRequest.createdAt, timezone)} - reason given:{' '}
+              {reasonLabel(openRequest.type, openRequest.reason)}. We will email you as soon as
+              somebody has looked at it.
+            </p>
+            <div><WithdrawRequestButton requestId={openRequest.id} /></div>
+          </OrderNote>
         )}
 
-        {billingOffered && (
-          <Section title="Who your invoice is made out to">
-            <OrderBillingPanel
-              orderId={order.id}
-              companyLabel={config.organisationLabel.trim() || 'Company name'}
-              // What the invoice prints, which on an older order is not always
-              // the order's own column - see orderCompanyName.
-              company={orderCompanyName(order) ?? ''}
-              // The address the paperwork actually prints: the billing one where
-              // the order carries one, the delivery one where it does not, which
-              // is exactly what buildCustomer does when the invoice is raised.
-              address={order.billingAddress ?? order.shippingAddress}
-              editable={customerCanEditBilling({ config, order })}
-              invoiced={Boolean(invoiceRecord)}
-            />
-          </Section>
-        )}
-
-        {showReference && (
-          <Section title={referenceLabel}>
-            <OrderReferencePanel
-              orderId={order.id}
-              label={referenceLabel}
-              reference={order.customerReference ?? ''}
-              editable={referenceEditable}
-            />
-          </Section>
-        )}
-
-        <Section title="What you ordered">
-          <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
-            {lines.map((line) => (
-              <div key={line.item.id} style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
-                {line.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- storage-served product image, not a local asset next/image can optimise
-                  <img
-                    src={line.imageUrl}
-                    alt=""
-                    width={64}
-                    height={64}
-                    style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', flexShrink: 0 }}
+        {/* The receipt: what was bought and what it came to, in one card rather
+            than two sections half a screen apart. */}
+        <OrderCard
+          title="What you ordered"
+          flush
+          foot={(
+            <dl className="sod-totals">
+              <TotalRow label="Items" value={formatMoney(order.subtotal, symbol)} />
+              {Number(order.discountAmount) > 0 && (
+                <TotalRow
+                  variant="sod-discount"
+                  label={
+                    order.couponCode
+                      ? <>Discount <span className="sod-code">({order.couponCode})</span></>
+                      : 'Discount'
+                  }
+                  value={`-${formatMoney(order.discountAmount, symbol)}`}
+                />
+              )}
+              <TotalRow
+                label={order.shippingRateName || 'Delivery'}
+                value={formatMoney(order.shippingAmount, symbol)}
+              />
+              {Number(order.taxAmount) > 0 && (
+                <TotalRow
+                  label={order.taxMode === 'INCLUSIVE' ? 'VAT (included)' : 'VAT'}
+                  value={formatMoney(order.taxAmount, symbol)}
+                />
+              )}
+              <TotalRow variant="sod-grand" label="Total" value={formatMoney(order.total, symbol)} />
+              {refundedTotal > 0 && (
+                <>
+                  <TotalRow label="Refunded" value={`-${formatMoney(refundedTotal, symbol)}`} />
+                  <TotalRow
+                    variant="sod-after"
+                    label="Left after refunds"
+                    value={formatMoney(Number(order.total) - refundedTotal, symbol)}
                   />
-                ) : (
-                  <div aria-hidden style={{ width: 64, height: 64, borderRadius: 'var(--radius-md)', background: 'var(--color-bg-subtle)', border: '1px solid var(--color-border)', flexShrink: 0 }} />
-                )}
+                </>
+              )}
+            </dl>
+          )}
+        >
+          <OrderItemList
+            lines={lines}
+            currencySymbol={symbol}
+            productUrlStyle={config.productUrlStyle}
+            buyAgainEnabled={config.buyAgainEnabled}
+            timezone={timezone}
+          />
+        </OrderCard>
 
-                <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: '0.25rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
-                    <span style={{ fontWeight: 'var(--font-medium)' }}>
-                      {line.productSlug ? (
-                        <Link href={productHref(line.productSlug, config.productUrlStyle)} prefetch={false} style={{ color: 'inherit' }}>
-                          {line.item.productName}
-                        </Link>
-                      ) : (
-                        line.item.productName
-                      )}
-                      {' '}× {line.item.quantity}
+        {/* Everything that is reference rather than headline. Two columns on a
+            desktop, one on a phone - see .sod-grid. */}
+        <div className="sod-grid">
+          {shipments.length > 0 && (
+            <OrderCard
+              title={shipments.length === 1 ? 'Your parcel' : 'Your parcels'}
+              note={shipments.length > 1 ? 'Parcels sent separately can arrive a day or two apart.' : undefined}
+              flush
+            >
+              <div>
+                {shipments.map((shipment, index) => (
+                  <div key={shipment.id} className="sod-parcel">
+                    <span className="sod-parcel-when">
+                      {shipments.length === 1 ? 'Sent' : `Parcel ${index + 1}, sent`}{' '}
+                      {formatOrderDate(shipment.shippedAt, timezone)}
+                      {shipment.carrier ? ` with ${shipment.carrier}` : ''}
                     </span>
-                    <span>{formatMoney(line.item.total, symbol)}</span>
-                  </div>
-
-                  {line.item.lineMeta?.fields?.length ? (
-                    <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.125rem' }}>
-                      {line.item.lineMeta.fields.map((field, i) => (
-                        <li key={i} style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
-                          <span style={{ fontWeight: 'var(--font-medium)' }}>{field.label}:</span>{' '}
-                          {field.href ? (
-                            <a href={field.href} target="_blank" rel="noopener noreferrer">{field.value}</a>
-                          ) : (
-                            field.value
-                          )}
+                    {shipment.trackingNumber && (
+                      <span className="sod-dim">Tracking number: {shipment.trackingNumber}</span>
+                    )}
+                    <ul className="sod-parcel-items">
+                      {shipment.items.map((item) => (
+                        <li key={item.id}>
+                          {itemsById.get(item.orderItemId)?.productName ?? 'Item'} × {item.quantity}
                         </li>
                       ))}
                     </ul>
-                  ) : null}
-
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem', alignItems: 'center', marginTop: '0.25rem' }}>
-                    {line.dispatchedQty > 0 && (
-                      <span className="badge badge-success">
-                        {line.dispatchedQty >= line.item.quantity ? 'Dispatched' : `${line.dispatchedQty} of ${line.item.quantity} dispatched`}
-                      </span>
-                    )}
-                    {line.item.refundedQty > 0 && <span className="badge badge-warning">{line.item.refundedQty} refunded</span>}
-                    {line.item.isPreOrder && (
-                      <span className="badge badge-info">
-                        Pre-order{line.item.preOrderDispatchDate ? ` · expected ${formatOrderDate(line.item.preOrderDispatchDate, timezone)}` : ''}
-                      </span>
-                    )}
-                    {config.buyAgainEnabled && (
-                      <BuyAgainButton
-                        productId={line.item.productId}
-                        productSlug={line.productSlug}
-                        quantity={line.item.quantity}
-                        personalised={!!line.item.lineMeta?.fields?.length}
-                        productUrlStyle={config.productUrlStyle}
-                      />
+                    {/* The carrier's own page for this parcel. Re-checked here
+                        rather than trusted: the dispatch route refuses anything
+                        that is not http(s), but a row written before that check
+                        existed has never been past it, and this is an href in
+                        front of somebody who trusts the shop. */}
+                    {safeTrackingUrl(shipment.trackingUrl) && (
+                      <a
+                        className="sod-btn sod-btn-ghost sod-track"
+                        href={safeTrackingUrl(shipment.trackingUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Track {shipments.length === 1 ? 'your parcel' : `parcel ${index + 1}`}
+                      </a>
                     )}
                   </div>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </Section>
+            </OrderCard>
+          )}
 
-        {shipments.length > 0 && (
-          <Section title={shipments.length === 1 ? 'Your parcel' : 'Your parcels'}>
-            <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
-              {shipments.map((shipment, index) => (
-                <div key={shipment.id} style={{ display: 'grid', gap: '0.25rem' }}>
-                  <span style={{ fontWeight: 'var(--font-medium)' }}>
-                    {shipments.length === 1 ? 'Sent' : `Parcel ${index + 1}, sent`} {formatOrderDate(shipment.shippedAt, timezone)}
-                    {shipment.carrier ? ` with ${shipment.carrier}` : ''}
-                  </span>
-                  {shipment.trackingNumber && (
-                    <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-                      Tracking number: {shipment.trackingNumber}
+          {downloads.length > 0 && (
+            <OrderCard title="Your downloads" flush>
+              <ul className="sod-docs">
+                {downloads.map((download, index) => (
+                  <li key={download.id} className="sod-doc">
+                    <Icon>{ICON_DOWNLOAD}</Icon>
+                    <span className="sod-doc-name">
+                      <a href={`/shop/downloads/${download.token}`}>
+                        {downloads.length === 1 ? 'Your download' : `Download ${index + 1}`}
+                      </a>
                     </span>
-                  )}
-                  {/* The carrier's own page for this parcel. Re-checked here
-                      rather than trusted: the dispatch route refuses anything
-                      that is not http(s), but a row written before that check
-                      existed has never been past it, and this is an href in
-                      front of somebody who trusts the shop. */}
-                  {safeTrackingUrl(shipment.trackingUrl) && (
-                    <a
-                      href={safeTrackingUrl(shipment.trackingUrl)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: 'var(--color-primary)', fontSize: 'var(--text-sm)', justifySelf: 'start' }}
-                    >
-                      Track {shipments.length === 1 ? 'your parcel' : `parcel ${index + 1}`}
-                    </a>
-                  )}
-                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-                    {shipment.items.map((item) => (
-                      <li key={item.id}>
-                        {itemsById.get(item.orderItemId)?.productName ?? 'Item'} × {item.quantity}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-              {shipments.length > 1 && (
-                <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-                  Parcels sent separately can arrive a day or two apart, so do not worry if they turn up at different times.
-                </p>
-              )}
-            </div>
-          </Section>
-        )}
+                    <span className="sod-doc-get" aria-hidden="true">Get it</span>
+                  </li>
+                ))}
+              </ul>
+            </OrderCard>
+          )}
 
-        {downloads.length > 0 && (
-          <Section title="Your downloads">
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.375rem' }}>
-              {downloads.map((download) => (
-                <li key={download.id}>
-                  <a href={`/shop/downloads/${download.token}`} style={{ color: 'var(--color-primary)' }}>Download</a>
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
+          <OrderCard title="Paperwork" flush>
+            <OrderDocuments documents={documents} />
+          </OrderCard>
 
-        <Section title="What it came to">
-          <div style={{ display: 'grid', gap: '0.375rem' }}>
-            <TotalRow label="Items" value={formatMoney(order.subtotal, symbol)} />
-            {Number(order.discountAmount) > 0 && (
-              <TotalRow
-                label={order.couponCode ? `Discount (${order.couponCode})` : 'Discount'}
-                value={`-${formatMoney(order.discountAmount, symbol)}`}
-              />
-            )}
-            <TotalRow label={order.shippingRateName || 'Delivery'} value={formatMoney(order.shippingAmount, symbol)} />
-            {Number(order.taxAmount) > 0 && (
-              <TotalRow
-                label={order.taxMode === 'INCLUSIVE' ? 'VAT (included)' : 'VAT'}
-                value={formatMoney(order.taxAmount, symbol)}
-              />
-            )}
-            <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '0.375rem' }}>
-              <TotalRow label="Total" value={formatMoney(order.total, symbol)} strong />
-            </div>
-            {refundedTotal > 0 && (
-              <>
-                <TotalRow label="Refunded" value={`-${formatMoney(refundedTotal, symbol)}`} />
-                <TotalRow label="Left after refunds" value={formatMoney(Number(order.total) - refundedTotal, symbol)} strong />
-              </>
-            )}
-          </div>
-          <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-            Paid by {PAYMENT_METHOD_LABELS[shownMethod] ?? methodLabels[shownMethod] ?? shownMethod}
-            {order.paidAt
-              ? ` on ${formatOrderDate(order.paidAt, timezone)}`
-              : order.paymentStatus === 'PENDING'
-                ? ' - not received yet'
-                : ''}
-          </p>
-        </Section>
+          <OrderCard title="Payment">
+            <p><strong>{methodName}</strong></p>
+            {paymentWhen && <p className="sod-dim">{paymentWhen}</p>}
+          </OrderCard>
 
-        {completedRefunds.length > 0 && (
-          <Section title="Refunds">
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.5rem' }}>
-              {completedRefunds.map((refund) => (
-                <li key={refund.id} style={{ display: 'grid', gap: '0.125rem' }}>
-                  <span style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{formatOrderDate(refund.createdAt, timezone)}</span>
-                    <span>{formatMoney(refund.amount, symbol)}</span>
-                  </span>
-                  <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-                    {refundItems
-                      .filter((item) => item.refundId === refund.id)
-                      .map((item) => `${itemsById.get(item.orderItemId)?.productName ?? 'Item'} × ${item.quantity}`)
-                      .join(', ') || 'Order refund'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
-
-        {/* min(100%, 260px): the addresses stack on a phone rather than
-            insisting on a 260px column the screen has not got, which would put
-            a sideways scrollbar under the whole order. */}
-        <div style={{ display: 'grid', gap: 'var(--space-4)', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))' }}>
-          <Section title="Delivery address">
-            <address style={{ fontStyle: 'normal', color: 'var(--color-text-muted)', display: 'grid', gap: '0.125rem' }}>
+          <OrderCard title="Delivery address">
+            <address className="sod-lines">
               {addressLines(order.shippingAddress).map((line, i) => <span key={i}>{line}</span>)}
             </address>
-          </Section>
+          </OrderCard>
+
           {order.billingAddress && (
-            <Section title="Billing address">
-              <address style={{ fontStyle: 'normal', color: 'var(--color-text-muted)', display: 'grid', gap: '0.125rem' }}>
+            <OrderCard title="Billing address">
+              <address className="sod-lines">
                 {addressLines(order.billingAddress).map((line, i) => <span key={i}>{line}</span>)}
               </address>
-            </Section>
+            </OrderCard>
+          )}
+
+          {billingOffered && (
+            <OrderCard title="Who your invoice is made out to">
+              <OrderBillingPanel
+                orderId={order.id}
+                companyLabel={config.organisationLabel.trim() || 'Company name'}
+                // What the invoice prints, which on an older order is not always
+                // the order's own column - see orderCompanyName.
+                company={orderCompanyName(order) ?? ''}
+                // The address the paperwork actually prints: the billing one where
+                // the order carries one, the delivery one where it does not, which
+                // is exactly what buildCustomer does when the invoice is raised.
+                address={order.billingAddress ?? order.shippingAddress}
+                editable={customerCanEditBilling({ config, order })}
+                invoiced={Boolean(invoiceRecord)}
+              />
+            </OrderCard>
+          )}
+
+          {showReference && (
+            <OrderCard title={referenceLabel}>
+              <OrderReferencePanel
+                orderId={order.id}
+                label={referenceLabel}
+                reference={order.customerReference ?? ''}
+                editable={referenceEditable}
+              />
+            </OrderCard>
+          )}
+
+          {completedRefunds.length > 0 && (
+            <OrderCard title="Refunds" flush>
+              <ul className="sod-rows">
+                {completedRefunds.map((refund) => (
+                  <li key={refund.id} className="sod-rowitem">
+                    <span className="sod-rowhead">
+                      <span>{formatOrderDate(refund.createdAt, timezone)}</span>
+                      <span className="sod-amount">{formatMoney(refund.amount, symbol)}</span>
+                    </span>
+                    <span className="sod-dim">
+                      {refundItems
+                        .filter((item) => item.refundId === refund.id)
+                        .map((item) => `${itemsById.get(item.orderItemId)?.productName ?? 'Item'} × ${item.quantity}`)
+                        .join(', ') || 'Order refund'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </OrderCard>
+          )}
+
+          {decided.length > 0 && (
+            <OrderCard title="Requests you have made" flush>
+              <ul className="sod-rows">
+                {decided.map((request) => {
+                  const state = REQUEST_STATUS_DISPLAY[request.status]
+                  return (
+                    <li key={request.id} className="sod-rowitem">
+                      <span className="sod-rowhead">
+                        <strong>{REQUEST_TYPE_LABEL[request.type]}</strong>
+                        <span className={badgeClass(state.tone)}>{state.label}</span>
+                      </span>
+                      <span className="sod-dim">
+                        asked {formatOrderDate(request.createdAt, timezone)} - {reasonLabel(request.type, request.reason)}
+                        {request.items.length > 0 && (
+                          <>
+                            {' · '}
+                            {request.items
+                              .map((item) => `${itemsById.get(item.orderItemId)?.productName ?? 'Item'} × ${item.quantity}`)
+                              .join(', ')}
+                          </>
+                        )}
+                      </span>
+                      {request.adminNote && <span>{request.adminNote}</span>}
+                    </li>
+                  )
+                })}
+              </ul>
+            </OrderCard>
           )}
         </div>
 
+        {/* Full width and last: it is the only thing on the page that starts
+            something, and it opens into a form with a list of lines in it. */}
         {!openRequest && (
           <OrderRequestPanel
             orderId={order.id}
@@ -617,39 +633,6 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
             }))}
             returnBy={detail.returnBy ? formatOrderDate(detail.returnBy, timezone) : null}
           />
-        )}
-
-        {decided.length > 0 && (
-          <Section title="Requests you have made">
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 'var(--space-2)' }}>
-              {decided.map((request) => {
-                const state = REQUEST_STATUS_DISPLAY[request.status]
-                return (
-                  <li key={request.id} style={{ display: 'grid', gap: '0.125rem' }}>
-                    <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
-                      <strong>{REQUEST_TYPE_LABEL[request.type]}</strong>
-                      <span className={badgeClass(state.tone)}>{state.label}</span>
-                      <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-                        asked {formatOrderDate(request.createdAt, timezone)}
-                      </span>
-                    </span>
-                    <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
-                      {reasonLabel(request.type, request.reason)}
-                      {request.items.length > 0 && (
-                        <>
-                          {' · '}
-                          {request.items
-                            .map((item) => `${itemsById.get(item.orderItemId)?.productName ?? 'Item'} × ${item.quantity}`)
-                            .join(', ')}
-                        </>
-                      )}
-                    </span>
-                    {request.adminNote && <span style={{ fontSize: 'var(--text-sm)' }}>{request.adminNote}</span>}
-                  </li>
-                )
-              })}
-            </ul>
-          </Section>
         )}
       </div>
     </MemberAccountShell>

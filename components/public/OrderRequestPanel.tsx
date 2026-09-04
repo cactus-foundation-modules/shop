@@ -87,10 +87,13 @@ export default function OrderRequestPanel(props: Props) {
 
   if (open) {
     return (
-      <div className="card" style={{ padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-3)' }}>
-        <h2 className="card-title" style={{ margin: 0 }}>
-          {open === 'CANCEL' ? 'Cancel this order' : 'Send something back'}
-        </h2>
+      <section className="sod-card">
+        <div className="sod-card-head">
+          <h2 className="sod-card-title">
+            {open === 'CANCEL' ? 'Cancel this order' : 'Send something back'}
+          </h2>
+        </div>
+        <div className="sod-card-body">
 
         {open === 'RETURN' && (
           <div style={{ display: 'grid', gap: '0.5rem' }}>
@@ -145,13 +148,17 @@ export default function OrderRequestPanel(props: Props) {
             Never mind
           </button>
         </div>
-      </div>
+        </div>
+      </section>
     )
   }
 
   return (
-    <div className="card" style={{ padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-2)' }}>
-      <h2 className="card-title" style={{ margin: 0 }}>Something not right?</h2>
+    <section className="sod-card">
+      <div className="sod-card-head">
+        <h2 className="sod-card-title">Something not right?</h2>
+      </div>
+      <div className="sod-card-body">
 
       {props.cancel.allowed ? (
         <div>
@@ -177,6 +184,7 @@ export default function OrderRequestPanel(props: Props) {
           <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>{props.return.reason}</p>
         )
       )}
-    </div>
+      </div>
+    </section>
   )
 }

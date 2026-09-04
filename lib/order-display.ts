@@ -65,6 +65,14 @@ export function formatOrderDate(date: Date, timezone: string): string {
   return formatInSiteTimezone(date, timezone, { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+/** "3 Aug" - the same date with the wind taken out of it, for the progress rail,
+ *  where four full dates side by side is four times more type than the four
+ *  words above them and reads as the important part. The year is dropped on
+ *  purpose: it is on the header a few lines up, and a rail is a shape first. */
+export function formatOrderDateShort(date: Date, timezone: string): string {
+  return formatInSiteTimezone(date, timezone, { day: 'numeric', month: 'short' })
+}
+
 /** The organisation an order was placed on behalf of, if one was given.
  *
  * The order's own field first: that is where the checkout puts it now, since it
