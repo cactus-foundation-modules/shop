@@ -22,6 +22,13 @@ import type { ShpAddress } from '@/modules/shop/lib/types'
 //
 // No country field, matching the address book: shops here post to one country
 // nearly always, and the order's own country is kept as it stands.
+//
+// No NAME fields either, and that one is not a simplification. The checkout
+// never asks for a billing name - the invoice is addressed to the company, or
+// to the person who placed the order - so there is no billing name here for
+// anybody to be putting right. The route will not accept one either: it takes
+// the name, the country and the telephone number off the order itself, so this
+// form cannot change who an invoice is addressed to under cover of moving it.
 
 type Props = {
   orderId: string
@@ -42,8 +49,6 @@ type Props = {
 
 type Draft = {
   company: string
-  firstName: string
-  lastName: string
   line1: string
   line2: string
   city: string
@@ -54,8 +59,6 @@ type Draft = {
 function draftFrom(company: string, address: ShpAddress): Draft {
   return {
     company,
-    firstName: address.firstName ?? '',
-    lastName: address.lastName ?? '',
     line1: address.line1 ?? '',
     line2: address.line2 ?? '',
     city: address.city ?? '',
@@ -89,16 +92,11 @@ export default function OrderBillingPanel({ orderId, companyLabel, company, addr
         body: JSON.stringify({
           organisation: draft.company.trim(),
           billingAddress: {
-            firstName: draft.firstName.trim(),
-            lastName: draft.lastName.trim(),
             line1: draft.line1.trim(),
             line2: draft.line2.trim() || undefined,
             city: draft.city.trim(),
             county: draft.county.trim() || undefined,
             postcode: draft.postcode.trim(),
-            // Kept as the order has it - see the note at the top.
-            country: address.country || 'GB',
-            ...(address.phone ? { phone: address.phone } : {}),
           },
           ...(confirm ? { confirm: true } : {}),
         }),
@@ -141,7 +139,6 @@ export default function OrderBillingPanel({ orderId, companyLabel, company, addr
       <div style={FIELD_GAP}>
         <div style={{ display: 'grid', gap: '0.125rem', color: 'var(--color-text-muted)' }}>
           {company.trim() && <strong style={{ color: 'var(--color-text)' }}>{company.trim()}</strong>}
-          <span>{[address.firstName, address.lastName].filter(Boolean).join(' ')}</span>
           {[address.line1, address.line2, address.city, address.county, address.postcode]
             .filter((line): line is string => Boolean(line && line.trim()))
             .map((line, i) => <span key={i}>{line}</span>)}
@@ -188,19 +185,6 @@ export default function OrderBillingPanel({ orderId, companyLabel, company, addr
           disabled={busy}
         />
         <p className="field-hint">Leave it blank if the invoice is in your own name.</p>
-      </div>
-
-      {/* min(100%, 200px), so the pair stacks on a phone rather than insisting
-          on a column width the screen has not got. */}
-      <div style={{ display: 'grid', gap: 'var(--space-2)', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))' }}>
-        <div className="field">
-          <label htmlFor="shp-billing-first">First name</label>
-          <input id="shp-billing-first" type="text" value={draft.firstName} onChange={(e) => field('firstName', e.target.value)} disabled={busy} />
-        </div>
-        <div className="field">
-          <label htmlFor="shp-billing-last">Last name</label>
-          <input id="shp-billing-last" type="text" value={draft.lastName} onChange={(e) => field('lastName', e.target.value)} disabled={busy} />
-        </div>
       </div>
 
       <div className="field">

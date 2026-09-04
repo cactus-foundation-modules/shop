@@ -33,10 +33,16 @@ import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/l
 // billing question, and a route that moved both would let somebody redirect
 // goods that have already been picked.
 
+// The postal address and nothing else. The person's own NAME is deliberately
+// not here: the checkout never asks for a billing name, so there is no billing
+// name for a customer to be putting right, and a route that accepted one would
+// let a hand-rolled request change who an invoice is addressed to while
+// pretending to move it. The name, the country and the telephone number are
+// carried over from the order below, untouched.
 const AddressSchema = z.object({
-  firstName: z.string().min(1), lastName: z.string().min(1),
-  line1: z.string().min(1), line2: z.string().optional(), city: z.string().min(1), county: z.string().optional(),
-  postcode: z.string().min(1), country: z.string().min(2).default('GB'), phone: z.string().optional(),
+  line1: z.string().min(1), line2: z.string().optional(),
+  city: z.string().min(1), county: z.string().optional(),
+  postcode: z.string().min(1),
 })
 
 const Body = z.object({
@@ -75,7 +81,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const editable = customerCanEditBilling({ config, order })
   if (!editable.allowed) return errorResponse(editable.reason, 409)
 
-  const next = { organisation: parsed.data.organisation, billingAddress: parsed.data.billingAddress }
+  // The address as it stands, which is where the name, the country and the
+  // phone come from. On an order that never had a billing address of its own
+  // that is the delivery address - the one the invoice is already printing.
+  const base = order.billingAddress ?? order.shippingAddress
+  const next = {
+    organisation: parsed.data.organisation,
+    billingAddress: parsed.data.billingAddress
+      ? {
+          firstName: base.firstName,
+          lastName: base.lastName,
+          ...parsed.data.billingAddress,
+          country: base.country || 'GB',
+          ...(base.phone ? { phone: base.phone } : {}),
+        }
+      : null,
+  }
   const invoice = config.invoicesEnabled ? await getInvoiceForOrder(order.id) : null
   const effect = billingChangeEffect(currentBillingIdentity(order), next, invoice)
 
