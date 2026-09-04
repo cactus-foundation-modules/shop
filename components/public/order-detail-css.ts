@@ -109,6 +109,12 @@ export const ORDER_DETAIL_CSS = `
 .sod-lines{display:grid;gap:0.125rem;color:var(--color-text-secondary)}
 .sod-lines strong{color:var(--color-text);font-weight:600}
 .sod-dim{color:var(--color-text-secondary);font-size:0.8125rem}
+/* A second subject inside one card - the customer's own reference under the
+   payment method. Without the rule and the small heading it reads as another
+   line about how the order was paid for. */
+.sod-card-part{display:grid;gap:0.375rem;border-top:1px solid var(--color-border);
+  padding-top:0.75rem}
+.sod-sub{margin:0;font-size:0.8125rem;font-weight:600;color:var(--color-text-secondary)}
 
 /* --- The paired cards -------------------------------------------------- */
 /* Everything that is reference rather than headline: parcels, paperwork,
@@ -173,17 +179,28 @@ export const ORDER_DETAIL_CSS = `
    pick a document out of. */
 .sod-docs{list-style:none;margin:0;padding:0}
 .sod-doc{display:grid;grid-template-columns:auto 1fr auto;gap:0.125rem 0.75rem;align-items:center;
-  padding:0.6875rem 0}
+  padding:0.6875rem 0;position:relative}
 .sod-doc + .sod-doc{border-top:1px solid var(--color-border)}
 .sod-doc svg{width:18px;height:18px;stroke-width:1.75;fill:none;stroke-linecap:round;
   stroke-linejoin:round;color:var(--color-text-muted);grid-row:span 2}
 .sod-doc-name{font-weight:600;overflow-wrap:anywhere}
 .sod-doc-name a{color:var(--color-text);text-decoration:none}
-.sod-doc-name a:hover{text-decoration:underline}
+/* The whole row is the link. The word on the right - "Print", "Download" - is
+   the only part of the row that looks clickable, and it is a decorative span
+   rather than an anchor, so a row where only the name took a click was a row
+   where the thing being aimed at did nothing. The name's own anchor is
+   stretched over the row instead of a second link being added, so the row is
+   still one target with one accessible name. */
+.sod-doc-name a::after{content:'';position:absolute;inset:0}
+.sod-doc-name a:focus-visible::after{outline:2px solid var(--color-primary);outline-offset:-2px;
+  border-radius:0.25rem}
 .sod-doc-note{grid-column:2;font-size:0.8125rem;color:var(--color-text-muted)}
 .sod-doc-get{grid-row:span 2;font-size:0.8125rem;font-weight:600;color:var(--color-primary);
   text-decoration:none;white-space:nowrap}
-.sod-doc-get:hover{text-decoration:underline}
+/* Hovering anywhere on the row lights both halves: the pointer is over the
+   stretched anchor, so neither :hover on the name nor on the word would fire
+   on its own. */
+.sod-doc:hover .sod-doc-name a,.sod-doc:hover .sod-doc-get{text-decoration:underline}
 /* A promise rather than a document: no link, no chevron, just when to expect it. */
 .sod-doc-soon .sod-doc-name{font-weight:500;color:var(--color-text-secondary)}
 

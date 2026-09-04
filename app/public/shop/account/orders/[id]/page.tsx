@@ -567,6 +567,24 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
           <OrderCard title="Payment">
             <p><strong>{methodName}</strong></p>
             {paymentWhen && <p className="sod-dim">{paymentWhen}</p>}
+            {/* Their own reference for the order, under the money rather than in
+                a card of its own. It exists so an accounts department can match
+                this order to the payment it made for it, which is the same
+                subject as everything above it - and a whole card holding one
+                short line was the thinnest thing on the page. The rule and the
+                small heading keep it from reading as another line about the
+                payment method. */}
+            {showReference && (
+              <div className="sod-card-part">
+                <p className="sod-sub">{referenceLabel}</p>
+                <OrderReferencePanel
+                  orderId={order.id}
+                  label={referenceLabel}
+                  reference={order.customerReference ?? ''}
+                  editable={referenceEditable}
+                />
+              </div>
+            )}
           </OrderCard>
 
           <OrderCard title="Delivery address">
@@ -575,16 +593,17 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
             </address>
           </OrderCard>
 
-          {order.billingAddress && (
-            <OrderCard title="Billing address">
-              <address className="sod-lines">
-                {addressLines(order.billingAddress).map((line, i) => <span key={i}>{line}</span>)}
-              </address>
-            </OrderCard>
-          )}
+          {/* Where the invoice goes, in one card. This used to be two - a read-only
+              "Billing address" beside a "Who your invoice is made out to" panel -
+              which put the same address on the page twice under two headings and
+              left the customer to work out which of them the paperwork obeyed.
 
-          {billingOffered && (
-            <OrderCard title="Who your invoice is made out to">
+              Always shown, including on an order billed to the delivery address:
+              the invoice is made out to somewhere whether or not the shopper gave
+              a second address, and a card that disappears on those orders is a
+              card that looks like a missing detail. */}
+          <OrderCard title="Billing address">
+            {billingOffered ? (
               <OrderBillingPanel
                 orderId={order.id}
                 companyLabel={config.organisationLabel.trim() || 'Company name'}
@@ -598,19 +617,15 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
                 editable={customerCanEditBilling({ config, order })}
                 invoiced={Boolean(invoiceRecord)}
               />
-            </OrderCard>
-          )}
-
-          {showReference && (
-            <OrderCard title={referenceLabel}>
-              <OrderReferencePanel
-                orderId={order.id}
-                label={referenceLabel}
-                reference={order.customerReference ?? ''}
-                editable={referenceEditable}
-              />
-            </OrderCard>
-          )}
+            ) : (
+              // A shop that does not take corrections says the same thing without
+              // the form, and reads the same address the panel would have.
+              <address className="sod-lines">
+                {addressLines(order.billingAddress ?? order.shippingAddress)
+                  .map((line, i) => <span key={i}>{line}</span>)}
+              </address>
+            )}
+          </OrderCard>
 
           {completedRefunds.length > 0 && (
             <OrderCard title="Refunds" flush>
