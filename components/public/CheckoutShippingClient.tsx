@@ -30,8 +30,6 @@ const REQUIRED_MESSAGES: Partial<Record<keyof ShpAddressForm, string>> = {
 // form asks for no phone number, because the number on the order belongs to the
 // door the parcel goes to.
 const BILLING_REQUIRED_MESSAGES: Partial<Record<keyof ShpAddressForm, string>> = {
-  firstName: 'Enter the first name on the billing address.',
-  lastName: 'Enter the last name on the billing address.',
   line1: 'Enter the first line of the billing address.',
   city: 'Enter the billing town or city.',
   postcode: 'Enter the billing postcode.',
@@ -559,10 +557,10 @@ export function CheckoutShippingClient({
           {billingDifferent && (
             <>
               <h3 style={{ fontSize: '0.9375rem', margin: 0 }}>{billingHeading || 'Billing address'}</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                {billingField('firstName', 'First name', 'billing given-name', true)}
-                {billingField('lastName', 'Last name', 'billing family-name', true)}
-              </div>
+              {/* No name boxes here. The invoice is for the person who placed the
+                  order, whose name the contact step already has - asking for it
+                  again only invited a second, different one. This form is the
+                  address alone. */}
               {AddressLookup ? (
                 <AddressLookup
                   value={billing.line1}

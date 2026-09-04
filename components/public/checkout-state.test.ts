@@ -134,8 +134,19 @@ describe('the billing address', () => {
 
   it('names its own boxes, and only once the shopper says the two differ', () => {
     expect(labels(TICKED, { billingAddressEnabled: true })).toEqual([
-      'Billing first name', 'Billing last name', 'Billing address line 1', 'Billing town or city', 'Billing postcode',
+      'Billing address line 1', 'Billing town or city', 'Billing postcode',
     ])
+  })
+
+  it('never asks for a name on it - the contact step already has one', () => {
+    const nameless: CheckoutState = {
+      ...TICKED,
+      billingAddress: {
+        ...TICKED.billingAddress, firstName: '', lastName: '',
+        line1: 'Accounts, 90 Example Street', city: 'Sheffield', postcode: 'S1 1AA',
+      },
+    }
+    expect(missingCheckoutFields(nameless, { billingAddressEnabled: true })).toEqual([])
   })
 
   it('sends the shopper to the billing box rather than the delivery box of the same name', () => {
@@ -146,7 +157,7 @@ describe('the billing address', () => {
 
   it('comes last, after everything the delivery itself needs', () => {
     const asked = labels({ ...EMPTY_CHECKOUT_STATE, billingAddressDifferent: true }, { billingAddressEnabled: true })
-    expect(asked.indexOf('Billing first name')).toBeGreaterThan(asked.indexOf('Postcode'))
+    expect(asked.indexOf('Billing address line 1')).toBeGreaterThan(asked.indexOf('Postcode'))
   })
 
   it('holds the order up until it is filled in', () => {
@@ -154,7 +165,7 @@ describe('the billing address', () => {
     const done: CheckoutState = {
       ...TICKED,
       billingAddress: {
-        firstName: 'A', lastName: 'Shopper',
+        firstName: '', lastName: '',
         line1: 'Accounts, 90 Example Street', line2: '', city: 'Sheffield', county: '',
         postcode: 'S1 1AA', country: 'GB', phone: '',
       },

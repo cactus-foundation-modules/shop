@@ -27,6 +27,15 @@ const AddressSchema = z.object({
   postcode: z.string().min(1), country: z.string().min(2).default('GB'), phone: z.string().optional(),
 })
 
+// The billing address has no name boxes on the form - the name on the invoice is
+// the one the contact step already took - so the names are optional here and
+// default to blank. Kept on the shape rather than dropped so an order written
+// before they came off the form still reads back the same way, and so a cached
+// page mid-checkout that still sends a pair is not turned away by the deploy.
+const BillingAddressSchema = AddressSchema.extend({
+  firstName: z.string().default(''), lastName: z.string().default(''),
+})
+
 const Body = z.object({
   lines: z.array(z.object({
     productId: z.string(),
@@ -40,7 +49,7 @@ const Body = z.object({
   customerReference: z.string().optional(),
   customerPhone: z.string().optional(),
   shippingAddress: AddressSchema,
-  billingAddress: AddressSchema.nullable().optional(),
+  billingAddress: BillingAddressSchema.nullable().optional(),
   shippingRateId: z.string().nullable().optional(),
   couponCode: z.string().nullable().optional(),
   paymentMethod: z.string().min(1),

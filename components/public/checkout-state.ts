@@ -282,9 +282,9 @@ export function missingCheckoutFields(
   // so the review step sends them to the billing boxes rather than to the
   // delivery ones of the same name - both sets are on screen together.
   if (opts?.billingAddressEnabled && state.billingAddressDifferent) {
+    // The address only - no name boxes on the billing form, so none asked for
+    // here. The invoice carries the name off the contact step.
     const b = state.billingAddress
-    if (b.firstName.trim().length === 0) add('billingFirstName', 'Billing first name')
-    if (b.lastName.trim().length === 0) add('billingLastName', 'Billing last name')
     if (b.line1.trim().length === 0) add('billingLine1', 'Billing address line 1')
     if (b.city.trim().length === 0) add('billingCity', 'Billing town or city')
     if (b.postcode.trim().length === 0) add('billingPostcode', 'Billing postcode')
