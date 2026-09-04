@@ -75,7 +75,16 @@ export function formatOrderDate(date: Date, timezone: string): string {
  * someone filled a billing address in at all, that is the party being invoiced,
  * and a delivery company may well be a site office. Empty strings count as "not
  * given" - the field is submitted either way and a blank one is not a company
- * called "". */
+ * called "".
+ *
+ * The DELIVERY fallback only applies to an order carrying no billing address of
+ * its own. Once it has one, that address is the order's answer to "who is being
+ * billed", and a company left on the delivery address is describing a site
+ * office or a reception desk. Without that clause a customer clearing the
+ * company on their own invoice (see lib/customer-billing.ts) had it handed
+ * straight back to them by a delivery label - which on an order whose
+ * organisation was backfilled out of that very field, by migration 027, is
+ * every one of them. */
 export function orderCompanyName(order: {
   customerOrganisation?: string | null
   shippingAddress?: ShpAddress | null
@@ -83,7 +92,7 @@ export function orderCompanyName(order: {
 }): string | null {
   return order.customerOrganisation?.trim()
     || order.billingAddress?.company?.trim()
-    || order.shippingAddress?.company?.trim()
+    || (order.billingAddress ? null : order.shippingAddress?.company?.trim() || null)
     || null
 }
 

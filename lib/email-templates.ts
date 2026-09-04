@@ -231,6 +231,20 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     mergeTags: ['customerName', 'orderNumber', 'creditNoteNumber', 'creditNoteUrl', 'creditAmount', 'creditReason', 'hasReason', 'hasCreditNotePdf', 'hasCreditNoteLink', 'invoiceNumber', 'shopName'],
     transactional: true,
   },
+  // The pair of documents raised when the company on an invoice changes. One
+  // email, not two: a bare "credit note issued" reads as money coming back, and
+  // nothing is coming back here - the sale is unchanged, only the name on the
+  // paperwork. Transactional: it is the record of documents that replace ones
+  // the buyer's accounts department has already filed.
+  {
+    key: 'shop.invoice-reissued',
+    label: 'Invoice reissued in a new name',
+    subject: 'New invoice {{invoiceNumber}} for order {{orderNumber}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>You asked us to change the company on your paperwork for order <strong>{{orderNumber}}</strong> to <strong>{{companyName}}</strong>.</p><p>We cannot rewrite an invoice that has already gone out, so we have done it the proper way instead: credit note <strong>{{creditNoteNumber}}</strong> cancels invoice {{oldInvoiceNumber}}, and invoice <strong>{{invoiceNumber}}</strong> replaces it in the new name.</p><p>Nothing about what you paid has changed, and there is nothing for you to do. Your accounts department will want both.</p><p><a href="{{invoiceUrl}}">View invoice {{invoiceNumber}}</a><br /><a href="{{creditNoteUrl}}">View credit note {{creditNoteNumber}}</a></p>',
+    mergeTags: ['customerName', 'orderNumber', 'companyName', 'oldInvoiceNumber', 'creditNoteNumber', 'invoiceNumber', 'invoiceUrl', 'creditNoteUrl', 'shopName'],
+    transactional: true,
+  },
   {
     key: 'shop.admin-new-request',
     label: 'New cancel or return request (admin alert)',
@@ -246,6 +260,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
  * stay: they are all over the shop's own call sites and the order email log. */
 export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   CREDIT_NOTE_ISSUED: 'shop.credit-note-issued',
+  INVOICE_REISSUED: 'shop.invoice-reissued',
   ORDER_CONFIRMED: 'shop.order-confirmed',
   ORDER_PLACED_UNPAID: 'shop.order-placed-unpaid',
   PAYMENT_RECEIVED: 'shop.payment-received',

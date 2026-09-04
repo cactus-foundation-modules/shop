@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { getSiteUrl } from '@/lib/config/env'
-import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { getShopConfigCached, type ShpConfig } from '@/modules/shop/lib/config'
 import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { getInvoiceForOrder } from '@/modules/shop/lib/db/invoices'
 import { getRefundById, getRefundItems } from '@/modules/shop/lib/db/refunds'
@@ -10,6 +10,7 @@ import {
   getCreditNoteForRefund,
   insertCreditNote,
   saveCreditNoteSinkResults,
+  type InsertCreditNoteInput,
 } from '@/modules/shop/lib/db/credit-notes'
 import { generateCreditNoteNumber } from '@/modules/shop/lib/credit-note-number'
 import { CreditNoteMoneyError, buildCreditNoteMoney } from '@/modules/shop/lib/credit-note-tax'
@@ -19,9 +20,8 @@ import { dispatchInvoiceCredited, type ShopInvoiceCreditedPayload } from '@/modu
 import { creditNotePath, signCreditNoteToken } from '@/modules/shop/lib/invoice-token'
 import { sendShopEmail } from '@/modules/shop/lib/email'
 import { creditNoteEmailAttachment } from '@/modules/shop/lib/invoice-attachment'
-import type { ShpConfig } from '@/modules/shop/lib/config'
 import { formatMoney } from '@/modules/shop/lib/money'
-import type { ShpCreditNote, ShpInvoiceWording } from '@/modules/shop/lib/types'
+import type { ShpCreditNote, ShpInvoice, ShpInvoiceWording } from '@/modules/shop/lib/types'
 
 // Raising a credit note: the one place it happens.
 //
@@ -197,18 +197,7 @@ export async function issueCreditNoteForRefund(
     // The two documents are read side by side and must agree about who they are
     // between; an owner who has changed their trading address since should not
     // find the credit note disagreeing with the invoice it credits.
-    const wording: ShpInvoiceWording = {
-      ...invoice.wording,
-      heading: config.creditNoteHeading.trim() || 'Credit note',
-      intro: '',
-      // Nothing is due and nothing is to be paid, so the payment block bows out
-      // of its own accord (it renders nothing when all three are empty). The
-      // footer stays: it is usually the company registration line, which belongs
-      // on both documents.
-      paymentDetails: '',
-      terms: '',
-      creditWording: config.creditNoteWording.trim(),
-    }
+    const wording: ShpInvoiceWording = creditWording(invoice.wording, config)
 
     const creditNoteNumber = await generateCreditNoteNumber()
     let note: ShpCreditNote
@@ -263,10 +252,91 @@ export async function issueCreditNoteForRefund(
   }
 }
 
+/**
+ * Everything a FULL credit note against an invoice is made of - no refund
+ * involved.
+ *
+ * The other way a credit note gets raised. A refund credits money that went
+ * back; this credits an invoice that was made out to the wrong company, where
+ * no money moves at all and a replacement invoice follows immediately (see
+ * lib/invoice-reissue.ts). Same document, same numbering, same sinks - the
+ * books have to see the sale reversed either way or the shop hands over VAT on
+ * a sale it has invoiced twice.
+ *
+ * The figures are the invoice's own, not a fresh calculation. The lines and the
+ * rate summary are copied verbatim, so the two documents read side by side and
+ * agree to the penny - which is the whole test an accountant applies to them.
+ *
+ * `subtotal` is the one figure worked out rather than copied, and it has to be:
+ * shp_credit_notes carries no discount column, and the document blocks draw a
+ * credit note with its discount row switched off. So the goods figure is backed
+ * out of the total instead - total, less delivery, less the tax where the shop
+ * prints tax as its own row. On an invoice with no discount that is exactly the
+ * invoice's own subtotal; on one with a discount it is the discounted figure,
+ * which is what was charged and therefore what is being credited.
+ */
+export function buildFullCreditNoteInput(
+  invoice: ShpInvoice,
+  config: ShpConfig,
+  opts: { creditNoteNumber: string; taxPointDate: string; reason: string; issuedBy: 'AUTO' | 'MANUAL'; userId: string | null },
+): InsertCreditNoteInput {
+  const shipping = Number(invoice.shippingAmount) || 0
+  const tax = Number(invoice.taxAmount) || 0
+  const total = Number(invoice.total) || 0
+  const goods = total - shipping - (invoice.taxMode === 'INCLUSIVE' ? 0 : tax)
+
+  return {
+    orderId: invoice.orderId,
+    orderNumber: invoice.orderNumber,
+    creditNoteNumber: opts.creditNoteNumber,
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    // No refund behind it, which is exactly what the nullable column and the
+    // partial unique index on it were left room for.
+    refundId: null,
+    taxPointDate: opts.taxPointDate,
+    currency: invoice.currency,
+    currencySymbol: invoice.currencySymbol,
+    taxMode: invoice.taxMode,
+    subtotal: goods.toFixed(2),
+    shippingAmount: shipping.toFixed(2),
+    taxAmount: tax.toFixed(2),
+    total: total.toFixed(2),
+    // The INVOICE's seller and customer, never today's settings and never the
+    // order as it now stands. This document exists to say what the invoice said,
+    // and the name being credited is the old company - which is the whole point
+    // of raising it.
+    seller: invoice.seller,
+    customer: invoice.customer,
+    lines: invoice.lines,
+    taxBreakdown: invoice.taxBreakdown,
+    wording: creditWording(invoice.wording, config),
+    reason: opts.reason.trim() || null,
+    issuedBy: opts.issuedBy,
+    createdByUserId: opts.userId,
+  }
+}
+
+/** The invoice's small print, turned into a credit note's. One copy, used by
+ *  both ways of raising one, so the two documents cannot drift apart. */
+function creditWording(wording: ShpInvoiceWording, config: ShpConfig): ShpInvoiceWording {
+  return {
+    ...wording,
+    heading: config.creditNoteHeading.trim() || 'Credit note',
+    intro: '',
+    // Nothing is due and nothing is to be paid, so the payment block bows out of
+    // its own accord (it renders nothing when all three are empty). The footer
+    // stays: it is usually the company registration line, which belongs on both.
+    paymentDetails: '',
+    terms: '',
+    creditWording: config.creditNoteWording.trim(),
+  }
+}
+
 /** Hands a credit note to every registered bookkeeping sink and records what
  *  each said. Split out because the retry button needs exactly this and nothing
  *  else. Failures never propagate: the money has gone back either way. */
-async function tellTheBooks(note: ShpCreditNote, invoiceTotal: string): Promise<ShpCreditNote> {
+export async function tellTheBooks(note: ShpCreditNote, invoiceTotal: string): Promise<ShpCreditNote> {
   const creditedRows = await prisma.$queryRaw<{ sum: string }[]>`
     SELECT COALESCE(SUM("total"), 0)::text AS sum FROM "shp_credit_notes"
     WHERE "invoice_id" = ${note.invoiceId}
@@ -310,7 +380,7 @@ async function emailCustomer(note: ShpCreditNote, wanted: boolean, config: ShpCo
         creditReason: note.reason ?? '',
         // The template has always had a {{#if hasReason}} block and nothing has
         // ever set the flag, so the reason a refund was given has never once
-        // been printed. A conditional whose flag is missing drops silently.
+        // been printed. A conditional whose flag is never passed drops silently.
         hasReason: note.reason?.trim() ? 'true' : 'false',
         hasCreditNotePdf: attachment ? 'true' : 'false',
         hasCreditNoteLink: !attachment && siteUrl ? 'true' : 'false',

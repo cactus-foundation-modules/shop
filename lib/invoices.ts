@@ -9,6 +9,7 @@ import {
   InvoiceAlreadyIssuedError,
   saveSinkResults,
   voidInvoice,
+  type InsertInvoiceInput,
 } from '@/modules/shop/lib/db/invoices'
 import { generateInvoiceNumber } from '@/modules/shop/lib/invoice-number'
 import { buildInvoiceMoney, ledgerItems } from '@/modules/shop/lib/invoice-tax'
@@ -34,7 +35,7 @@ import type { ShpInvoice, ShpInvoiceSeller, ShpInvoiceCustomer, ShpInvoiceWordin
 
 /** What caused an invoice to be raised. Recorded on the row, and matched
  *  against the shop's `invoiceIssueOn` setting by the callers. */
-export type InvoiceTrigger = 'PAID' | 'DISPATCHED' | 'COMPLETED' | 'MANUAL'
+export type InvoiceTrigger = 'PAID' | 'DISPATCHED' | 'COMPLETED' | 'MANUAL' | 'REISSUE'
 
 export type IssueInvoiceResult =
   | { ok: true; invoice: ShpInvoice; created: boolean }
@@ -110,7 +111,10 @@ export function buildCustomer(order: ShpOrder): ShpInvoiceCustomer {
   }
 }
 
-function buildWording(config: ShpConfig): ShpInvoiceWording {
+/** The headings and small print as settings read today. Exported because the
+ *  reissue path (lib/invoice-reissue.ts) raises an invoice of its own and must
+ *  word it exactly as this one does. */
+export function buildWording(config: ShpConfig): ShpInvoiceWording {
   return {
     heading: config.invoiceHeading.trim() || 'Invoice',
     intro: config.invoiceIntro.trim(),
@@ -203,6 +207,70 @@ export function invoiceVoidSinkPayload(invoice: ShpInvoice, orderNumber: string)
   }
 }
 
+/** The site's own timezone, or UTC where it has not said. Its own function
+ *  because a tax point worked out in the wrong zone files a sale in the wrong
+ *  quarter, and three callers now need the same answer. */
+export async function siteTimezone(): Promise<string> {
+  const site = await prisma.siteConfig
+    .findUnique({ where: { id: 'singleton' }, select: { timezone: true } })
+    .catch(() => null)
+  return site?.timezone || 'UTC'
+}
+
+/**
+ * Everything a row in shp_invoices is made of, for an order.
+ *
+ * Extracted so the reissue path raises its replacement through exactly this
+ * code rather than through a second copy of it: the two documents differ in
+ * their number and in who they are made out to, and in nothing else. A
+ * replacement whose totals or tax point drifted from the original's would be a
+ * quiet correction to a sale nobody asked to correct.
+ *
+ * The tax point is the ORDER's - when it was paid for where that is known, and
+ * today otherwise - so a replacement raised weeks later still belongs to the
+ * quarter the sale happened in. An unpaid order invoiced on despatch is dated
+ * the despatch, which is the ordinary rule for goods sent before payment.
+ */
+export async function buildInvoiceInsertInput(
+  order: ShpOrder,
+  config: ShpConfig,
+  opts: { trigger: InvoiceTrigger; issuedBy: 'AUTO' | 'MANUAL'; userId: string | null; timezone?: string },
+): Promise<InsertInvoiceInput> {
+  const [items, timezone] = await Promise.all([
+    getOrderItems(order.id),
+    opts.timezone ? Promise.resolve(opts.timezone) : siteTimezone(),
+  ])
+  const taxPointDate = dateInZone(order.paidAt ?? new Date(), timezone)
+  const dueDate = config.invoicePaymentTermsDays > 0 ? addDays(taxPointDate, config.invoicePaymentTermsDays) : null
+
+  const { lines, taxBreakdown } = buildInvoiceMoney(order, items)
+  const [seller, invoiceNumber] = await Promise.all([buildSeller(config), generateInvoiceNumber()])
+
+  return {
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    invoiceNumber,
+    taxPointDate,
+    dueDate,
+    currency: order.currency,
+    currencySymbol: config.currencySymbol,
+    taxMode: order.taxMode,
+    subtotal: order.subtotal,
+    discountAmount: order.discountAmount,
+    shippingAmount: order.shippingAmount,
+    taxAmount: order.taxAmount,
+    total: order.total,
+    seller,
+    customer: buildCustomer(order),
+    lines,
+    taxBreakdown,
+    wording: buildWording(config),
+    issuedBy: opts.issuedBy,
+    issueTrigger: opts.trigger,
+    createdByUserId: opts.userId,
+  }
+}
+
 /**
  * Raises the invoice for an order, or hands back the one it already has.
  *
@@ -230,46 +298,17 @@ export async function issueInvoiceForOrder(
     return { ok: false, status: 409, error: 'A cancelled order cannot be invoiced.' }
   }
 
-  const items = await getOrderItems(orderId)
-  const site = await prisma.siteConfig
-    .findUnique({ where: { id: 'singleton' }, select: { timezone: true } })
-    .catch(() => null)
-  const timezone = site?.timezone || 'UTC'
-
-  // The tax point: when it was paid for where that is known, and today
-  // otherwise. An unpaid order invoiced on despatch is dated the despatch, which
-  // is the ordinary rule for goods sent before payment.
-  const taxPointDate = dateInZone(order.paidAt ?? new Date(), timezone)
-  const dueDate = config.invoicePaymentTermsDays > 0 ? addDays(taxPointDate, config.invoicePaymentTermsDays) : null
-
-  const { lines, taxBreakdown } = buildInvoiceMoney(order, items)
-  const [seller, invoiceNumber] = await Promise.all([buildSeller(config), generateInvoiceNumber()])
+  const timezone = await siteTimezone()
+  const input = await buildInvoiceInsertInput(order, config, {
+    trigger: opts.trigger,
+    issuedBy: opts.issuedBy,
+    userId: opts.userId ?? null,
+    timezone,
+  })
 
   let invoice: ShpInvoice
   try {
-    invoice = await insertInvoice({
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      invoiceNumber,
-      taxPointDate,
-      dueDate,
-      currency: order.currency,
-      currencySymbol: config.currencySymbol,
-      taxMode: order.taxMode,
-      subtotal: order.subtotal,
-      discountAmount: order.discountAmount,
-      shippingAmount: order.shippingAmount,
-      taxAmount: order.taxAmount,
-      total: order.total,
-      seller,
-      customer: buildCustomer(order),
-      lines,
-      taxBreakdown,
-      wording: buildWording(config),
-      issuedBy: opts.issuedBy,
-      issueTrigger: opts.trigger,
-      createdByUserId: opts.userId ?? null,
-    })
+    invoice = await insertInvoice(input)
   } catch (error) {
     if (error instanceof InvoiceAlreadyIssuedError) {
       // Somebody beat us to it between the read above and the insert. Their
@@ -319,10 +358,7 @@ export async function resendInvoiceToSinks(invoiceId: string): Promise<IssueInvo
     return { ok: true, invoice: { ...invoice, sinkResults: results }, created: false }
   }
 
-  const site = await prisma.siteConfig
-    .findUnique({ where: { id: 'singleton' }, select: { timezone: true } })
-    .catch(() => null)
-  const settledDate = order?.paidAt ? dateInZone(order.paidAt, site?.timezone || 'UTC') : null
+  const settledDate = order?.paidAt ? dateInZone(order.paidAt, await siteTimezone()) : null
 
   const results = await dispatchInvoiceIssued(invoiceSinkPayload(invoice, order?.orderNumber ?? '', settledDate))
   await saveSinkResults(invoice.id, results)

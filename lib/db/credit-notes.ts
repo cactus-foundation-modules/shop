@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client'
-import { prisma } from '@/lib/db/prisma'
+import { prisma, type PrismaTransactionClient } from '@/lib/db/prisma'
 import type {
   ShpCreditNote,
   ShpInvoiceCustomer,
@@ -131,9 +131,12 @@ export type InsertCreditNoteInput = {
  *  there. */
 export class CreditNoteAlreadyIssuedError extends Error {}
 
-export async function insertCreditNote(input: InsertCreditNoteInput): Promise<ShpCreditNote> {
+export async function insertCreditNote(
+  input: InsertCreditNoteInput,
+  tx?: PrismaTransactionClient,
+): Promise<ShpCreditNote> {
   try {
-    const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    const rows = await (tx ?? prisma).$queryRaw<Record<string, unknown>[]>`
       INSERT INTO "shp_credit_notes" (
         "order_id", "order_number", "credit_note_number", "invoice_id", "invoice_number", "refund_id",
         "tax_point_date", "currency", "currency_symbol", "tax_mode",

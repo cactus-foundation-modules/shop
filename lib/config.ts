@@ -149,6 +149,30 @@ export const ShpConfigSchema = z.object({
   // the shoppers who do not need it.
   billingAddressEnabled: z.boolean().default(false),
 
+  // Whether the customer may correct who their invoice is made out to - the
+  // company name and the address it goes to - from their own order page, after
+  // the order has been placed.
+  //
+  // Off by default. It is a genuinely useful thing for a trade shop (a buyer
+  // orders on the company card, their accounts department then wants the
+  // invoice in the holding company's name at the head office) and it is exactly
+  // the sort of thing a shop selling to the public should never be asked
+  // about.
+  customerBillingEditEnabled: z.boolean().default(false),
+
+  // And whether they may still change the COMPANY once the invoice has gone
+  // out.
+  //
+  // Its own switch because it is a different act. Correcting an address on an
+  // invoice already sent is an edit; changing the company is a change of the
+  // party billed, which means crediting the invoice in full and raising a
+  // replacement - two documents, two numbers, and a set of books that has to be
+  // told about both. Plenty of owners will want that conversation to happen on
+  // the telephone rather than through a text box, so off by default: with it
+  // off the customer is told to get in touch, and the address half of the panel
+  // carries on working.
+  customerBillingReissueEnabled: z.boolean().default(false),
+
   // Terms and conditions tickbox at checkout. Kept apart from the owner's own
   // tickboxes below because it is the one nearly every shop wants and it can
   // point at the site's own terms page without anyone typing a URL - leave

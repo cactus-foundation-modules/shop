@@ -20,12 +20,15 @@ import {
   addressLines,
   badgeClass,
   formatOrderDate,
+  orderCompanyName,
 } from '@/modules/shop/lib/order-display'
-import { getInvoiceForOrder } from '@/modules/shop/lib/db/invoices'
+import { listInvoicesForOrder } from '@/modules/shop/lib/db/invoices'
 import { listCreditNotesForOrder } from '@/modules/shop/lib/db/credit-notes'
 import {
   creditNotePath, creditNotePdfPath, invoicePath, invoicePdfPath, proformaPath, proformaPdfPath,
 } from '@/modules/shop/lib/invoice-token'
+import { customerBillingEditOffered, customerCanEditBilling } from '@/modules/shop/lib/customer-billing'
+import OrderBillingPanel from '@/modules/shop/components/public/OrderBillingPanel'
 import { manualPaymentInstructions, paymentOutstanding } from '@/modules/shop/lib/payment-instructions'
 import { payOnlineMethodsForOrder, settlementMethod } from '@/modules/shop/lib/order-pay-online'
 import { getPaymentMethodLabels, getPaymentMethodClientFields } from '@/modules/shop/lib/payments/registry'
@@ -149,17 +152,36 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
   // lib/customer-reference.ts), and that is true whether or not the shop shows
   // the invoice to the customer at all.
   const referenceOffered = customerReferenceOfferedAfterOrder(config)
-  const invoiceRecord = showPaperwork || (referenceOffered && config.invoicesEnabled)
-    ? await getInvoiceForOrder(order.id)
-    : null
+  // Whether this shop lets the customer correct who the invoice is made out to.
+  // The third reason to look the invoice up: what a change costs depends on
+  // whether one has gone out (see lib/customer-billing.ts).
+  const billingOffered = customerBillingEditOffered(config)
+  // Every invoice this order has ever had, not just the live one. An order
+  // whose company was corrected after invoicing has two - the one that was
+  // credited and the one that replaced it - and the customer's own accountant
+  // needs both, which is the whole reason the first was superseded rather than
+  // voided.
+  const invoiceRecords = showPaperwork || ((referenceOffered || billingOffered) && config.invoicesEnabled)
+    ? await listInvoicesForOrder(order.id)
+    : []
+  // The live one: issued, and not since replaced. What "the invoice" means to
+  // the reference rules, to the proforma and to the billing panel.
+  const invoiceRecord = invoiceRecords.find((record) => record.status === 'ISSUED' && !record.supersededAt) ?? null
   // The one the paperwork links read. A shop that raises invoices and keeps them
   // to itself still has none to offer here, exactly as before.
   const invoice = showPaperwork ? invoiceRecord : null
+  // Everything downloadable, oldest first so the story reads in order: the
+  // invoice that went out, then the one that replaced it. Voided ones stay off
+  // - a withdrawn document is the one thing a customer must not be handed a
+  // fresh copy of.
+  const issuedInvoices = showPaperwork
+    ? invoiceRecords.filter((record) => record.status === 'ISSUED').slice().reverse()
+    : []
   // Money that went back is paperwork the buyer is owed just as much as the
   // invoice - more so for a business buyer, whose own accountant needs the
   // document rather than a line on a card statement. Only read where there is
   // an invoice to credit, so an ordinary shop's order page costs what it did.
-  const creditNotes = invoice ? await listCreditNotesForOrder(order.id) : []
+  const creditNotes = issuedInvoices.length > 0 ? await listCreditNotesForOrder(order.id) : []
   // Where "back" goes. On a one-page account the order history is a stretch of
   // the account itself and its own page is not in the tab bar any more, so back
   // means back to that stretch.
@@ -257,17 +279,22 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
               A plain <a>: both are signed rather than session-bound, so
               prefetching would put the token in the browser's speculation cache
               for no gain, and an attachment is not a route to prefetch at all. */}
-          {invoice && (
-            <>
+          {issuedInvoices.map((record) => (
+            <span key={record.id}>
               {' · '}
               <a
-                href={pdfDownloads ? invoicePdfPath(invoice.invoiceNumber) : invoicePath(invoice.invoiceNumber)}
+                href={pdfDownloads ? invoicePdfPath(record.invoiceNumber) : invoicePath(record.invoiceNumber)}
                 style={{ color: 'var(--color-primary)' }}
               >
-                Invoice {invoice.invoiceNumber}
+                Invoice {record.invoiceNumber}
               </a>
-            </>
-          )}
+              {/* Said plainly rather than left for somebody to work out from
+                  two invoice numbers on one order. */}
+              {record.supersededAt && (
+                <span style={{ color: 'var(--color-text-muted)' }}> (cancelled)</span>
+              )}
+            </span>
+          ))}
           {proforma && (
             <>
               {' · '}
@@ -335,6 +362,24 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
               <WithdrawRequestButton requestId={openRequest.id} />
             </div>
           </div>
+        )}
+
+        {billingOffered && (
+          <Section title="Who your invoice is made out to">
+            <OrderBillingPanel
+              orderId={order.id}
+              companyLabel={config.organisationLabel.trim() || 'Company name'}
+              // What the invoice prints, which on an older order is not always
+              // the order's own column - see orderCompanyName.
+              company={orderCompanyName(order) ?? ''}
+              // The address the paperwork actually prints: the billing one where
+              // the order carries one, the delivery one where it does not, which
+              // is exactly what buildCustomer does when the invoice is raised.
+              address={order.billingAddress ?? order.shippingAddress}
+              editable={customerCanEditBilling({ config, order })}
+              invoiced={Boolean(invoiceRecord)}
+            />
+          </Section>
         )}
 
         {showReference && (

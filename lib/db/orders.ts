@@ -426,6 +426,39 @@ export async function setOrderPaymentReference(id: string, reference: string): P
 // a document in somebody's hands is a record, not a view. Correcting a reference
 // after invoicing means raising a credit note and invoicing again, which is the
 // same answer as correcting anything else on an invoice.
+/**
+ * Who the order is invoiced to: the organisation, and the address the paperwork
+ * goes to.
+ *
+ * Both in one statement because they are one answer to one question. A customer
+ * correcting their invoice details on the phone changes the company and the
+ * address in the same breath, and two writes would leave a window where the
+ * order said one firm at the other firm's address - which is precisely the
+ * moment a status change would pick it up and invoice it.
+ *
+ * A null address means "bill to the delivery address", which is what an order
+ * placed on a shop that never asks for a billing one already carries. A blank
+ * organisation clears it, so a private buyer who typed a company in by mistake
+ * can take it out again.
+ *
+ * Nothing here touches the delivery address. Where a parcel goes is a matter
+ * for the shop, not for the buyer's finance department, and a route that moved
+ * both would let somebody redirect goods that have already been picked.
+ */
+export async function setOrderBillingIdentity(
+  id: string,
+  input: { organisation: string; billingAddress: ShpAddress | null },
+): Promise<boolean> {
+  const result = await prisma.$executeRaw`
+    UPDATE "shp_orders"
+    SET "customer_organisation" = ${input.organisation.trim() || null},
+        "billing_address" = ${input.billingAddress ? JSON.stringify(input.billingAddress) : null}::jsonb,
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${id}
+  `
+  return result > 0
+}
+
 export async function setOrderCustomerReference(id: string, reference: string): Promise<boolean> {
   const result = await prisma.$executeRaw`
     UPDATE "shp_orders" SET "customer_reference" = ${reference.trim() || null}, "updated_at" = CURRENT_TIMESTAMP WHERE "id" = ${id}
@@ -495,7 +528,11 @@ export type OrderSort = 'newest' | 'oldest' | 'total-desc' | 'total-asc' | 'cust
 // the organisation is who the customer is rather than where the parcel goes. The
 // two address fallbacks are for orders placed while it lived in the delivery
 // address, and for modules that still write one there (a converted quote, say).
-const ORDER_COMPANY_SQL = Prisma.sql`COALESCE(NULLIF(btrim(o."customer_organisation"), ''), NULLIF(btrim(o."billing_address"->>'company'), ''), NULLIF(btrim(o."shipping_address"->>'company'), ''))`
+// The SQL twin of orderCompanyName in lib/order-display.ts, including its last
+// clause: the delivery address only answers for an order that carries no
+// billing address of its own. The two must agree, or the orders list and the
+// invoice disagree about whose order it is.
+const ORDER_COMPANY_SQL = Prisma.sql`COALESCE(NULLIF(btrim(o."customer_organisation"), ''), NULLIF(btrim(o."billing_address"->>'company'), ''), CASE WHEN o."billing_address" IS NULL THEN NULLIF(btrim(o."shipping_address"->>'company'), '') END)`
 
 const SORT_CLAUSE: Record<OrderSort, Prisma.Sql> = {
   newest: Prisma.sql`ORDER BY o."created_at" DESC`,

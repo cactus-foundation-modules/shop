@@ -39,6 +39,8 @@ function present(invoice: ShpInvoice) {
     sinkResults: invoice.sinkResults,
     voidedAt: invoice.voidedAt,
     voidReason: invoice.voidReason,
+    supersededAt: invoice.supersededAt ?? null,
+    supersedeReason: invoice.supersedeReason ?? null,
     viewUrl: `/shop/invoice/${encodeURIComponent(invoice.invoiceNumber)}?t=${token}`,
     pdfUrl: `/api/m/shop/public/invoices/${encodeURIComponent(invoice.invoiceNumber)}/pdf?t=${token}`,
   }

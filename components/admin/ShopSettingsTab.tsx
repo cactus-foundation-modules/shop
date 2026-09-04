@@ -581,6 +581,40 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
           </label>
 
           <hr style={hr} />
+          <h3 style={sectionHeading}>Changing the invoice details afterwards</h3>
+          <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
+            The business buyer who orders on the company card and is then told by their accounts department that the invoice needs to be in the
+            holding company&apos;s name, at the head office. Switched on, they can put it right from their own order page instead of ringing you.
+          </p>
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.customerBillingEditEnabled} onChange={(e) => set('customerBillingEditEnabled', e.target.checked)} />
+            Let customers change the company and address their invoice is made out to
+          </label>
+          {config.customerBillingEditEnabled && (
+            <>
+              <p className="field-hint" style={{ marginTop: '-0.25rem' }}>
+                A change of address is straightforward: if the invoice has already gone out, the address on it is corrected and that is the end of
+                it. Nothing here touches the delivery address - where the parcel goes stays yours to decide.
+              </p>
+              <label style={checkboxRow}>
+                <input
+                  type="checkbox"
+                  checked={config.customerBillingReissueEnabled}
+                  disabled={!config.invoicesEnabled || !config.creditNotesEnabled}
+                  onChange={(e) => set('customerBillingReissueEnabled', e.target.checked)}
+                />
+                Let them change the company name after the invoice has gone out
+              </label>
+              <p className="field-hint" style={{ marginTop: '-0.25rem' }}>
+                A different company is a different customer as far as the taxman is concerned, so this is not a case of rewriting the document. The
+                invoice you sent is cancelled by a credit note and a fresh one goes out in the new name - the customer is told exactly that, and has
+                to agree to it, before anything happens. Leave it off and they are asked to get in touch instead.
+                {(!config.invoicesEnabled || !config.creditNotesEnabled) && ' Needs invoices and credit notes both switched on.'}
+              </p>
+            </>
+          )}
+
+          <hr style={hr} />
           <h3 style={sectionHeading}>Tickboxes at checkout</h3>
           <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
             These appear just above the Place order button. A required one has to be ticked before the order will go through, and what was ticked is

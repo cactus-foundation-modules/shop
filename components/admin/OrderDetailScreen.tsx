@@ -116,6 +116,10 @@ type OrderInvoice = {
   issuedBy: 'AUTO' | 'MANUAL'; issueTrigger: string | null
   sinkResults: InvoiceSinkResult[]
   voidedAt: string | null; voidReason: string | null
+  // Credited in full and replaced, because the company being billed changed.
+  // Still ISSUED - it was issued, and a credit note has undone it - so without
+  // this the panel would show two Issued invoices and no word about why.
+  supersededAt: string | null; supersedeReason: string | null
   viewUrl: string; pdfUrl: string
 }
 // The proforma, which has no row of its own anywhere: it is drawn live from the
@@ -930,7 +934,9 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                       <strong className="sox-mono">{invoice.invoiceNumber}</strong>
                       {invoice.status === 'VOID'
                         ? <span className="badge badge-default">Void</span>
-                        : <span className="badge badge-success">Issued</span>}
+                        : invoice.supersededAt
+                          ? <span className="badge badge-warning">Replaced</span>
+                          : <span className="badge badge-success">Issued</span>}
                       <span className="sox-muted">{formatDate(invoice.issuedAt)}</span>
                     </div>
                     <div className="sox-sub">
@@ -939,6 +945,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                       {invoice.issuedBy === 'MANUAL' ? ' · raised by hand' : ''}
                     </div>
                     {invoice.voidReason && <div className="sox-sub">Voided: {invoice.voidReason}</div>}
+                    {invoice.supersedeReason && <div className="sox-sub">{invoice.supersedeReason}</div>}
                     {/* What the books made of it. A failure here is the one that
                         otherwise goes unnoticed until the VAT return is due, so
                         it is stated rather than logged. */}

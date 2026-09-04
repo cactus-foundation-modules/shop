@@ -1,8 +1,9 @@
 import { Prisma } from '@prisma/client'
-import { prisma } from '@/lib/db/prisma'
+import { prisma, type PrismaTransactionClient } from '@/lib/db/prisma'
 import type {
   ShpInvoice,
   ShpInvoiceCustomer,
+  ShpInvoiceCustomerAmendment,
   ShpInvoiceLine,
   ShpInvoiceSeller,
   ShpInvoiceSinkResult,
@@ -19,6 +20,14 @@ import type {
 //    record of what was sent out; a wrong one is voided and reissued. The only
 //    columns that ever move after insert are the void pair and sink_results,
 //    which is bookkeeping about the invoice rather than the invoice itself.
+//
+//    One exception, added deliberately and kept as narrow as it will go:
+//    amendInvoiceBillingAddress moves the POSTAL ADDRESS the document is sent
+//    to, and records what it said before in customer_amendments. Nothing else
+//    it touches - not the name, not a figure, not a date, not the number. The
+//    party being billed is unchanged by a move of office, so no number is burnt
+//    and no return is reopened; a change of the party itself is a credit note
+//    and a replacement, which is lib/invoice-reissue.ts and not an edit at all.
 //
 //  - Issuing relies on the partial unique index (one ISSUED row per order)
 //    rather than a read-then-write. Two callers can genuinely race here: the
@@ -64,6 +73,10 @@ function mapInvoice(r: Record<string, unknown>): ShpInvoice {
     issueTrigger: (r.issue_trigger as string | null) ?? null,
     createdByUserId: (r.created_by_user_id as string | null) ?? null,
     sinkResults: (Array.isArray(r.sink_results) ? r.sink_results : []) as ShpInvoiceSinkResult[],
+    customerAmendments: (Array.isArray(r.customer_amendments) ? r.customer_amendments : []) as ShpInvoiceCustomerAmendment[],
+    supersededAt: (r.superseded_at as Date | null) ?? null,
+    supersededByInvoiceId: (r.superseded_by_invoice_id as string | null) ?? null,
+    supersedeReason: (r.supersede_reason as string | null) ?? null,
     voidedAt: (r.voided_at as Date | null) ?? null,
     voidReason: (r.void_reason as string | null) ?? null,
     createdAt: r.created_at as Date,
@@ -71,10 +84,19 @@ function mapInvoice(r: Record<string, unknown>): ShpInvoice {
   }
 }
 
-/** The live invoice for an order, if it has one. A voided invoice is not it. */
+/** The live invoice for an order, if it has one.
+ *
+ *  Neither a voided one nor a superseded one is it. Superseded means the
+ *  company being billed changed: the document was credited in full and a fresh
+ *  one raised, and it is the fresh one every caller here means by "the invoice"
+ *  - the one to attach to an email, to credit against a refund, to link from
+ *  the order page. The old one is still readable at its own number, which is
+ *  the whole reason it was superseded rather than voided. */
 export async function getInvoiceForOrder(orderId: string): Promise<ShpInvoice | null> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
-    SELECT * FROM "shp_invoices" WHERE "order_id" = ${orderId} AND "status" = 'ISSUED' LIMIT 1
+    SELECT * FROM "shp_invoices"
+    WHERE "order_id" = ${orderId} AND "status" = 'ISSUED' AND "superseded_at" IS NULL
+    LIMIT 1
   `
   return rows[0] ? mapInvoice(rows[0]) : null
 }
@@ -131,9 +153,9 @@ export type InsertInvoiceInput = {
  *  status change, and the right response is to use the invoice that is there. */
 export class InvoiceAlreadyIssuedError extends Error {}
 
-export async function insertInvoice(input: InsertInvoiceInput): Promise<ShpInvoice> {
+export async function insertInvoice(input: InsertInvoiceInput, tx?: PrismaTransactionClient): Promise<ShpInvoice> {
   try {
-    const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    const rows = await (tx ?? prisma).$queryRaw<Record<string, unknown>[]>`
       INSERT INTO "shp_invoices" (
         "order_id", "order_number", "invoice_number", "tax_point_date", "due_date", "currency", "currency_symbol",
         "tax_mode", "subtotal", "discount_amount", "shipping_amount", "tax_amount", "total",
@@ -159,7 +181,11 @@ export async function insertInvoice(input: InsertInvoiceInput): Promise<ShpInvoi
       const meta = error.meta as { code?: string } | undefined
       if (meta?.code === '23505') throw new InvoiceAlreadyIssuedError('This order already has an invoice.')
     }
-    if (String((error as { message?: string }).message ?? '').includes('shp_invoices_order_issued_key')) {
+    // Both names: the index was renamed when superseding arrived (migration
+    // 036), and an install that has not taken that migration yet still reports
+    // the old one.
+    const message = String((error as { message?: string }).message ?? '')
+    if (message.includes('shp_invoices_order_live_key') || message.includes('shp_invoices_order_issued_key')) {
       throw new InvoiceAlreadyIssuedError('This order already has an invoice.')
     }
     throw error
@@ -187,4 +213,84 @@ export async function voidInvoice(invoiceId: string, reason: string): Promise<bo
     WHERE "id" = ${invoiceId} AND "status" = 'ISSUED'
   `
   return count > 0
+}
+
+/**
+ * Corrects the billing ADDRESS printed on an issued invoice, keeping what it
+ * said before.
+ *
+ * The one thing in this file that edits a snapshot, and the reasoning is on the
+ * header. A company that has moved office is the same party, being billed for
+ * the same supply, on the same tax point - nothing about the sale has changed,
+ * so crediting the invoice and burning a number to reprint an identical
+ * document with a different postcode on it would be paperwork for its own sake.
+ *
+ * Name changes do not come through here. They are a different party, and
+ * lib/invoice-reissue.ts is what handles those.
+ *
+ * One statement, so the history and the value can never disagree: the address
+ * being replaced is read out of the row inside the same UPDATE rather than
+ * passed in by a caller who read it a moment ago.
+ */
+export async function amendInvoiceBillingAddress(
+  invoiceId: string,
+  lines: string[],
+  by: 'CUSTOMER' | 'STAFF',
+  tx?: PrismaTransactionClient,
+): Promise<boolean> {
+  const count = await (tx ?? prisma).$executeRaw`
+    UPDATE "shp_invoices"
+    SET "customer" = jsonb_set(
+          COALESCE("customer", '{}'::jsonb), '{billingAddress}', ${JSON.stringify(lines)}::jsonb, true
+        ),
+        "customer_amendments" = COALESCE("customer_amendments", '[]'::jsonb) || jsonb_build_object(
+          'at', to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+          'by', ${by},
+          'field', 'billingAddress',
+          'was', COALESCE("customer"->'billingAddress', '[]'::jsonb),
+          'now', ${JSON.stringify(lines)}::jsonb
+        ),
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${invoiceId} AND "status" = 'ISSUED' AND "superseded_at" IS NULL
+  `
+  return count > 0
+}
+
+/**
+ * Marks an invoice as credited-and-replaced, freeing the order to be invoiced
+ * again.
+ *
+ * Guarded on being live, so two people pressing at once cannot both go on to
+ * raise a replacement: the second UPDATE matches nothing and its caller stops.
+ * The link to the replacement is set afterwards by linkSupersedingInvoice -
+ * the new invoice does not exist yet at this point, which is exactly the
+ * ordering the unique index forces.
+ */
+export async function supersedeInvoice(
+  invoiceId: string,
+  reason: string,
+  tx?: PrismaTransactionClient,
+): Promise<boolean> {
+  const count = await (tx ?? prisma).$executeRaw`
+    UPDATE "shp_invoices"
+    SET "superseded_at" = CURRENT_TIMESTAMP,
+        "supersede_reason" = ${reason.trim() || null},
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${invoiceId} AND "status" = 'ISSUED' AND "superseded_at" IS NULL
+  `
+  return count > 0
+}
+
+/** Points a superseded invoice at the one that replaced it, so "why are there
+ *  two" has an answer on the row rather than in somebody's memory. */
+export async function linkSupersedingInvoice(
+  supersededId: string,
+  replacementId: string,
+  tx?: PrismaTransactionClient,
+): Promise<void> {
+  await (tx ?? prisma).$executeRaw`
+    UPDATE "shp_invoices"
+    SET "superseded_by_invoice_id" = ${replacementId}, "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${supersededId}
+  `
 }

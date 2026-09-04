@@ -765,15 +765,22 @@ export type ShpInvoice = {
   issueTrigger: string | null
   createdByUserId: string | null
   sinkResults: ShpInvoiceSinkResult[]
+  // The four below are OPTIONAL, and not out of laziness. This type is also the
+  // shape other documents are presented in so the same six blocks can draw
+  // them - the proforma, a credit note, a quote from another module entirely -
+  // and none of those is an invoice that could ever be amended or superseded.
+  // Requiring them would make every one of those constructions carry four
+  // fields it has no meaning for. A row read out of shp_invoices always has
+  // them (see mapInvoice).
   /** Corrections to the billing ADDRESS printed on the document, newest last.
    *  See ShpInvoiceCustomerAmendment. Empty on nearly every invoice. */
-  customerAmendments: ShpInvoiceCustomerAmendment[]
+  customerAmendments?: ShpInvoiceCustomerAmendment[]
   /** Set when this invoice has been credited in full and replaced, because the
    *  company being billed changed. It stays ISSUED - see
    *  lib/invoice-reissue.ts. */
-  supersededAt: Date | null
-  supersededByInvoiceId: string | null
-  supersedeReason: string | null
+  supersededAt?: Date | null
+  supersededByInvoiceId?: string | null
+  supersedeReason?: string | null
   voidedAt: Date | null
   voidReason: string | null
   createdAt: Date
