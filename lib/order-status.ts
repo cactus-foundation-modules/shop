@@ -14,6 +14,7 @@ import { renderOrderItemsEmailTable } from '@/modules/shop/lib/order-items-email
 import { customerReferenceVars } from '@/modules/shop/lib/email'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { getSiteUrl } from '@/lib/config/env'
+import { escapeHtml } from '@/lib/email/blocks'
 import type { ShpEmailTemplateTrigger, ShpOrderItem, ShpOrderStatus } from '@/modules/shop/lib/types'
 
 // Everything that happens when an order's status changes, in one place.
@@ -59,24 +60,82 @@ function formatAddress(address: { line1: string; line2?: string; city: string; p
   return [address.line1, address.line2, address.city, address.postcode, address.country].filter(Boolean).join(', ')
 }
 
+export type DispatchDetails = {
+  trackingNumber: string
+  carrier: string
+  /** The one tracking link, where there is exactly one. */
+  trackingUrl: string
+  /** Every tracking link as ready-made markup, one per parcel. */
+  trackingLinks: string
+}
+
 /**
- * The carrier and tracking number to quote in a dispatch email.
+ * Only what a customer may safely be handed as a link.
+ *
+ * A tracking URL ends up as an `href` in front of a shopper who trusts the
+ * sender, which is the worst possible place for a `javascript:` one. The
+ * dispatch route already refuses anything that is not http(s), but a row
+ * written before that check existed - or by hand - has never been past it, so
+ * it is checked again on the way out rather than trusted on the way in.
+ */
+function safeTrackingUrl(value: string | null): string {
+  const url = value?.trim() ?? ''
+  if (!url) return ''
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? url : ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * The carrier, tracking numbers and tracking links to quote in a dispatch
+ * email.
  *
  * An order can have gone out in several parcels, and the customer being told
  * the whole order is dispatched wants every number, not the first one recorded
  * - so the distinct values are joined. Parcels with nothing recorded against
- * them simply contribute nothing; an order dispatched by hand with no numbers
- * at all comes back with two empty strings, and the template's `{{#if}}` drops
- * the line rather than printing "Tracking number:" followed by a blank.
+ * them simply contribute nothing; an order dispatched by hand with nothing at
+ * all comes back with empty strings, and the template's `{{#if}}` drops the
+ * line rather than printing "Tracking number:" followed by a blank.
+ *
+ * Links are the awkward one, because a single `{{trackingUrl}}` in somebody's
+ * own wording is one anchor and three parcels are three. So both are offered:
+ * `trackingUrl` is filled in ONLY when there is exactly one link, which is the
+ * ordinary case and the only case where a lone anchor cannot point at the wrong
+ * parcel, and `trackingLinks` is a block covering however many there are. The
+ * default wording uses the block.
  */
 export function dispatchDetails(
-  shipments: Array<{ trackingNumber: string | null; carrier: string | null }>,
-): { trackingNumber: string; carrier: string } {
-  const unique = (values: Array<string | null>): string =>
-    [...new Set(values.map((v) => v?.trim() ?? '').filter(Boolean))].join(', ')
+  shipments: Array<{ trackingNumber: string | null; trackingUrl?: string | null; carrier: string | null }>,
+): DispatchDetails {
+  const unique = (values: Array<string | null>): string[] =>
+    [...new Set(values.map((v) => v?.trim() ?? '').filter(Boolean))]
+
+  // Kept as pairs so a parcel's link can be labelled with its own number - two
+  // bare "Track your parcel" links one under the other are no use to anybody.
+  const parcels: Array<{ url: string; label: string }> = []
+  for (const shipment of shipments) {
+    const url = safeTrackingUrl(shipment.trackingUrl ?? null)
+    if (!url || parcels.some((p) => p.url === url)) continue
+    const number = shipment.trackingNumber?.trim() ?? ''
+    parcels.push({ url, label: number ? `Track ${number}` : 'Track your parcel' })
+  }
+
+  // Escaped here because the value goes into the body unescaped - it is markup
+  // this module assembled, and a tracking number is typed by a person.
+  const trackingLinks = parcels.length === 0
+    ? ''
+    : parcels
+        .map((p) => `<p style="margin:0 0 8px;"><a href="${escapeHtml(p.url)}">${escapeHtml(p.label)}</a></p>`)
+        .join('')
+
   return {
-    trackingNumber: unique(shipments.map((s) => s.trackingNumber)),
-    carrier: unique(shipments.map((s) => s.carrier)),
+    trackingNumber: unique(shipments.map((s) => s.trackingNumber)).join(', '),
+    carrier: unique(shipments.map((s) => s.carrier)).join(', '),
+    trackingUrl: parcels.length === 1 ? (parcels[0]?.url ?? '') : '',
+    trackingLinks,
   }
 }
 
@@ -181,9 +240,9 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail }: {
       // from the argument, so the email quotes everything that has gone out
       // and not merely whatever was typed into this one change. Only gathered
       // on a dispatch: no other status has anything to say about parcels.
-      const dispatch = status === 'SHIPPED'
+      const dispatch: DispatchDetails = status === 'SHIPPED'
         ? dispatchDetails(await getShipmentsForOrder(orderId).catch(() => []))
-        : { trackingNumber: '', carrier: '' }
+        : { trackingNumber: '', carrier: '', trackingUrl: '', trackingLinks: '' }
 
       // A status email used to carry three values - the customer's name, the
       // order number and the shop's. Any owner who put the order's contents,
@@ -202,8 +261,12 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail }: {
         shippingAddress: formatAddress(order.shippingAddress),
         trackingNumber: dispatch.trackingNumber,
         carrier: dispatch.carrier,
+        trackingUrl: dispatch.trackingUrl,
+        trackingLinks: dispatch.trackingLinks,
         hasTracking: dispatch.trackingNumber ? 'true' : 'false',
         hasCarrier: dispatch.carrier ? 'true' : 'false',
+        hasTrackingUrl: dispatch.trackingUrl ? 'true' : 'false',
+        hasTrackingLinks: dispatch.trackingLinks ? 'true' : 'false',
         ...customerReferenceVars(order, config),
         shopName: config.shopTitle || 'Shop',
         shopUrl: `${getSiteUrl()}/shop`,

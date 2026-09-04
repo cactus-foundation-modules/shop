@@ -92,9 +92,13 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Order shipped',
     subject: 'Your order {{orderNumber}} is on its way',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>Your order <strong>{{orderNumber}}</strong> is on its way.</p>{{orderItems}}{{#if hasCarrier}}<p>Sent with {{carrier}}.</p>{{/if}}{{#if hasTracking}}<p>Tracking number: <strong>{{trackingNumber}}</strong></p>{{/if}}<p>Shipping to: {{shippingAddress}}</p>',
-    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'carrier', 'trackingNumber', 'hasCarrier', 'hasTracking', 'customerReference', 'customerReferenceLabel', 'shopName'],
-    rawTags: ['orderItems'],
+      '<p>Hi {{customerName}},</p><p>Your order <strong>{{orderNumber}}</strong> is on its way.</p>{{orderItems}}{{#if hasCarrier}}<p>Sent with {{carrier}}.</p>{{/if}}{{#if hasTracking}}<p>Tracking number: <strong>{{trackingNumber}}</strong></p>{{/if}}{{#if hasTrackingLinks}}{{trackingLinks}}{{/if}}<p>Shipping to: {{shippingAddress}}</p>',
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'carrier', 'trackingNumber', 'trackingUrl', 'trackingLinks', 'hasCarrier', 'hasTracking', 'hasTrackingUrl', 'hasTrackingLinks', 'customerReference', 'customerReferenceLabel', 'shopName'],
+    // trackingLinks is one anchor per parcel, assembled in lib/order-status.ts
+    // with the url and the number both escaped. {{trackingUrl}} is there for an
+    // owner who wants a single plain link of their own, and is filled in only
+    // when the order went out in one parcel - see dispatchDetails.
+    rawTags: ['orderItems', 'trackingLinks'],
     transactional: false,
   },
   {
