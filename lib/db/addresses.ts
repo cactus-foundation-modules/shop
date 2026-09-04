@@ -1,6 +1,10 @@
 import { prisma } from '@/lib/db/prisma'
 import type { ShpAddress, ShpSavedAddress } from '@/modules/shop/lib/types'
 
+// Just enough of a Prisma client to run a tagged-template statement, so a test
+// can hand in a client pointed at its own throwaway database.
+type RawExecutor = { $executeRaw: typeof prisma.$executeRaw }
+
 function mapAddress(r: Record<string, unknown>): ShpSavedAddress {
   return {
     id: r.id as string,
@@ -83,15 +87,35 @@ export function addressDoorKey(a: { line1?: string; line2?: string; postcode?: s
 // a provider webhook at nearly the same moment, and a duplicate address is a
 // nuisance a shopper then has to tidy up by hand.
 //
-// The member's first ever address becomes their default, since a book with one
-// address and no default in it would offer nothing at checkout.
-export async function rememberAddressForMember(memberId: string, address: ShpAddress): Promise<void> {
-  await prisma.$executeRaw`
+// The member's first address becomes their default, since a book with one
+// address and no default in it would offer nothing at checkout. `canBecomeDefault`
+// takes that away from an address that was never a delivery address: a billing
+// address made default would be the one offered to deliver to next time, and it
+// carries no name and no phone number because the billing form asks for neither.
+//
+// "First" therefore means "the first that is allowed to be the default", not
+// "the first row". Asking whether the book is empty put a member whose opening
+// order billed elsewhere in a book with no default in it at all: the billing
+// address went in first, declined the job, and the delivery address behind it
+// then found the book no longer empty.
+export async function rememberAddressForMember(
+  memberId: string,
+  address: ShpAddress,
+  // `client` is how the live-database probe in lib/backup/shop-sql.test.ts runs
+  // this exact statement against a throwaway database rather than a copy of it
+  // that has drifted. Raw SQL is a string to tsc, to eslint and to the build, so
+  // Postgres executing it is the only thing that proves it parses.
+  opts: { label?: string | null; canBecomeDefault?: boolean; client?: RawExecutor } = {},
+): Promise<void> {
+  const label = opts.label ?? null
+  const canBecomeDefault = opts.canBecomeDefault ?? true
+  const db = opts.client ?? prisma
+  await db.$executeRaw`
     INSERT INTO "shp_saved_addresses" ("member_id", "label", "is_default", "address")
     SELECT
       ${memberId},
-      NULL,
-      NOT EXISTS (SELECT 1 FROM "shp_saved_addresses" WHERE "member_id" = ${memberId}),
+      ${label},
+      ${canBecomeDefault}::boolean AND NOT EXISTS (SELECT 1 FROM "shp_saved_addresses" WHERE "member_id" = ${memberId} AND "is_default"),
       ${JSON.stringify(address)}::jsonb
     WHERE NOT EXISTS (
       SELECT 1 FROM "shp_saved_addresses"

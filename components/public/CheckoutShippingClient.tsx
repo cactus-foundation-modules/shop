@@ -146,6 +146,24 @@ function missingFromSaved(a: ShpAddressForm, opts: { phoneRequired: boolean }): 
   return required.some((k) => a[k].trim().length === 0)
 }
 
+// A saved address adopted as a billing address. The names and the phone number
+// are dropped on the way in on purpose: the billing form has no boxes for them,
+// because the invoice is made out to whoever placed the order and the number on
+// the order belongs to the door the parcel goes to. Carried over, they would put
+// a different name on the invoice depending on which address was picked.
+function toBillingForm(a: Partial<ShpAddressForm>): ShpAddressForm {
+  return { ...toAddressForm(a), firstName: '', lastName: '', phone: '' }
+}
+
+// The boxes an invoice cannot do without - the same three the billing form
+// marks required. An address out of the book that is short of one of them
+// brings the form back out, rather than going quietly onto the order half
+// written: an address saved from a delivery always has these, but one typed on
+// the account page need not have.
+function billingMissingFromSaved(a: ShpAddressForm): boolean {
+  return (['line1', 'city', 'postcode'] as const).some((k) => a[k].trim().length === 0)
+}
+
 const OPTION_STYLE: CSSProperties = {
   display: 'flex', gap: '0.5rem', alignItems: 'flex-start',
   border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 0.75rem',
@@ -191,6 +209,12 @@ export function CheckoutShippingClient({
   const [billingDifferent, setBillingDifferent] = useState(initial.billingAddressDifferent)
   const [billing, setBilling] = useState<ShpAddressForm>(initial.billingAddress)
   const [billingTouched, setBillingTouched] = useState<Partial<Record<keyof ShpAddressForm, boolean>>>({})
+  // Which address out of the book the invoice goes to, in the same three states
+  // as the delivery one above. Unlike delivery, nothing is ever picked for the
+  // shopper: they have just said the invoice goes somewhere other than the
+  // parcel, so filling it in with their default delivery address would be
+  // answering the opposite of the question they asked.
+  const [billingChoice, setBillingChoice] = useState<AddressChoice | null>(null)
 
   useEffect(() => {
     // No fetch in the editor preview: nobody drawing this block in Puck is a
@@ -213,6 +237,13 @@ export function CheckoutShippingClient({
         // this block mid-checkout, keeps what they have - and the radio is set to
         // whichever of the two that address actually is, so the picker and the
         // fields below can never contradict each other on arrival.
+        const storedBilling = getCheckoutState().billingAddress
+        // Only ever restores a choice already made - see the state above for why
+        // nothing is picked here on the shopper's behalf.
+        if (storedBilling.line1.trim().length > 0) {
+          const billingMatch = list.find((a) => sameAddress(toBillingForm(a.address), storedBilling))
+          setBillingChoice(billingMatch ? { kind: 'saved', id: billingMatch.id } : { kind: 'new' })
+        }
         const stored = getCheckoutState().shippingAddress
         if (stored.line1.trim().length > 0) {
           const match = list.find((a) => sameAddress(toAddressForm(a.address), stored))
@@ -338,6 +369,28 @@ export function CheckoutShippingClient({
     const next = { ...billing, [key]: value }
     setBilling(next)
     updateCheckoutState({ billingAddress: next })
+    // Typing over an address out of the book means this is no longer that
+    // address - as on the delivery form above, and for the same reason. Nothing
+    // in the book is changed by editing it here.
+    if (billingChoice?.kind !== 'saved') setBillingChoice({ kind: 'new' })
+  }
+
+  function chooseSavedBilling(saved: SavedAddress) {
+    const form = toBillingForm(saved.address)
+    // A whole-form replacement, never a merge, exactly as on the delivery form:
+    // half of a previous address left behind in a box this one leaves blank is
+    // how an invoice ends up at the old office with the new postcode on it.
+    setBilling(form)
+    setBillingChoice({ kind: 'saved', id: saved.id })
+    updateCheckoutState({ billingAddress: form })
+    setBillingTouched({})
+  }
+
+  function chooseNewBilling() {
+    setBilling(EMPTY_ADDRESS)
+    setBillingChoice({ kind: 'new' })
+    updateCheckoutState({ billingAddress: EMPTY_ADDRESS })
+    setBillingTouched({})
   }
 
   // Kept rather than cleared when the box is unticked: a shopper who ticks,
@@ -356,6 +409,7 @@ export function CheckoutShippingClient({
     const next = { ...billing, line1: picked.line1, line2: picked.line2, city: picked.city, county: picked.county, postcode: picked.postcode }
     setBilling(next)
     updateCheckoutState({ billingAddress: next })
+    if (billingChoice?.kind !== 'saved') setBillingChoice({ kind: 'new' })
   }
 
   function field(key: keyof ShpAddressForm, label: string, autoComplete: string, required: boolean, extra?: InputHTMLAttributes<HTMLInputElement>) {
@@ -404,6 +458,19 @@ export function CheckoutShippingClient({
   // boxes to read past, and still somewhere for a half-typed one to hide.
   // Nothing to pick from means there was never a choice to make, so it stays.
   const showFields = savedAddresses.length === 0 || choice?.kind === 'new' || savedIsShort
+
+  // The billing form's half of the same pair. `billingChoice == null` keeps the
+  // form on screen while no radio is ticked, which is what a shopper who has
+  // just ticked "my billing address is different" is looking at: every box the
+  // review step can complain about is reachable from the moment the form
+  // appears, rather than hiding behind a question nobody has answered yet.
+  const chosenSavedBilling = billingChoice?.kind === 'saved'
+    ? savedAddresses.find((a) => a.id === billingChoice.id) ?? null
+    : null
+  const billingSavedIsShort = chosenSavedBilling != null
+    && billingMissingFromSaved(toBillingForm(chosenSavedBilling.address))
+  const showBillingFields = savedAddresses.length === 0
+    || billingChoice == null || billingChoice.kind === 'new' || billingSavedIsShort
 
   // Specific, like the address fields: never a bare "required". An unreadable
   // number is held against the shopper whether or not the shop insists on one,
@@ -557,24 +624,79 @@ export function CheckoutShippingClient({
           {billingDifferent && (
             <>
               <h3 style={{ fontSize: '0.9375rem', margin: 0 }}>{billingHeading || 'Billing address'}</h3>
+
+              {/* The same address book the delivery step offers, offered again
+                  here: a shopper who invoices to head office has usually had a
+                  parcel sent there at some point, and typing it a second time on
+                  the same page is the sort of thing that loses an order. Picking
+                  one puts the address on the invoice only - the name and the
+                  phone number are left behind, because this form asks for
+                  neither. */}
+              {savedAddresses.length > 0 && (
+                <fieldset style={{ display: 'grid', gap: '0.5rem', border: 0, margin: 0, padding: 0 }}>
+                  <legend style={{ fontSize: '0.9375rem', fontWeight: 'var(--font-medium)', padding: 0, marginBottom: '0.25rem' }}>Bill to</legend>
+                  {savedAddresses.map((saved) => (
+                    <label key={saved.id} style={OPTION_STYLE}>
+                      <input
+                        type="radio"
+                        name="savedBillingAddress"
+                        checked={billingChoice?.kind === 'saved' && billingChoice.id === saved.id}
+                        onChange={() => chooseSavedBilling(saved)}
+                        style={{ marginTop: '0.2rem' }}
+                      />
+                      <span>
+                        <span style={{ display: 'block', fontWeight: 'var(--font-medium)' }}>{savedTitle(saved)}</span>
+                        <span style={{ display: 'block', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>{savedSummary(saved)}</span>
+                      </span>
+                    </label>
+                  ))}
+                  <label style={OPTION_STYLE}>
+                    <input
+                      type="radio"
+                      name="savedBillingAddress"
+                      checked={billingChoice?.kind === 'new'}
+                      onChange={chooseNewBilling}
+                      style={{ marginTop: '0.2rem' }}
+                    />
+                    <span>Use a different address</span>
+                  </label>
+                </fieldset>
+              )}
+
+              {billingSavedIsShort && (
+                <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+                  This saved address is missing something the invoice needs. Finish it below and the invoice will use what you fill in here.
+                </p>
+              )}
+
               {/* No name boxes here. The invoice is for the person who placed the
                   order, whose name the contact step already has - asking for it
                   again only invited a second, different one. This form is the
-                  address alone. */}
-              {AddressLookup ? (
-                <AddressLookup
-                  value={billing.line1}
-                  onSelect={applyBillingLookup}
-                  renderInput={(inputProps) => billingField('line1', 'Address line 1', 'billing address-line1', true, inputProps)}
-                />
-              ) : (
-                billingField('line1', 'Address line 1', 'billing address-line1', true)
+                  address alone.
+
+                  Typed rather than picked, it goes into the address book once the
+                  order is placed, the same way a delivery address does - see
+                  lib/order-address-book.ts. Nothing is written from this page:
+                  an address book filled in from a checkout nobody finished is
+                  worse than one address typed twice. */}
+              {showBillingFields && (
+                <>
+                  {AddressLookup ? (
+                    <AddressLookup
+                      value={billing.line1}
+                      onSelect={applyBillingLookup}
+                      renderInput={(inputProps) => billingField('line1', 'Address line 1', 'billing address-line1', true, inputProps)}
+                    />
+                  ) : (
+                    billingField('line1', 'Address line 1', 'billing address-line1', true)
+                  )}
+                  {billingField('line2', 'Address line 2 (optional)', 'billing address-line2', false)}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    {billingField('city', 'Town or city', 'billing address-level2', true)}
+                    {billingField('postcode', 'Postcode', 'billing postal-code', true)}
+                  </div>
+                </>
               )}
-              {billingField('line2', 'Address line 2 (optional)', 'billing address-line2', false)}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                {billingField('city', 'Town or city', 'billing address-level2', true)}
-                {billingField('postcode', 'Postcode', 'billing postal-code', true)}
-              </div>
             </>
           )}
         </div>
