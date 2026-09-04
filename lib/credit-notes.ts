@@ -18,7 +18,7 @@ import { ledgerItems } from '@/modules/shop/lib/invoice-tax'
 import { invoicePdfFilename, printPath } from '@/modules/shop/lib/invoice-pdf'
 import { dispatchInvoiceCredited, type ShopInvoiceCreditedPayload } from '@/modules/shop/lib/invoice-sinks'
 import { creditNotePath, signCreditNoteToken } from '@/modules/shop/lib/invoice-token'
-import { sendShopEmail } from '@/modules/shop/lib/email'
+import { orderTrackingVars, sendShopEmail } from '@/modules/shop/lib/email'
 import { creditNoteEmailAttachment } from '@/modules/shop/lib/invoice-attachment'
 import { formatMoney } from '@/modules/shop/lib/money'
 import type { ShpCreditNote, ShpInvoice, ShpInvoiceWording } from '@/modules/shop/lib/types'
@@ -398,6 +398,7 @@ async function emailCustomer(note: ShpCreditNote, wanted: boolean, config: ShpCo
         creditNoteUrl: siteUrl ? `${siteUrl}${creditNotePath(note.creditNoteNumber)}` : '',
         creditAmount: formatMoney(note.total, note.currencySymbol || '£'),
         creditReason: note.reason ?? '',
+        ...orderTrackingVars({ orderNumber: note.orderNumber }, config),
         // The template has always had a {{#if hasReason}} block and nothing has
         // ever set the flag, so the reason a refund was given has never once
         // been printed. A conditional whose flag is never passed drops silently.

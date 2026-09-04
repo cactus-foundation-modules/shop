@@ -282,13 +282,24 @@ export async function decideRequest(input: DecideRequestInput): Promise<ShpOrder
   return (await attachItems([mapRequest(rows[0])]))[0] ?? null
 }
 
-/** A customer changing their mind about changing their mind. Scoped to the
- * member so one cannot withdraw another's request. */
-export async function withdrawRequest(requestId: string, memberId: string): Promise<boolean> {
+/**
+ * A customer changing their mind about changing their mind.
+ *
+ * Scoped to the ORDER rather than to the member, and the caller has already
+ * established that this visitor may see that order (lib/order-route-access.ts).
+ * Two reasons it is the stronger test, not the weaker one:
+ *
+ *   - a guest has no member id at all, so scoping on one would leave them able
+ *     to raise a request and never able to take it back,
+ *   - member_id here is who ASKED, recorded at the time. A guest order claimed
+ *     by an account later carries a request row whose member_id is still null,
+ *     which left the owner of that order unable to withdraw their own request.
+ */
+export async function withdrawRequest(requestId: string, orderId: string): Promise<boolean> {
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     UPDATE "shp_order_requests"
     SET "status" = 'WITHDRAWN', "updated_at" = CURRENT_TIMESTAMP
-    WHERE "id" = ${requestId} AND "member_id" = ${memberId} AND "status" = 'PENDING'
+    WHERE "id" = ${requestId} AND "order_id" = ${orderId} AND "status" = 'PENDING'
     RETURNING "id"
   `
   return rows.length > 0

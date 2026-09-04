@@ -179,15 +179,20 @@ export type MemberOrderDetail = {
   returnBy: Date | null
 }
 
-/** Everything the order detail page shows, and the rules for what may still be
- * asked for. Null when the order is not this member's - the caller turns that
- * into a 404 rather than a "not yours", which would confirm the id exists. */
-export async function getMemberOrderDetail(
-  orderId: string,
-  member: { id: string },
-): Promise<MemberOrderDetail | null> {
+/**
+ * Everything the order detail page shows, and the rules for what may still be
+ * asked for. Null when there is no such order.
+ *
+ * Knows nothing about who is asking, deliberately. It used to take the member
+ * and do the ownership check itself, which was right while a member was the
+ * only person who could ever see this - and became wrong the day a guest could
+ * prove themselves with a delivery postcode instead. Who may look is one
+ * question with one answer, and it is asked in lib/order-viewer.ts (through
+ * lib/order-route-access.ts on the routes); what there is to look at is this.
+ */
+export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetail | null> {
   const order = await getOrderById(orderId)
-  if (!order || order.memberId !== member.id) return null
+  if (!order) return null
 
   const [items, dispatch, shipments, refunds, refundItems, downloads, requests, config] = await Promise.all([
     getOrderItems(order.id),

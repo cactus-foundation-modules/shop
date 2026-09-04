@@ -1,10 +1,10 @@
 import { getSiteTimezone } from '@/lib/config/timezone.server'
 import Link from 'next/link'
 import { redirect, notFound } from 'next/navigation'
-import { getMemberFromCookie } from '@/lib/members/session'
 import { getMembersConfig } from '@/lib/members/config'
-import { getMemberAreaPath } from '@/lib/members/paths'
-import { getMemberOrderDetail } from '@/modules/shop/lib/member-orders'
+import { loadOrderDetail } from '@/modules/shop/lib/member-orders'
+import { getOrderById } from '@/modules/shop/lib/db/orders'
+import { resolveOrderViewer } from '@/modules/shop/lib/order-viewer'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice } from '@/modules/shop/components/public/ShopClosedNotice'
@@ -39,21 +39,35 @@ const PRINT_CSS = `
 `
 
 export default async function ShopAccountOrderReceiptPage({ params }: { params: Promise<{ id: string }> }) {
-  const timezone = await getSiteTimezone()
-  const membersConfig = await getMembersConfig()
-  if (!membersConfig.enabled) notFound()
-
   const gate = await getShopGate()
   if (gate.blocked) return <ShopClosedNotice message={gate.message} />
 
-  const member = await getMemberFromCookie()
-  if (!member) redirect(`/${getMemberAreaPath()}/login?redirect=/shop/account/orders`)
-
   const { id } = await params
-  const [detail, config] = await Promise.all([getMemberOrderDetail(id, member), getShopConfigCached()])
+  const order = await getOrderById(id)
+  if (!order) notFound()
+
+  // Same two ways in as the order page itself - a member who owns it, or a guest
+  // who has proved the delivery postcode (lib/order-viewer.ts). Anybody else is
+  // sent to the order page rather than being answered here, because that page
+  // already knows what to do with each kind of visitor: show a signed-out guest
+  // the postcode form, send a signed-out member to sign in, and 404 for a member
+  // looking at somebody else's order.
+  const viewer = await resolveOrderViewer(order)
+  if (!viewer) redirect(`/shop/account/orders/${id}`)
+
+  const membersConfig = await getMembersConfig()
+  // A guest's receipt is theirs whether or not the site runs a member area.
+  if (viewer.kind === 'member' && !membersConfig.enabled) notFound()
+
+  const [detail, config, timezone] = await Promise.all([
+    loadOrderDetail(id),
+    getShopConfigCached(),
+    getSiteTimezone(),
+  ])
   if (!detail) notFound()
 
-  const { order, lines, refunds } = detail
+  // `order` is already in hand from the access check above.
+  const { lines, refunds } = detail
   const symbol = config.currencySymbol
   const refundedTotal = refunds
     .filter((refund) => refund.status === 'COMPLETED')

@@ -1149,3 +1149,22 @@ CREATE INDEX IF NOT EXISTS "shp_credit_notes_order_id_idx" ON "shp_credit_notes"
 CREATE INDEX IF NOT EXISTS "shp_credit_notes_invoice_id_idx" ON "shp_credit_notes" ("invoice_id");
 CREATE INDEX IF NOT EXISTS "shp_credit_notes_issued_at_idx" ON "shp_credit_notes" ("issued_at" DESC);
 CREATE INDEX IF NOT EXISTS "shp_credit_notes_tax_point_idx" ON "shp_credit_notes" ("tax_point_date");
+
+-- Failed attempts to prove a guest is the person an order is going to.
+--
+-- Mirror of 038_order_access_attempts.sql, which is the file existing installs
+-- pick this up from. See there for why the postcode needs defending and why
+-- this is keyed on the order rather than on the guesser's address.
+CREATE TABLE IF NOT EXISTS "shp_order_access_attempts" (
+    "order_id" TEXT NOT NULL,
+    "failed_count" INTEGER NOT NULL DEFAULT 0,
+    "locked_until" TIMESTAMP(3),
+    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "shp_order_access_attempts_pkey" PRIMARY KEY ("order_id"),
+    CONSTRAINT "shp_order_access_attempts_order_id_fkey"
+        FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "shp_order_access_attempts_updated_at_idx"
+    ON "shp_order_access_attempts" ("updated_at");

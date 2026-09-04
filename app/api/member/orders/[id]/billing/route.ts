@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { errorResponse } from '@/lib/utils'
-import { getMemberFromCookie } from '@/lib/members/session'
-import { getOrderById } from '@/modules/shop/lib/db/orders'
+import { requireOrderAccess } from '@/modules/shop/lib/order-route-access'
 import { getInvoiceForOrder } from '@/modules/shop/lib/db/invoices'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import {
@@ -16,7 +15,11 @@ import {
 import { changeOrderBillingIdentity } from '@/modules/shop/lib/invoice-reissue'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 
-// PROTECTED - a member correcting who their own order is invoiced to.
+// PROTECTED - a customer correcting who their own order is invoiced to. A
+// signed-in member, or a guest who has proved the delivery postcode - see
+// lib/order-route-access.ts. This is very often the whole reason a guest came
+// back at all: the buyer ordered on the company card and their accounts
+// department has since told them the invoice needs another name on it.
 //
 // Its own route rather than another field on the order PATCH beside it, which
 // is deliberately the narrowest thing in the module: that one saves a string,
@@ -58,10 +61,7 @@ const Body = z.object({
 })
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const member = await getMemberFromCookie()
-  if (!member) return errorResponse('Not authenticated', 401)
-
-  // Secondary guard only - the ownership check below is the real one. Tighter
+  // Secondary guard only - the access check below is the real one. Tighter
   // than the reference route's twenty, because one of these can raise two
   // numbered documents.
   if (!checkInMemoryRateLimit(`shop_order_billing:${getClientIpFromRequest(request)}`, 10, 60_000)) {
@@ -72,10 +72,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const parsed = Body.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return errorResponse(parsed.error.issues[0]?.message ?? 'Invalid request')
 
-  // Somebody else's order is a 404, matching the page: a 403 would confirm the
-  // order id exists, which is more than a stranger should be able to learn.
-  const order = await getOrderById(id)
-  if (!order || order.memberId !== member.id) return errorResponse('Order not found', 404)
+  const access = await requireOrderAccess(id)
+  if (!access.ok) return access.error
+  const { order } = access
 
   const config = await getShopConfigCached()
   const editable = customerCanEditBilling({ config, order })

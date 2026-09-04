@@ -24,7 +24,7 @@ import {
 import { dispatchInvoiceIssued } from '@/modules/shop/lib/invoice-sinks'
 import { creditNotePath, invoicePath } from '@/modules/shop/lib/invoice-token'
 import { creditNoteEmailAttachment, invoiceEmailAttachment } from '@/modules/shop/lib/invoice-attachment'
-import { sendShopEmail } from '@/modules/shop/lib/email'
+import { orderTrackingVars, sendShopEmail } from '@/modules/shop/lib/email'
 import { addressLines } from '@/modules/shop/lib/order-display'
 import {
   billingChangeEffect,
@@ -340,6 +340,7 @@ async function emailTheCustomer(
         creditNoteUrl: siteUrl ? `${siteUrl}${creditNotePath(vars.creditNoteNumber)}` : '',
         hasInvoicePdf: invoiceFile ? 'true' : 'false',
         hasCreditNotePdf: creditNoteFile ? 'true' : 'false',
+        ...orderTrackingVars({ orderNumber: vars.orderNumber }, config),
       },
       { orderId: vars.orderId, ...(attachments.length ? { attachments } : {}) },
     )

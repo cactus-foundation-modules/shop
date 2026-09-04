@@ -366,6 +366,32 @@ export const ShpConfigSchema = z.object({
   // variation that was bought so the choices are already made.
   buyAgainEnabled: z.boolean().default(true),
 
+  // Whether a shopper who checked out WITHOUT an account can reach that same
+  // order page, by proving the delivery postcode rather than signing in.
+  //
+  // On by default, which is a deliberate reversal of how the rest of this block
+  // reads. Everything else here is a capability a shop may not want; this is the
+  // absence of one that every guest already assumed they had. Without it a guest
+  // has no order page at all - no invoice, no tracking, no way to put right the
+  // company name their accounts department has just queried - and the shop
+  // answers each of those on the telephone instead.
+  //
+  // The lock is the delivery postcode, and it is defended: see
+  // lib/db/order-access.ts for what happens to somebody guessing at it.
+  guestOrderTrackingEnabled: z.boolean().default(true),
+
+  // Where the "track your order" form lives on the site's own front door.
+  //
+  // The page always exists at /shop/track-order. This puts a second address on
+  // it at the root of the site - deskwell.co.uk/track-order - because that is
+  // the address a shop prints on a delivery note, reads out on the telephone
+  // and puts in the footer, and nobody has ever read out "/shop/track-order".
+  //
+  // Blank switches the root address off, and so does a slug an info page or a
+  // module index has already taken: core asks its own content first and a module
+  // only ever gets the leftovers (see lib/root-slug.ts).
+  orderTrackingRootSlug: z.string().default('track-order'),
+
   // -------------------------------------------------------------------------
   // Invoices
   // -------------------------------------------------------------------------

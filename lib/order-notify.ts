@@ -2,6 +2,8 @@ import { prisma } from '@/lib/db/prisma'
 import { isSmsAvailable, sendSmsTemplate } from '@/lib/sms/send'
 import { getMemberChannelPreference } from '@/lib/members/notification-prefs'
 import { sendShopEmail } from '@/modules/shop/lib/email'
+import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { orderTrackingUrl } from '@/modules/shop/lib/order-tracking'
 import type { EmailAttachment } from '@/lib/email/index'
 import { SHOP_ORDER_UPDATES_CATEGORY, SHOP_TRIGGER_TO_SMS_KEY } from '@/modules/shop/lib/sms-templates'
 import { parseUkPhone } from '@/modules/shop/lib/phone'
@@ -110,15 +112,32 @@ export async function notifyOrderCustomer(
   // document is still on their own order page either way.
   opts?: { attachments?: EmailAttachment[] },
 ): Promise<void> {
-  const channels = await getOrderNotifyChannels(order)
+  const [channels, config] = await Promise.all([getOrderNotifyChannels(order), getShopConfigCached()])
+
+  // "Keep track of your order at ..." - added here rather than at each of the
+  // seven call sites, because a merge tag nothing fills collapses to nothing:
+  // the one that got missed would not break, it would silently drop the line
+  // out of one email and nobody would find out until a customer asked where
+  // their order page had gone. Everything a customer hears about their order
+  // comes through this function, so putting it here means every one of them
+  // carries it, including any a module adds later.
+  //
+  // Empty on a shop with guest tracking switched off, which takes the whole
+  // line with it. See lib/order-tracking.ts.
+  const trackingUrl = orderTrackingUrl(order.orderNumber, config)
+  const withTracking = {
+    orderUrl: trackingUrl,
+    hasOrderUrl: trackingUrl ? 'true' : 'false',
+    ...vars,
+  }
 
   if (channels.email) {
-    await sendShopEmail(trigger, order.customerEmail, vars, { orderId: order.id, attachments: opts?.attachments })
+    await sendShopEmail(trigger, order.customerEmail, withTracking, { orderId: order.id, attachments: opts?.attachments })
   }
 
   const smsKey = SHOP_TRIGGER_TO_SMS_KEY[trigger]
   if (!channels.sms || !smsKey || !channels.phone) return
   if (!(await isSmsAvailable())) return
 
-  await sendSmsTemplate(channels.phone, smsKey, vars)
+  await sendSmsTemplate(channels.phone, smsKey, withTracking)
 }

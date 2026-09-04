@@ -3,6 +3,7 @@ import { renderEmailTemplate } from '@/lib/email/render'
 import { logOrderEmail } from '@/modules/shop/lib/db/orders'
 import { SHOP_TRIGGER_TO_TEMPLATE_KEY } from '@/modules/shop/lib/email-templates'
 import type { ShpConfig } from '@/modules/shop/lib/config'
+import { orderTrackingUrl } from '@/modules/shop/lib/order-tracking'
 import type { ShpEmailTemplateTrigger, ShpOrder } from '@/modules/shop/lib/types'
 
 // The shop's emails are registered with core (see lib/email-templates.ts and
@@ -73,4 +74,22 @@ export function customerReferenceVars(
     customerReferenceLabel: config.customerReferenceLabel.trim() || 'Purchase order number',
     hasCustomerReference: reference ? 'true' : 'false',
   }
+}
+
+/**
+ * "Keep track of your order at ..." - the link and the flag its {{#if}} block
+ * is gated on.
+ *
+ * Almost every order email gets these without asking, because
+ * notifyOrderCustomer adds them to everything it sends. This is for the two
+ * that do not go through it: the credit note and the reissued invoice, which
+ * are addressed to whoever the paperwork is made out to rather than to the
+ * order's own notification channels, and so send through sendShopEmail direct.
+ */
+export function orderTrackingVars(
+  order: Pick<ShpOrder, 'orderNumber'>,
+  config: Pick<ShpConfig, 'guestOrderTrackingEnabled' | 'orderTrackingRootSlug'>,
+): Record<string, string> {
+  const url = orderTrackingUrl(order.orderNumber, config)
+  return { orderUrl: url, hasOrderUrl: url ? 'true' : 'false' }
 }

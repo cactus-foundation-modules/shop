@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.392",
+  "version": "0.1.393",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1470",
@@ -36,6 +36,9 @@
   ],
   "requiredEnvVars": [],
   "cookieCategories": [],
+  "cacheBypassCookies": [
+    "cactus_shop_order_access"
+  ],
   "teardown": [
     "shp_stock_movements",
     "shp_products",
@@ -66,6 +69,7 @@
     "shp_order_request_items",
     "shp_order_notes",
     "shp_order_emails",
+    "shp_order_access_attempts",
     "shp_saved_addresses",
     "shp_member_carts",
     "shp_email_templates",

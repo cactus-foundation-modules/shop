@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { errorResponse } from '@/lib/utils'
-import { getMemberFromCookie } from '@/lib/members/session'
 import {
-  adoptOrderPaymentMethod, getOrderById, markOrderAwaitingConfirmation, markOrderPaid, setOrderPaymentReference,
+  adoptOrderPaymentMethod, markOrderAwaitingConfirmation, markOrderPaid, setOrderPaymentReference,
 } from '@/modules/shop/lib/db/orders'
+import { requireOrderAccess } from '@/modules/shop/lib/order-route-access'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { assertPayableOnline } from '@/modules/shop/lib/order-pay-online'
 import { fulfillPaidOrder } from '@/modules/shop/lib/order-fulfillment'
@@ -25,9 +25,6 @@ const Body = z.object({ method: z.string().min(1), payload: z.unknown() })
 // still pay by bank transfer tomorrow: a declined card is a card that did not
 // work, not an order that fell over.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const member = await getMemberFromCookie()
-  if (!member) return errorResponse('Not authenticated', 401)
-
   if (!checkInMemoryRateLimit(`shop_order_pay_confirm:${getClientIpFromRequest(request)}`, 20, 15 * 60 * 1000)) {
     return errorResponse('Too many attempts, please try again in a little while.', 429)
   }
@@ -36,8 +33,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const parsed = Body.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return errorResponse('Invalid request')
 
-  const order = await getOrderById(id)
-  if (!order || order.memberId !== member.id) return errorResponse('Order not found', 404)
+  const access = await requireOrderAccess(id)
+  if (!access.ok) return access.error
+  const { order } = access
   if (order.paymentStatus === 'PAID') return NextResponse.json({ status: 'PAID' })
 
   const payable = await assertPayableOnline(order, parsed.data.method)

@@ -80,6 +80,27 @@ export async function getOrderByNumber(orderNumber: string): Promise<ShpOrder | 
   return rows[0] ? mapOrder(rows[0]) : null
 }
 
+/**
+ * Every order matching any of the ways a customer might have typed their order
+ * number - see lib/order-lookup.ts for where the candidates come from.
+ *
+ * Returns them all rather than picking one, because picking one is the caller's
+ * decision and there is a right answer only when there is exactly one row: on a
+ * shop whose numbering has changed over the years, '172' could genuinely mean
+ * both 'DW000172' and '172', and quietly showing the postcode form for whichever
+ * came back first would be a lock fitted to the wrong door.
+ *
+ * Capped at two rows because that is all the caller needs to know - one is an
+ * answer, two is "type it in full".
+ */
+export async function findOrdersByNumberCandidates(candidates: string[]): Promise<ShpOrder[]> {
+  if (candidates.length === 0) return []
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "shp_orders" WHERE "order_number" IN (${Prisma.join(candidates)}) LIMIT 2
+  `
+  return rows.map(mapOrder)
+}
+
 // Guest lookup: order number + email must both match (no enumeration - spec 8.1).
 export async function getOrderByNumberAndEmail(orderNumber: string, email: string): Promise<ShpOrder | null> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`

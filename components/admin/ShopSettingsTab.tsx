@@ -453,8 +453,40 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
           <hr style={hr} />
           <h3 style={sectionHeading}>Order history</h3>
           <p className="field-hint" style={{ marginTop: '-0.5rem' }}>
-            What a signed-in customer can do on their own copy of an order they have already placed.
+            What a customer can do on their own copy of an order they have already placed.
           </p>
+          <label style={checkboxRow}>
+            <input
+              type="checkbox"
+              checked={config.guestOrderTrackingEnabled}
+              onChange={(e) => set('guestOrderTrackingEnabled', e.target.checked)}
+            />
+            Let customers without an account see their own orders
+          </label>
+          <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
+            Somebody who checked out as a guest can open their order by giving the postcode it is being delivered to -
+            no account, no password. They get the same page a signed-in customer gets, so they can follow it, print
+            their paperwork and put right the company name on their invoice without ringing you. Every order email
+            carries a link to it, and the tracking form lives at{' '}
+            <code>/shop/track-order</code>. Too many wrong postcodes on one order and it stops answering for an hour.
+          </p>
+          {config.guestOrderTrackingEnabled && (
+            <div className="field" style={{ marginBottom: '0.75rem' }}>
+              <label>Short web address for the tracking page</label>
+              <input
+                type="text"
+                value={config.orderTrackingRootSlug}
+                onChange={(e) => set('orderTrackingRootSlug', e.target.value)}
+                placeholder="track-order"
+              />
+              <span className="field-hint">
+                The address you can print on a delivery note or read out on the telephone - yoursite.co.uk/
+                {config.orderTrackingRootSlug.trim() || 'track-order'}. Leave it empty and only the longer
+                /shop/track-order address exists. A page of your own with the same address wins, so pick something
+                nothing else is using.
+              </span>
+            </div>
+          )}
           <label style={checkboxRow}>
             <input type="checkbox" checked={config.buyAgainEnabled} onChange={(e) => set('buyAgainEnabled', e.target.checked)} />
             Let customers order the same thing again

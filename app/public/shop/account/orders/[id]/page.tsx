@@ -6,7 +6,13 @@ import { getMembersConfig } from '@/lib/members/config'
 import { getMemberAreaPath } from '@/lib/members/paths'
 import { moduleAccountSectionAnchor } from '@/lib/members/account-layout'
 import MemberAccountShell from '@/components/members/account/MemberAccountShell'
-import { getMemberOrderDetail } from '@/modules/shop/lib/member-orders'
+import { loadOrderDetail } from '@/modules/shop/lib/member-orders'
+import { getOrderById } from '@/modules/shop/lib/db/orders'
+import { guestOrderAccessIds } from '@/modules/shop/lib/guest-order-access'
+import { orderViewerFor } from '@/modules/shop/lib/order-viewer'
+import { orderTrackingBasePath } from '@/modules/shop/lib/order-tracking'
+import OrderAccessGate from '@/modules/shop/components/public/OrderAccessGate'
+import GuestOrderAccountOffer from '@/modules/shop/components/public/GuestOrderAccountOffer'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
@@ -109,23 +115,60 @@ function TotalRow({ label, value, variant }: { label: React.ReactNode; value: st
 }
 
 export default async function ShopAccountOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const timezone = await getSiteTimezone()
-  const membersConfig = await getMembersConfig()
-  if (!membersConfig.enabled) notFound()
-
   const gate = await getShopGate()
   if (gate.blocked) return <ShopClosedNotice message={gate.message} />
 
-  const member = await getMemberFromCookie()
-  if (!member) redirect(`/${getMemberAreaPath()}/login?redirect=/shop/account/orders`)
-
   const { id } = await params
-  const [detail, config] = await Promise.all([getMemberOrderDetail(id, member), getShopConfigCached()])
-  // Someone else's order is a 404, not a 403: a "not yours" would confirm the
-  // id exists, which is more than a stranger should be able to learn.
+  // The order alone first, and only then everything hanging off it. Who may
+  // look at this is decided from the order's own memberId and a cookie, and a
+  // page that fetched the parcels, the refunds and the paperwork before asking
+  // that question would do a dozen queries for a stranger. The row is read
+  // twice on the way through - once here, once inside loadOrderDetail - and one
+  // extra lookup by primary key is a fair price for not loading a stranger's
+  // order history to find out they are a stranger.
+  const [order, config, membersConfig] = await Promise.all([
+    getOrderById(id),
+    getShopConfigCached(),
+    getMembersConfig(),
+  ])
+  if (!order) notFound()
+
+  // Two ways to be allowed in: signed in and it is yours, or you have already
+  // proved the delivery postcode. See lib/order-viewer.ts - the same rule the
+  // routes behind every button on this page ask.
+  const [signedInMember, guestOrderIds] = await Promise.all([getMemberFromCookie(), guestOrderAccessIds()])
+  const viewer = orderViewerFor(order, signedInMember, guestOrderIds)
+
+  if (!viewer) {
+    // Neither. A shop that offers guest tracking asks them to prove it, right
+    // here, because they arrived from a link that already said which order this
+    // is and sending them off to type the number back would be absurd.
+    if (config.guestOrderTrackingEnabled) {
+      return (
+        <OrderAccessGate
+          orderId={order.id}
+          orderNumber={order.orderNumber}
+          trackerPath={orderTrackingBasePath(config)}
+        />
+      )
+    }
+    // A shop that does not: exactly what it always did. Somebody else's order is
+    // a 404 rather than a 403, since "not yours" would confirm the id exists.
+    if (signedInMember) notFound()
+    redirect(`/${getMemberAreaPath()}/login?redirect=/shop/account/orders`)
+  }
+
+  const member = viewer.member
+  // A member page needs the member area switched on; a guest's own order does
+  // not, and never did - it is their receipt, not part of anybody's account.
+  if (member && !membersConfig.enabled) notFound()
+
+  const [detail, timezone] = await Promise.all([loadOrderDetail(id), getSiteTimezone()])
   if (!detail) notFound()
 
-  const { order, lines, shipments, refunds, refundItems, downloads, requests, openRequest } = detail
+  // `order` is already in hand from the access check above, so it is not taken
+  // from the detail a second time.
+  const { lines, shipments, refunds, refundItems, downloads, requests, openRequest } = detail
   const symbol = config.currencySymbol
   // Only looked up on a shop that invoices AND is willing to show it, so an
   // ordinary shop's order page costs exactly what it always did.
@@ -166,12 +209,16 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
   // document rather than a line on a card statement. Only read where there is
   // an invoice to credit, so an ordinary shop's order page costs what it did.
   const creditNotes = issuedInvoices.length > 0 ? await listCreditNotesForOrder(order.id) : []
-  // Where "back" goes. On a one-page account the order history is a stretch of
-  // the account itself and its own page is not in the tab bar any more, so back
-  // means back to that stretch.
-  const allOrdersHref = membersConfig.accountSinglePage
-    ? `/${getMemberAreaPath()}#${moduleAccountSectionAnchor('orders')}`
-    : '/shop/account/orders'
+  // Where "back" goes, which depends on where they came from. A member goes to
+  // their order history - and on a one-page account that history is a stretch of
+  // the account itself rather than a page of its own. A guest has no history to
+  // go back to, so back means the place they look orders up.
+  const backHref = member
+    ? (membersConfig.accountSinglePage
+        ? `/${getMemberAreaPath()}#${moduleAccountSectionAnchor('orders')}`
+        : '/shop/account/orders')
+    : orderTrackingBasePath(config)
+  const backLabel = member ? 'All orders' : 'Track another order'
   // Whether the paperwork links hand over a file or open the document.
   const pdfDownloads = config.invoicePdfEnabled
   // Before one has been raised, say so rather than leaving a gap where the link
@@ -297,14 +344,14 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
     })
   }
 
-  return (
-    <MemberAccountShell member={member} maxWidth={880}>
+  const body = (
+    <>
       <style dangerouslySetInnerHTML={{ __html: ORDER_DETAIL_CSS }} />
       {gate.staffPreview && <ShopStaffPreviewBanner />}
 
       <div className="sod">
-        <Link href={allOrdersHref} prefetch={false} className="sod-back">
-          <span aria-hidden="true">←</span> All orders
+        <Link href={backHref} prefetch={false} className="sod-back">
+          <span aria-hidden="true">←</span> {backLabel}
         </Link>
 
         <header className="sod-head">
@@ -634,7 +681,26 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
             returnBy={detail.returnBy ? formatOrderDate(detail.returnBy, timezone) : null}
           />
         )}
+
+        {/* The offer of an account, to a guest who has just proved a postcode to
+            get here. Last on the page on purpose: they came for the order, not
+            for this, and they have now done by hand the very thing an account
+            would have saved them - which is the best argument for one there is.
+            Nothing is shown to a member, who has one. */}
+        {!member && !order.memberId && (
+          <GuestOrderAccountOffer config={config} customerEmail={order.customerEmail} />
+        )}
       </div>
-    </MemberAccountShell>
+    </>
+  )
+
+  // A member's order sits inside the account, tab bar and all. A guest has no
+  // account for it to sit inside, so it gets the same container on its own -
+  // the width and the margins are MemberAccountShell's own, so the page does
+  // not visibly change size depending on who is looking at it.
+  return member ? (
+    <MemberAccountShell member={member} maxWidth={880}>{body}</MemberAccountShell>
+  ) : (
+    <div style={{ maxWidth: 880, margin: '3rem auto', padding: '0 1.5rem' }}>{body}</div>
   )
 }
