@@ -12,6 +12,8 @@ import {
   pickCsvColumns,
   buildExportCsv,
   parseCsv,
+  CSV_COLUMN_GROUPS,
+  CSV_COLUMN_LABELS,
   type CsvColumn,
 } from '@/modules/shop/lib/csv'
 
@@ -223,5 +225,44 @@ describe('product CSV format coverage', () => {
     expect(NUMERIC_CSV_COLUMNS).not.toContain('sku')
     expect(NUMERIC_CSV_COLUMNS).not.toContain('barcode')
     expect(BOOLEAN_CSV_COLUMNS).toEqual(['track_inventory', 'is_pre_order', 'featured_hidden'])
+  })
+})
+
+describe('the export column picker', () => {
+  it('offers every CSV column exactly once', () => {
+    const grouped = CSV_COLUMN_GROUPS.flatMap((g) => g.columns)
+    expect([...grouped].sort()).toEqual([...CSV_COLUMNS].sort())
+    expect(new Set(grouped).size).toBe(grouped.length)
+  })
+
+  it('has a human label for every CSV column', () => {
+    for (const c of CSV_COLUMNS) {
+      expect(CSV_COLUMN_LABELS[c], `missing label for ${c}`).toBeTruthy()
+    }
+  })
+
+  it('writes only the chosen columns, in the format order', () => {
+    const row = Object.fromEntries(CSV_COLUMNS.map((c) => [c, ''])) as Record<CsvColumn, string>
+    row.sku = 'ABC-1'
+    row.categories = 'desks|chairs'
+    row.price = '9.99'
+    // Deliberately out of format order - the writer must not honour the caller's.
+    const csv = buildExportCsv([row], pickCsvColumns(['categories', 'sku']))
+    const grid = parseCsv(csv)
+    expect(grid[0]).toEqual(['sku', 'categories'])
+    expect(grid[1]).toEqual(['ABC-1', 'desks|chairs'])
+  })
+
+  it('falls back to the whole format when nothing is chosen', () => {
+    const row = Object.fromEntries(CSV_COLUMNS.map((c) => [c, ''])) as Record<CsvColumn, string>
+    expect(parseCsv(buildExportCsv([row], []))[0]).toEqual([...CSV_COLUMNS])
+  })
+
+  it('still imports as an update-only sheet when sku is kept', () => {
+    const row = Object.fromEntries(CSV_COLUMNS.map((c) => [c, ''])) as Record<CsvColumn, string>
+    row.sku = 'ABC-1'
+    row.sale_price = '5'
+    const header = parseCsv(buildExportCsv([row], pickCsvColumns(['sku', 'sale_price'])))[0]!
+    expect(headerMatchesUpdateFormat(header)).toBe(true)
   })
 })

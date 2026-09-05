@@ -159,8 +159,13 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((r) => r.length > 1 || r[0] !== '')
 }
 
-export function buildExportCsv(rows: Record<CsvColumn, string>[]): string {
-  const lines = [toCsvRow([...CSV_COLUMNS]), ...rows.map((r) => toCsvRow(CSV_COLUMNS.map((c) => r[c] ?? '')))]
+// `columns` narrows the export to a chosen subset (the Export CSV modal's column
+// picker). Defaults to the whole format, so every existing caller is unchanged.
+// A subset is still importable: as long as it carries sku or slug it satisfies
+// headerMatchesUpdateFormat and goes back in as an update-only import.
+export function buildExportCsv(rows: Record<CsvColumn, string>[], columns: readonly CsvColumn[] = CSV_COLUMNS): string {
+  const cols = columns.length > 0 ? columns : CSV_COLUMNS
+  const lines = [toCsvRow([...cols]), ...rows.map((r) => toCsvRow(cols.map((c) => r[c] ?? '')))]
   return lines.join('\r\n')
 }
 
@@ -216,3 +221,74 @@ export function headerMatchesUpdateFormat(header: string[]): boolean {
   const columns = Object.values(resolveColumnMap(header))
   return columns.some((c) => MATCH_CSV_COLUMNS.includes(c)) && columns.some((c) => !MATCH_CSV_COLUMNS.includes(c))
 }
+
+// Human labels and grouping for the Export CSV column picker. The picker needs a
+// name an owner recognises ("Product code", not "sku") and an order that reads
+// like the product editor rather than the wire format's own append-only order.
+//
+// CSV_COLUMN_GROUPS must cover CSV_COLUMNS exactly - once, each - or a column
+// added to the format later would be silently unpickable. csv-roundtrip.test.ts
+// asserts that, so a new column fails the test rather than quietly vanishing
+// from the picker.
+export const CSV_COLUMN_LABELS: Record<CsvColumn, string> = {
+  sku: 'Product code (sku)',
+  slug: 'Web address (slug)',
+  name: 'Name',
+  type: 'Type',
+  status: 'Status',
+  description: 'Description',
+  short_description: 'Short description',
+  price: 'Price',
+  sale_price: 'Sale price',
+  retail_price: 'RRP',
+  trade_price: 'Trade price',
+  cost_price: 'Cost price',
+  tax_class: 'VAT class',
+  track_inventory: 'Track stock',
+  stock_count: 'Stock count',
+  low_stock_threshold: 'Low stock threshold',
+  out_of_stock_behaviour: 'When out of stock',
+  weight: 'Weight',
+  weight_unit: 'Weight unit',
+  dimension_l: 'Length',
+  dimension_w: 'Width',
+  dimension_h: 'Height',
+  dimension_unit: 'Size unit',
+  download_limit: 'Download limit',
+  download_expiry: 'Download expiry',
+  is_pre_order: 'Pre-order',
+  pre_order_dispatch_date: 'Pre-order dispatch date',
+  pre_order_note: 'Pre-order note',
+  pre_order_max_quantity: 'Pre-order maximum',
+  related_mode: 'Related products mode',
+  related_limit: 'Related products shown',
+  upsell_mode: 'Upsell mode',
+  upsell_limit: 'Upsells shown',
+  categories: 'Categories',
+  tags: 'Tags',
+  collections: 'Collections',
+  meta_title: 'Search title',
+  meta_description: 'Search description',
+  image_urls: 'Pictures',
+  image_alt: 'Picture descriptions',
+  barcode: 'Barcode',
+  supplier: 'Supplier',
+  sale_sku: 'Sale code',
+  min_order_quantity: 'Minimum order quantity',
+  supplier_sku: 'Supplier code',
+  featured_hidden: 'Keep off featured shelves',
+}
+
+export type CsvColumnGroup = { label: string; columns: readonly CsvColumn[] }
+
+export const CSV_COLUMN_GROUPS: readonly CsvColumnGroup[] = [
+  { label: 'The basics', columns: ['sku', 'name', 'slug', 'type', 'status', 'barcode', 'supplier', 'supplier_sku', 'sale_sku'] },
+  { label: 'Prices and VAT', columns: ['price', 'sale_price', 'retail_price', 'trade_price', 'cost_price', 'tax_class'] },
+  { label: 'Stock', columns: ['track_inventory', 'stock_count', 'low_stock_threshold', 'out_of_stock_behaviour', 'min_order_quantity'] },
+  { label: 'Catalogue', columns: ['categories', 'tags', 'collections', 'featured_hidden'] },
+  { label: 'Words and pictures', columns: ['description', 'short_description', 'image_urls', 'image_alt', 'meta_title', 'meta_description'] },
+  { label: 'Size and weight', columns: ['weight', 'weight_unit', 'dimension_l', 'dimension_w', 'dimension_h', 'dimension_unit'] },
+  { label: 'Pre-orders', columns: ['is_pre_order', 'pre_order_dispatch_date', 'pre_order_note', 'pre_order_max_quantity'] },
+  { label: 'Downloads', columns: ['download_limit', 'download_expiry'] },
+  { label: 'Related and upsells', columns: ['related_mode', 'related_limit', 'upsell_mode', 'upsell_limit'] },
+]

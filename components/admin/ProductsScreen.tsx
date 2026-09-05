@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { ImportModal } from '@/modules/shop/components/admin/ImportModal'
+import { ExportColumnsModal, type ExportColumnGroup } from '@/modules/shop/components/admin/ExportColumnsModal'
+import { CSV_COLUMNS, CSV_COLUMN_GROUPS, CSV_COLUMN_LABELS } from '@/modules/shop/lib/csv'
 import { productsScreenCss } from '@/modules/shop/components/admin/products-screen-css'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { isOnSale as onSale } from '@/modules/shop/lib/pricing'
@@ -20,6 +22,21 @@ type ProductRow = {
 }
 
 const PER_PAGE = 20
+
+// The CSV format's own groups, dressed for the column picker: the wire name is
+// what the file carries, the label is what the owner recognises. Built once at
+// module scope so the modal's `groups` prop is referentially stable.
+const EXPORT_COLUMN_GROUPS: readonly ExportColumnGroup[] = CSV_COLUMN_GROUPS.map((g) => ({
+  label: g.label,
+  columns: g.columns.map((c) => ({ key: c, label: CSV_COLUMN_LABELS[c], hint: c })),
+}))
+
+function exportHref(keys: string[]): string {
+  // Every column ticked is the old behaviour, so send no `columns` at all - the
+  // route's own default is the whole format.
+  if (keys.length === CSV_COLUMNS.length) return '/api/m/shop/admin/products/export'
+  return `/api/m/shop/admin/products/export?columns=${encodeURIComponent(keys.join(','))}`
+}
 
 const STATUS_TABS: Array<{ value: string; label: string }> = [
   { value: '', label: 'All' },
@@ -80,6 +97,7 @@ export function ProductsScreen({ toolbarExtras }: {
 
   const [importJobs, setImportJobs] = useState<Array<{ id: string; status: string; createdCount: number; updatedCount: number; skippedCount: number }>>([])
   const [importOpen, setImportOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
 
   // Debounce the search box, and snap back to page one whenever the query
   // changes (batched so it is a single fetch).
@@ -231,7 +249,7 @@ export function ProductsScreen({ toolbarExtras }: {
           {!loading && <p className="sps-count">{total} product{total === 1 ? '' : 's'}</p>}
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <Link href="/api/m/shop/admin/products/export" className="btn btn-secondary btn-sm">Export CSV</Link>
+          <button onClick={() => setExportOpen(true)} className="btn btn-secondary btn-sm">Export CSV</button>
           <Link href="/api/m/shop/admin/products/import-template" className="btn btn-secondary btn-sm">Import template</Link>
           <button onClick={() => setImportOpen(true)} className="btn btn-secondary btn-sm">Import CSV</button>
           <button onClick={createProduct} className="btn btn-primary btn-sm">New product</button>
@@ -240,6 +258,17 @@ export function ProductsScreen({ toolbarExtras }: {
       </div>
 
       {importOpen && <ImportModal onClose={() => setImportOpen(false)} onDone={refresh} />}
+
+      {exportOpen && (
+        <ExportColumnsModal
+          title="Export products to CSV"
+          description="Tick the columns you want in the file. Keep the product code ticked if you plan to change the file and put it back in - that is what each row is matched on."
+          groups={EXPORT_COLUMN_GROUPS}
+          storageKey="shop.products.export.columns"
+          buildHref={exportHref}
+          onClose={() => setExportOpen(false)}
+        />
+      )}
 
       <div className="sps-toolbar">
         <input className="sps-search" aria-label="Search products" placeholder="Search by name or SKU…" value={search} onChange={(e) => setSearch(e.target.value)} />
