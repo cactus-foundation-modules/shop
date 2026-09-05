@@ -164,8 +164,18 @@ export function buildExportCsv(rows: Record<CsvColumn, string>[]): string {
   return lines.join('\r\n')
 }
 
-export function buildImportTemplateCsv(): string {
-  return toCsvRow([...CSV_COLUMNS]) + '\r\n'
+// The template an owner downloads before filling a CSV in by hand. Passing a
+// subset builds a partial template for an update-only import (see
+// headerMatchesUpdateFormat) - a sale-price sheet wants three columns, not fifty.
+export function buildImportTemplateCsv(columns: readonly CsvColumn[] = CSV_COLUMNS): string {
+  return toCsvRow([...columns]) + '\r\n'
+}
+
+// Keep only the names that are real CSV columns, in the format's own order, so
+// a caller-supplied subset can never smuggle an unknown header through.
+export function pickCsvColumns(names: string[]): CsvColumn[] {
+  const wanted = new Set(names.map((n) => n.trim().toLowerCase().replace(/\s+/g, '_')))
+  return CSV_COLUMNS.filter((c) => wanted.has(c))
 }
 
 // Maps a raw CSV header row to CSV_COLUMNS via an optional column mapping
@@ -189,4 +199,20 @@ export function missingFormatColumns(header: string[]): CsvColumn[] {
 
 export function headerMatchesFormat(header: string[]): boolean {
   return missingFormatColumns(header).length === 0
+}
+
+// The columns an update-only import matches an existing product by. `name` is
+// deliberately absent: a partial sheet that carries a name but no sku/slug is
+// far more likely to be a mis-picked file than a rename request, and matching it
+// on a slugified name would write to whichever product happened to collide.
+export const MATCH_CSV_COLUMNS: readonly CsvColumn[] = ['sku', 'slug']
+
+// Whether a header is usable for an update-only import: something to match on,
+// and something to write. `name`, `type` and `price` are required by the full
+// format only because a row there might CREATE a product - an update-only row
+// never does, so a three-column sale-price sheet is a perfectly good import and
+// must not be bounced into the manual column-mapping step.
+export function headerMatchesUpdateFormat(header: string[]): boolean {
+  const columns = Object.values(resolveColumnMap(header))
+  return columns.some((c) => MATCH_CSV_COLUMNS.includes(c)) && columns.some((c) => !MATCH_CSV_COLUMNS.includes(c))
 }

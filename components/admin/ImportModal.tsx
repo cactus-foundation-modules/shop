@@ -1,15 +1,26 @@
 'use client'
 
 import { useState } from 'react'
-import { parseCsv, headerMatchesFormat, CSV_COLUMNS } from '@/modules/shop/lib/csv'
+import { parseCsv, headerMatchesFormat, headerMatchesUpdateFormat, CSV_COLUMNS } from '@/modules/shop/lib/csv'
 
 type Step = 'upload' | 'mapping' | 'progress'
+type Mode = 'FULL' | 'UPDATE_ONLY'
 
-// Two-step CSV import: upload, then (only if the headers don't already match
-// CSV_COLUMNS) a mapping step to pair each uploaded column with a known field,
-// before handing off to the existing POST /admin/products/import route.
+// The columns a sale-price sheet carries: the product's own code to match on,
+// then the offer price and the code the supplier wants while it is on. Offered
+// as a one-click template because it is far and away the commonest partial
+// update an owner is handed by a supplier.
+const SALE_TEMPLATE_COLUMNS = 'sku,sale_price,sale_sku'
+
+// Two-step CSV import: upload, then (only if the headers don't already match the
+// chosen mode's format) a mapping step to pair each uploaded column with a known
+// field, before handing off to the existing POST /admin/products/import route.
+//
+// Update-only mode exists for the partial sheet: a supplier's sale-price list is
+// three columns wide, has no name, type or price, and must never create anything.
 export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [step, setStep] = useState<Step>('upload')
+  const [mode, setMode] = useState<Mode>('FULL')
   const [file, setFile] = useState<File | null>(null)
   const [header, setHeader] = useState<string[]>([])
   const [columnMap, setColumnMap] = useState<Record<string, string>>({})
@@ -23,7 +34,8 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
     const text = await f.text()
     const rows = parseCsv(text)
     const headerRow = rows[0] ?? []
-    if (headerMatchesFormat(headerRow)) {
+    const matches = mode === 'UPDATE_ONLY' ? headerMatchesUpdateFormat(headerRow) : headerMatchesFormat(headerRow)
+    if (matches) {
       await submit(f)
     } else {
       setHeader(headerRow)
@@ -34,6 +46,7 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
   async function submit(f: File, map?: Record<string, string>) {
     const body = new FormData()
     body.append('file', f)
+    body.append('mode', mode)
     if (map) body.append('columnMap', JSON.stringify(map))
     const res = await fetch('/api/m/shop/admin/products/import', { method: 'POST', body })
     if (!res.ok) { setError((await res.json()).error ?? 'Import failed to start'); return }
@@ -56,6 +69,10 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
     }, 1500)
   }
 
+  // An update-only import matches on sku or slug, so the mapping step must not
+  // let one start without one: every row would fail with nothing written.
+  const hasMatchColumn = Object.values(columnMap).some((c) => c === 'sku' || c === 'slug')
+
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'var(--color-overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -71,7 +88,35 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
 
           {step === 'upload' && (
             <div style={{ display: 'grid', gap: '0.75rem' }}>
-              <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>Choose a CSV file exported from Cactus, or your own using the same columns as the import template.</p>
+              <fieldset style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.75rem', display: 'grid', gap: '0.5rem', margin: 0 }}>
+                <legend style={{ fontSize: '0.8125rem', fontWeight: 600, padding: '0 0.25rem' }}>What is in this file?</legend>
+                <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', fontSize: '0.875rem' }}>
+                  <input type="radio" name="import-mode" checked={mode === 'FULL'} onChange={() => setMode('FULL')} style={{ marginTop: '0.2rem' }} />
+                  <span>
+                    Whole products
+                    <span style={{ display: 'block', color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>Adds anything new and updates the rest. Needs the full set of columns.</span>
+                  </span>
+                </label>
+                <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', fontSize: '0.875rem' }}>
+                  <input type="radio" name="import-mode" checked={mode === 'UPDATE_ONLY'} onChange={() => setMode('UPDATE_ONLY')} style={{ marginTop: '0.2rem' }} />
+                  <span>
+                    A few columns only, for products you already have
+                    <span style={{ display: 'block', color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>
+                      Matches each row on its product code (sku) or web address (slug) and changes only the columns in the file. Nothing new is added. A sale price sheet goes here.
+                    </span>
+                  </span>
+                </label>
+              </fieldset>
+              {mode === 'UPDATE_ONLY' && (
+                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', margin: 0 }}>
+                  Sale prices? <a href={`/api/m/shop/admin/products/import-template?columns=${SALE_TEMPLATE_COLUMNS}`}>Download the sale price template</a> - product code, sale price, sale code. Leave a sale price blank to take a product off sale.
+                </p>
+              )}
+              <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', margin: 0 }}>
+                {mode === 'FULL'
+                  ? 'Choose a CSV file exported from Cactus, or your own using the same columns as the import template.'
+                  : 'Choose a CSV file with a sku (or slug) column plus the columns you want to change.'}
+              </p>
               <input type="file" accept=".csv,text/csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f) }} />
             </div>
           )}
@@ -79,7 +124,9 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
           {step === 'mapping' && (
             <div style={{ display: 'grid', gap: '0.75rem' }}>
               <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
-                This file&apos;s column headers don&apos;t match the expected format. Match each of your columns to a field below, or leave as &quot;Ignore&quot;.
+                {mode === 'UPDATE_ONLY'
+                  ? 'Match each of your columns to a field below. One of them must be sku or slug, so each row can be matched to a product you already have.'
+                  : 'This file\u2019s column headers don\u2019t match the expected format. Match each of your columns to a field below, or leave as \u201cIgnore\u201d.'}
               </p>
               <div style={{ display: 'grid', gap: '0.5rem' }}>
                 {header.map((h) => (
@@ -96,7 +143,10 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
                   </label>
                 ))}
               </div>
-              <button type="button" className="btn btn-primary" disabled={!file} onClick={() => file && submit(file, columnMap)} style={{ justifySelf: 'start' }}>
+              {mode === 'UPDATE_ONLY' && !hasMatchColumn && (
+                <p style={{ fontSize: '0.8125rem', color: 'var(--color-danger)', margin: 0 }}>Pick a sku or slug column first, or no row can be matched to a product.</p>
+              )}
+              <button type="button" className="btn btn-primary" disabled={!file || (mode === 'UPDATE_ONLY' && !hasMatchColumn)} onClick={() => file && submit(file, columnMap)} style={{ justifySelf: 'start' }}>
                 Start import
               </button>
             </div>

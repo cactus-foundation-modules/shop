@@ -7,6 +7,9 @@ import {
   parseMediaCells,
   collectPaged,
   headerMatchesFormat,
+  headerMatchesUpdateFormat,
+  buildImportTemplateCsv,
+  pickCsvColumns,
   buildExportCsv,
   parseCsv,
   type CsvColumn,
@@ -103,6 +106,52 @@ describe('header format gate (image_alt / cost_price optional)', () => {
 
   it('accepts the full current header', () => {
     expect(headerMatchesFormat([...CSV_COLUMNS])).toBe(true)
+  })
+})
+
+describe('update-only header gate (partial sheets: sale prices, stock, costs)', () => {
+  it('accepts a three-column sale price sheet', () => {
+    expect(headerMatchesUpdateFormat(['sku', 'sale_price', 'sale_sku'])).toBe(true)
+  })
+
+  it('accepts a sheet matched on slug instead of sku', () => {
+    expect(headerMatchesUpdateFormat(['slug', 'sale_price'])).toBe(true)
+  })
+
+  it('tolerates the header casing and spacing a supplier sends', () => {
+    expect(headerMatchesUpdateFormat(['SKU', 'Sale Price'])).toBe(true)
+  })
+
+  it('rejects a sheet with nothing to match on', () => {
+    expect(headerMatchesUpdateFormat(['name', 'sale_price'])).toBe(false)
+  })
+
+  it('rejects a sheet with nothing to write', () => {
+    expect(headerMatchesUpdateFormat(['sku', 'slug'])).toBe(false)
+  })
+
+  it('ignores columns that are not part of the format at all', () => {
+    expect(headerMatchesUpdateFormat(['sku', 'supplier notes'])).toBe(false)
+  })
+
+  it('is not the gate the full format uses - a sale sheet is still not a full CSV', () => {
+    expect(headerMatchesFormat(['sku', 'sale_price', 'sale_sku'])).toBe(false)
+  })
+})
+
+describe('partial import template', () => {
+  it('builds a sale price template in the format\u2019s own column order', () => {
+    const columns = pickCsvColumns(['sale_sku', 'sku', 'sale_price'])
+    expect(columns).toEqual(['sku', 'sale_price', 'sale_sku'])
+    expect(buildImportTemplateCsv(columns)).toBe('sku,sale_price,sale_sku\r\n')
+  })
+
+  it('drops names that are not real columns', () => {
+    expect(pickCsvColumns(['sku', 'discount_percent'])).toEqual(['sku'])
+  })
+
+  it('still emits the whole format by default', () => {
+    expect(buildImportTemplateCsv().trim().split(',')).toEqual([...CSV_COLUMNS])
   })
 })
 

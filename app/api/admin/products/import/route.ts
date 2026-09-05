@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { createImportJob, markImportJobStarted, listRecentImportJobs } from '@/modules/shop/lib/db/import-jobs'
-import { processImportJob } from '@/modules/shop/lib/import-engine'
+import { processImportJob, type ImportMode } from '@/modules/shop/lib/import-engine'
 import { parseCsv } from '@/modules/shop/lib/csv'
 import { z } from 'zod'
 
 const ColumnMapSchema = z.record(z.string(), z.string())
+// FULL adds and updates from a whole-product CSV; UPDATE_ONLY writes only the
+// columns a partial sheet carries onto products it matches by sku or slug, and
+// never creates. Absent means FULL, so every existing caller is unchanged.
+const ModeSchema = z.enum(['FULL', 'UPDATE_ONLY'])
 
 // Recent imports log for the products list header (spec addendum C.7).
 export async function GET() {
@@ -38,6 +42,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const modeRaw = formData.get('mode')
+  let mode: ImportMode = 'FULL'
+  if (typeof modeRaw === 'string' && modeRaw.length > 0) {
+    const parsed = ModeSchema.safeParse(modeRaw)
+    if (!parsed.success) return NextResponse.json({ error: 'Invalid import mode' }, { status: 400 })
+    mode = parsed.data
+  }
+
   const csvText = await file.text()
   const rows = parseCsv(csvText)
   const totalRows = Math.max(rows.length - 1, 0)
@@ -45,7 +57,7 @@ export async function POST(request: NextRequest) {
   const { id: jobId } = await createImportJob({ filename: file.name, totalRows, createdBy: gate.user.id, columnMap })
   await markImportJobStarted(jobId)
 
-  after(() => processImportJob(jobId, csvText, gate.user.email, columnMap))
+  after(() => processImportJob(jobId, csvText, gate.user.email, columnMap, { mode }))
 
   return NextResponse.json({ jobId }, { status: 202 })
 }

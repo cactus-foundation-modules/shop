@@ -22,6 +22,14 @@ type RowError = { row: number; reason: string }
 // `row` is the CSV row number the owner would count (header = 1).
 export type ImportRowProgress = { index: number; row: number; name: string }
 
+// FULL is the original behaviour: every row carries a whole product, and a row
+// matching nothing creates one. UPDATE_ONLY is for a partial sheet - a supplier's
+// sale-price list is `sku,sale_price,sale_sku` and nothing else - where a row
+// must match an existing product by sku (or slug) and only the columns actually
+// present are written. It never creates, so `name`, `type` and `price` stop
+// being required: they are only required at all because a FULL row might create.
+export type ImportMode = 'FULL' | 'UPDATE_ONLY'
+
 // Only the fields a row actually carries are present: a column the CSV omits is
 // left alone rather than blanked, which is what keeps a pre-slug export (or the
 // Google-Sheet mirror with cost_price hidden) from wiping the fields it cannot
@@ -139,7 +147,8 @@ async function resolveTagIds(names: string[]): Promise<string[]> {
 // stores image_urls as IMAGE-type media rows pointing at the external URL
 // (Q13 - not re-uploaded). Runs inside Next's after() (Q7), progress tracked
 // on the shp_import_jobs row so the admin can poll it.
-export async function processImportJob(jobId: string, csvText: string, adminEmail: string, columnMap: Record<string, string> | null, opts?: { notify?: boolean; onRow?: (progress: ImportRowProgress) => void | Promise<void> }): Promise<void> {
+export async function processImportJob(jobId: string, csvText: string, adminEmail: string, columnMap: Record<string, string> | null, opts?: { notify?: boolean; mode?: ImportMode; onRow?: (progress: ImportRowProgress) => void | Promise<void> }): Promise<void> {
+  const updateOnly = opts?.mode === 'UPDATE_ONLY'
   const rows = parseCsv(csvText)
   const header = rows[0] ?? []
   const dataRows = rows.slice(1)
@@ -213,17 +222,31 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
     // reporter's own failure fail the import - it is commentary, not work, and
     // it sits outside the try below so it cannot read as a row error either.
     if (opts?.onRow) {
-      await Promise.resolve(opts.onRow({ index: i, row: rowNumber, name: cell(row, 'name') || `Row ${rowNumber}` })).catch(() => {})
+      // A partial sheet carries no name column, so fall back to the code it does
+      // carry before resorting to the row number.
+      await Promise.resolve(opts.onRow({ index: i, row: rowNumber, name: cell(row, 'name') || cell(row, 'sku') || `Row ${rowNumber}` })).catch(() => {})
     }
     try {
       const sku = cell(row, 'sku') || null
       const name = cell(row, 'name')
       const type = cell(row, 'type').toUpperCase()
-      if (!name) { errors.push({ row: rowNumber, reason: 'Missing name' }); skipped++; continue }
-      if (!['PHYSICAL', 'DIGITAL', 'SERVICE'].includes(type)) { errors.push({ row: rowNumber, reason: `Invalid type "${type}"` }); skipped++; continue }
       // Match the existing product up front (by SKU, else the name/slug identity)
-      // so the price rule can tell a create from an update.
+      // so the price rule can tell a create from an update - and so an update-only
+      // row can be refused by name before anything else is read off it.
       const existingProduct = sku ? productsBySku.get(sku) : productsBySlug.get(rowSlug(row))
+      if (updateOnly) {
+        // Nothing to match on at all: an empty pad row, or a sheet whose match
+        // column was left out. Say which columns would fix it rather than
+        // reporting fifty rows of "not found".
+        if (!sku && !rowSlug(row)) { errors.push({ row: rowNumber, reason: 'No sku or slug to match on' }); skipped++; continue }
+        if (!existingProduct) {
+          errors.push({ row: rowNumber, reason: sku ? `No product with sku "${sku}"` : `No product with web address "${rowSlug(row)}"` })
+          skipped++; continue
+        }
+      } else {
+        if (!name) { errors.push({ row: rowNumber, reason: 'Missing name' }); skipped++; continue }
+        if (!['PHYSICAL', 'DIGITAL', 'SERVICE'].includes(type)) { errors.push({ row: rowNumber, reason: `Invalid type "${type}"` }); skipped++; continue }
+      }
       const priceRaw = cell(row, 'price')
       const priceProvided = priceRaw !== ''
       const price = Number(priceRaw)
@@ -270,7 +293,12 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
       // stored price untouched (productFieldsUnchanged and updateProduct both act
       // on present keys only), which is how a blanked price on a variable product
       // becomes a no-op rather than a write of 0.
-      const fields: ImportFields = priceProvided ? { name, price } : { name }
+      // `name` is unconditional in FULL (it is required there and already
+      // checked); in UPDATE_ONLY a sheet with no name column must leave the
+      // stored name alone rather than blanking it.
+      const fields: ImportFields = {}
+      if (name) fields.name = name
+      if (priceProvided) fields.price = price
       // Set a field only when the CSV carries its column, so an import that
       // simply doesn't mention a field never blanks it.
       function put<K extends keyof ImportFields>(column: CsvColumn, key: K, value: ImportFields[K] | undefined): void {
