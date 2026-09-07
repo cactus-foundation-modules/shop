@@ -411,7 +411,7 @@ export function CartDrawerClient({
       <div className={`scd-overlay${open ? ' scd-in' : ''}`} onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
-        className={`scd-panel scd-${o.drawerSide === 'left' ? 'left' : 'right'}${open ? ' scd-in' : ''}`}
+        className={`scd-panel scd-${o.drawerSide === 'left' || o.drawerSide === 'bottom' ? o.drawerSide : 'right'}${open ? ' scd-in' : ''}`}
         style={{ ['--scd-w' as string]: `${o.drawerWidth || DRAWER_DEFAULTS.drawerWidth}px` }}
         role="dialog"
         aria-modal="true"

@@ -27,6 +27,13 @@ export const CART_DRAWER_CSS = `
   transition:transform 240ms ease-out,visibility 0s linear 240ms}
 .scd-right{right:0;transform:translateX(100%)}
 .scd-left{left:0;transform:translateX(-100%)}
+/* Up from the bottom edge, full width - what a phone expects a basket to do,
+   and what the Mobile Bar's basket cell opens. It overrides the side panel's
+   width and its top edge rather than being a panel of its own, so everything
+   below (head, body, foot, lines, buttons) is byte-identical to the side one. */
+.scd-bottom{left:0;right:0;top:auto;bottom:0;width:100%;max-width:100%;
+  max-height:min(85vh,calc(100vh - 2.5rem));border-radius:16px 16px 0 0;
+  transform:translateY(100%)}
 .scd-panel.scd-in{transform:none;visibility:visible;transition:transform 240ms ease-out,visibility 0s}
 
 /* The way in is a keyframe animation, not the transition above, because the
@@ -40,9 +47,11 @@ export const CART_DRAWER_CSS = `
    slides identically whichever rule wins. */
 .scd-right.scd-in{animation:scd-slide-right 240ms ease-out}
 .scd-left.scd-in{animation:scd-slide-left 240ms ease-out}
+.scd-bottom.scd-in{animation:scd-slide-up 240ms ease-out}
 .scd-overlay.scd-in{animation:scd-fade 220ms ease-out}
 @keyframes scd-slide-right{from{transform:translateX(100%)}to{transform:none}}
 @keyframes scd-slide-left{from{transform:translateX(-100%)}to{transform:none}}
+@keyframes scd-slide-up{from{transform:translateY(100%)}to{transform:none}}
 @keyframes scd-fade{from{opacity:0}to{opacity:1}}
 
 /* ---- Header ---- */
@@ -185,6 +194,6 @@ export const CART_DRAWER_CSS = `
 }
 @media (prefers-reduced-motion:reduce){
   .scd-overlay,.scd-panel,.scd-btn,.scd-ghost{transition:none}
-  .scd-right.scd-in,.scd-left.scd-in,.scd-overlay.scd-in{animation:none}
+  .scd-right.scd-in,.scd-left.scd-in,.scd-bottom.scd-in,.scd-overlay.scd-in{animation:none}
 }
 `

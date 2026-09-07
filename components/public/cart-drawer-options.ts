@@ -10,7 +10,8 @@ import { DRAWER_NOTE_DEFAULTS, type CartNoteOptions } from '@/modules/shop/compo
 // is one more thing the panel draws.
 export type CartDrawerOptions = CartNoteOptions & {
   drawerHeading: string
-  drawerSide: 'right' | 'left'
+  drawerSide: 'right' | 'left' | 'bottom'
+  /** Ignored by the 'bottom' panel, which is always the full width of the screen. */
   drawerWidth: number
   drawerShowImage: 'yes' | 'no'
   drawerShowDelivery: 'yes' | 'no'

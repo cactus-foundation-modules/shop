@@ -74,6 +74,7 @@ export const shopCartSummaryPuckComponent = {
     drawerSide: { type: 'select' as const, label: 'Slide-out: opens from', options: [
       { value: 'right', label: 'Right' },
       { value: 'left', label: 'Left' },
+      { value: 'bottom', label: 'Bottom (full width)' },
     ] },
     drawerWidth: { type: 'number' as const, label: 'Slide-out: width (px)' },
     drawerShowImage: { type: 'select' as const, label: 'Slide-out: show product images', options: yesNo },

@@ -3,6 +3,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { getOrderDispatchSummary, getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
+import { dispatchDetails, orderStatusEmailVars } from '@/modules/shop/lib/order-status'
 import { getOrderItems } from '@/modules/shop/lib/db/orders'
 import { absoluteImageUrl, productEmailUrl, renderOrderItemsTable, type OrderEmailLine } from '@/modules/shop/lib/order-items-email'
 import { getProductMediaForProducts, getProductSlugsByIds } from '@/modules/shop/lib/db/products'
@@ -33,8 +34,15 @@ function formatItemList(
 // It covers the final shipment too. When this parcel clears the last
 // outstanding unit the PARTIAL_SHIPPED copy switches to "the last part of your
 // order", so the dispatch route can call this for EVERY shipment it records and
-// never has to decide between two templates. STATUS_SHIPPED stays where it is,
-// for an admin flipping the whole order to SHIPPED without recording lines.
+// never has to decide between two templates.
+//
+// The one exception is a parcel that IS the whole order - nothing dispatched
+// before it and nothing outstanding after. That is not a part-dispatch by any
+// reading, and "the last part of your order is on its way" tells somebody who
+// ordered a single item that an earlier parcel they never had has gone astray.
+// Those get STATUS_SHIPPED, the same wording an admin flipping the whole order
+// to SHIPPED sends, filled from the same values so an edited template reads the
+// same whichever screen sent it.
 //
 // Silent no-op when the order or shipment cannot be found, or when the shipment
 // has no lines: an email is not worth failing a dispatch that already committed.
@@ -53,13 +61,32 @@ export async function sendShipmentDispatchedEmail(params: { orderId: string; shi
   const summary = await getOrderDispatchSummary(params.orderId)
   const lineByOrderItemId = new Map(summary.lines.map((l) => [l.orderItemId, l]))
 
+  const config = await getShopConfigCached()
+  const siteUrl = getSiteUrl()
+
+  // Read off the summary the customer is about to be shown rather than off
+  // summary.fullyDispatched, so the wording can never contradict the "still to
+  // come" section printed underneath it.
+  const outstanding = summary.lines.filter((l) => l.outstandingQty > 0)
+  const isFinalPart = outstanding.length === 0
+
+  // One parcel, nothing left owing: the whole order is on its way, so it gets
+  // told that plainly. The tracking details are read back off the order's
+  // shipments exactly as the status route reads them, which for a single parcel
+  // is this one.
+  if (isFinalPart && shipments.length === 1) {
+    await notifyOrderCustomer(
+      'STATUS_SHIPPED',
+      order,
+      await orderStatusEmailVars(order, config, dispatchDetails(shipments)),
+    )
+    return
+  }
+
   // Thumbnails, by the line's own product exactly as the confirmation resolves
   // them. The dispatch summary carries names and quantities but no product id,
   // so the order's items come along to supply it; a picture that will not read
   // costs the thumbnails and never the dispatch note.
-  const config = await getShopConfigCached()
-  const siteUrl = getSiteUrl()
-
   const orderItems = await getOrderItems(params.orderId).catch(() => [])
   const productByOrderItemId = new Map(orderItems.map((i) => [i.id, i.productId]))
   const productIds = orderItems.map((i) => i.productId).filter((id): id is string => !!id)
@@ -100,13 +127,6 @@ export async function sendShipmentDispatchedEmail(params: { orderId: string; shi
     .filter((entry): entry is DispatchedEntry => entry !== null)
     .sort((a, b) => a.productName.localeCompare(b.productName))
   if (dispatched.length === 0) return
-
-  const outstanding = summary.lines.filter((l) => l.outstandingQty > 0)
-
-  // Read off the list the customer is about to be shown rather than off
-  // summary.fullyDispatched, so the wording can never contradict the "still to
-  // come" section printed underneath it.
-  const isFinalPart = outstanding.length === 0
 
   const trackingNumber = shipment.trackingNumber?.trim() ?? ''
   const trackingUrl = shipment.trackingUrl?.trim() ?? ''

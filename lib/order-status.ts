@@ -6,7 +6,7 @@ import {
   updateOrderStatus,
 } from '@/modules/shop/lib/db/orders'
 import { createShipment, getOrderDispatchSummary, getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
-import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { getShopConfigCached, type ShpConfig } from '@/modules/shop/lib/config'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { issueInvoiceForOrder, shouldIssueOn, type InvoiceTrigger } from '@/modules/shop/lib/invoices'
 import { invoiceEmailAttachment } from '@/modules/shop/lib/invoice-attachment'
@@ -16,7 +16,7 @@ import { formatMoney } from '@/modules/shop/lib/money'
 import { getSiteUrl } from '@/lib/config/env'
 import { escapeHtml } from '@/lib/email/blocks'
 import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
-import type { ShpEmailTemplateTrigger, ShpOrderItem, ShpOrderStatus } from '@/modules/shop/lib/types'
+import type { ShpEmailTemplateTrigger, ShpOrder, ShpOrderItem, ShpOrderStatus } from '@/modules/shop/lib/types'
 
 // Everything that happens when an order's status changes, in one place.
 //
@@ -117,6 +117,49 @@ export function dispatchDetails(
     carrier: unique(shipments.map((s) => s.carrier)).join(', '),
     trackingUrl: parcels.length === 1 ? (parcels[0]?.url ?? '') : '',
     trackingLinks,
+  }
+}
+
+/**
+ * The merge values a customer's order email carries.
+ *
+ * A status email used to carry three values - the customer's name, the order
+ * number and the shop's. Any owner who put the order's contents, its total or
+ * the delivery address into their own wording got a blank where each one
+ * should have been, because an unknown merge tag collapses to nothing rather
+ * than complaining. They are all filled in here, so a dispatch notice can say
+ * what is in the parcel and where it is going.
+ *
+ * Shared with the dispatch screen, which sends the same STATUS_SHIPPED wording
+ * when one parcel covers the whole order - see lib/shipment-email.ts. Two
+ * copies of this list would drift, and the owner editing the template would
+ * find half their merge tags blank on one of the two paths.
+ */
+export async function orderStatusEmailVars(
+  order: ShpOrder,
+  config: ShpConfig,
+  dispatch: DispatchDetails,
+): Promise<Record<string, string>> {
+  const items = await getOrderItems(order.id)
+
+  return {
+    orderNumber: order.orderNumber,
+    customerName: order.customerName,
+    customerEmail: order.customerEmail,
+    orderTotal: formatMoney(order.total, config.currencySymbol),
+    orderItems: await renderOrderItemsEmailTable(items, config),
+    shippingAddress: formatAddress(order.shippingAddress),
+    trackingNumber: dispatch.trackingNumber,
+    carrier: dispatch.carrier,
+    trackingUrl: dispatch.trackingUrl,
+    trackingLinks: dispatch.trackingLinks,
+    hasTracking: dispatch.trackingNumber ? 'true' : 'false',
+    hasCarrier: dispatch.carrier ? 'true' : 'false',
+    hasTrackingUrl: dispatch.trackingUrl ? 'true' : 'false',
+    hasTrackingLinks: dispatch.trackingLinks ? 'true' : 'false',
+    ...customerReferenceVars(order, config),
+    shopName: config.shopTitle || 'Shop',
+    shopUrl: `${getSiteUrl()}/shop`,
   }
 }
 
@@ -225,33 +268,12 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail }: {
         ? dispatchDetails(await getShipmentsForOrder(orderId).catch(() => []))
         : { trackingNumber: '', carrier: '', trackingUrl: '', trackingLinks: '' }
 
-      // A status email used to carry three values - the customer's name, the
-      // order number and the shop's. Any owner who put the order's contents,
-      // its total or the delivery address into their own wording got a blank
-      // where each one should have been, because an unknown merge tag collapses
-      // to nothing rather than complaining. They are all filled in now, so a
-      // dispatch notice can say what is in the parcel and where it is going.
-      const items = await getOrderItems(orderId)
-
-      await notifyOrderCustomer(trigger, order, {
-        orderNumber: order.orderNumber,
-        customerName: order.customerName,
-        customerEmail: order.customerEmail,
-        orderTotal: formatMoney(order.total, config.currencySymbol),
-        orderItems: await renderOrderItemsEmailTable(items, config),
-        shippingAddress: formatAddress(order.shippingAddress),
-        trackingNumber: dispatch.trackingNumber,
-        carrier: dispatch.carrier,
-        trackingUrl: dispatch.trackingUrl,
-        trackingLinks: dispatch.trackingLinks,
-        hasTracking: dispatch.trackingNumber ? 'true' : 'false',
-        hasCarrier: dispatch.carrier ? 'true' : 'false',
-        hasTrackingUrl: dispatch.trackingUrl ? 'true' : 'false',
-        hasTrackingLinks: dispatch.trackingLinks ? 'true' : 'false',
-        ...customerReferenceVars(order, config),
-        shopName: config.shopTitle || 'Shop',
-        shopUrl: `${getSiteUrl()}/shop`,
-      }, invoice ? { attachments: [invoice] } : undefined)
+      await notifyOrderCustomer(
+        trigger,
+        order,
+        await orderStatusEmailVars(order, config, dispatch),
+        invoice ? { attachments: [invoice] } : undefined,
+      )
     }
   }
 

@@ -1,9 +1,9 @@
 {
   "name": "shop",
-  "version": "0.1.396",
+  "version": "0.1.397",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
-  "requiresCoreVersion": "0.5.1470",
+  "requiresCoreVersion": "0.5.1548",
   "publicBasePath": "shop",
   "publicRootSlug": {
     "page": "./app/root/[slug]/page",
@@ -879,6 +879,13 @@
       "id": "shop",
       "import": "./lib/stock",
       "component": "shopInventoryAdjuster"
+    },
+    {
+      "point": "core.mobile-bar-items",
+      "id": "shop-basket",
+      "label": "Shop: basket",
+      "import": "./components/public/CartMobileBarItem",
+      "component": "CartMobileBarItem"
     }
   ],
   "memberExtensions": {
