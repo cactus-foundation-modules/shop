@@ -1,6 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import {
+  EMPTY_PARCEL_DETAILS,
+  ParcelDetailsFields,
+  parcelDetailsPayload,
+  type CourierOption,
+  type ParcelDetails,
+} from '@/modules/shop/components/admin/ParcelDetailsFields'
 
 type DispatchLine = {
   orderItemId: string
@@ -18,19 +25,17 @@ type DispatchLine = {
 // Nothing is validated twice here. The input caps stop the obvious mistakes,
 // but the real caps are enforced server-side under an order-wide lock, so a
 // refund landing while this modal is open is caught there rather than here.
-export function DispatchModal({ orderId, lines, onClose, onDone }: {
+export function DispatchModal({ orderId, lines, couriers, onClose, onDone }: {
   orderId: string
   lines: DispatchLine[]
+  couriers: CourierOption[]
   onClose: () => void
   onDone: () => void
 }) {
   const [quantities, setQuantities] = useState<Record<string, number>>(
     Object.fromEntries(lines.map((l) => [l.orderItemId, 0]))
   )
-  const [trackingNumber, setTrackingNumber] = useState('')
-  const [trackingUrl, setTrackingUrl] = useState('')
-  const [carrier, setCarrier] = useState('')
-  const [notes, setNotes] = useState('')
+  const [details, setDetails] = useState<ParcelDetails>(EMPTY_PARCEL_DETAILS)
   const [emailCustomer, setEmailCustomer] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -49,10 +54,7 @@ export function DispatchModal({ orderId, lines, onClose, onDone }: {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         items: selected.map((x) => ({ orderItemId: x.line.orderItemId, quantity: x.quantity })),
-        trackingNumber: trackingNumber.trim() || null,
-        trackingUrl: trackingUrl.trim() || null,
-        carrier: carrier.trim() || null,
-        notes: notes.trim() || null,
+        ...parcelDetailsPayload(details),
         emailCustomer,
       }),
     })
@@ -110,21 +112,7 @@ export function DispatchModal({ orderId, lines, onClose, onDone }: {
               })}
             </tbody>
           </table>
-          <label>Tracking number (optional)
-            <input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} style={fieldStyle} />
-          </label>
-          <label>Tracking link (optional)
-            <input value={trackingUrl} onChange={(e) => setTrackingUrl(e.target.value)} placeholder="https://…" inputMode="url" style={fieldStyle} />
-            <span style={{ display: 'block', marginTop: '0.25rem', fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-              The carrier&rsquo;s own page for this parcel. It becomes a &ldquo;Track your parcel&rdquo; link in the customer&rsquo;s email.
-            </span>
-          </label>
-          <label>Carrier (optional)
-            <input value={carrier} onChange={(e) => setCarrier(e.target.value)} placeholder="Royal Mail, DPD, Evri…" style={fieldStyle} />
-          </label>
-          <label>Notes (optional)
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} style={fieldStyle} />
-          </label>
+          <ParcelDetailsFields couriers={couriers} value={details} onChange={setDetails} />
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <input type="checkbox" checked={emailCustomer} onChange={(e) => setEmailCustomer(e.target.checked)} />
             Email the customer to say this part of their order is on its way
@@ -142,4 +130,3 @@ export function DispatchModal({ orderId, lines, onClose, onDone }: {
   )
 }
 
-const fieldStyle: React.CSSProperties = { width: '100%', padding: '0.5rem', borderRadius: 6, border: '1px solid var(--color-border)', marginTop: '0.25rem', background: 'var(--color-surface)', color: 'var(--color-text)' }

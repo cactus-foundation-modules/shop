@@ -5,6 +5,7 @@ import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { RefundModal } from '@/modules/shop/components/admin/RefundModal'
 import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
 import { DispatchModal } from '@/modules/shop/components/admin/DispatchModal'
+import { EditParcelModal } from '@/modules/shop/components/admin/EditParcelModal'
 import { EmailCustomerModal } from '@/modules/shop/components/admin/EmailCustomerModal'
 import { ordersScreenCss } from '@/modules/shop/components/admin/orders-screen-css'
 import {
@@ -72,10 +73,20 @@ type OrderDetail = {
 // asked for - there is no dispatched status on the order - so it arrives on its
 // own call alongside the order.
 type DispatchLine = { orderItemId: string; productName: string; quantity: number; refundedQty: number; dispatchedQty: number; outstandingQty: number }
-type ShipmentDetail = { id: string; shippedAt: string; trackingNumber: string | null; carrier: string | null; notes: string | null; items: Array<{ id: string; orderItemId: string; quantity: number }> }
+type ShipmentDetail = {
+  id: string; shippedAt: string; trackingNumber: string | null; trackingUrl: string | null
+  carrier: string | null; courierId: string | null; notes: string | null
+  // The booked delivery, as text: 'YYYY-MM-DD' and 'HH:MM'. Never a timestamp -
+  // see modules/shop/lib/delivery-slot.ts.
+  deliveryDate: string | null; deliverySlotStart: string | null; deliverySlotEnd: string | null
+  slotNotifiedAt: string | null
+  items: Array<{ id: string; orderItemId: string; quantity: number }>
+}
 type DispatchDetail = {
   summary: { lines: DispatchLine[]; fullyDispatched: boolean; partiallyDispatched: boolean }
   shipments: ShipmentDetail[]
+  /** The shop's configured couriers, for the dispatch and parcel forms. */
+  couriers: Array<{ id: string; name: string }>
   // Surfaced only. The shop's hold-everything policy is enforced when the
   // status is changed, not here.
   preOrderHold: { active: boolean; outstandingCount: number; expectedDate: string | null }
@@ -183,6 +194,11 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   const [busy, setBusy] = useState(false)
   const [refundOpen, setRefundOpen] = useState(false)
   const [dispatchOpen, setDispatchOpen] = useState(false)
+  // Which parcel is being filled in - the delivery window usually lands a day
+  // after the parcel did. Held by id rather than by object so a refresh behind
+  // the modal cannot leave it editing a stale copy.
+  const [editingParcelId, setEditingParcelId] = useState<string | null>(null)
+  const editingParcel = dispatch?.shipments.find((s) => s.id === editingParcelId) ?? null
   const [emailOpen, setEmailOpen] = useState(false)
   // The customer's reference, while it is being edited. Null means "not being
   // edited", which is a different state from an empty string - an empty string
@@ -635,7 +651,17 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                           {shipment.items.map((si) => `${si.quantity} × ${itemNames.get(si.orderItemId) ?? 'an item no longer on this order'}`).join(', ')}
                           {shipment.notes ? ` - ${shipment.notes}` : ''}
                         </p>
+                        {shipment.deliveryDate && (
+                          <p className="sox-list-sub">
+                            Delivery booked for {shipment.deliveryDate}
+                            {shipment.deliverySlotStart && shipment.deliverySlotEnd
+                              ? `, ${shipment.deliverySlotStart} to ${shipment.deliverySlotEnd}`
+                              : ' - no time window yet'}
+                            {shipment.slotNotifiedAt ? ' · customer told' : ''}
+                          </p>
+                        )}
                       </div>
+                      <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => setEditingParcelId(shipment.id)}>Details</button>
                       <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => undoDispatch(shipment)}>Undo</button>
                     </li>
                   ))}
@@ -1119,8 +1145,18 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
         <DispatchModal
           orderId={orderId}
           lines={dispatch.summary.lines}
+          couriers={dispatch.couriers ?? []}
           onClose={() => setDispatchOpen(false)}
           onDone={() => { setDispatchOpen(false); refresh() }}
+        />
+      )}
+      {editingParcel && (
+        <EditParcelModal
+          orderId={orderId}
+          parcel={editingParcel}
+          couriers={dispatch?.couriers ?? []}
+          onClose={() => setEditingParcelId(null)}
+          onDone={() => { setEditingParcelId(null); refresh() }}
         />
       )}
       {refundOpen && (

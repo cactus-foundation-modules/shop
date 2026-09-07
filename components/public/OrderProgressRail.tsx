@@ -1,6 +1,7 @@
 import type { OrderStep } from '@/modules/shop/lib/order-progress'
 import { formatOrderDateShort } from '@/modules/shop/lib/order-display'
 import { Icon, ICON_TICK } from '@/modules/shop/components/public/OrderDetailChrome'
+import { DeliveryVanDot, type DeliveryVanProps } from '@/modules/shop/components/public/DeliveryVanDot'
 
 // Where the order has got to, in four steps.
 //
@@ -14,7 +15,14 @@ import { Icon, ICON_TICK } from '@/modules/shop/components/public/OrderDetailChr
 // reader should read it as one. The step in progress carries aria-current so it
 // is announced as the one that matters without relying on the tint.
 
-export function OrderProgressRail({ steps, timezone }: { steps: OrderStep[]; timezone: string }) {
+export function OrderProgressRail({ steps, timezone, van }: {
+  steps: OrderStep[]
+  timezone: string
+  /** The booked delivery, where a courier has given one. Only the van moves,
+   *  and only on the delivery step - everything else on this rail is settled by
+   *  the time the page renders. */
+  van?: Omit<DeliveryVanProps, 'initialProgress' | 'timezone'> | null
+}) {
   if (steps.length === 0) return null
 
   return (
@@ -22,14 +30,20 @@ export function OrderProgressRail({ steps, timezone }: { steps: OrderStep[]; tim
       {steps.map((step) => (
         <li
           key={step.key}
-          className={`sod-step sod-step-${step.state}`}
+          className={`sod-step sod-step-${step.state}${step.key === 'delivery' ? ' sod-step-delivery' : ''}`}
           aria-current={step.state === 'now' ? 'step' : undefined}
         >
           {/* The dot is decoration - the state is already in the label's
               wording and in aria-current, so nothing is lost by hiding it. */}
+          {step.key === 'delivery' && van ? (
+            <span aria-hidden="true">
+              <DeliveryVanDot {...van} timezone={timezone} initialProgress={step.progress ?? 0} />
+            </span>
+          ) : (
           <span className="sod-dot" aria-hidden="true">
             {step.state === 'done' && <Icon>{ICON_TICK}</Icon>}
           </span>
+          )}
           <span className="sod-step-label">{step.label}</span>
           {/* Rendered even when empty so all four labels sit on one line
               whether or not the step underneath has a date to show. */}

@@ -87,7 +87,9 @@ export default function OrderRequestPanel(props: Props) {
 
   if (open) {
     return (
-      <section className="sod-card">
+      // The closed card is one cell of the paired grid; the open form is a list
+      // of lines with a select and a textarea under it, so it takes the row.
+      <section className="sod-card sod-wide">
         <div className="sod-card-head">
           <h2 className="sod-card-title">
             {open === 'CANCEL' ? 'Cancel this order' : 'Send something back'}

@@ -552,9 +552,22 @@ export type ShpShipment = {
   orderId: string
   shippedAt: Date
   trackingNumber: string | null
-  /** The carrier's own tracking page for this parcel, when one was recorded. */
+  /** The carrier's own tracking page for this parcel, when one was recorded.
+   *  Whether the CUSTOMER is offered it is the courier's own setting - some
+   *  carriers' tracking pages carry the shop's trade account details. */
   trackingUrl: string | null
   carrier: string | null
+  /** The configured courier this came from, or null where the name was typed
+   *  in by hand. `carrier` is the display name either way. */
+  courierId: string | null
+  /** The delivery day as 'YYYY-MM-DD', and the window on it as 'HH:MM'. Text,
+   *  not Date - see migrations/039_delivery_slots.sql for why. */
+  deliveryDate: string | null
+  deliverySlotStart: string | null
+  deliverySlotEnd: string | null
+  /** When the customer was told about the window, so a later correction to the
+   *  parcel does not tell them all over again. */
+  slotNotifiedAt: Date | null
   notes: string | null
   createdAt: Date
   updatedAt: Date
@@ -942,6 +955,12 @@ export type ShpEmailTemplateTrigger =
   // STATUS_SHIPPED says the whole order is on its way, so it cannot stand in
   // for this one. See lib/shipment-email.ts.
   | 'PARTIAL_SHIPPED'
+  // Sent when a courier's delivery window is written onto a parcel that
+  // already went out - "your delivery is confirmed for Tuesday, between 10:00
+  // and 13:00". A second, later moment than the dispatch note, and the only
+  // one most customers actually plan their day around.
+  // See lib/delivery-slot-email.ts.
+  | 'DELIVERY_SLOT_CONFIRMED'
   // Sent at checkout on a method nobody has been paid on yet (bank transfer,
   // cash): the order is placed, here is how to pay for it, and nothing moves
   // until it does. Every other method has ORDER_CONFIRMED doing that job

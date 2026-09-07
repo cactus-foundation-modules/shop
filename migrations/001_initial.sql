@@ -664,10 +664,31 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     -- migrations/035_shipment_tracking_url.sql for existing installs.
     "tracking_url" TEXT,
     "carrier" TEXT,
+    -- Which configured courier that name came from, where it came from the
+    -- list rather than being typed in. See deliveryCouriers in lib/config.ts.
+    "courier_id" TEXT,
+    -- The delivery day and the window on it, as text rather than DATE/TIME on
+    -- purpose: a delivery day is a day in the customer's world, and a DATE read
+    -- back through Prisma is a UTC-midnight instant that prints as the day
+    -- before in any timezone west of UTC. Also shipped as
+    -- migrations/039_delivery_slots.sql for existing installs.
+    "delivery_date" TEXT,
+    "delivery_slot_start" TEXT,
+    "delivery_slot_end" TEXT,
+    -- Set the first time the slot email goes out, so correcting a typo on the
+    -- parcel afterwards does not send it again.
+    "slot_notified_at" TIMESTAMP(3),
     "notes" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
+    CONSTRAINT "shp_shipments_delivery_date_check"
+        CHECK ("delivery_date" IS NULL OR "delivery_date" ~ '^\d{4}-\d{2}-\d{2}$'),
+    CONSTRAINT "shp_shipments_delivery_slot_check"
+        CHECK (
+            ("delivery_slot_start" IS NULL OR "delivery_slot_start" ~ '^([01]\d|2[0-3]):[0-5]\d$')
+            AND ("delivery_slot_end" IS NULL OR "delivery_slot_end" ~ '^([01]\d|2[0-3]):[0-5]\d$')
+        ),
     CONSTRAINT "shp_shipments_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "shp_shipments_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE
 );

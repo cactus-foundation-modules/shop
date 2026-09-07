@@ -31,6 +31,11 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     trackingNumber: (r.tracking_number as string | null) ?? null,
     trackingUrl: (r.tracking_url as string | null) ?? null,
     carrier: (r.carrier as string | null) ?? null,
+    courierId: (r.courier_id as string | null) ?? null,
+    deliveryDate: (r.delivery_date as string | null) ?? null,
+    deliverySlotStart: (r.delivery_slot_start as string | null) ?? null,
+    deliverySlotEnd: (r.delivery_slot_end as string | null) ?? null,
+    slotNotifiedAt: (r.slot_notified_at as Date | null) ?? null,
     notes: (r.notes as string | null) ?? null,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
@@ -67,6 +72,13 @@ export type CreateShipmentInput = {
   trackingNumber?: string | null
   trackingUrl?: string | null
   carrier?: string | null
+  courierId?: string | null
+  /** 'YYYY-MM-DD'. Validated by the caller, and again by the table's own CHECK. */
+  deliveryDate?: string | null
+  /** 'HH:MM'. Rarely known at dispatch - the courier usually confirms the
+   *  window the evening before, which is what updateShipmentDelivery is for. */
+  deliverySlotStart?: string | null
+  deliverySlotEnd?: string | null
   notes?: string | null
   items: Array<{ orderItemId: string; quantity: number }>
 }
@@ -224,8 +236,16 @@ export async function createShipment(input: CreateShipmentInput): Promise<Create
 
     const shippedAt = input.shippedAt ?? new Date()
     const created = await tx.$queryRaw<[Record<string, unknown>]>`
-      INSERT INTO "shp_shipments" ("order_id", "shipped_at", "tracking_number", "tracking_url", "carrier", "notes")
-      VALUES (${input.orderId}, ${shippedAt}, ${input.trackingNumber ?? null}, ${input.trackingUrl ?? null}, ${input.carrier ?? null}, ${input.notes ?? null})
+      INSERT INTO "shp_shipments" (
+        "order_id", "shipped_at", "tracking_number", "tracking_url", "carrier", "courier_id",
+        "delivery_date", "delivery_slot_start", "delivery_slot_end", "notes"
+      )
+      VALUES (
+        ${input.orderId}, ${shippedAt}, ${input.trackingNumber ?? null}, ${input.trackingUrl ?? null},
+        ${input.carrier ?? null}, ${input.courierId ?? null},
+        ${input.deliveryDate ?? null}, ${input.deliverySlotStart ?? null}, ${input.deliverySlotEnd ?? null},
+        ${input.notes ?? null}
+      )
       RETURNING *
     `
     const shipment = mapShipment(created[0])
@@ -372,4 +392,85 @@ export async function deleteShipment(shipmentId: string, orderId: string): Promi
     }
     return true
   })
+}
+
+// The parcel details, corrected or filled in after the event.
+//
+// A courier books a delivery in two instalments: the DAY when the parcel is
+// collected, and the four-hour WINDOW the evening before it arrives. Dispatch
+// is recorded once, at the first of those, so the second has to be an edit -
+// there is no second parcel to record, and recording one would tell the
+// customer their order had been split.
+//
+// Only the details move. Which lines are in the parcel, and how many, are the
+// quantities every cap in createShipment is written to police, and they stay
+// where they are: to change those, delete the shipment and record it again.
+// That is also why this needs no advisory lock - it cannot alter a total that a
+// refund or a second dispatch is competing for.
+//
+// A field left out is left alone; a field set to null is cleared. Returns the
+// updated parcel, or null if it does not exist or belongs to another order.
+export type UpdateShipmentDetailsInput = {
+  trackingNumber?: string | null
+  trackingUrl?: string | null
+  carrier?: string | null
+  courierId?: string | null
+  deliveryDate?: string | null
+  deliverySlotStart?: string | null
+  deliverySlotEnd?: string | null
+  notes?: string | null
+  shippedAt?: Date | null
+}
+
+export async function updateShipmentDetails(
+  shipmentId: string,
+  orderId: string,
+  patch: UpdateShipmentDetailsInput,
+): Promise<ShpShipmentWithItems | null> {
+  const assignments: Prisma.Sql[] = []
+  const set = (column: string, value: unknown) => {
+    assignments.push(Prisma.sql`${Prisma.raw(`"${column}"`)} = ${value}`)
+  }
+
+  if (patch.trackingNumber !== undefined) set('tracking_number', patch.trackingNumber)
+  if (patch.trackingUrl !== undefined) set('tracking_url', patch.trackingUrl)
+  if (patch.carrier !== undefined) set('carrier', patch.carrier)
+  if (patch.courierId !== undefined) set('courier_id', patch.courierId)
+  if (patch.deliveryDate !== undefined) set('delivery_date', patch.deliveryDate)
+  if (patch.deliverySlotStart !== undefined) set('delivery_slot_start', patch.deliverySlotStart)
+  if (patch.deliverySlotEnd !== undefined) set('delivery_slot_end', patch.deliverySlotEnd)
+  if (patch.notes !== undefined) set('notes', patch.notes)
+  if (patch.shippedAt !== undefined && patch.shippedAt) set('shipped_at', patch.shippedAt)
+
+  // Nothing to change still has to answer "does this parcel exist", because the
+  // caller uses that answer to decide between a 404 and a success.
+  if (assignments.length > 0) {
+    assignments.push(Prisma.sql`"updated_at" = CURRENT_TIMESTAMP`)
+    const changed = await prisma.$executeRaw`
+      UPDATE "shp_shipments"
+      SET ${Prisma.join(assignments, ', ')}
+      WHERE "id" = ${shipmentId} AND "order_id" = ${orderId}
+    `
+    if (changed === 0) return null
+  }
+
+  const shipments = await getShipmentsForOrder(orderId)
+  return shipments.find((s) => s.id === shipmentId) ?? null
+}
+
+/**
+ * Claim the right to send the "your delivery window is confirmed" email.
+ *
+ * True exactly once per parcel. The stamp is set by the same statement that
+ * reads it, so two admins saving the same window at the same moment cannot both
+ * come away believing they are the one sending it - which is the shape this
+ * kind of bug always takes, and the customer sees it as two identical emails.
+ */
+export async function claimSlotNotification(shipmentId: string, orderId: string): Promise<boolean> {
+  const claimed = await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "slot_notified_at" = CURRENT_TIMESTAMP, "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId} AND "order_id" = ${orderId} AND "slot_notified_at" IS NULL
+  `
+  return claimed > 0
 }

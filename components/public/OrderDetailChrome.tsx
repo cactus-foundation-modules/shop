@@ -26,6 +26,9 @@ export const ICON_IMAGE = <><rect x="3" y="4" width="18" height="16" rx="2" /><p
 export const ICON_DOC = <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /></>
 export const ICON_PRINT = <><path d="M7 9V3h10v6" /><rect x="4" y="9" width="16" height="7" rx="2" /><path d="M7 14h10v7H7z" /></>
 export const ICON_DOWNLOAD = <><path d="M12 4v11" /><path d="m7.5 11 4.5 4.5 4.5-4.5" /><path d="M5 20h14" /></>
+// The delivery van on the progress rail. Drawn as an outline like the rest of
+// them, so it sits in the same dot as the tick without a second visual style.
+export const ICON_VAN = <><path d="M3 7h10v9H3z" /><path d="M13 10h4l3 3v3h-7z" /><circle cx="7" cy="18" r="1.6" /><circle cx="17" cy="18" r="1.6" /></>
 
 type CardProps = {
   title: string

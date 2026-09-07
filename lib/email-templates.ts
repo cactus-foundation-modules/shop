@@ -134,6 +134,23 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     transactional: false,
   },
   {
+    // The second half of a dispatch on a courier that books deliveries in two
+    // instalments: the parcel goes out on one day, and the four-hour window is
+    // confirmed the evening before it arrives. The dispatch note cannot carry
+    // the window because the window does not exist yet, and this is the email
+    // people actually plan a morning around. See lib/delivery-slot-email.ts.
+    key: 'shop.delivery-slot-confirmed',
+    label: 'Delivery time confirmed',
+    subject: 'Your delivery is booked in for {{deliveryDay}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>Good news - your delivery for order <strong>{{orderNumber}}</strong> is booked in for <strong>{{deliveryDay}}</strong>, {{deliveryWindow}}.</p>{{#if hasParcelItems}}<p><strong>Arriving:</strong></p>{{parcelItems}}{{/if}}{{#if hasCarrier}}<p>Coming with {{carrier}}.</p>{{/if}}<p>Please make sure somebody is in to take it. If nobody is, the driver will have to bring it back and we will have to book it in all over again.</p>{{#if hasFaq}}<p><a href="{{faqUrl}}">Questions about your delivery</a> - what happens on the day, and what to do if the time does not suit.</p>{{/if}}<p>Thanks for shopping with {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'deliveryDay', 'deliveryWindow', 'deliverySlotStart', 'deliverySlotEnd', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl'],
+    // Same table the dispatch note uses, built by this module with every value
+    // escaped on the way in. See lib/order-items-email.ts.
+    rawTags: ['parcelItems'],
+    transactional: false,
+  },
+  {
     key: 'shop.admin-new-order',
     label: 'New order (admin alert)',
     subject: 'New order received: {{orderNumber}}',
@@ -279,6 +296,7 @@ export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   STATUS_COMPLETED: 'shop.status-completed',
   STATUS_CANCELLED: 'shop.status-cancelled',
   PARTIAL_SHIPPED: 'shop.partial-shipped',
+  DELIVERY_SLOT_CONFIRMED: 'shop.delivery-slot-confirmed',
   ADMIN_NEW_ORDER: 'shop.admin-new-order',
   ADMIN_NEW_ORDER_UNPAID: 'shop.admin-new-order-unpaid',
   LOW_STOCK: 'shop.low-stock',

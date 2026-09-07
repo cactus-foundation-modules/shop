@@ -393,6 +393,48 @@ export const ShpConfigSchema = z.object({
   orderTrackingRootSlug: z.string().default('track-order'),
 
   // -------------------------------------------------------------------------
+  // Couriers
+  // -------------------------------------------------------------------------
+  //
+  // The couriers this shop actually uses, so dispatch is a pick from a list
+  // rather than a name retyped - and misspelled - on every parcel. Empty by
+  // default: a shop that has never filled this in gets the free-text box it
+  // always had, and nothing about dispatch changes for it.
+  //
+  // Two things hang off a courier beyond its name:
+  //
+  //   showTrackingLink - whether the CUSTOMER is offered the courier's own
+  //     tracking page. On for the ordinary carriers, whose tracking page shows
+  //     the parcel and nothing else. Off for a courier whose page is really the
+  //     shop's trade portal: account numbers, "PRO-FORMA", the supplier's own
+  //     branding and telephone number. The link is still recorded and still
+  //     shown to staff on the order screen - it simply is not put in front of
+  //     the person who bought the thing.
+  //
+  //   faqs - the questions that courier generates, answered once. "Will they
+  //     take it upstairs", "what if I am out", "do they ring first". They show
+  //     on the order page only for parcels sent with that courier, and a
+  //     courier with none shows nothing at all rather than an empty box.
+  deliveryCouriers: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(64),
+        name: z.string().min(1).max(80),
+        showTrackingLink: z.boolean().default(true),
+        faqs: z
+          .array(
+            z.object({
+              id: z.string().min(1).max(64),
+              question: z.string().min(1).max(200),
+              answer: z.string().min(1).max(4000),
+            }),
+          )
+          .default([]),
+      }),
+    )
+    .default([]),
+
+  // -------------------------------------------------------------------------
   // Invoices
   // -------------------------------------------------------------------------
   //

@@ -28,6 +28,8 @@ import {
   orderCompanyName,
 } from '@/modules/shop/lib/order-display'
 import { orderProgressSteps, orderStopped } from '@/modules/shop/lib/order-progress'
+import { parcelDelivery, railDelivery } from '@/modules/shop/lib/order-delivery'
+import { FAQ_QUERY_KEY } from '@/modules/shop/lib/courier-faqs'
 import { listInvoicesForOrder } from '@/modules/shop/lib/db/invoices'
 import { listCreditNotesForOrder } from '@/modules/shop/lib/db/credit-notes'
 import {
@@ -53,6 +55,7 @@ import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
 import { ORDER_DETAIL_CSS } from '@/modules/shop/components/public/order-detail-css'
 import { Icon, ICON_DOWNLOAD, OrderCard, OrderNote } from '@/modules/shop/components/public/OrderDetailChrome'
 import { OrderProgressRail } from '@/modules/shop/components/public/OrderProgressRail'
+import { CourierFaqModal } from '@/modules/shop/components/public/CourierFaqModal'
 import { OrderItemList } from '@/modules/shop/components/public/OrderItemList'
 import { OrderDocuments, type OrderDocument } from '@/modules/shop/components/public/OrderDocuments'
 
@@ -114,7 +117,12 @@ function TotalRow({ label, value, variant }: { label: React.ReactNode; value: st
   )
 }
 
-export default async function ShopAccountOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ShopAccountOrderDetailPage({ params, searchParams }: {
+  params: Promise<{ id: string }>
+  // Only read for one thing: ?faq=1, which is the link in the delivery email
+  // asking this page to open its delivery questions on arrival.
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}) {
   const gate = await getShopGate()
   if (gate.blocked) return <ShopClosedNotice message={gate.message} />
 
@@ -281,7 +289,50 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
     null,
   )
   const stopped = orderStopped(order.status)
-  const steps = orderProgressSteps({ order, lines, lastShippedAt })
+
+  // The deliveries booked on this order's parcels, worked out once against a
+  // single clock reading: the rail, the parcels card and the questions all
+  // describe the same moment, and taking `new Date()` three times would let a
+  // window close between two of them.
+  const now = new Date()
+  const deliveries = shipments.map((shipment) => parcelDelivery(config, shipment, now, timezone))
+  const deliveryById = new Map(deliveries.map((d) => [d.shipmentId, d]))
+  const railBooking = railDelivery(deliveries)
+
+  const steps = orderProgressSteps({
+    order,
+    lines,
+    lastShippedAt,
+    delivery: railBooking
+      ? {
+          day: railBooking.day,
+          window: railBooking.window,
+          progress: railBooking.progress?.progress ?? 0,
+          arrived: railBooking.progress?.phase === 'passed',
+        }
+      : null,
+  })
+
+  // The van only ticks along for a delivery that has not been yet - once the
+  // window has gone there is nothing left to animate, and a van still creeping
+  // across a rail the morning after is somebody's furniture being described as
+  // "on its way" when it is not.
+  const railShipment = railBooking ? shipments.find((s) => s.id === railBooking.shipmentId) ?? null : null
+  const van = railShipment && railBooking && railBooking.progress?.phase !== 'passed'
+    ? {
+        date: railShipment.deliveryDate ?? '',
+        slotStart: railShipment.deliverySlotStart,
+        slotEnd: railShipment.deliverySlotEnd,
+      }
+    : null
+
+  // Which parcel's questions the delivery email asked for. One order, one set
+  // of questions on screen: with two parcels out with the same courier the
+  // questions are the same questions, so the first booked delivery that has any
+  // is the one that answers for the order.
+  const query = searchParams ? await searchParams : {}
+  const faqRequested = (Array.isArray(query[FAQ_QUERY_KEY]) ? query[FAQ_QUERY_KEY][0] : query[FAQ_QUERY_KEY]) === '1'
+  const faqShipmentId = deliveries.find((d) => d.faqs.length > 0)?.shipmentId ?? null
 
   // How this order was settled, in a sentence rather than a status code.
   const methodName = PAYMENT_METHOD_LABELS[shownMethod] ?? methodLabels[shownMethod] ?? shownMethod
@@ -376,7 +427,7 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
             <p>{STOPPED_MESSAGE[order.status] ?? status.label}</p>
           </OrderNote>
         ) : (
-          <OrderProgressRail steps={steps} timezone={timezone} />
+          <OrderProgressRail steps={steps} timezone={timezone} van={van} />
         )}
 
         {order.status === 'ON_HOLD' && (
@@ -511,6 +562,17 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
                       {formatOrderDate(shipment.shippedAt, timezone)}
                       {shipment.carrier ? ` with ${shipment.carrier}` : ''}
                     </span>
+                    {/* The booked delivery, in the customer's own words. The
+                        day is a calendar day and stays one - see
+                        lib/delivery-slot.ts for what happens to it otherwise. */}
+                    {deliveryById.get(shipment.id)?.day && (
+                      <span className="sod-parcel-booked">
+                        Arranged for {deliveryById.get(shipment.id)?.day}
+                        {deliveryById.get(shipment.id)?.window
+                          ? `, ${deliveryById.get(shipment.id)?.window}`
+                          : ''}
+                      </span>
+                    )}
                     {shipment.trackingNumber && (
                       <span className="sod-dim">Tracking number: {shipment.trackingNumber}</span>
                     )}
@@ -526,7 +588,12 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
                         that is not http(s), but a row written before that check
                         existed has never been past it, and this is an href in
                         front of somebody who trusts the shop. */}
-                    {safeTrackingUrl(shipment.trackingUrl) && (
+                    {/* Recorded is not the same as offered. Some couriers'
+                        tracking page is really the shop's own trade portal -
+                        account number, pro-forma status, the supplier's
+                        branding - and the courier's settings say so. Staff
+                        still see the link on the order screen. */}
+                    {deliveryById.get(shipment.id)?.showTracking !== false && safeTrackingUrl(shipment.trackingUrl) && (
                       <a
                         className="sod-btn sod-btn-ghost sod-track"
                         href={safeTrackingUrl(shipment.trackingUrl)}
@@ -535,6 +602,13 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
                       >
                         Track {shipments.length === 1 ? 'your parcel' : `parcel ${index + 1}`}
                       </a>
+                    )}
+                    {(deliveryById.get(shipment.id)?.faqs.length ?? 0) > 0 && (
+                      <CourierFaqModal
+                        faqs={deliveryById.get(shipment.id)?.faqs ?? []}
+                        courierName={shipment.carrier?.trim() || null}
+                        openInitially={faqRequested && faqShipmentId === shipment.id}
+                      />
                     )}
                   </div>
                 ))}
@@ -677,25 +751,28 @@ export default async function ShopAccountOrderDetailPage({ params }: { params: P
               </ul>
             </OrderCard>
           )}
-        </div>
 
-        {/* Full width and last: it is the only thing on the page that starts
-            something, and it opens into a form with a list of lines in it. */}
-        {!openRequest && (
-          <OrderRequestPanel
-            orderId={order.id}
-            cancel={{ allowed: detail.cancel.allowed, reason: detail.cancel.allowed ? undefined : detail.cancel.reason }}
-            return={{ allowed: detail.return.allowed, reason: detail.return.allowed ? undefined : detail.return.reason }}
-            cancelReasons={SHP_CANCEL_REASONS}
-            returnReasons={SHP_RETURN_REASONS}
-            lines={lines.map((line) => ({
-              orderItemId: line.item.id,
-              productName: line.item.productName,
-              returnableQty: line.returnableQty,
-            }))}
-            returnBy={detail.returnBy ? formatOrderDate(detail.returnBy, timezone) : null}
-          />
-        )}
+          {/* Last card in the grid: it is the only thing on the page that starts
+              something, so it comes after everything that merely reports. It
+              pairs off with whatever card is beside it, and takes the whole row
+              on its own when the count is odd - see .sod-grid. Opening it swaps
+              the card for a form, which asks for the full width itself. */}
+          {!openRequest && (
+            <OrderRequestPanel
+              orderId={order.id}
+              cancel={{ allowed: detail.cancel.allowed, reason: detail.cancel.allowed ? undefined : detail.cancel.reason }}
+              return={{ allowed: detail.return.allowed, reason: detail.return.allowed ? undefined : detail.return.reason }}
+              cancelReasons={SHP_CANCEL_REASONS}
+              returnReasons={SHP_RETURN_REASONS}
+              lines={lines.map((line) => ({
+                orderItemId: line.item.id,
+                productName: line.item.productName,
+                returnableQty: line.returnableQty,
+              }))}
+              returnBy={detail.returnBy ? formatOrderDate(detail.returnBy, timezone) : null}
+            />
+          )}
+        </div>
 
         {/* The offer of an account, to a guest who has just proved a postcode to
             get here. Last on the page on purpose: they came for the order, not

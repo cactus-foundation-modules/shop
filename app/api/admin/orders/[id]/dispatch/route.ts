@@ -4,13 +4,18 @@ import { requireShopUser } from '@/modules/shop/lib/access'
 import { getOrderById, getOrderItems, outstandingPreOrderItems } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import {
+  claimSlotNotification,
   createShipment,
   deleteShipment,
   getOrderDispatchSummary,
   getShipmentsForOrder,
+  updateShipmentDetails,
 } from '@/modules/shop/lib/db/shipments'
 import { sendShipmentDispatchedEmail } from '@/modules/shop/lib/shipment-email'
-import type { ShpOrderItem } from '@/modules/shop/lib/types'
+import { sendDeliverySlotEmail } from '@/modules/shop/lib/delivery-slot-email'
+import { isDeliveryDate, isSlotTime, slotMinutes } from '@/modules/shop/lib/delivery-slot'
+import type { ShpConfig } from '@/modules/shop/lib/config'
+import type { ShpOrderItem, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
 // A tracking link is offered to the customer as something to click, so only a
 // web address is accepted: anything else (a javascript: URL above all) would be
@@ -28,11 +33,30 @@ const TrackingUrl = z
     }
   }, 'The tracking link has to be a web address starting with http:// or https://')
 
+// The delivery day, and the window on it, exactly as the database stores them:
+// 'YYYY-MM-DD' and 'HH:MM'. Never a Date - see lib/delivery-slot.ts for what
+// turning a delivery day into an instant does to the day it prints as.
+const DeliveryDate = z.string().trim().refine(isDeliveryDate, 'That is not a real date.')
+const SlotTime = z.string().trim().refine(isSlotTime, 'A delivery time looks like 10:00.')
+
+const DeliveryFields = {
+  /** The courier picked from the shop's own list. Its name is read from
+   *  settings server-side rather than taken from the browser, so a renamed
+   *  courier renames itself on parcels recorded afterwards and nobody can post
+   *  a parcel from "Royal Mail" that was nothing of the sort. */
+  courierId: z.string().max(64).nullable().optional(),
+  /** Only used when no courierId was picked - the "Other" case. */
+  carrier: z.string().max(80).nullable().optional(),
+  deliveryDate: DeliveryDate.nullable().optional(),
+  deliverySlotStart: SlotTime.nullable().optional(),
+  deliverySlotEnd: SlotTime.nullable().optional(),
+}
+
 const Body = z.object({
   items: z.array(z.object({ orderItemId: z.string(), quantity: z.number().int().min(1) })).min(1),
   trackingNumber: z.string().nullable().optional(),
   trackingUrl: TrackingUrl.nullable().optional(),
-  carrier: z.string().nullable().optional(),
+  ...DeliveryFields,
   notes: z.string().nullable().optional(),
   // Owners back-date a parcel that went out on Friday and is only being
   // recorded on Monday, so a plain date string from the admin is accepted and
@@ -40,6 +64,39 @@ const Body = z.object({
   shippedAt: z.coerce.date().nullable().optional(),
   emailCustomer: z.boolean().optional(),
 })
+
+type CourierChoice = { courierId: string | null; carrier: string | null }
+
+// Which courier this parcel went with, decided here rather than trusted.
+//
+// A picked courier's NAME comes off the shop's settings, not off the request:
+// the browser sends an id, and the name printed on the customer's order page is
+// whatever that id is called today. The free-text name is only honoured when no
+// courier was picked, which is the "Other" case the dropdown offers.
+function resolveCourier(
+  config: Pick<ShpConfig, 'deliveryCouriers'>,
+  courierId: string | null | undefined,
+  carrier: string | null | undefined,
+): { ok: true; choice: CourierChoice } | { ok: false; error: string } {
+  const id = courierId?.trim() || null
+  if (!id) return { ok: true, choice: { courierId: null, carrier: carrier?.trim() || null } }
+
+  const courier = config.deliveryCouriers.find((c) => c.id === id)
+  if (!courier) return { ok: false, error: 'That courier is no longer in your list. Pick another one.' }
+  return { ok: true, choice: { courierId: courier.id, carrier: courier.name } }
+}
+
+/** Both ends of a window, or neither, and the second one after the first.
+ *  Half a window tells a customer nothing and puts a van nowhere. */
+function checkWindow(start: string | null | undefined, end: string | null | undefined): string | null {
+  const hasStart = typeof start === 'string' && start.length > 0
+  const hasEnd = typeof end === 'string' && end.length > 0
+  if (hasStart !== hasEnd) return 'A delivery window needs both a start and an end time.'
+  if (hasStart && hasEnd && slotMinutes(start) >= slotMinutes(end)) {
+    return 'The delivery window has to end after it starts.'
+  }
+  return null
+}
 
 // The hold rule itself lives in lib/db/orders.ts. Here it is read-only: this
 // route only EXPLAINS the hold to the owner, while the status route ENFORCES it.
@@ -77,6 +134,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   return NextResponse.json({
     summary,
     shipments,
+    // The dispatch modal's courier list. It rides on this call rather than
+    // being fetched separately because every screen that offers dispatch is
+    // already waiting on this one, and a second round trip for six words would
+    // show up as a dropdown that populates a beat late.
+    couriers: config.deliveryCouriers.map((c) => ({ id: c.id, name: c.name })),
     preOrderHold: {
       active: holdAll && outstanding.length > 0,
       outstandingCount: outstanding.length,
@@ -103,12 +165,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const parsed = Body.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid dispatch' }, { status: 400 })
 
+  const windowError = checkWindow(parsed.data.deliverySlotStart, parsed.data.deliverySlotEnd)
+  if (windowError) return NextResponse.json({ error: windowError }, { status: 400 })
+
+  const courier = resolveCourier(await getShopConfigCached(), parsed.data.courierId, parsed.data.carrier)
+  if (!courier.ok) return NextResponse.json({ error: courier.error }, { status: 400 })
+
   const outcome = await createShipment({
     orderId: id,
     shippedAt: parsed.data.shippedAt ?? null,
     trackingNumber: parsed.data.trackingNumber ?? null,
     trackingUrl: parsed.data.trackingUrl ?? null,
-    carrier: parsed.data.carrier ?? null,
+    carrier: courier.choice.carrier,
+    courierId: courier.choice.courierId,
+    deliveryDate: parsed.data.deliveryDate ?? null,
+    deliverySlotStart: parsed.data.deliverySlotStart ?? null,
+    deliverySlotEnd: parsed.data.deliverySlotEnd ?? null,
     notes: parsed.data.notes ?? null,
     items: parsed.data.items,
   })
@@ -128,6 +200,102 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   return NextResponse.json({ shipment: outcome.shipment }, { status: 201 })
+}
+
+// PROTECTED - fills in, or corrects, the details of a parcel already recorded.
+//
+// This exists because a courier books a delivery in two instalments. The day
+// comes when the parcel is collected, which is when dispatch is recorded; the
+// four-hour window comes the evening before it arrives, by which time there is
+// nothing left to dispatch. Recording a second parcel for it would tell the
+// customer their order had been split in two, which it has not been.
+//
+// Quantities are deliberately out of reach: what is in the parcel is what every
+// cap in createShipment polices, and it changes by undoing the dispatch and
+// recording it again, under the lock, with all the arithmetic re-checked.
+const PatchBody = z.object({
+  shipmentId: z.string().min(1),
+  trackingNumber: z.string().nullable().optional(),
+  trackingUrl: TrackingUrl.nullable().optional(),
+  ...DeliveryFields,
+  notes: z.string().nullable().optional(),
+  /** Whether saving a newly-confirmed window emails the customer about it.
+   *  Defaults to on: a window nobody was told about is a window nobody can
+   *  plan around. Sent at most once per parcel - see claimSlotNotification. */
+  emailCustomer: z.boolean().optional(),
+})
+
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const gate = await requireShopUser('shop.orders')
+  if (gate.error) return gate.error
+
+  const { id } = await params
+  const order = await getOrderById(id)
+  if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+
+  const parsed = PatchBody.safeParse(await request.json().catch(() => null))
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid parcel details' }, { status: 400 })
+  }
+
+  const { shipmentId, emailCustomer, courierId, carrier, ...rest } = parsed.data
+
+  // Read the window as it will be AFTER the save, not as it was sent: an edit
+  // that only clears the end time would otherwise pass a check that never saw
+  // the start time still sitting in the row.
+  const existing = (await getShipmentsForOrder(id)).find((s) => s.id === shipmentId)
+  if (!existing) return NextResponse.json({ error: 'That parcel is no longer on this order.' }, { status: 404 })
+
+  const nextStart = rest.deliverySlotStart !== undefined ? rest.deliverySlotStart : existing.deliverySlotStart
+  const nextEnd = rest.deliverySlotEnd !== undefined ? rest.deliverySlotEnd : existing.deliverySlotEnd
+  const windowError = checkWindow(nextStart, nextEnd)
+  if (windowError) return NextResponse.json({ error: windowError }, { status: 400 })
+
+  const config = await getShopConfigCached()
+  const courier = courierId !== undefined || carrier !== undefined
+    ? resolveCourier(config, courierId, carrier)
+    : null
+  if (courier && !courier.ok) return NextResponse.json({ error: courier.error }, { status: 400 })
+
+  const shipment = await updateShipmentDetails(shipmentId, id, {
+    ...rest,
+    ...(courier?.ok ? { courierId: courier.choice.courierId, carrier: courier.choice.carrier } : {}),
+  })
+  if (!shipment) return NextResponse.json({ error: 'That parcel is no longer on this order.' }, { status: 404 })
+
+  const notified = await maybeSendSlotEmail(id, shipment, emailCustomer !== false)
+  return NextResponse.json({ shipment, slotEmailSent: notified })
+}
+
+/**
+ * Tell the customer their delivery window, if this save is the moment it became
+ * knowable and nobody has been told yet.
+ *
+ * A day on its own is not enough: "your delivery is confirmed" with no window
+ * in it is the dispatch note again, and the second email is only worth sending
+ * because it carries something the first one could not.
+ *
+ * The claim is taken BEFORE the send and never given back. A mail server that
+ * refuses the message has not made the parcel undelivered, and retrying it on
+ * the owner's next save - which is usually a typo correction - would land a
+ * second copy in front of a customer who already had the first.
+ */
+async function maybeSendSlotEmail(
+  orderId: string,
+  shipment: ShpShipmentWithItems,
+  wanted: boolean,
+): Promise<boolean> {
+  if (!wanted) return false
+  if (!shipment.deliveryDate || !shipment.deliverySlotStart || !shipment.deliverySlotEnd) return false
+  if (shipment.slotNotifiedAt) return false
+  if (!(await claimSlotNotification(shipment.id, orderId))) return false
+
+  try {
+    await sendDeliverySlotEmail({ orderId, shipmentId: shipment.id })
+  } catch (error) {
+    console.error('[shop] delivery slot email failed', error)
+  }
+  return true
 }
 
 // Undo a dispatch recorded by mistake. The dispatched totals are summed from

@@ -59,7 +59,10 @@ export const ORDER_DETAIL_CSS = `
 .sod-step-done::before,.sod-step-done::after,.sod-step-now::before{background:var(--color-success)}
 .sod-dot{position:relative;width:24px;height:24px;border-radius:var(--radius-full);
   display:grid;place-items:center;background:var(--color-surface);
-  border:2px solid var(--color-border);color:var(--color-text-muted);flex-shrink:0}
+  border:2px solid var(--color-border);color:var(--color-text-muted);flex-shrink:0;
+  /* The connectors are pseudo-elements of the step, so ::after paints after the
+     dot's own box and the rail was drawn straight through the tick inside it. */
+  z-index:1}
 .sod-dot svg{width:13px;height:13px;stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .sod-step-done .sod-dot{background:var(--color-success);border-color:var(--color-success);
   color:var(--color-on-primary)}
@@ -67,6 +70,13 @@ export const ORDER_DETAIL_CSS = `
   color:var(--color-primary);box-shadow:0 0 0 4px var(--color-primary-subtle)}
 .sod-step-now .sod-dot::after{content:'';width:8px;height:8px;border-radius:var(--radius-full);
   background:var(--color-primary)}
+/* The delivery step's dot is not fixed to the middle of its column: it slides
+   across as the booked window goes by, which is the only thing on this page
+   that is still moving. The track is the full width of the column, so 0% is
+   hard against Dispatched and 100% hard against Complete. */
+.sod-van-track{position:relative;display:block;width:100%;height:24px}
+.sod-van{position:absolute;top:0;transform:translateX(-50%);transition:left 600ms ease}
+@media (prefers-reduced-motion: reduce){.sod-van{transition:none}}
 .sod-step-label{font-size:0.8125rem;font-weight:600;line-height:1.3;margin-top:0.125rem}
 .sod-step-now .sod-step-label{color:var(--color-primary-dark)}
 .sod-step-todo .sod-step-label{color:var(--color-text-muted);font-weight:500}
@@ -120,13 +130,19 @@ export const ORDER_DETAIL_CSS = `
 /* Everything that is reference rather than headline: parcels, paperwork,
    addresses, refunds, past requests. Two up on a desktop, one on a phone. The
    min() is what decides which: a bare 300px minimum would keep its column on a
-   narrow screen and push the page sideways instead of stacking. start, not
-   stretch, so a two-line address card is not blown up to match a parcel list
-   beside it. */
-.sod-grid{display:grid;gap:1rem;align-items:start;
+   narrow screen and push the page sideways instead of stacking. Stretch, so the
+   two cards in a row share one bottom edge - a short address card sitting half
+   the height of the parcel list beside it read as an unfinished box rather than
+   a tidy one, and the head tints no longer line up on only one side. */
+.sod-grid{display:grid;gap:1rem;align-items:stretch;
   grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
 /* For the odd card that has to have the full width back - an open form, mostly. */
 .sod-wide{grid-column:1/-1}
+/* An odd number of cards leaves the last one alone on its row with a column of
+   white space beside it. It takes the row instead. The container is 880px at
+   most and a column is at least 300px, so this grid is one or two columns and
+   "odd" and "alone on the last row" are the same thing. */
+.sod-grid > :last-child:nth-child(odd){grid-column:1/-1}
 
 /* --- Item rows --------------------------------------------------------- */
 .sod-items{list-style:none;margin:0;padding:0}
@@ -211,6 +227,26 @@ export const ORDER_DETAIL_CSS = `
 .sod-parcel-items{list-style:none;margin:0.125rem 0 0;padding:0;font-size:0.8125rem;
   color:var(--color-text-secondary);display:grid;gap:0.125rem}
 .sod-track{justify-self:start;margin-top:0.375rem}
+/* The booked delivery, which is the line most people opened the page for, so
+   it is set apart from the parcel's own small print rather than joining it. */
+.sod-parcel-booked{font-weight:600;color:var(--color-primary-dark)}
+
+/* --- Delivery questions ------------------------------------------------- */
+.sod-faq-open{justify-self:start;margin-top:0.375rem}
+.sod-faq-plain{margin-top:0.75rem}
+.sod-faq-answer{white-space:pre-wrap;margin:0.25rem 0 0}
+.sod-faq-overlay{position:fixed;inset:0;z-index:1000;background:var(--color-overlay);
+  display:flex;align-items:center;justify-content:center;padding:1rem}
+.sod-faq-panel{background:var(--color-surface);color:var(--color-text);
+  border:1px solid var(--color-border);border-radius:var(--radius-lg);
+  width:min(32rem,100%);max-height:85vh;display:flex;flex-direction:column}
+.sod-faq-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;
+  padding:0.875rem 1rem;border-bottom:1px solid var(--color-border)}
+.sod-faq-head h3{margin:0;font-size:1rem}
+.sod-faq-head button{background:none;border:none;cursor:pointer;font-size:1.25rem;
+  line-height:1;color:var(--color-text-secondary)}
+.sod-faq-body{overflow-y:auto;padding:1rem;display:grid;gap:1rem}
+.sod-faq-item h4{margin:0;font-size:0.9375rem}
 
 /* --- Small rows (refunds, past requests) ------------------------------- */
 .sod-rows{list-style:none;margin:0;padding:0}

@@ -128,9 +128,13 @@ suite('guest order access, against a real database', () => {
 
     const eighth = await access.recordOrderAccessFailure('ord-1')
     expect(eighth.locked).toBe(true)
-    // An hour, give or take the time the seven statements above took.
+    // An hour, give or take the time the seven statements above took. The
+    // ceiling can land on 3601: locked_until is TIMESTAMP(3), so the stored
+    // instant is rounded to the nearest millisecond and sits up to half a
+    // millisecond beyond CURRENT_TIMESTAMP + an hour. Rounding a retry-after
+    // up is the right way round - never send anyone back before the lock lifts.
     expect(eighth.retryAfterSeconds).toBeGreaterThan(3500)
-    expect(eighth.retryAfterSeconds).toBeLessThanOrEqual(3600)
+    expect(eighth.retryAfterSeconds).toBeLessThanOrEqual(3601)
 
     // And a separate read agrees, which is what the route asks before it will
     // even look at the postcode.
