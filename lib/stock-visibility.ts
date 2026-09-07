@@ -25,7 +25,6 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import { canSeeHiddenOutOfStock } from '@/modules/shop/lib/access'
 import { getShopConfigCached, type ShpConfig } from '@/modules/shop/lib/config'
 
@@ -70,6 +69,11 @@ type ExtensionPointEntry = { point: string; id: string }
 // the installed modules' manifests, so an uninstalled module's provider cannot
 // go on quietly filtering the shop.
 async function availabilityProviders(): Promise<ShopAvailabilityProvider[]> {
+  // Dynamic on purpose: listability imports this file and the registry reaches
+  // listability back, so a static edge here closes an import cycle. See
+  // lib/product-saved.ts and scripts/check-import-cycles.mjs.
+  const { modulePublicExtensionPointComponents: moduleExtensionPointComponents } =
+    await import('@/lib/modules/extension-points.public')
   const registered = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(registered).length === 0) return []
 

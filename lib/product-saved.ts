@@ -18,7 +18,6 @@
 // caller's save away: anything raised here is logged and swallowed, because a
 // listener falling over is never a good enough reason to fail the owner's edit.
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 
 /** `changed` names only the fields the write actually carried, so a hook can do
  *  nothing at all on the overwhelming majority of saves. */
@@ -35,8 +34,20 @@ type ExtensionPointEntry = { point: string; id: string }
 
 /** The hooks installed modules contribute, in manifest order. [] on a shop-only
  *  site - and, crucially, [] with no query at all when the build contains no
- *  module that declares the point. */
+ *  module that declares the point.
+ *
+ *  THE REGISTRY IMPORT IS DYNAMIC ON PURPOSE. This file is reached from
+ *  lib/db/products.ts, so a static import put core's whole extension-point
+ *  registry into shop's database layer at module-evaluation time - and the
+ *  registry imports shop's own search-cards, which imports the database layer
+ *  straight back. That cycle is what broke a production build on 2026-09-07:
+ *  "Cannot access 'q' before initialization" while collecting page data, with
+ *  typecheck, lint and 6144 tests all green. Deferring the import breaks the
+ *  cycle without hiding the edge from check-client-graph, which follows a
+ *  dynamic import too. See scripts/check-import-cycles.mjs. */
 export async function getProductSavedHooks(): Promise<ProductSavedHook[]> {
+  const { modulePublicExtensionPointComponents: moduleExtensionPointComponents } =
+    await import('@/lib/modules/extension-points.public')
   const fns = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(fns).length === 0) return []
   const modules = await getInstalledManifests()

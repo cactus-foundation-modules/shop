@@ -13,7 +13,6 @@
 // first.
 import type { ComponentType } from 'react'
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 
 // What the strip hands the provider's panel. Rendered inside shop's own
 // `.spd-panel`, so a contributed tab is dressed by the layout it sits in rather
@@ -96,6 +95,14 @@ const DEFAULT_ORDER = 50
  * beats a 500. The failure is logged so it is not silent.
  */
 export async function resolveShopDetailTabs(productId: string): Promise<ShopDetailTabExtra[]> {
+  // Dynamic on purpose: a static edge from here to the generated registry
+  // closes an import cycle, because the registry imports this module's own
+  // contributed components and they reach back to this file. Turbopack can
+  // fail a production build on that with "Cannot access 'x' before
+  // initialization" while every local check stays green. See
+  // scripts/check-import-cycles.mjs.
+  const { modulePublicExtensionPointComponents: moduleExtensionPointComponents } =
+    await import('@/lib/modules/extension-points.public')
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return []
 

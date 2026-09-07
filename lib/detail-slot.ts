@@ -15,7 +15,6 @@
 // shopper two prices and two buttons.
 import type { ComponentType } from 'react'
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 import type { PuckData, ShpProduct } from '@/modules/shop/lib/types'
 
@@ -237,6 +236,14 @@ export type ShopDetailProviderMatch = {
 // decides rather than merging them. Where none claims, the first provider found
 // comes back unclaimed, for its `coveredSlots` alone.
 export async function resolveShopDetailProvider(product: ShpProduct): Promise<ShopDetailProviderMatch | null> {
+  // Dynamic on purpose: a static edge from here to the generated registry
+  // closes an import cycle, because the registry imports this module's own
+  // contributed components and they reach back to this file. Turbopack can
+  // fail a production build on that with "Cannot access 'x' before
+  // initialization" while every local check stays green. See
+  // scripts/check-import-cycles.mjs.
+  const { modulePublicExtensionPointComponents: moduleExtensionPointComponents } =
+    await import('@/lib/modules/extension-points.public')
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return null
 

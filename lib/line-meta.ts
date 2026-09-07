@@ -8,7 +8,6 @@
 // moduleExtensionPointComponents map, discovered via the active modules'
 // manifests. It MUST be server-safe (this file runs inside lib/checkout.ts).
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { CartLineCharge, LineMeta, LineMetaBatch, ShpProduct } from '@/modules/shop/lib/types'
 
 // A declarative per-line picker a resolver can offer for display in the cart.
@@ -217,6 +216,14 @@ export async function gatherCartExtensionPoint<T>(point: string): Promise<T[]> {
 }
 
 async function gatherPoint<T>(point: string): Promise<T[]> {
+  // Dynamic on purpose: a static edge from here to the generated registry
+  // closes an import cycle, because the registry imports this module's own
+  // contributed components and they reach back to this file. Turbopack can
+  // fail a production build on that with "Cannot access 'x' before
+  // initialization" while every local check stays green. See
+  // scripts/check-import-cycles.mjs.
+  const { modulePublicExtensionPointComponents: moduleExtensionPointComponents } =
+    await import('@/lib/modules/extension-points.public')
   const fns = moduleExtensionPointComponents[point] ?? {}
   if (Object.keys(fns).length === 0) return []
   const modules = await getInstalledManifests()

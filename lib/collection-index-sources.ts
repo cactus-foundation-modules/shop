@@ -1,5 +1,4 @@
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { ShopCollectionIndexSource } from '@/modules/shop/lib/collection-index-sources-shared'
 
 // A generic way for another module to fold its own collection-shaped pages into
@@ -32,6 +31,14 @@ export async function resolveCollectionIndexSources(): Promise<Array<{
   source: ShopCollectionIndexSource
 }>> {
   const modules = await getInstalledManifests()
+  // Dynamic on purpose: a static edge from here to the generated registry
+  // closes an import cycle, because the registry imports this module's own
+  // contributed components and they reach back to this file. Turbopack can
+  // fail a production build on that with "Cannot access 'x' before
+  // initialization" while every local check stays green. See
+  // scripts/check-import-cycles.mjs.
+  const { modulePublicExtensionPointComponents: moduleExtensionPointComponents } =
+    await import('@/lib/modules/extension-points.public')
   const components = moduleExtensionPointComponents[COLLECTION_INDEX_SOURCE_POINT] ?? {}
   const out: Array<{ id: string; label: string; source: ShopCollectionIndexSource }> = []
   const seen = new Set<string>()

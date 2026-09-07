@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 
 // The couriers this shop uses, and what each one means for the customer.
@@ -22,6 +23,43 @@ type Faq = Courier['faqs'][number]
  *  would really catch somebody out is an empty entry from a trailing comma. */
 function splitStages(value: string): string[] {
   return value.split(',').map((s) => s.trim()).filter(Boolean)
+}
+
+/**
+ * A comma-separated list, edited as TEXT.
+ *
+ * The box keeps what was actually typed, and only the value handed upstream is
+ * split and trimmed. Binding the input straight to `list.join(', ')` looks
+ * equivalent and is not: every keystroke round-trips through a trim, so the
+ * space in "Assigned to Crew" is deleted the instant it is typed and the word
+ * can never be finished. That is exactly what happened.
+ *
+ * The text is seeded once, on mount, which is right here - each courier's row
+ * is keyed by its own id, so a different courier gets a different box rather
+ * than this one being re-pointed at another courier's stages.
+ */
+function StageListField({ label, hint, list, onChange }: {
+  label: string
+  hint: string
+  list: string[]
+  onChange: (next: string[]) => void
+}) {
+  const [text, setText] = useState(() => list.join(', '))
+
+  return (
+    <div className="field" style={{ marginBottom: 0 }}>
+      <label>{label}</label>
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value)
+          onChange(splitStages(e.target.value))
+        }}
+      />
+      <span className="field-hint">{hint}</span>
+    </div>
+  )
 }
 
 function newId(prefix: string): string {
@@ -92,35 +130,19 @@ export function CourierSettings({ value, onChange }: {
 
           {courier.trackingSource !== 'none' && (
             <div style={{ display: 'grid', gap: '0.75rem', marginTop: '0.5rem' }}>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label>Stages that mean it is out on a van</label>
-                <input
-                  type="text"
-                  value={courier.outForDeliveryStages.join(', ')}
-                  placeholder="Assigned to Crew, You&#39;re Up Next"
-                  onChange={(e) => patchCourier(courier.id, { outForDeliveryStages: splitStages(e.target.value) })}
-                />
-                <span className="field-hint">
-                  Separate them with commas, and use the courier&rsquo;s own wording exactly. Reaching
-                  one of these changes the customer&rsquo;s order from &ldquo;Delivery scheduled&rdquo;
-                  to &ldquo;Out for delivery&rdquo;.
-                </span>
-              </div>
+              <StageListField
+                label="Stages that mean it is out on a van"
+                list={courier.outForDeliveryStages}
+                onChange={(next) => patchCourier(courier.id, { outForDeliveryStages: next })}
+                hint="Separate them with commas, and use the courier's own wording exactly. Reaching one of these changes the customer's order from “Delivery scheduled” to “Out for delivery”."
+              />
 
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label>Stages that mean it has arrived</label>
-                <input
-                  type="text"
-                  value={courier.deliveredStages.join(', ')}
-                  placeholder="Complete"
-                  onChange={(e) => patchCourier(courier.id, { deliveredStages: splitStages(e.target.value) })}
-                />
-                <span className="field-hint">
-                  When every parcel on an order reaches one of these, and nothing is still owed, the
-                  order marks itself complete and the customer gets your completion message. Leave it
-                  empty and nothing is ever finished off automatically.
-                </span>
-              </div>
+              <StageListField
+                label="Stages that mean it has arrived"
+                list={courier.deliveredStages}
+                onChange={(next) => patchCourier(courier.id, { deliveredStages: next })}
+                hint="When every parcel on an order reaches one of these, and nothing is still owed, the order marks itself complete and the customer gets your completion message. Leave it empty and nothing is ever finished off automatically."
+              />
             </div>
           )}
 

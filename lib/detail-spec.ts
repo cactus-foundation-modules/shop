@@ -16,7 +16,6 @@
 // nothing until an attribute is actually put on the page.
 import type { ComponentType } from 'react'
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 
 // What shop hands the provider's panel. Rendered inside shop's own Specification
 // panel, so a replaced body is dressed by the layout it sits in rather than by
@@ -78,6 +77,14 @@ const POINT = 'shop.product-detail-spec'
  * table - and the failure is logged so it is not silent.
  */
 export async function resolveShopDetailSpec(productId: string): Promise<ShopDetailSpecExtra | null> {
+  // Dynamic on purpose: a static edge from here to the generated registry
+  // closes an import cycle, because the registry imports this module's own
+  // contributed components and they reach back to this file. Turbopack can
+  // fail a production build on that with "Cannot access 'x' before
+  // initialization" while every local check stays green. See
+  // scripts/check-import-cycles.mjs.
+  const { modulePublicExtensionPointComponents: moduleExtensionPointComponents } =
+    await import('@/lib/modules/extension-points.public')
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return null
 

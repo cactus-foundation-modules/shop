@@ -28,7 +28,6 @@
 // overlay icons. Every provider is asked and their answers merged.
 import type { ComponentType } from 'react'
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { PartImage } from '@/modules/shop/components/puck/parts/part-context'
 
 // What a mounted overlay is handed. `payload` is whatever the provider's `load`
@@ -111,6 +110,11 @@ export async function resolveShopCardExtras(productIds: string[]): Promise<Map<s
   const out = new Map<string, ShopCardExtra>()
   if (productIds.length === 0) return out
 
+  // Dynamic on purpose: search-cards imports this file and the registry
+  // imports search-cards, so a static edge here closes an import cycle. See
+  // lib/product-saved.ts and scripts/check-import-cycles.mjs.
+  const { modulePublicExtensionPointComponents: moduleExtensionPointComponents } =
+    await import('@/lib/modules/extension-points.public')
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return out
 

@@ -8,7 +8,6 @@
 // generated moduleExtensionPointComponents map. Batched deliberately: a grid
 // renders many cards at once, so a per-product call would be one query per card.
 import { getInstalledManifests } from '@/lib/modules/live-status'
-import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 
 // What a companion module says a product costs when it, not shop, owns the
 // pricing. `varies` is the difference between a range and a set of equally
@@ -54,6 +53,12 @@ export async function resolveCardFromPrices(productIds: string[]): Promise<Map<s
   const out = new Map<string, ShopCardFromPrice>()
   if (productIds.length === 0) return out
 
+  // Dynamic on purpose: search-cards imports this file and the registry imports
+  // search-cards, so a static edge here closes an import cycle. See
+  // lib/product-saved.ts for the full story and scripts/check-import-cycles.mjs
+  // for the guard.
+  const { modulePublicExtensionPointComponents: moduleExtensionPointComponents } =
+    await import('@/lib/modules/extension-points.public')
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return out
 
