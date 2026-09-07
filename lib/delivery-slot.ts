@@ -87,10 +87,80 @@ export function formatDeliveryDay(date: string): string {
   return `${weekday} ${ordinal(day)} of ${MONTHS[month - 1] ?? ''}`
 }
 
-/** "between 10:00 and 13:00", or '' unless both ends are real times. */
+/** "between 10:00 and 13:00", or '' unless both ends are real times. The exact
+ *  form, for anywhere the 24-hour clock is what is wanted. */
 export function formatDeliveryWindow(start: string | null, end: string | null): string {
   if (!isSlotTime(start) || !isSlotTime(end)) return ''
   return `between ${start} and ${end}`
+}
+
+/**
+ * "10am", "1pm", "10.30am" - the time as somebody says it rather than as a
+ * railway timetable prints it.
+ *
+ * Minutes are dropped when there are none, because "10:00am" is how a machine
+ * writes it. Midday and midnight get their names: "12pm" is genuinely ambiguous
+ * to a lot of people and a delivery window is the wrong place to find out.
+ */
+export function formatClockTime(time: string): string {
+  if (!isSlotTime(time)) return ''
+  const minutes = slotMinutes(time)
+  if (minutes === 0) return 'midnight'
+  if (minutes === 12 * 60) return 'midday'
+
+  const hour24 = Math.floor(minutes / 60)
+  const minute = minutes % 60
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12
+  const suffix = hour24 < 12 ? 'am' : 'pm'
+  return minute === 0 ? `${hour12}${suffix}` : `${hour12}.${String(minute).padStart(2, '0')}${suffix}`
+}
+
+/** "between 10am and 1pm" - the window for a customer to read. */
+export function formatDeliveryWindowSpoken(start: string | null, end: string | null): string {
+  if (!isSlotTime(start) || !isSlotTime(end)) return ''
+  return `between ${formatClockTime(start)} and ${formatClockTime(end)}`
+}
+
+/**
+ * The day, relative to today where that is the plainer thing to say: "today",
+ * "tomorrow", then the bare weekday for the rest of this coming week, and the
+ * full date beyond that.
+ *
+ * ONLY for a surface that is rendered when it is read - the order page, which
+ * is built on request. Never for an email. "Booked in for tomorrow" is true
+ * when it is sent and wrong by breakfast, and the person reading it has no way
+ * of telling which day the sender meant. Emails get formatDeliveryDay.
+ *
+ * Lower case for the relative words, so they sit inside a sentence - "Arranged
+ * for tomorrow" - while a weekday or a date keeps the capital it is entitled to.
+ */
+export function formatDeliveryDayRelative(date: string, today: string): string {
+  if (!isDeliveryDate(date)) return ''
+  if (!isDeliveryDate(today)) return formatDeliveryDay(date)
+  if (date === today) return 'today'
+
+  const days = daysBetween(today, date)
+  if (days === 1) return 'tomorrow'
+  // Two to six days out, the weekday alone is unambiguous: there is only one
+  // Thursday between here and next week. At seven it stops being so, which is
+  // exactly where this stops using it.
+  if (days >= 2 && days <= 6) {
+    const { year, month, day } = dateParts(date)
+    return WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()] ?? formatDeliveryDay(date)
+  }
+  return formatDeliveryDay(date)
+}
+
+/** Whole days from one calendar day to another. Both are days rather than
+ *  moments, so this is arithmetic on the calendar and no timezone comes into
+ *  it - the caller has already decided what "today" means. */
+function daysBetween(from: string, to: string): number {
+  const a = dateParts(from)
+  const b = dateParts(to)
+  const MS_PER_DAY = 24 * 60 * 60 * 1000
+  return Math.round(
+    (Date.UTC(b.year, b.month - 1, b.day) - Date.UTC(a.year, a.month - 1, a.day)) / MS_PER_DAY,
+  )
 }
 
 /** Today's date and time of day, in the shop's timezone rather than the

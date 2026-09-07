@@ -1,0 +1,52 @@
+import { describe, it, expect } from 'vitest'
+import { courierIsPolled, stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
+
+const furdeco = {
+  trackingSource: 'multidrop' as const,
+  outForDeliveryStages: ['Assigned to Crew', "You're Up Next"],
+  deliveredStages: ['Complete'],
+}
+
+describe('stageMeaning', () => {
+  it('reads the stages the owner has named', () => {
+    expect(stageMeaning(furdeco, 'Assigned to Crew')).toBe('out-for-delivery')
+    expect(stageMeaning(furdeco, "You're Up Next")).toBe('out-for-delivery')
+    expect(stageMeaning(furdeco, 'Complete')).toBe('delivered')
+  })
+
+  it('says nothing about a stage nobody has classified', () => {
+    // Progress is the safe answer: the parcel has moved, and the shop has no
+    // business acting on words it was not told the meaning of.
+    expect(stageMeaning(furdeco, 'Date Confirmed')).toBe('progress')
+    expect(stageMeaning(furdeco, 'Deliverable Products Received at Depot')).toBe('progress')
+  })
+
+  it('forgives the capitals and spacing of a settings box', () => {
+    expect(stageMeaning(furdeco, '  assigned to crew ')).toBe('out-for-delivery')
+    expect(stageMeaning({ ...furdeco, deliveredStages: [' complete '] }, 'Complete')).toBe('delivered')
+  })
+
+  it('lets delivered win a stage listed in both, since that stops the chasing', () => {
+    const muddled = { ...furdeco, outForDeliveryStages: ['Complete'], deliveredStages: ['Complete'] }
+    expect(stageMeaning(muddled, 'Complete')).toBe('delivered')
+  })
+
+  it('is progress for a courier that was never configured, or no stage at all', () => {
+    expect(stageMeaning(null, 'Complete')).toBe('progress')
+    expect(stageMeaning(furdeco, null)).toBe('progress')
+    expect(stageMeaning(furdeco, '')).toBe('progress')
+  })
+
+  it('concludes nothing for a courier with empty lists', () => {
+    const unconfigured = { trackingSource: 'multidrop' as const, outForDeliveryStages: [], deliveredStages: [] }
+    expect(stageMeaning(unconfigured, 'Complete')).toBe('progress')
+  })
+})
+
+describe('courierIsPolled', () => {
+  it('is only true for a courier set to a tracking source', () => {
+    expect(courierIsPolled({ trackingSource: 'multidrop' })).toBe(true)
+    expect(courierIsPolled({ trackingSource: 'none' })).toBe(false)
+    expect(courierIsPolled(null)).toBe(false)
+  })
+})

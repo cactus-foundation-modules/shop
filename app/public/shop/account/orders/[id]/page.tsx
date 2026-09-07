@@ -308,7 +308,11 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           day: railBooking.day,
           window: railBooking.window,
           progress: railBooking.progress?.progress ?? 0,
-          arrived: railBooking.progress?.phase === 'passed',
+          // The courier's own word first, the clock only as a fallback: a
+          // booked window says what was planned, the tracking page says what is
+          // happening.
+          underway: railBooking.outForDelivery || railBooking.progress?.phase === 'during',
+          arrived: railBooking.arrived,
         }
       : null,
   })
@@ -318,7 +322,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   // across a rail the morning after is somebody's furniture being described as
   // "on its way" when it is not.
   const railShipment = railBooking ? shipments.find((s) => s.id === railBooking.shipmentId) ?? null : null
-  const van = railShipment && railBooking && railBooking.progress?.phase !== 'passed'
+  const van = railShipment && railBooking && !railBooking.arrived
     ? {
         date: railShipment.deliveryDate ?? '',
         slotStart: railShipment.deliverySlotStart,
@@ -569,7 +573,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                       <span className="sod-parcel-booked">
                         Arranged for {deliveryById.get(shipment.id)?.day}
                         {deliveryById.get(shipment.id)?.window
-                          ? `, ${deliveryById.get(shipment.id)?.window}`
+                          ? ` ${deliveryById.get(shipment.id)?.window}`
                           : ''}
                       </span>
                     )}

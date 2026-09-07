@@ -17,6 +17,13 @@ import type { ShpConfig } from '@/modules/shop/lib/config'
 type Courier = ShpConfig['deliveryCouriers'][number]
 type Faq = Courier['faqs'][number]
 
+/** A comma-separated list of stage names, as typed. Blanks dropped, spaces
+ *  trimmed - the matching is case-insensitive anyway, so the only thing that
+ *  would really catch somebody out is an empty entry from a trailing comma. */
+function splitStages(value: string): string[] {
+  return value.split(',').map((s) => s.trim()).filter(Boolean)
+}
+
 function newId(prefix: string): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return `${prefix}_${crypto.randomUUID()}`
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
@@ -66,6 +73,56 @@ export function CourierSettings({ value, onChange }: {
             on the parcel for you; the customer just gets the delivery date and time on their own
             order page instead.
           </p>
+
+          <div className="field" style={{ marginTop: '0.75rem' }}>
+            <label>Follow this courier&rsquo;s tracking automatically</label>
+            <select
+              value={courier.trackingSource}
+              onChange={(e) => patchCourier(courier.id, { trackingSource: e.target.value as Courier['trackingSource'] })}
+            >
+              <option value="none">No - I&rsquo;ll update deliveries myself</option>
+              <option value="multidrop">Yes - Multidrop tracking pages</option>
+            </select>
+            <span className="field-hint">
+              Checks each parcel&rsquo;s tracking page once an hour and keeps the answer on your own
+              site, so the customer never has to visit theirs. Only for couriers whose tracking link
+              is a multidrop.link address.
+            </span>
+          </div>
+
+          {courier.trackingSource !== 'none' && (
+            <div style={{ display: 'grid', gap: '0.75rem', marginTop: '0.5rem' }}>
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Stages that mean it is out on a van</label>
+                <input
+                  type="text"
+                  value={courier.outForDeliveryStages.join(', ')}
+                  placeholder="Assigned to Crew, You&#39;re Up Next"
+                  onChange={(e) => patchCourier(courier.id, { outForDeliveryStages: splitStages(e.target.value) })}
+                />
+                <span className="field-hint">
+                  Separate them with commas, and use the courier&rsquo;s own wording exactly. Reaching
+                  one of these changes the customer&rsquo;s order from &ldquo;Delivery scheduled&rdquo;
+                  to &ldquo;Out for delivery&rdquo;.
+                </span>
+              </div>
+
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Stages that mean it has arrived</label>
+                <input
+                  type="text"
+                  value={courier.deliveredStages.join(', ')}
+                  placeholder="Complete"
+                  onChange={(e) => patchCourier(courier.id, { deliveredStages: splitStages(e.target.value) })}
+                />
+                <span className="field-hint">
+                  When every parcel on an order reaches one of these, and nothing is still owed, the
+                  order marks itself complete and the customer gets your completion message. Leave it
+                  empty and nothing is ever finished off automatically.
+                </span>
+              </div>
+            </div>
+          )}
 
           <div style={{ display: 'grid', gap: '0.75rem', marginTop: '0.5rem' }}>
             <strong style={{ fontSize: '0.8125rem' }}>Delivery questions</strong>
@@ -134,7 +191,15 @@ export function CourierSettings({ value, onChange }: {
         type="button"
         className="btn btn-secondary btn-sm"
         style={{ justifySelf: 'start' }}
-        onClick={() => onChange([...value, { id: newId('cou'), name: '', showTrackingLink: true, faqs: [] }])}
+        onClick={() => onChange([...value, {
+          id: newId('cou'),
+          name: '',
+          showTrackingLink: true,
+          trackingSource: 'none',
+          outForDeliveryStages: [],
+          deliveredStages: [],
+          faqs: [],
+        }])}
       >
         Add a courier
       </button>

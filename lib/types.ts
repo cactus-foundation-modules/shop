@@ -568,6 +568,16 @@ export type ShpShipment = {
   /** When the customer was told about the window, so a later correction to the
    *  parcel does not tell them all over again. */
   slotNotifiedAt: Date | null
+  /** Where the courier's own tracking says the parcel has got to, in the
+   *  courier's own words. What that MEANS is a per-courier setting, applied at
+   *  read time so correcting it fixes parcels already recorded. */
+  trackingStage: string | null
+  /** When the stage last changed, as against when it was last looked at. */
+  trackingStageAt: Date | null
+  trackingCheckedAt: Date | null
+  /** When the courier said it arrived. Not the same as the order being
+   *  complete: another parcel may still be out. */
+  deliveredAt: Date | null
   notes: string | null
   createdAt: Date
   updatedAt: Date

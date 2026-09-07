@@ -10,9 +10,20 @@ const FURDECO = {
   id: 'cou_furdeco',
   name: 'Furdeco',
   showTrackingLink: false,
+  trackingSource: 'multidrop' as const,
+  outForDeliveryStages: ['Assigned to Crew'],
+  deliveredStages: ['Complete'],
   faqs: [{ id: 'faq_1', question: 'Will they take it upstairs?', answer: 'No.' }],
 }
-const DPD = { id: 'cou_dpd', name: 'DPD', showTrackingLink: true, faqs: [] }
+const DPD = {
+  id: 'cou_dpd',
+  name: 'DPD',
+  showTrackingLink: true,
+  trackingSource: 'none' as const,
+  outForDeliveryStages: [],
+  deliveredStages: [],
+  faqs: [],
+}
 const config = { deliveryCouriers: [FURDECO, DPD] }
 
 const parcel = (courierId: string | null, carrier: string | null) => ({ courierId, carrier })

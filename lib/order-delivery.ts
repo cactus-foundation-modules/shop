@@ -1,5 +1,12 @@
-import { deliveryProgress, formatDeliveryDay, formatDeliveryWindow, type DeliveryProgress } from '@/modules/shop/lib/delivery-slot'
-import { customerMaySeeTracking, faqsForShipment, type ShpCourier } from '@/modules/shop/lib/courier-faqs'
+import {
+  deliveryProgress,
+  formatDeliveryDayRelative,
+  formatDeliveryWindowSpoken,
+  nowInTimezone,
+  type DeliveryProgress,
+} from '@/modules/shop/lib/delivery-slot'
+import { courierForShipment, customerMaySeeTracking, faqsForShipment, type ShpCourier } from '@/modules/shop/lib/courier-faqs'
+import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import type { ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
@@ -19,12 +26,22 @@ export type ParcelDelivery = {
    *  September' compares as a weekday name, which would order a set of parcels
    *  alphabetically by day of the week. */
   date: string
-  /** 'Tuesday 8th of September', or '' where no day is booked. */
+  /** 'tomorrow', 'Thursday', or 'Tuesday 8th of September' once it is far
+   *  enough out to need the date. Relative because this is only ever rendered
+   *  on request - an EMAIL must use the absolute form, since "tomorrow" is
+   *  wrong by breakfast. */
   day: string
-  /** 'between 10:00 and 13:00', or '' until the courier confirms one. */
+  /** 'between 10am and 1pm', or '' until the courier confirms one. */
   window: string
   /** Where the clock has got to across the booked window. */
   progress: DeliveryProgress | null
+  /** The courier's own tracking says a van is out with it. Beats the clock,
+   *  which only ever knew what was BOOKED - a delivery can run early, run late,
+   *  or not happen at all, and the courier is the one who knows. */
+  outForDelivery: boolean
+  /** The courier says it has arrived. Again, better evidence than the window
+   *  having elapsed. */
+  arrived: boolean
   /** Whether the customer is offered the courier's own tracking page. */
   showTracking: boolean
   faqs: ShpCourier['faqs']
@@ -37,20 +54,29 @@ export function parcelDelivery(
   timezone: string,
 ): ParcelDelivery {
   const date = shipment.deliveryDate ?? ''
+  const meaning = stageMeaning(courierForShipment(config, shipment), shipment.trackingStage)
+  const progress = date
+    ? deliveryProgress({
+        date,
+        slotStart: shipment.deliverySlotStart,
+        slotEnd: shipment.deliverySlotEnd,
+        now,
+        timezone,
+      })
+    : null
+
   return {
     shipmentId: shipment.id,
     date,
-    day: formatDeliveryDay(date),
-    window: formatDeliveryWindow(shipment.deliverySlotStart, shipment.deliverySlotEnd),
-    progress: date
-      ? deliveryProgress({
-          date,
-          slotStart: shipment.deliverySlotStart,
-          slotEnd: shipment.deliverySlotEnd,
-          now,
-          timezone,
-        })
-      : null,
+    day: formatDeliveryDayRelative(date, nowInTimezone(now, timezone).date),
+    window: formatDeliveryWindowSpoken(shipment.deliverySlotStart, shipment.deliverySlotEnd),
+    progress,
+    outForDelivery: meaning === 'out-for-delivery',
+    // Delivered is the courier's word for it where there is one, and the window
+    // having gone by where there is not. The clock is the weaker of the two and
+    // never overrules the stronger.
+    arrived: meaning === 'delivered'
+      || (meaning === 'progress' && progress?.phase === 'passed'),
     showTracking: customerMaySeeTracking(config, shipment),
     faqs: faqsForShipment(config, shipment),
   }
@@ -73,7 +99,7 @@ export function railDelivery(deliveries: ParcelDelivery[]): ParcelDelivery | nul
   const booked = deliveries.filter((d) => d.day && d.progress)
   if (booked.length === 0) return null
 
-  const upcoming = booked.filter((d) => d.progress?.phase !== 'passed')
+  const upcoming = booked.filter((d) => !d.arrived)
   const pool = upcoming.length > 0 ? upcoming : booked
   // Compared on the ISO day, which sorts correctly as text and is the only
   // reason that field is carried around next to the worded one.

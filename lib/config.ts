@@ -421,6 +421,19 @@ export const ShpConfigSchema = z.object({
         id: z.string().min(1).max(64),
         name: z.string().min(1).max(80),
         showTrackingLink: z.boolean().default(true),
+        // Whether the shop reads this courier's tracking page on a schedule,
+        // and what the stages it finds there mean.
+        //
+        // The stage NAMES are settings rather than code because they are the
+        // part nobody can be sure of from the outside: whether "Assigned to
+        // Crew" means a van is out this morning or merely that tomorrow's round
+        // has been planned is a question for the carrier, and the answer must
+        // not need a release. Match is case-insensitive and trimmed; a stage
+        // named in neither list is progress the shop notes and says nothing
+        // about.
+        trackingSource: z.enum(['none', 'multidrop']).default('none'),
+        outForDeliveryStages: z.array(z.string().min(1).max(120)).default([]),
+        deliveredStages: z.array(z.string().min(1).max(120)).default([]),
         faqs: z
           .array(
             z.object({

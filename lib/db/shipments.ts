@@ -36,6 +36,10 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     deliverySlotStart: (r.delivery_slot_start as string | null) ?? null,
     deliverySlotEnd: (r.delivery_slot_end as string | null) ?? null,
     slotNotifiedAt: (r.slot_notified_at as Date | null) ?? null,
+    trackingStage: (r.tracking_stage as string | null) ?? null,
+    trackingStageAt: (r.tracking_stage_at as Date | null) ?? null,
+    trackingCheckedAt: (r.tracking_checked_at as Date | null) ?? null,
+    deliveredAt: (r.delivered_at as Date | null) ?? null,
     notes: (r.notes as string | null) ?? null,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
@@ -473,4 +477,82 @@ export async function claimSlotNotification(shipmentId: string, orderId: string)
     WHERE "id" = ${shipmentId} AND "order_id" = ${orderId} AND "slot_notified_at" IS NULL
   `
   return claimed > 0
+}
+
+// Parcels worth asking a courier about: a tracking link, not yet delivered, and
+// on an order that is still live. Oldest check first, so a run that hits its cap
+// works its way round rather than asking about the same parcel every hour.
+//
+// Capped by the caller. A scheduled route that fans out over an unbounded list
+// is one busy Christmas away from taking longer than its own interval.
+export async function listShipmentsForTrackingPoll(limit: number): Promise<ShpShipmentWithItems[]> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT s.* FROM "shp_shipments" s
+    JOIN "shp_orders" o ON o."id" = s."order_id"
+    WHERE s."tracking_url" IS NOT NULL
+      AND s."delivered_at" IS NULL
+      AND o."status" NOT IN ('COMPLETED', 'CANCELLED', 'REFUNDED')
+    ORDER BY s."tracking_checked_at" ASC NULLS FIRST, s."shipped_at" ASC
+    LIMIT ${limit}
+  `
+  // The lines are not read here: the poller does not care what is in the parcel,
+  // and a second query per parcel to find out would be the expensive half of a
+  // job that is meant to be cheap.
+  return rows.map((row) => ({ ...mapShipment(row), items: [] }))
+}
+
+/**
+ * Write back what the courier's page said.
+ *
+ * `checked` always moves, whether anything changed or not - that is what makes
+ * "this feed has gone quiet" answerable, and what stops the poller returning to
+ * the same parcel every run. `stage_at` moves only when the stage itself
+ * changes, so it means "when it last moved" rather than "when we last looked".
+ *
+ * `delivered_at` is set once and never cleared here. A courier that
+ * un-completes a parcel is either correcting itself or having a bad afternoon;
+ * either way an order that has been marked finished is not something a
+ * scheduled job should quietly reopen behind the owner's back.
+ */
+export async function recordTrackingStage(shipmentId: string, input: {
+  stage: string | null
+  delivered: boolean
+}): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "tracking_checked_at" = CURRENT_TIMESTAMP,
+        "tracking_stage_at" = CASE
+          WHEN ${input.stage}::text IS DISTINCT FROM "tracking_stage" THEN CURRENT_TIMESTAMP
+          ELSE "tracking_stage_at"
+        END,
+        "tracking_stage" = COALESCE(${input.stage}::text, "tracking_stage"),
+        "delivered_at" = CASE
+          WHEN ${input.delivered} AND "delivered_at" IS NULL THEN CURRENT_TIMESTAMP
+          ELSE "delivered_at"
+        END,
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId}
+  `
+}
+
+/** Marks only that this parcel was looked at, for a fetch that failed. Without
+ *  it a courier whose site is down would be retried first every single run,
+ *  starving every other parcel behind the cap. */
+export async function recordTrackingCheck(shipmentId: string): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "shp_shipments" SET "tracking_checked_at" = CURRENT_TIMESTAMP WHERE "id" = ${shipmentId}
+  `
+}
+
+/** Every parcel on an order has been delivered, and there was at least one.
+ *  The question the auto-complete hangs on. */
+export async function allShipmentsDelivered(orderId: string): Promise<boolean> {
+  const rows = await prisma.$queryRaw<{ total: bigint; delivered: bigint }[]>`
+    SELECT COUNT(*)::bigint AS total,
+           COUNT("delivered_at")::bigint AS delivered
+    FROM "shp_shipments" WHERE "order_id" = ${orderId}
+  `
+  const row = rows[0]
+  if (!row) return false
+  return row.total > 0n && row.total === row.delivered
 }

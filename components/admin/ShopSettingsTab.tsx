@@ -9,7 +9,6 @@ import type { ShpAdminPaymentMethod } from '@/modules/shop/lib/payments/admin-me
 import { PaymentsSettings, PAYMENT_METHODS_TAB, isHostedPaymentPanelTab } from '@/modules/shop/components/admin/PaymentsSettings'
 import { PRICE_TYPES, PRICE_TYPE_META } from '@/modules/shop/lib/pricing'
 import { setTabParams, readTabParam } from '@/modules/shop/lib/admin/tab-url'
-import { CourierSettings } from '@/modules/shop/components/admin/CourierSettings'
 
 type SubTab = 'general' | 'checkout' | 'payments' | 'invoices' | 'notifications'
 
@@ -497,19 +496,6 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             options picked on it sends them to the product page with those same options already chosen, because
             guessing at last year&rsquo;s engraving is how somebody ends up with the wrong name on it.
           </p>
-
-          <hr style={hr} />
-          <h3 style={sectionHeading}>Couriers</h3>
-          <p className="field-hint" style={{ marginTop: '-0.5rem', marginBottom: '0.75rem' }}>
-            The couriers you actually use, so dispatch is a pick from a list rather than a name typed
-            out again on every parcel. Leave it empty and dispatch keeps the plain box it has always
-            had. Each courier carries its own delivery questions, and its own answer to whether
-            customers should see its tracking page.
-          </p>
-          <CourierSettings
-            value={config.deliveryCouriers}
-            onChange={(next) => set('deliveryCouriers', next)}
-          />
 
           <hr style={hr} />
           <h3 style={sectionHeading}>Cancellations and returns</h3>

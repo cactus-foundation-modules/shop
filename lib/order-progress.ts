@@ -43,6 +43,11 @@ export type OrderDelivery = {
   window: string
   /** 0 to 1 across the booked window. */
   progress: number
+  /** The booked window is running right now, so the thing genuinely is out on a
+   *  van. Before it, the delivery is arranged and nothing more - saying "out for
+   *  delivery" the day before is the kind of small untruth that has somebody
+   *  waiting in on the wrong morning. */
+  underway: boolean
   /** The window has been and gone. Not the same as the order being complete:
    *  somebody still has to confirm that it actually turned up. */
   arrived: boolean
@@ -80,6 +85,12 @@ export function orderStopped(status: ShpOrder['status']): boolean {
  *
  * Empty for a cancelled or refunded order: see orderStopped.
  */
+/** First letter up, the rest left alone - 'tomorrow' becomes 'Tomorrow' while
+ *  'Tuesday 8th of September' is unharmed. */
+function sentence(text: string): string {
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : text
+}
+
 export function orderProgressSteps(input: OrderProgressInput): OrderStep[] {
   const { order, lines, lastShippedAt, delivery } = input
   if (orderStopped(order.status)) return []
@@ -117,7 +128,7 @@ export function orderProgressSteps(input: OrderProgressInput): OrderStep[] {
     placed: 'Ordered',
     paid: 'Paid',
     dispatched: 'Dispatched',
-    delivery: arrived ? 'Delivery' : 'Out for delivery',
+    delivery: arrived ? 'Delivery' : delivery?.underway ? 'Out for delivery' : 'Delivery scheduled',
     complete: 'Complete',
   }
   const at: Record<OrderStep['key'], Date | null> = {
@@ -151,7 +162,10 @@ export function orderProgressSteps(input: OrderProgressInput): OrderStep[] {
         // question, and it does not stop being the question because the van has
         // not set off yet.
         : key === 'delivery' && delivery
-          ? [delivery.day, delivery.window].filter(Boolean).join(', ')
+          // "Tomorrow between 10am and 1pm". One sentence, capitalised at the
+          // front, because the day arrives lower case so it can also sit inside
+          // "Arranged for tomorrow" on the parcel card.
+          ? sentence([delivery.day, delivery.window].filter(Boolean).join(' '))
           : null,
       progress: key === 'delivery' && delivery ? delivery.progress : null,
     }

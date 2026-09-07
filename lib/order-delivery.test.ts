@@ -5,7 +5,15 @@ import type { ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
 const config = {
   deliveryCouriers: [
-    { id: 'cou_furdeco', name: 'Furdeco', showTrackingLink: false, faqs: [{ id: 'f1', question: 'Q', answer: 'A' }] },
+    {
+      id: 'cou_furdeco',
+      name: 'Furdeco',
+      showTrackingLink: false,
+      trackingSource: 'multidrop' as const,
+      outForDeliveryStages: ['Assigned to Crew'],
+      deliveredStages: ['Complete'],
+      faqs: [{ id: 'f1', question: 'Q', answer: 'A' }],
+    },
   ],
 }
 
@@ -22,6 +30,10 @@ function shipment(patch: Partial<ShpShipmentWithItems>): ShpShipmentWithItems {
     deliverySlotStart: null,
     deliverySlotEnd: null,
     slotNotifiedAt: null,
+    trackingStage: null,
+    trackingStageAt: null,
+    trackingCheckedAt: null,
+    deliveredAt: null,
     notes: null,
     createdAt: new Date('2026-09-07T09:00:00Z'),
     updatedAt: new Date('2026-09-07T09:00:00Z'),
@@ -39,8 +51,11 @@ describe('parcelDelivery', () => {
       'Europe/London',
     )
 
-    expect(delivery.day).toBe('Tuesday 8th of September')
-    expect(delivery.window).toBe('between 10:00 and 13:00')
+    // Relative and spoken, because this is only ever rendered on request: the
+    // page is built when it is read, so "tomorrow" cannot go stale on it. The
+    // email uses the absolute form for exactly the opposite reason.
+    expect(delivery.day).toBe('tomorrow')
+    expect(delivery.window).toBe('between 10am and 1pm')
     expect(delivery.progress).toEqual({ progress: 0, phase: 'upcoming' })
     expect(delivery.showTracking).toBe(false)
     expect(delivery.faqs).toHaveLength(1)
@@ -59,7 +74,7 @@ describe('parcelDelivery', () => {
       new Date('2026-09-07T12:00:00Z'),
       'Europe/London',
     )
-    expect(delivery.day).toBe('Tuesday 8th of September')
+    expect(delivery.day).toBe('tomorrow')
     expect(delivery.window).toBe('')
   })
 })
@@ -70,6 +85,8 @@ const booked = (id: string, date: string, phase: 'upcoming' | 'passed'): ParcelD
   day: `day ${date}`,
   window: '',
   progress: { progress: phase === 'passed' ? 1 : 0, phase },
+  outForDelivery: false,
+  arrived: phase === 'passed',
   showTracking: true,
   faqs: [],
 })
@@ -117,14 +134,31 @@ describe('orderProgressSteps with a delivery', () => {
       order,
       lines,
       lastShippedAt: new Date('2026-09-06T09:00:00Z'),
-      delivery: { day: 'Tuesday 8th of September', window: 'between 10:00 and 13:00', progress: 0.5, arrived: false },
+      delivery: { day: 'Tuesday 8th of September', window: 'between 10:00 and 13:00', progress: 0.5, underway: true, arrived: false },
     })
 
     expect(steps.map((s) => s.key)).toEqual(['placed', 'paid', 'dispatched', 'delivery', 'complete'])
     const van = steps.find((s) => s.key === 'delivery')
     expect(van?.state).toBe('now')
-    expect(van?.note).toBe('Tuesday 8th of September, between 10:00 and 13:00')
+    expect(van?.label).toBe('Out for delivery')
+    expect(van?.note).toBe('Tuesday 8th of September between 10:00 and 13:00')
     expect(van?.progress).toBe(0.5)
+  })
+
+  it('says the delivery is scheduled until the window actually opens', () => {
+    // The complaint this answers: a parcel booked for tomorrow is not "out for
+    // delivery", and saying so has somebody waiting in a day early.
+    const steps = orderProgressSteps({
+      order,
+      lines,
+      lastShippedAt: new Date('2026-09-06T09:00:00Z'),
+      delivery: { day: 'tomorrow', window: 'between 10am and 1pm', progress: 0, underway: false, arrived: false },
+    })
+
+    expect(steps.find((s) => s.key === 'delivery')?.label).toBe('Delivery scheduled')
+    // Capitalised for the rail even though the day arrives lower case, so it
+    // can also sit inside "Arranged for tomorrow" on the parcel card.
+    expect(steps.find((s) => s.key === 'delivery')?.note).toBe('Tomorrow between 10am and 1pm')
   })
 
   it('does not tick Complete off a clock', () => {
@@ -134,7 +168,7 @@ describe('orderProgressSteps with a delivery', () => {
       order,
       lines,
       lastShippedAt: new Date('2026-09-06T09:00:00Z'),
-      delivery: { day: 'Tuesday 8th of September', window: 'between 10:00 and 13:00', progress: 1, arrived: true },
+      delivery: { day: 'Tuesday 8th of September', window: 'between 10:00 and 13:00', progress: 1, underway: false, arrived: true },
     })
 
     expect(steps.find((s) => s.key === 'delivery')?.state).toBe('done')

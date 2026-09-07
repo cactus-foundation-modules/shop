@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import {
   deliveryProgress,
+  formatClockTime,
   formatDeliveryDay,
+  formatDeliveryDayRelative,
   formatDeliveryWindow,
+  formatDeliveryWindowSpoken,
   isDeliveryDate,
   isSlotTime,
   nowInTimezone,
@@ -155,5 +158,67 @@ describe('deliveryProgress', () => {
 
   it('is nothing at all without a real date', () => {
     expect(deliveryProgress({ ...slot, date: '', now: new Date() })).toBeNull()
+  })
+})
+
+describe('formatClockTime', () => {
+  it('says it the way a person does', () => {
+    expect(formatClockTime('10:00')).toBe('10am')
+    expect(formatClockTime('13:00')).toBe('1pm')
+    expect(formatClockTime('09:30')).toBe('9.30am')
+    expect(formatClockTime('17:45')).toBe('5.45pm')
+  })
+
+  it('names midday and midnight rather than leaving somebody to guess', () => {
+    // "12pm" is genuinely ambiguous to a lot of people, and a delivery window
+    // is the wrong place to find that out.
+    expect(formatClockTime('12:00')).toBe('midday')
+    expect(formatClockTime('00:00')).toBe('midnight')
+    expect(formatClockTime('12:30')).toBe('12.30pm')
+    expect(formatClockTime('00:15')).toBe('12.15am')
+  })
+
+  it('prints nothing for a time that is not one', () => {
+    expect(formatClockTime('25:00')).toBe('')
+  })
+})
+
+describe('formatDeliveryWindowSpoken', () => {
+  it('is the window a customer reads', () => {
+    expect(formatDeliveryWindowSpoken('10:00', '13:00')).toBe('between 10am and 1pm')
+  })
+
+  it('needs both ends, same as the exact form', () => {
+    expect(formatDeliveryWindowSpoken('10:00', null)).toBe('')
+  })
+})
+
+describe('formatDeliveryDayRelative', () => {
+  it('prefers the plain word where there is one', () => {
+    expect(formatDeliveryDayRelative('2026-09-07', '2026-09-07')).toBe('today')
+    expect(formatDeliveryDayRelative('2026-09-08', '2026-09-07')).toBe('tomorrow')
+  })
+
+  it('names the weekday for the rest of the coming week', () => {
+    expect(formatDeliveryDayRelative('2026-09-09', '2026-09-07')).toBe('Wednesday')
+    expect(formatDeliveryDayRelative('2026-09-13', '2026-09-07')).toBe('Sunday')
+  })
+
+  it('goes back to the date once a weekday would be ambiguous', () => {
+    // Seven days out there are two Mondays in play, so the bare weekday stops
+    // being an answer.
+    expect(formatDeliveryDayRelative('2026-09-14', '2026-09-07')).toBe('Monday 14th of September')
+  })
+
+  it('does not say "tomorrow" about a day that has been', () => {
+    expect(formatDeliveryDayRelative('2026-09-06', '2026-09-07')).toBe('Sunday 6th of September')
+  })
+
+  it('crosses a month end without arithmetic trouble', () => {
+    expect(formatDeliveryDayRelative('2026-10-01', '2026-09-30')).toBe('tomorrow')
+  })
+
+  it('falls back to the full date when today is not known', () => {
+    expect(formatDeliveryDayRelative('2026-09-08', '')).toBe('Tuesday 8th of September')
   })
 })

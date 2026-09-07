@@ -6,12 +6,16 @@ import { setTabParams } from '@/modules/shop/lib/admin/tab-url'
 import type { ShpTaxClass, ShpShippingZone, ShpTaxZoneRate, ShpShippingRate, ShpShippingRateType } from '@/modules/shop/lib/types'
 import type { PriceDisplayTax } from '@/modules/shop/lib/tax-display-shared'
 import { useConfirm } from '@/modules/shop/components/admin/dialogs'
+import { CourierSettingsPanel } from '@/modules/shop/components/admin/CourierSettingsPanel'
 
 const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.25rem 0' }
 const sectionHeading: React.CSSProperties = { margin: '0 0 0.5rem', fontSize: '0.9375rem', fontWeight: 600 }
 const detailsStyle: React.CSSProperties = { marginBottom: '0.75rem' }
 const summaryStyle: React.CSSProperties = { cursor: 'pointer', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }
 const panelStyle: React.CSSProperties = { border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.75rem', marginTop: '0.75rem' }
+
+/** This screen's own second tab, and the value `?tab=` carries for it. */
+const COURIERS_TAB = 'couriers'
 
 const RATE_TYPE_LABELS: Record<ShpShippingRateType, string> = { FLAT: 'Flat rate', WEIGHT_BASED: 'Weight-based', FREE: 'Free shipping' }
 
@@ -57,7 +61,7 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
   // Which tab is showing. Tax & shipping itself is the default; `initialTab`
   // (from `?tab=`) only wins when it names a tab a module actually contributed.
   const [activeTab, setActiveTab] = useState<string>(() => {
-    const ids = new Set(extraTabs.map((t) => t.id))
+    const ids = new Set([COURIERS_TAB, ...extraTabs.map((t) => t.id)])
     return initialTab && ids.has(initialTab) ? initialTab : 'tax-shipping'
   })
 
@@ -335,7 +339,15 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
   // declared order, and only the active one's panel is mounted.
   const orderedTabs = [...extraTabs].sort((a, b) => a.order - b.order)
   const onBase = activeTab === 'tax-shipping'
-  const activeNode = onBase ? null : orderedTabs.find((t) => t.id === activeTab)?.node ?? null
+  const activeNode = onBase
+    ? null
+    // Couriers is this screen's own second tab rather than a contributed one:
+    // how the goods get there is the same question as what the delivery costs,
+    // and it was previously buried in Shop settings between "Order history" and
+    // "Cancellations", where nobody looking for it ever found it.
+    : activeTab === COURIERS_TAB
+      ? <CourierSettingsPanel />
+      : orderedTabs.find((t) => t.id === activeTab)?.node ?? null
 
   return (
     <div>
@@ -343,14 +355,14 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
         <h1 className="page-title">Tax &amp; shipping</h1>
       </div>
 
-      {orderedTabs.length > 0 && (
-        <TabStrip
-          items={[
-            { key: 'tax-shipping', label: 'Tax & shipping', active: onBase, onClick: () => selectTab('tax-shipping') },
-            ...orderedTabs.map((t) => ({ key: t.id, label: t.label, active: activeTab === t.id, onClick: () => selectTab(t.id) })),
-          ]}
-        />
-      )}
+      {/* Always shown now: Couriers is here whatever else is installed. */}
+      <TabStrip
+        items={[
+          { key: 'tax-shipping', label: 'Tax & shipping', active: onBase, onClick: () => selectTab('tax-shipping') },
+          { key: COURIERS_TAB, label: 'Couriers', active: activeTab === COURIERS_TAB, onClick: () => selectTab(COURIERS_TAB) },
+          ...orderedTabs.map((t) => ({ key: t.id, label: t.label, active: activeTab === t.id, onClick: () => selectTab(t.id) })),
+        ]}
+      />
 
       {!onBase ? activeNode : (
       <>

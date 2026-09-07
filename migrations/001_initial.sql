@@ -678,6 +678,15 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     -- Set the first time the slot email goes out, so correcting a typo on the
     -- parcel afterwards does not send it again.
     "slot_notified_at" TIMESTAMP(3),
+    -- Where the courier's own tracking says the parcel has got to, read on a
+    -- schedule rather than while a customer waits. The stage is kept in the
+    -- courier's own words and translated at READ time, so an owner correcting
+    -- what a stage means fixes the parcels already recorded too. Also shipped
+    -- as migrations/040_tracking_stages.sql for existing installs.
+    "tracking_stage" TEXT,
+    "tracking_stage_at" TIMESTAMP(3),
+    "tracking_checked_at" TIMESTAMP(3),
+    "delivered_at" TIMESTAMP(3),
     "notes" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -694,6 +703,9 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
 );
 
 CREATE INDEX IF NOT EXISTS "shp_shipments_order_id_idx" ON "shp_shipments" ("order_id");
+CREATE INDEX IF NOT EXISTS "shp_shipments_tracking_poll_idx"
+    ON "shp_shipments" ("tracking_checked_at")
+    WHERE "tracking_url" IS NOT NULL AND "delivered_at" IS NULL;
 
 CREATE TABLE IF NOT EXISTS "shp_shipment_items" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
