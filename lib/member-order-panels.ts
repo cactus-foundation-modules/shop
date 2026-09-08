@@ -86,6 +86,15 @@ export type ShopMemberOrderPanelProvider = {
    *  a provider that says nothing lands after the lot. */
   order?: number
   /**
+   * Which side of the receipt the card sits on. `after` - the default - puts it
+   * straight under "What you ordered"; `before` puts it above.
+   *
+   * A panel that asks the customer to do something is worth meeting before a
+   * receipt they have already read, whereas one that only reports on the order
+   * reads better once they know what the order was.
+   */
+  placement?: ShopMemberOrderPanelPlacement
+  /**
    * Everything this provider holds for this order, resolved while the page
    * renders so a contributed card is in the first HTML rather than in a fetch
    * behind it.
@@ -113,15 +122,21 @@ export type ShopMemberOrderPanel = {
   id: string
   title: string
   order: number
+  placement: ShopMemberOrderPanelPlacement
   payload: unknown
   Panel: ComponentType<ShopMemberOrderPanelProps>
 }
+
+/** Above the receipt card, or below it. */
+export type ShopMemberOrderPanelPlacement = 'before' | 'after'
 
 type ExtensionPointEntry = { point: string; id: string }
 
 const POINT = 'shop.member-order-panels'
 
 const DEFAULT_ORDER = 50
+
+const DEFAULT_PLACEMENT: ShopMemberOrderPanelPlacement = 'after'
 
 /**
  * Resolved once per order page. Returns [] on a shop-only site and for any order
@@ -174,6 +189,7 @@ export async function resolveShopMemberOrderPanels(
           id: entry.id,
           title,
           order: provider.order ?? DEFAULT_ORDER,
+          placement: provider.placement ?? DEFAULT_PLACEMENT,
           payload,
           Panel: provider.Panel,
         })

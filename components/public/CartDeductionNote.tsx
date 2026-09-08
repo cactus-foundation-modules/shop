@@ -22,7 +22,7 @@
 
 export const CART_DEDUCTION_NOTE_CSS = `
 .scd{display:flex;flex-direction:column;gap:6px;margin:0 0 14px}
-.scd-row{display:block;padding:9px 14px;background:var(--color-bg-subtle);border-left:3px solid var(--color-primary);border-radius:0 7px 7px 0;font-size:14.5px;line-height:1.45;color:var(--color-text)}
+.scd-row{display:block;margin:0;padding:9px 14px;background:var(--color-bg-subtle);border-left:3px solid var(--color-primary);border-radius:0 7px 7px 0;font-size:14.5px;line-height:1.45;color:var(--color-text)}
 /* Neutral ground on purpose. --color-primary-subtle was the obvious fill and
    fails AA in dark mode (the accent lands at 4.25:1 on it); every role clears AA
    on --color-bg-subtle in both themes. Same reasoning as .spd-osd-box on the

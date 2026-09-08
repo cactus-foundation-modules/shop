@@ -308,6 +308,27 @@ export async function resolveLineMeta(
   // LineMetaBatch). Two modules bucketing the same line differently is a
   // question shop cannot answer, so it does not try.
   let batch: LineMetaBatch | null = null
+  // What the resolvers say about returns, folded the strict way. A line is one
+  // thing, and the shop's answer to "can I send this back" has to be the least
+  // generous one any resolver gave: a variation child's listing saying no is
+  // never talked back up by a second module that has no opinion. The note is the
+  // exception and follows the flag's child-over-parent rule instead - the first
+  // resolver to write one keeps it, because a blank is "none written", not "no
+  // reason".
+  //
+  // Merged here rather than passed through for the reason minOrder is, and
+  // learned the same way: this resolution is built field by field below, so a
+  // field left out of it is dropped in silence. `returns` WAS left out, and
+  // every variation of a made-to-order listing was snapshotted onto its order as
+  // returnable - which then offered the customer a cancel button on a chair the
+  // shop had already had upholstered.
+  // Held as three flat accumulators rather than one object that folds into
+  // itself: a `returns = { ...returns }` inside the loop is a self-reference tsc
+  // cannot follow round a loop, and it types the variable as null.
+  let returnsAnswered = false
+  let returnsFlag = true
+  let returnsNote: string | null = null
+  let returnsDiscretion = false
   const fields = []
   // Every resolver's opaque state shares one bag on the line (see LineMeta.data),
   // so keys are the writing module's to namespace. First writer keeps the key: a
@@ -346,6 +367,12 @@ export async function resolveLineMeta(
       }
     }
     if (!batch && res.persistMeta?.batch) batch = res.persistMeta.batch
+    if (res.returns) {
+      returnsAnswered = true
+      returnsFlag = returnsFlag && res.returns.returnable
+      returnsNote = returnsNote ?? res.returns.note
+      returnsDiscretion = returnsDiscretion || res.returns.discretionary === true
+    }
     // A charge only ever names money already counted in priceAdjust, so a
     // negative one would be money invented. Those are dropped rather than
     // trusted; the caller clamps the total against the line price (see
@@ -376,5 +403,8 @@ export async function resolveLineMeta(
     charges: charges.length ? charges : null,
     group,
     minOrder,
+    returns: returnsAnswered
+      ? { returnable: returnsFlag, note: returnsNote, discretionary: returnsDiscretion }
+      : null,
   }
 }

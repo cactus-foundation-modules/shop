@@ -13,3 +13,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   const { products } = await listProducts({ status: 'ACTIVE', categorySlug: slug, perPage: 100, excludeHidden: true, storefront: true })
   return NextResponse.json({ category, products })
 }
+
+// A category and its products, as anybody browsing would see them.
+//
+// Shared-cache window for this route's answers, applied by the module dispatcher
+// (lib/cache/module-api-cache.ts) when the owner has ready-made copies switched
+// on and the request carries no session or member cookie.
+export const publicCacheTtl = 300

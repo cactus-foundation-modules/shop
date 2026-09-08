@@ -14,3 +14,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   const upsells = await resolveUpsellProducts(product)
   return NextResponse.json({ products: upsells })
 }
+
+// Shopper-agnostic, and fired by every product page view - same reasoning as the
+// related-products route next door.
+//
+// Shared-cache window for this route's answers, applied by the module dispatcher
+// (lib/cache/module-api-cache.ts) when the owner has ready-made copies switched
+// on and the request carries no session or member cookie.
+export const publicCacheTtl = 300

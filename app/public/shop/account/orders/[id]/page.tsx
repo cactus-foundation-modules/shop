@@ -466,6 +466,12 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
     ),
   })
 
+  // Split by where each provider asked to sit. Both halves keep the resolver's
+  // ordering, so a module that contributes two cards keeps them in its own order
+  // on whichever side of the receipt it put them.
+  const panelsBeforeItems = memberOrderPanels.filter((panel) => panel.placement === 'before')
+  const panelsAfterItems = memberOrderPanels.filter((panel) => panel.placement !== 'before')
+
   // Every piece of paper this order has, in the order it came into existence.
   // The receipt is always first because it is the only one every shop has.
   const documents: OrderDocument[] = [{
@@ -636,6 +642,17 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           </OrderNote>
         )}
 
+        {/* Whatever a companion module has to say about this order, each in a
+            card of shop's own so a contributed panel cannot arrive dressed
+            differently from the rest of the page. These are the ones that ask
+            the customer for something, so they go above the receipt rather than
+            below a card that has already been read. */}
+        {panelsBeforeItems.map(({ id: panelId, title, Panel, payload }) => (
+          <OrderCard key={panelId} title={title}>
+            <Panel payload={payload} />
+          </OrderCard>
+        ))}
+
         {/* The receipt: what was bought and what it came to, in one card rather
             than two sections half a screen apart. */}
         <OrderCard
@@ -688,12 +705,9 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           />
         </OrderCard>
 
-        {/* Whatever a companion module has to say about this order, each in a
-            card of shop's own so a contributed panel cannot arrive dressed
-            differently from the rest of the page. Straight after the receipt
-            because the one thing anybody wants to do having just read what they
-            bought is say what they made of it. */}
-        {memberOrderPanels.map(({ id: panelId, title, Panel, payload }) => (
+        {/* The other half of the contributed cards: whatever a module would
+            rather say once the customer has read what the order was. */}
+        {panelsAfterItems.map(({ id: panelId, title, Panel, payload }) => (
           <OrderCard key={panelId} title={title}>
             <Panel payload={payload} />
           </OrderCard>

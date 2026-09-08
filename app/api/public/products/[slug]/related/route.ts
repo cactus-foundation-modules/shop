@@ -14,3 +14,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   const related = await resolveRelatedProducts(product)
   return NextResponse.json({ products: related })
 }
+
+// The same answer for everybody: this product's related products, decided by
+// the catalogue and the shop's own settings. Fired by every product page view,
+// so it is worth handing to a CDN rather than a function.
+//
+// Shared-cache window for this route's answers, applied by the module dispatcher
+// (lib/cache/module-api-cache.ts) when the owner has ready-made copies switched
+// on and the request carries no session or member cookie.
+export const publicCacheTtl = 300
