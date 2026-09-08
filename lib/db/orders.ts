@@ -16,6 +16,9 @@ function mapOrder(r: Record<string, unknown>): ShpOrder {
     customerReference: (r.customer_reference as string | null) ?? null,
     customerPhone: (r.customer_phone as string | null) ?? null,
     shippingAddress: r.shipping_address as ShpAddress,
+    // Migration 046. Defaulted here as well as in the DDL so a row read through
+    // an older cached query shape answers "nothing said" rather than undefined.
+    deliveryInstructions: (r.delivery_instructions as string | null) ?? null,
     billingAddress: (r.billing_address as ShpAddress | null) ?? null,
     subtotal: (r.subtotal as { toString(): string }).toString(),
     discountAmount: (r.discount_amount as { toString(): string }).toString(),
@@ -72,6 +75,10 @@ function mapOrderItem(r: Record<string, unknown>): ShpOrderItem {
     // are: a row read through a query shape cached before the column existed
     // still answers "returnable" rather than undefined.
     returnable: (r.returnable as boolean | null | undefined) ?? true,
+    nonReturnableNote: (r.non_returnable_note as string | null) ?? null,
+    // Same defaulting, the other way up: a line read through an older query
+    // shape answers "an ordinary return", never "at our discretion".
+    returnsDiscretionary: (r.returns_discretionary as boolean | null | undefined) ?? false,
   }
 }
 
@@ -148,6 +155,7 @@ export type CreateOrderInput = {
   customerReference?: string | null
   customerPhone?: string | null
   shippingAddress: ShpAddress
+  deliveryInstructions?: string | null
   billingAddress?: ShpAddress | null
   subtotal: number
   discountAmount: number
@@ -181,6 +189,13 @@ export type CreateOrderInput = {
     /** Resolved at checkout (variation child over its listing). Omitted means
      *  returnable, which is what every line on an untouched catalogue is. */
     returnable?: boolean
+    /** The wording that goes with a refusal, resolved at checkout from the
+     *  LISTING where the line is a variation. Omitted or null reads as the stock
+     *  sentence. */
+    nonReturnableNote?: string | null
+    /** Resolved at checkout beside `returnable`. Omitted reads as an ordinary
+     *  return, which is what every line on an untouched catalogue is. */
+    returnsDiscretionary?: boolean
   }>
 }
 
@@ -201,7 +216,7 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
     INSERT INTO "shp_orders" (
       "id",
       "order_number", "member_id", "customer_email", "customer_name", "customer_organisation", "customer_reference", "customer_phone",
-      "shipping_address", "billing_address", "subtotal", "discount_amount", "shipping_amount",
+      "shipping_address", "delivery_instructions", "billing_address", "subtotal", "discount_amount", "shipping_amount",
       "tax_amount", "total", "tax_mode", "currency", "coupon_id", "coupon_code",
       "payment_method", "shipping_rate_id", "shipping_rate_name", "agreements"
     ) VALUES (
@@ -212,7 +227,8 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
       ${data.orderNumber}, ${data.memberId ?? null}, ${data.customerEmail}, ${data.customerName},
       ${data.customerOrganisation?.trim() || null}, ${data.customerReference?.trim() || null},
       ${normaliseStoredPhone(data.customerPhone)},
-      ${JSON.stringify(data.shippingAddress)}::jsonb, ${data.billingAddress ? JSON.stringify(data.billingAddress) : null}::jsonb,
+      ${JSON.stringify(data.shippingAddress)}::jsonb, ${data.deliveryInstructions?.trim() || null},
+      ${data.billingAddress ? JSON.stringify(data.billingAddress) : null}::jsonb,
       ${data.subtotal}, ${data.discountAmount}, ${data.shippingAmount}, ${data.taxAmount}, ${data.total},
       ${data.taxMode}, ${data.currency}, ${data.couponId ?? null}, ${data.couponCode ?? null},
       ${data.paymentMethod}, ${data.shippingRateId ?? null}, ${data.shippingRateName ?? null},
@@ -226,12 +242,12 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
       INSERT INTO "shp_order_items" (
         "order_id", "product_id", "product_name", "product_sku", "product_type",
         "quantity", "unit_price", "tax_rate", "tax_amount", "total", "is_pre_order", "pre_order_dispatch_date",
-        "line_meta", "order_size_deduction", "returnable"
+        "line_meta", "order_size_deduction", "returnable", "non_returnable_note", "returns_discretionary"
       ) VALUES (
         ${orderId}, ${item.productId}, ${item.productName}, ${item.productSku}, ${item.productType},
         ${item.quantity}, ${item.unitPrice}, ${item.taxRate}, ${item.taxAmount}, ${item.total},
         ${item.isPreOrder}, ${item.preOrderDispatchDate},
-        ${item.lineMeta ? JSON.stringify(item.lineMeta) : null}::jsonb, ${item.orderSizeDeduction ?? null}, ${item.returnable ?? true}
+        ${item.lineMeta ? JSON.stringify(item.lineMeta) : null}::jsonb, ${item.orderSizeDeduction ?? null}, ${item.returnable ?? true}, ${item.nonReturnableNote ?? null}, ${item.returnsDiscretionary ?? false}
       )
     `
   }

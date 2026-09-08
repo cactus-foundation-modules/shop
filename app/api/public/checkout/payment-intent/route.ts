@@ -8,6 +8,7 @@ import { createCheckoutDraft } from '@/modules/shop/lib/checkout-draft'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
 import { getShopConfigCached, getAvailablePaymentMethods, orderValueRefusal, resolveCheckoutAgreements } from '@/modules/shop/lib/config'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
+import { DELIVERY_INSTRUCTIONS_MAX_LENGTH } from '@/modules/shop/lib/delivery-instructions'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { applyOrderPaymentState, previewOrderPaymentNotes } from '@/modules/shop/lib/order-payment-state'
@@ -50,6 +51,10 @@ const Body = z.object({
   customerReference: z.string().optional(),
   customerPhone: z.string().optional(),
   shippingAddress: AddressSchema,
+  // Never compulsory, so there is no rule to enforce below - only a ceiling, so
+  // a route reachable without the box cannot be used to write an essay onto a
+  // supplier's delivery label.
+  deliveryInstructions: z.string().max(DELIVERY_INSTRUCTIONS_MAX_LENGTH).optional(),
   billingAddress: BillingAddressSchema.nullable().optional(),
   shippingRateId: z.string().nullable().optional(),
   couponCode: z.string().nullable().optional(),
@@ -252,6 +257,12 @@ export async function POST(request: NextRequest) {
     customerReference: config.customerReferenceFieldEnabled ? (data.customerReference?.trim() || null) : null,
     customerPhone: data.customerPhone ?? null,
     shippingAddress: data.shippingAddress as ShpAddress,
+    // Same rule as the fields above: only kept while the shop is actually
+    // asking, so switching the box off stops orders carrying whatever a stale
+    // page still had in it. This one leaves the building - where the shop
+    // drop-ships it goes onto the purchase order the supplier's driver reads -
+    // so a shop that has stopped asking must not still be forwarding it.
+    deliveryInstructions: config.deliveryInstructionsEnabled ? (data.deliveryInstructions?.trim() || null) : null,
     // Same rule as the two fields above: only kept while the shop is actually
     // asking for one, so switching the setting off stops orders carrying
     // whatever a stale page still had in it. An order without one bills to the
@@ -297,7 +308,8 @@ export async function POST(request: NextRequest) {
       // Settled at resolve time (product row, and the listing behind a variation
       // child) and snapshotted, so the order still knows the terms it was placed
       // under after the catalogue has moved on.
-      returnable: l.returnable,
+      returnable: l.returnable, nonReturnableNote: l.nonReturnableNote,
+      returnsDiscretionary: l.returnsDiscretionary,
     })),
   }
 

@@ -5,6 +5,7 @@
  * save. Holding them as numbers is what makes a price box fight the cursor.
  */
 
+import { returnsPolicy, type ReturnsPolicy } from '@/modules/shop/lib/returnable'
 import type { ShpPriceType } from '@/modules/shop/lib/pricing'
 import type { PuckData } from '@/modules/shop/lib/types'
 
@@ -52,12 +53,13 @@ export type ProductForm = {
   lowStockThreshold: string
   outOfStockBehaviour: 'BLOCK' | 'BACKORDER'
   minOrderQuantity: string
-  /** Ticked, the shop will not take this one back - a made-to-order desk, a
-   *  chair in a fabric chosen off a card. Off is the default and means the
-   *  ordinary returns rules apply. */
-  nonReturnable: boolean
-  /** The owner's own wording for why, shown to the customer in place of the
-   *  stock sentence. Only read while `nonReturnable` is ticked. */
+  /** What the shop will do about taking this one back. ALLOWED is the default
+   *  and the ordinary rules; DISCRETIONARY offers the customer the ask without
+   *  the promise; NONE refuses outright - a made-to-order desk, a chair in a
+   *  fabric chosen off a card. */
+  returnsPolicy: ReturnsPolicy
+  /** The owner's own wording, shown to the customer in place of the stock
+   *  sentence. Read on either of the two answers that need one. */
   nonReturnableNote: string
   weight: string
   weightUnit: 'kg' | 'lb'
@@ -176,10 +178,9 @@ export function toEditorState(payload: ProductPayload): EditorState {
       lowStockThreshold: str(p.lowStockThreshold),
       outOfStockBehaviour: (str(p.outOfStockBehaviour) || 'BLOCK') as ProductForm['outOfStockBehaviour'],
       minOrderQuantity: str(p.minOrderQuantity),
-      // Stored the other way up: the column says "returnable", the box asks the
-      // owner to tick the exception. Null is "nothing said", which is
-      // returnable, so only an explicit false ticks the box.
-      nonReturnable: p.returnable === false,
+      // Two columns read as one answer, and a blank in either is "nothing
+      // said", which is the ordinary policy - see lib/returnable.ts.
+      returnsPolicy: returnsPolicy(p.returnable as boolean | null, p.returnsDiscretionary as boolean | null),
       nonReturnableNote: str(p.nonReturnableNote),
       weight: str(p.weight),
       weightUnit: (str(p.weightUnit) || 'kg') as ProductForm['weightUnit'],
@@ -260,11 +261,16 @@ export function toProductBody(s: EditorState): Record<string, unknown> {
     // A minimum of one is no minimum, so it is stored as nothing rather than as
     // a 1 that would then have to be read past everywhere it is used.
     minOrderQuantity: int(f.minOrderQuantity) != null && Number(f.minOrderQuantity) > 1 ? int(f.minOrderQuantity) : null,
-    // Unticked stores null rather than true, because null is what a variation
-    // child reads as "ask the listing" - stamping true would have every product
-    // shouting an answer it has not been asked for. Both read as returnable.
-    returnable: f.nonReturnable ? false : null,
-    nonReturnableNote: f.nonReturnable ? nullable(f.nonReturnableNote) : null,
+    // The ordinary answer stores null in both, rather than true and false,
+    // because null is what a variation child reads as "ask the listing" -
+    // stamping an answer would have every product shouting one it has not been
+    // asked for. Null and "returns allowed, no discretion" read identically.
+    returnable: f.returnsPolicy === 'NONE' ? false : null,
+    returnsDiscretionary: f.returnsPolicy === 'DISCRETIONARY' ? true : null,
+    // Carried on both of the answers that need a sentence, and cleared on the
+    // one that does not - a note left behind by a change of mind would be shown
+    // to a customer about a product that no longer says it.
+    nonReturnableNote: f.returnsPolicy === 'ALLOWED' ? null : nullable(f.nonReturnableNote),
     weight: num(f.weight),
     weightUnit: f.weight.trim() === '' ? null : f.weightUnit,
     dimensionL: num(f.dimensionL),
@@ -314,7 +320,7 @@ const TAB_FIELDS: Record<ShopTabId, ReadonlyArray<keyof ProductForm>> = {
   pricing: ['price', 'salePrice', 'saleSku', 'retailPrice', 'tradePrice', 'costPrice', 'orderSizeDeduction', 'taxClassId'],
   stock: [
     'trackInventory', 'stockCount', 'lowStockThreshold', 'outOfStockBehaviour', 'minOrderQuantity',
-    'nonReturnable', 'nonReturnableNote',
+    'returnsPolicy', 'nonReturnableNote',
     'isPreOrder', 'preOrderDispatchDate', 'preOrderNote', 'preOrderMaxQuantity',
     'weight', 'weightUnit', 'dimensionL', 'dimensionW', 'dimensionH', 'dimensionUnit',
   ],
@@ -386,7 +392,7 @@ export function validate(s: EditorState): Errors {
 
   // Matches the column the API accepts it into, so a note that would be cut off
   // at the far end is caught while the owner is still looking at it.
-  if (f.nonReturnable && f.nonReturnableNote.trim().length > 300) {
+  if (f.returnsPolicy !== 'ALLOWED' && f.nonReturnableNote.trim().length > 300) {
     e.nonReturnableNote = 'Keep the reason under 300 characters - it sits beside the order line.'
   }
 

@@ -1,4 +1,5 @@
 import { formatInSiteTimezone } from '@/lib/config/timezone'
+import { ordinal } from '@/modules/shop/lib/delivery-slot'
 import type { ShpAddress, ShpOrderRequestStatus, ShpOrderRequestType, ShpOrderStatus } from '@/modules/shop/lib/types'
 import type { MemberOrderFulfilment } from '@/modules/shop/lib/member-orders'
 
@@ -36,6 +37,15 @@ export const REQUEST_STATUS_DISPLAY: Record<ShpOrderRequestStatus, { label: stri
 export const REQUEST_TYPE_LABEL: Record<ShpOrderRequestType, string> = {
   CANCEL: 'Cancellation',
   RETURN: 'Return',
+  DAMAGE: 'Damage',
+}
+
+/** What the two decisions are called, which is not the same sentence for all
+ *  three. Nobody "approves" a broken table: they put it right. */
+export const REQUEST_DECISION_LABEL: Record<ShpOrderRequestType, { approve: string; decline: string }> = {
+  CANCEL: { approve: 'Approve', decline: 'Decline' },
+  RETURN: { approve: 'Approve', decline: 'Decline' },
+  DAMAGE: { approve: 'Putting it right', decline: 'Turn it down' },
 }
 
 export function badgeClass(tone: Tone): string {
@@ -63,6 +73,27 @@ export function addressLines(address: ShpAddress): string[] {
  *  was being dated the day before on the customer's own order page. */
 export function formatOrderDate(date: Date, timezone: string): string {
   return formatInSiteTimezone(date, timezone, { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+/**
+ * "8th of September 2026" - the day a parcel actually arrived.
+ *
+ * Spoken rather than clipped, and matching `formatDeliveryDay`'s wording on the
+ * line above it, because the two swap places: a parcel reads "Arranged for
+ * Tuesday 8th of September" until it turns up and "Delivered on 8th of
+ * September 2026" afterwards, and a change of voice between the two would read
+ * as two different systems talking.
+ *
+ * The weekday is dropped and the year added on purpose. Before delivery the
+ * useful part is which day to be in; afterwards it is a record, and a record
+ * that says "Tuesday" without saying which year is no use in six months.
+ */
+export function formatDeliveredDay(date: Date, timezone: string): string {
+  const day = formatInSiteTimezone(date, timezone, { day: 'numeric' })
+  const month = formatInSiteTimezone(date, timezone, { month: 'long' })
+  const year = formatInSiteTimezone(date, timezone, { year: 'numeric' })
+  if (!day || !month || !year) return ''
+  return `${ordinal(Number(day))} of ${month} ${year}`
 }
 
 /** "8 September 2026 at 14:23" - a date that has to carry a time with it,

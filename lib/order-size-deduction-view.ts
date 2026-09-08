@@ -12,8 +12,7 @@
 import { effectivePrice, isOnSale, type PricedProduct } from '@/modules/shop/lib/pricing'
 import {
   deductionAmount,
-  orderSizeDeductionLine,
-  orderSizeDeductionRangeLine,
+  orderSizeDeductionLineParts,
   type OrderSizeDeductionLineView,
   type OrderSizeDeductionRule,
 } from '@/modules/shop/lib/order-size-deduction'
@@ -71,14 +70,23 @@ export function orderSizeDeductionView(params: DeductionViewParams): OrderSizeDe
   if (amount == null) return null
 
   const convert = adjust ?? ((n: number) => n)
+  const charged = effectivePrice(product, enabledPriceTypes)
   // What the shopper would actually pay for one, once the basket is big enough.
   // Floored at zero for the same reason the basket floors it: a mis-stamped row
   // charges nothing rather than a negative.
-  const reducedPrice = convert(Math.max(0, effectivePrice(product, enabledPriceTypes) - amount))
+  const reducedPrice = convert(Math.max(0, charged - amount))
+  // What it costs today, for the struck-through figure. Converted the same way
+  // and by the same call, so the two prices are on one side of tax and cannot
+  // disagree by a rounding penny.
+  const currentPrice = convert(charged)
   const threshold = convert(rule.threshold)
-  const compose = someOptionsOnly ? orderSizeDeductionRangeLine : orderSizeDeductionLine
-  return {
-    text: compose({ reducedPrice, supplier: rule.supplier, threshold, currencySymbol }),
-    note: rule.note,
-  }
+  const parts = orderSizeDeductionLineParts({
+    reducedPrice,
+    currentPrice,
+    supplier: rule.supplier,
+    threshold,
+    currencySymbol,
+    someOptionsOnly,
+  })
+  return { ...parts, note: rule.note }
 }

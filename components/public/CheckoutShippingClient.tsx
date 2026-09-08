@@ -4,6 +4,7 @@ import { useEffect, useState, type ComponentType, type CSSProperties, type Input
 import { getCart } from '@/modules/shop/components/public/cart'
 import { EMPTY_ADDRESS, getCheckoutState, updateCheckoutState, type ShpAddressForm } from '@/modules/shop/components/public/checkout-state'
 import type { ShopCheckoutAddressLookupProps, ShpLookupAddress } from '@/modules/shop/components/public/checkout-address-lookup'
+import { DELIVERY_INSTRUCTIONS_MAX_LENGTH } from '@/modules/shop/lib/delivery-instructions'
 import { formatUkPhone, isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
 import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
@@ -164,6 +165,12 @@ function billingMissingFromSaved(a: ShpAddressForm): boolean {
   return (['line1', 'city', 'postcode'] as const).some((k) => a[k].trim().length === 0)
 }
 
+// The box, its wording and its ceiling, as the public config answers them.
+// Mirrored here rather than imported off the config type because this is a
+// client island and what it gets is whatever that endpoint sent - including
+// nothing at all, from a cached bundle older than the setting.
+type DeliveryInstructionsConfig = { enabled: boolean; label: string; hint: string; maxLength: number }
+
 const OPTION_STYLE: CSSProperties = {
   display: 'flex', gap: '0.5rem', alignItems: 'flex-start',
   border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.5rem 0.75rem',
@@ -197,6 +204,11 @@ export function CheckoutShippingClient({
   // check the payment and review steps run reads the same setting for itself.
   const [phoneRequired, setPhoneRequired] = useState(false)
   const [phoneTouched, setPhoneTouched] = useState(false)
+  // The delivery-instructions box, from shop settings. Null until the answer
+  // arrives and nothing drawn in the meantime, so a shop that has never switched
+  // it on never flashes a box nobody asked for.
+  const [instructionsConfig, setInstructionsConfig] = useState<DeliveryInstructionsConfig | null>(null)
+  const [instructions, setInstructions] = useState(initial.deliveryInstructions)
   // Addresses this shopper has ordered to before. A signed-out shopper gets a
   // 401 and an empty list, which draws nothing - the form below is unchanged
   // for them.
@@ -263,13 +275,27 @@ export function CheckoutShippingClient({
 
   useEffect(() => {
     let cancelled = false
-    fetchShopPublicConfig<{ requirePhone?: boolean; billingAddress?: { enabled?: boolean } }>()
+    fetchShopPublicConfig<{
+      requirePhone?: boolean
+      billingAddress?: { enabled?: boolean }
+      deliveryInstructions?: Partial<DeliveryInstructionsConfig>
+    }>()
       .then((d) => {
         if (cancelled || !d) return
         setPhoneRequired(d.requirePhone === true)
         // Optional so a response from an older cached bundle still works: no
         // billing address is what every shop had until now.
         setBillingEnabled(d.billingAddress?.enabled === true)
+        // Same reasoning, and the same shape: only ever drawn where the answer
+        // came back saying the shop asks for one.
+        if (d.deliveryInstructions?.enabled === true) {
+          setInstructionsConfig({
+            enabled: true,
+            label: d.deliveryInstructions.label?.trim() || 'Delivery instructions',
+            hint: d.deliveryInstructions.hint?.trim() ?? '',
+            maxLength: d.deliveryInstructions.maxLength ?? DELIVERY_INSTRUCTIONS_MAX_LENGTH,
+          })
+        }
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -589,6 +615,31 @@ export function CheckoutShippingClient({
             {field('postcode', 'Postcode', 'postal-code', true)}
           </div>
         </>
+      )}
+
+      {/* Under the address and above the method, which is where a person
+          expects it: they have just said where it goes, and this is the rest of
+          that sentence. Drawn whichever address they picked - an instruction
+          belongs to this delivery rather than to the door, so it survives a
+          change of address rather than being quietly thrown away with it.
+
+          Never compulsory and always labelled optional, so nobody wonders
+          whether a blank box will stop them. */}
+      {instructionsConfig && (
+        <label style={{ display: 'grid', gap: '0.25rem' }}>
+          <span>{instructionsConfig.label} (optional)</span>
+          <textarea
+            rows={3}
+            maxLength={instructionsConfig.maxLength}
+            data-shop-field="deliveryInstructions"
+            value={instructions}
+            onChange={(e) => { setInstructions(e.target.value); updateCheckoutState({ deliveryInstructions: e.target.value }) }}
+            style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)', font: 'inherit', resize: 'vertical' }}
+          />
+          {instructionsConfig.hint && (
+            <span style={{ color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>{instructionsConfig.hint}</span>
+          )}
+        </label>
       )}
 
       {rates.length > 0 && (

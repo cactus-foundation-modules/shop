@@ -239,6 +239,11 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
           customerReference: state.customerReference.trim() || undefined,
           customerPhone: (formatUkPhone(state.customerPhone) ?? state.customerPhone) || undefined,
           shippingAddress: state.shippingAddress, shippingRateId: state.shippingRateId, couponCode: state.couponCode, paymentMethod: next,
+          // What the shopper told the driver, where the shop asks. Sent
+          // regardless of what this browser believes the setting to be - the
+          // route drops it if the shop is not asking, and a checkout drawn from
+          // a stale bundle should not be the thing that decides.
+          deliveryInstructions: state.deliveryInstructions.trim() || undefined,
           // Only where the shop asks for one and the shopper has said theirs is
           // different. Null otherwise, which is what an order that bills to the
           // delivery address has always carried - and what every screen that

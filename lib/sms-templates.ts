@@ -15,6 +15,18 @@ import type { SmsTemplateDef } from '@/lib/sms/registry'
 // one. Keeping every default inside 160 characters keeps it to one segment,
 // which is the difference between a penny and tuppence a message.
 //
+// `orderUrl` is on every one of them, filled in by notifyOrderCustomer the same
+// way it is for the emails: the tracking link, which asks a stranger for the
+// delivery postcode and sends the customer who is signed in and owns the order
+// straight to their own order page. It is deliberately not in any default
+// wording - it is the best part of ninety characters, so on most of these it is
+// the difference between one segment and two, and that is the owner's call to
+// make in the editor rather than ours to make for every shop.
+//
+// It comes back empty on a shop with guest order tracking switched off, which
+// is what `hasOrderUrl` is for: wrap the line in {{#if hasOrderUrl}} ... {{/if}}
+// and it takes the whole line with it rather than leaving "Track it:" dangling.
+//
 // Keys must all start with `shop.` - core rejects a module claiming a key
 // outside its own namespace.
 
@@ -23,7 +35,7 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     key: 'shop.order-confirmed',
     label: 'Order confirmed',
     body: '{{shopName}}: thanks {{customerName}}, order {{orderNumber}} is confirmed. Total {{orderTotal}}. We will text you when it is on its way.',
-    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderTotal'],
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderTotal', 'orderUrl', 'hasOrderUrl'],
     requiredTags: ['orderNumber'],
     transactional: false,
   },
@@ -34,7 +46,7 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     key: 'shop.order-placed-unpaid',
     label: 'Order placed (payment still to come)',
     body: '{{shopName}}: thanks {{customerName}}, we have order {{orderNumber}}. It goes out once your payment of {{orderTotal}} reaches us - see your email for how to pay.',
-    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderTotal'],
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderTotal', 'orderUrl', 'hasOrderUrl'],
     requiredTags: ['orderNumber'],
     transactional: true,
   },
@@ -44,7 +56,7 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     key: 'shop.payment-received',
     label: 'Payment received',
     body: '{{shopName}}: thanks {{customerName}}, we have received your payment of {{orderTotal}} for order {{orderNumber}}. We are getting it ready now.',
-    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderTotal'],
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderTotal', 'orderUrl', 'hasOrderUrl'],
     requiredTags: ['orderNumber'],
     transactional: true,
   },
@@ -52,7 +64,7 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     key: 'shop.status-processing',
     label: 'Order processing',
     body: '{{shopName}}: order {{orderNumber}} is being processed. We will let you know as soon as it is dispatched.',
-    mergeTags: ['shopName', 'customerName', 'orderNumber'],
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderUrl', 'hasOrderUrl'],
     requiredTags: ['orderNumber'],
     transactional: false,
   },
@@ -60,7 +72,7 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     key: 'shop.status-shipped',
     label: 'Order dispatched',
     body: '{{shopName}}: order {{orderNumber}} is on its way.',
-    mergeTags: ['shopName', 'customerName', 'orderNumber'],
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderUrl', 'hasOrderUrl'],
     requiredTags: ['orderNumber'],
     transactional: false,
   },
@@ -68,7 +80,7 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     key: 'shop.status-completed',
     label: 'Order completed',
     body: '{{shopName}}: order {{orderNumber}} is complete. Thanks for shopping with us.',
-    mergeTags: ['shopName', 'customerName', 'orderNumber'],
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderUrl', 'hasOrderUrl'],
     requiredTags: ['orderNumber'],
     transactional: false,
   },
@@ -76,7 +88,7 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     key: 'shop.status-cancelled',
     label: 'Order cancelled',
     body: '{{shopName}}: order {{orderNumber}} has been cancelled. Get in touch if that is news to you.',
-    mergeTags: ['shopName', 'customerName', 'orderNumber'],
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderUrl', 'hasOrderUrl'],
     requiredTags: ['orderNumber'],
     transactional: false,
   },
@@ -84,7 +96,13 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     key: 'shop.partial-shipped',
     label: 'Part of an order dispatched',
     body: '{{shopName}}: part of order {{orderNumber}} is on its way.{{#if hasOutstanding}} The rest is still with us and we will text again when it goes.{{/if}}{{#if hasTracking}} Tracking: {{trackingNumber}}{{/if}}',
-    mergeTags: ['shopName', 'customerName', 'orderNumber', 'carrier', 'trackingNumber'],
+    // Both flags are declared, not just used: an undeclared one is never given
+    // a stand-in value, so Preview quietly dropped two of the three sentences
+    // this message ships with and the owner was left editing wording they
+    // could not see. The sender fills them in either way - see
+    // lib/shipment-email.ts, which also passes isFinalPart, hasCarrier and
+    // trackingUrl for anyone who wants to write with them.
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'carrier', 'trackingNumber', 'hasOutstanding', 'hasTracking', 'orderUrl', 'hasOrderUrl'],
     requiredTags: ['orderNumber'],
     transactional: false,
   },
@@ -92,7 +110,7 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     key: 'shop.request-received',
     label: 'Cancel or return request received',
     body: '{{shopName}}: we have your {{requestType}} request for order {{orderNumber}} and will be in touch shortly.',
-    mergeTags: ['shopName', 'customerName', 'orderNumber', 'requestType'],
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'requestType', 'orderUrl', 'hasOrderUrl'],
     requiredTags: ['orderNumber'],
     transactional: false,
   },
@@ -100,7 +118,7 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     key: 'shop.request-approved',
     label: 'Cancel or return request approved',
     body: '{{shopName}}: your {{requestType}} request for order {{orderNumber}} has been approved. Check your email for the details.',
-    mergeTags: ['shopName', 'customerName', 'orderNumber', 'requestType'],
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'requestType', 'orderUrl', 'hasOrderUrl'],
     requiredTags: ['orderNumber'],
     transactional: false,
   },
@@ -108,7 +126,35 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     key: 'shop.request-declined',
     label: 'Cancel or return request declined',
     body: '{{shopName}}: we could not approve your {{requestType}} request for order {{orderNumber}}. Check your email for why.',
-    mergeTags: ['shopName', 'customerName', 'orderNumber', 'requestType'],
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'requestType', 'orderUrl', 'hasOrderUrl'],
+    requiredTags: ['orderNumber'],
+    transactional: false,
+  },
+  // Damage. All three stages get one, unlike the request pair above, and for a
+  // reason that only shows up on somebody who takes texts and not emails: they
+  // have told us something arrived broken, and silence is not an answer to
+  // leave them with. Each says enough to stand on its own.
+  {
+    key: 'shop.damage-received',
+    label: 'Damage reported',
+    body: '{{shopName}}: thanks for telling us about order {{orderNumber}} - sorry about that. We have your report and photographs, and will be in touch shortly.',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderUrl', 'hasOrderUrl'],
+    requiredTags: ['orderNumber'],
+    transactional: false,
+  },
+  {
+    key: 'shop.damage-resolved',
+    label: 'Damage report - putting it right',
+    body: '{{shopName}}: we have looked at the damage on order {{orderNumber}} and we are putting it right. The details are in your email.',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderUrl', 'hasOrderUrl'],
+    requiredTags: ['orderNumber'],
+    transactional: false,
+  },
+  {
+    key: 'shop.damage-declined',
+    label: 'Damage report - not something we can put right',
+    body: '{{shopName}}: we have looked at the damage reported on order {{orderNumber}} and it is not something we can put right. Get in touch if you think we have missed something.',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderUrl', 'hasOrderUrl'],
     requiredTags: ['orderNumber'],
     transactional: false,
   },
@@ -129,6 +175,9 @@ export const SHOP_TRIGGER_TO_SMS_KEY: Record<string, string> = {
   REQUEST_RECEIVED: 'shop.request-received',
   REQUEST_APPROVED: 'shop.request-approved',
   REQUEST_DECLINED: 'shop.request-declined',
+  DAMAGE_RECEIVED: 'shop.damage-received',
+  DAMAGE_RESOLVED: 'shop.damage-resolved',
+  DAMAGE_DECLINED: 'shop.damage-declined',
 }
 
 /** The category a member's own notification preferences are kept under (see the

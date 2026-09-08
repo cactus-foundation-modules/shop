@@ -187,10 +187,19 @@ export type ShpProduct = {
   returnable: boolean | null
   /**
    * The owner's own wording for why it cannot come back, in place of the stock
-   * sentence. Only meaningful where `returnable` is false; a variation child
-   * borrows its listing's rather than carrying one per combination.
+   * sentence. Only meaningful where `returnable` is false or `returnsDiscretionary`
+   * is true; a variation child borrows its listing's rather than carrying one
+   * per combination.
    */
   nonReturnableNote: string | null
+  /**
+   * Whether a return is at the shop's discretion rather than a right: the
+   * customer may ask, we may decline, and there may be a charge for collecting
+   * it. Null is "nothing said" on the same terms as `returnable`, and the pair
+   * is read as one answer by returnsPolicy() in lib/returnable.ts - a product
+   * nobody takes back is not taken back at anyone's discretion either.
+   */
+  returnsDiscretionary: boolean | null
   relatedMode: ShpRecommendationMode
   upsellMode: ShpRecommendationMode
   relatedLimit: number
@@ -508,6 +517,12 @@ export type ShpOrder = {
   customerReference: string | null
   customerPhone: string | null
   shippingAddress: ShpAddress
+  // What the customer told us about getting the goods to that door - a gate
+  // code, a side entrance, where to leave it. Kept off shippingAddress on
+  // purpose: it is about this delivery rather than about the door, so a saved
+  // address does not carry "waiting in Tuesday" into next month's order. Null
+  // where the shop does not ask, or where the shopper had nothing to say.
+  deliveryInstructions: string | null
   billingAddress: ShpAddress | null
   subtotal: string
   discountAmount: string
@@ -580,6 +595,24 @@ export type ShpOrderItem = {
    * strip the right from orders already placed under the old terms.
    */
   returnable: boolean
+  /**
+   * The wording the customer is given for why, snapshotted beside the flag it
+   * explains. Null falls back to the stock sentence (lib/returnable.ts), and is
+   * meaningless while `returnable` is true.
+   *
+   * Snapshotted rather than read back off the product because on a listing with
+   * variations the line's product IS the hidden child, and a child never carries
+   * a reason - the owner writes one on the listing. Only the checkout can see
+   * the listing, so the checkout is where it gets written down.
+   */
+  nonReturnableNote: string | null
+  /**
+   * Whether this line's return was, at the moment it was bought, a favour
+   * rather than a right. Snapshotted beside the flag above and for the same
+   * reasons; false on every line placed before the setting existed, which is
+   * what those lines were sold under.
+   */
+  returnsDiscretionary: boolean
 }
 
 export type ShpRefundStatus = 'PENDING' | 'COMPLETED' | 'FAILED'
@@ -968,7 +1001,15 @@ export type ShpCreditNote = {
 // existing cancel or refund machinery, so a decline - or an approval whose
 // refund then fails at the provider - still leaves an honest record of what was
 // asked for. See lib/db/order-requests.ts.
-export type ShpOrderRequestType = 'CANCEL' | 'RETURN'
+/**
+ * The three things a customer can ask for on an order they have already placed.
+ *
+ * DAMAGE is not a return and is deliberately not one. A return is somebody
+ * deciding they do not want something; damage is the shop's problem, it needs
+ * photographs rather than a collection, and it has to work on goods the shop
+ * never takes back and long after any return window has shut.
+ */
+export type ShpOrderRequestType = 'CANCEL' | 'RETURN' | 'DAMAGE'
 export type ShpOrderRequestStatus = 'PENDING' | 'APPROVED' | 'DECLINED' | 'WITHDRAWN'
 
 export type ShpOrderRequest = {
@@ -982,6 +1023,13 @@ export type ShpOrderRequest = {
   customerNote: string | null
   /** Shown to the customer with the decision. */
   adminNote: string | null
+  /**
+   * What the shop is keeping back for collecting the goods, as a decimal string
+   * (the money convention everywhere in this module). Null is "none recorded",
+   * not zero: every request decided before the field existed carries null, and
+   * a zero typed in deliberately is a different statement.
+   */
+  returnCharge: string | null
   decidedAt: Date | null
   decidedBy: string | null
   createdAt: Date
@@ -991,7 +1039,19 @@ export type ShpOrderRequest = {
 /** Empty on a CANCEL: it covers the whole order, and "everything" is not a list. */
 export type ShpOrderRequestItem = { id: string; requestId: string; orderItemId: string; quantity: number }
 
-export type ShpOrderRequestWithItems = ShpOrderRequest & { items: ShpOrderRequestItem[] }
+/**
+ * A photograph on a damage report. `mediaId` is the core Media row it was saved
+ * as; `url` is snapshotted beside it so the queue can show the picture without
+ * reaching into core, and still has something to show if the library row is
+ * tidied away underneath it.
+ */
+export type ShpOrderRequestPhoto = { id: string; requestId: string; mediaId: string | null; url: string; createdAt: Date }
+
+export type ShpOrderRequestWithItems = ShpOrderRequest & {
+  items: ShpOrderRequestItem[]
+  /** Empty on everything but a damage report. */
+  photos: ShpOrderRequestPhoto[]
+}
 
 export type ShpOrderNote = {
   id: string
@@ -1070,6 +1130,11 @@ export type ShpEmailTemplateTrigger =
   | 'ADMIN_NEW_ORDER' | 'LOW_STOCK' | 'BACK_IN_STOCK' | 'IMPORT_COMPLETE'
   // Cancel / return requests. See lib/order-request-actions.ts.
   | 'REQUEST_RECEIVED' | 'REQUEST_APPROVED' | 'REQUEST_DECLINED' | 'ADMIN_NEW_REQUEST'
+  // Damage gets its own four rather than borrowing the three above, because
+  // every sentence in them is wrong for it: nobody "approves" a broken table,
+  // and an owner rewriting "we have your return request" must not find they
+  // have reworded the apology as well. See lib/order-request-actions.ts.
+  | 'DAMAGE_RECEIVED' | 'DAMAGE_RESOLVED' | 'DAMAGE_DECLINED' | 'ADMIN_NEW_DAMAGE'
   // The credit note raised when a refund goes through. See lib/credit-notes.ts.
   | 'CREDIT_NOTE_ISSUED'
   // The pair of documents raised when the company an invoice is made out to

@@ -32,7 +32,17 @@ const inflightValidate = new Map<string, Promise<ValidateResponse<unknown> | nul
 // `notes` are whole-basket lines contributed by other modules (an "everything by
 // Fri 4 Sep" from a delivery module, say). Absent from an older shop's response,
 // hence optional.
-export type ValidateResponse<T> = { lines: T[]; notes?: { id: string; text: string }[] }
+//
+// `deductionNotes` are SHOP'S own, about the order-size deduction, and travel
+// separately because they are drawn differently: the author dresses the notes
+// above per surface and may hide them entirely, which is right for a delivery
+// estimate and wrong for the one sentence that exists to move the order value.
+// See components/public/CartDeductionNote.tsx.
+export type ValidateResponse<T> = {
+  lines: T[]
+  notes?: { id: string; text: string }[]
+  deductionNotes?: { id: string; text: string; amounts?: string[] }[]
+}
 
 export function postCartValidate<T>(cart: CartLineShape[]): Promise<ValidateResponse<T> | null> {
   const body = JSON.stringify({ lines: cart })

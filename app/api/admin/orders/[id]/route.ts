@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db/prisma'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { deliveryInstructionsLabel } from '@/modules/shop/lib/delivery-instructions'
 import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, setOrderCustomerReference } from '@/modules/shop/lib/db/orders'
 import { listRefundsForOrder, listRefundItemsForOrder } from '@/modules/shop/lib/db/refunds'
 import { listDownloadsForOrder } from '@/modules/shop/lib/db/digital'
@@ -49,6 +50,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   // and the storefront each having a name of their own for the same field.
   const customerReferenceLabel = config.customerReferenceLabel.trim() || 'Purchase order number'
 
+  // And what it calls the delivery instructions, for the same reason.
+  const deliveryInstructionsLabelText = deliveryInstructionsLabel(config)
+
   // What the refund modal is allowed to promise about the money. Taken from the
   // provider that took the payment rather than from a list of method names kept
   // in the modal: that list had two entries in it and told the owner of every
@@ -61,7 +65,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     ? { mode: provider.refundMode ?? 'provider', label: provider.label }
     : null
 
-  return NextResponse.json({ order, items, notes, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, refundNotice })
+  return NextResponse.json({ order, items, notes, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, deliveryInstructionsLabel: deliveryInstructionsLabelText, refundNotice })
 }
 
 const PatchBody = z.object({

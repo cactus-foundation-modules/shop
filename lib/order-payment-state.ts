@@ -143,7 +143,7 @@ function prospectiveOrder(paymentMethod: string): ShpOrder {
   return {
     id: '', orderNumber: '', status: 'PENDING', memberId: null,
     customerEmail: '', customerName: '', customerOrganisation: null, customerReference: null, customerPhone: null,
-    shippingAddress: nowhere, billingAddress: null,
+    shippingAddress: nowhere, deliveryInstructions: null, billingAddress: null,
     subtotal: '0', discountAmount: '0', shippingAmount: '0', taxAmount: '0', total: '0',
     taxMode: 'INCLUSIVE', currency: '', couponId: null, couponCode: null,
     paymentMethod,
@@ -186,6 +186,8 @@ function prospectiveItems(lines: ResolvedCartLine[]): ShpOrderItem[] {
     // a payment-note provider that wants to say something about a made-to-order
     // basket can see it here.
     returnable: line.returnable,
+    nonReturnableNote: line.nonReturnableNote,
+    returnsDiscretionary: line.returnsDiscretionary,
   }))
 }
 

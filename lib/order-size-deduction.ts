@@ -231,57 +231,116 @@ export function tidyMoney(amount: number, currencySymbol = '£'): string {
  * assemble, and the two paths can never word it differently.
  */
 export type OrderSizeDeductionLineView = {
+  /**
+   * The whole sentence as plain text, exactly as it reads on screen. Kept
+   * alongside the parts below so anything that cannot render markup - a fallback
+   * path, a future surface, a test - has one string to print rather than
+   * reassembling the pieces and risking a different sentence.
+   */
   text: string
   note: string | null
+  /** "Get it for just " on a definite product, the range lead-in on a listing. */
+  lead: string
+  /**
+   * What the shopper pays TODAY, struck through, when the deduction actually
+   * moves it. Null where there is nothing to strike, so a renderer never draws a
+   * line through a figure equal to the one beside it.
+   */
+  was: string | null
+  /** What they would pay once the basket clears the threshold. */
+  now: string
+  /** " on Dynamic Office Solutions orders of £350 or more". */
+  tail: string
 }
 
 /**
- * The product page's line, for a product that definitely carries an amount:
+ * The product page's line, in the parts a renderer needs to dress it:
  *
- *   "£110 on Dynamic Office Solutions orders of £350 or more"
+ *   Get it for just  [£35]  £29  on Dynamic Office Solutions orders of £350 or more
+ *   \_ lead ______/  \_was/  \now/  \_ tail _______________________________________/
+ *
+ * `was` is what the shopper pays TODAY and is struck through; `now` is what they
+ * would pay once the basket clears the threshold. Showing both is the difference
+ * between a price and an offer - one figure alone gave no sense that it was the
+ * better of two, which is the same reason the lead-in exists.
+ *
+ * `was` comes back null when there is nothing to strike (no current price given,
+ * or the two figures are equal), so a renderer can never draw a line through a
+ * number identical to the one beside it.
+ *
+ * The lead-in is deliberate. Opening on the figure alone ("£110 on ...") read as
+ * a specification rather than an offer - a second price sitting under the price,
+ * with no hint that it is a better one. Naming it as something the shopper can
+ * go and get is the difference between stating a fact and making an offer.
+ *
+ * On a listing where only SOME combinations carry an amount the lead-in changes
+ * instead of a qualifier trailing after the sentence. A muted "Selected options"
+ * on the end was the first attempt and was rejected in review: it is doing the
+ * work of "depending on the options you pick" and does not read that way. If a
+ * trailing qualifier is ever wanted, the fallback is "Some options only" - never
+ * "Selected options".
+ */
+export function orderSizeDeductionLineParts(params: {
+  reducedPrice: number
+  supplier: string
+  threshold: number
+  /** What it costs today. Omitted, or equal to the reduced price, means nothing
+   *  to strike through. */
+  currentPrice?: number | null
+  currencySymbol?: string
+  someOptionsOnly?: boolean
+}): { lead: string; was: string | null; now: string; tail: string; text: string } {
+  const { reducedPrice, supplier, threshold, currentPrice, currencySymbol, someOptionsOnly } = params
+  const lead = someOptionsOnly ? 'Some options drop to ' : 'Get it for just '
+  const now = tidyMoney(reducedPrice, currencySymbol)
+  const strike =
+    currentPrice != null && Number.isFinite(currentPrice) && currentPrice > reducedPrice
+      ? tidyMoney(currentPrice, currencySymbol)
+      : null
+  // Equal figures after formatting are the same price wearing two labels, and a
+  // line through one of them would say something untrue about the other.
+  const was = strike && strike !== now ? strike : null
+  const tail = ` on ${supplier} orders of ${tidyMoney(threshold, currencySymbol)} or more`
+  return { lead, was, now, tail, text: `${lead}${was ? `${was} ` : ''}${now}${tail}` }
+}
+
+/**
+ * The same sentence as one plain string, for anywhere that cannot draw the
+ * strike-through. Built from the parts above rather than beside them, so the two
+ * can never word it differently.
  */
 export function orderSizeDeductionLine(params: {
   reducedPrice: number
   supplier: string
   threshold: number
+  currentPrice?: number | null
   currencySymbol?: string
 }): string {
-  const { reducedPrice, supplier, threshold, currencySymbol } = params
-  return `${tidyMoney(reducedPrice, currencySymbol)} on ${supplier} orders of ${tidyMoney(threshold, currencySymbol)} or more`
+  return orderSizeDeductionLineParts(params).text
 }
 
-/**
- * The same line on a listing where only SOME of the combinations carry one:
- *
- *   "Some options drop to £110 on Dynamic Office Solutions orders of £350 or more"
- *
- * The qualifier is inside the sentence rather than trailing after it. A muted
- * "Selected options" on the end was the first attempt and was rejected in
- * review: it is doing the work of "depending on the options you pick" and does
- * not read that way. If a trailing qualifier is ever wanted instead, the
- * fallback wording is "Some options only" - never "Selected options".
- */
+/** The listing wording, as one plain string. */
 export function orderSizeDeductionRangeLine(params: {
   reducedPrice: number
   supplier: string
   threshold: number
+  currentPrice?: number | null
   currencySymbol?: string
 }): string {
-  const { reducedPrice, supplier, threshold, currencySymbol } = params
-  return `Some options drop to ${tidyMoney(reducedPrice, currencySymbol)} on ${supplier} orders of ${tidyMoney(threshold, currencySymbol)} or more`
+  return orderSizeDeductionLineParts({ ...params, someOptionsOnly: true }).text
 }
 
 /**
  * The basket's nudge, for a supplier the shopper is short of:
  *
- *   "Add £62 more from Dynamic Office Solutions and £24 comes off this order."
+ *   "Add £62 more from Dynamic Office Solutions and save £24."
  *
  * The saving quoted is what would come off the basket AS IT STANDS. Adding
  * another carrying item raises it, so the sentence under-promises and can never
  * over-promise.
  */
 export function orderSizeDeductionShortfallNote(state: OrderSizeDeductionState, currencySymbol = '£'): string {
-  return `Add ${tidyMoney(state.shortfall, currencySymbol)} more from ${state.supplier} and ${tidyMoney(state.saving, currencySymbol)} comes off this order.`
+  return `Add ${tidyMoney(state.shortfall, currencySymbol)} more from ${state.supplier} and save ${tidyMoney(state.saving, currencySymbol)}.`
 }
 
 /**
@@ -306,7 +365,7 @@ export function orderSizeDeductionQualifiedNote(state: OrderSizeDeductionState, 
 export function orderSizeDeductionNotes(
   states: readonly OrderSizeDeductionState[],
   currencySymbol = '£',
-): Array<{ id: string; text: string }> {
+): Array<{ id: string; text: string; amounts: string[] }> {
   return states
     .filter((s) => s.saving > 0)
     .map((s) => ({
@@ -314,5 +373,12 @@ export function orderSizeDeductionNotes(
       text: s.qualified
         ? orderSizeDeductionQualifiedNote(s, currencySymbol)
         : orderSizeDeductionShortfallNote(s, currencySymbol),
+      // The money inside the sentence, formatted exactly as it appears there, so
+      // the basket can set the figures apart without going looking for them.
+      // Same arrangement as the product page's parts: the composer knows the
+      // answer, so it says it rather than leaving a regular expression to guess.
+      amounts: s.qualified
+        ? [tidyMoney(s.saving, currencySymbol), tidyMoney(s.threshold, currencySymbol)]
+        : [tidyMoney(s.shortfall, currencySymbol), tidyMoney(s.saving, currencySymbol)],
     }))
 }

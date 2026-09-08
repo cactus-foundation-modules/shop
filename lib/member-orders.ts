@@ -7,8 +7,8 @@ import { listRequestsForOrder } from '@/modules/shop/lib/db/order-requests'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { fillBlankMemberContactDetails } from '@/lib/members/contact'
 import { orderCompanyName } from '@/modules/shop/lib/order-display'
-import { canRequestCancel, canRequestReturn, returnDeadline, type RequestEligibility } from '@/modules/shop/lib/order-requests'
-import { nonReturnableNote } from '@/modules/shop/lib/returnable'
+import { canReportDamage, canRequestCancel, canRequestReturn, returnDeadline, type RequestEligibility } from '@/modules/shop/lib/order-requests'
+import { returnsPolicy, returnsPolicyNote, type ReturnsPolicy } from '@/modules/shop/lib/returnable'
 import type {
   ShpDigitalDownload,
   ShpOrder,
@@ -81,9 +81,12 @@ export type MemberOrderLine = {
   returnableQty: number
   /** Whether this line may go back at all, as snapshotted when it was ordered. */
   returnable: boolean
-  /** Why it may not, in the owner's own words where they gave any. Null on a
-   *  line that may. */
-  notReturnableNote: string | null
+  /** All three answers as one, from the pair snapshotted onto the line. */
+  returnsPolicy: ReturnsPolicy
+  /** What the customer is told about it - why it may not come back, or that
+   *  taking it back is ours to decide. Null on a line that simply comes back,
+   *  where there is nothing to say. */
+  returnsNote: string | null
 }
 
 export type MemberOrderFulfilment = 'UNDISPATCHED' | 'PARTIAL' | 'DISPATCHED'
@@ -150,6 +153,9 @@ function buildLines(
   const spokenFor = new Map<string, number>()
   for (const request of requests) {
     if (request.status !== 'PENDING' && request.status !== 'APPROVED') continue
+    // A damage report names lines without spending them: telling us a leg is
+    // broken must not be what stops the customer sending the thing back.
+    if (request.type === 'DAMAGE') continue
     for (const line of request.items) {
       spokenFor.set(line.orderItemId, (spokenFor.get(line.orderItemId) ?? 0) + line.quantity)
     }
@@ -160,12 +166,7 @@ function buildLines(
     const media = item.productId ? mediaByProduct.get(item.productId) ?? [] : []
     const image = media.find((m) => m.isPrimary && m.type === 'IMAGE') ?? media.find((m) => m.type === 'IMAGE')
     const dispatchedQty = position?.dispatchedQty ?? 0
-    // The note comes off the product as it stands today, while the flag itself
-    // is the order's own snapshot. Deliberately: the flag decides a right the
-    // customer bought under and must not move, but the wording is only wording,
-    // and the owner's latest phrasing is the better one to show. A product since
-    // deleted falls back to the stock sentence.
-    const productNote = item.productId ? products.get(item.productId)?.nonReturnableNote ?? null : null
+    const policy = returnsPolicy(item.returnable, item.returnsDiscretionary)
     return {
       item,
       productSlug: item.productId ? products.get(item.productId)?.slug ?? null : null,
@@ -176,7 +177,13 @@ function buildLines(
         ? Math.max(dispatchedQty - item.refundedQty - (spokenFor.get(item.id) ?? 0), 0)
         : 0,
       returnable: item.returnable,
-      notReturnableNote: item.returnable ? null : nonReturnableNote(productNote),
+      // Every half off the order's own snapshot. Reading the note back off the
+      // line's product looked tidier and was wrong: on a listing with variations
+      // the line's product is the hidden CHILD, which never carries a reason -
+      // the owner writes one on the listing - so every variation was handed the
+      // stock sentence and the owner's own wording was quietly lost.
+      returnsPolicy: policy,
+      returnsNote: returnsPolicyNote(policy, item.nonReturnableNote),
     }
   })
 }
@@ -189,9 +196,14 @@ export type MemberOrderDetail = {
   refundItems: ShpRefundItem[]
   downloads: ShpDigitalDownload[]
   requests: ShpOrderRequestWithItems[]
+  /** The open cancel or return, if there is one. */
   openRequest: ShpOrderRequestWithItems | null
+  /** The open damage report, counted separately - a broken leg and a change of
+   *  mind are two different conversations. */
+  openDamageRequest: ShpOrderRequestWithItems | null
   cancel: RequestEligibility
   return: RequestEligibility
+  damage: RequestEligibility
   /** When the return window shuts, if one is running. */
   returnBy: Date | null
 }
@@ -228,7 +240,8 @@ export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetai
     getProductMediaForProducts(productIds),
   ])
 
-  const openRequest = requests.find((r) => r.status === 'PENDING') ?? null
+  const openRequest = requests.find((r) => r.status === 'PENDING' && r.type !== 'DAMAGE') ?? null
+  const openDamageRequest = requests.find((r) => r.status === 'PENDING' && r.type === 'DAMAGE') ?? null
   // Latest parcel out, which is what a return window is counted from.
   const lastShippedAt = shipments.reduce<Date | null>(
     (latest, shipment) => (!latest || shipment.shippedAt > latest ? shipment.shippedAt : latest),
@@ -241,7 +254,23 @@ export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetai
   // per-line figures below say it better than a blanket refusal would.
   const anyReturnable = items.some((item) => item.returnable)
 
-  const eligibilityInput = { order, dispatch: dispatch.lines, lastShippedAt, config, openRequest, anyReturnable }
+  // The lines that stop the whole order being called off. Goods a shop will not
+  // take back are goods it committed to the moment the order was placed - cut,
+  // upholstered, or ordered in specially - so a cancellation is no more possible
+  // than a return. Named rather than counted, because "part of this order" sends
+  // the customer straight to an email asking which part.
+  const nonCancellable = items.filter((item) => !item.returnable).map((item) => item.productName)
+
+  const eligibilityInput = {
+    order,
+    dispatch: dispatch.lines,
+    lastShippedAt,
+    config,
+    openRequest,
+    openDamageRequest,
+    anyReturnable,
+    nonCancellable,
+  }
 
   return {
     order,
@@ -252,8 +281,10 @@ export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetai
     downloads,
     requests,
     openRequest,
+    openDamageRequest,
     cancel: canRequestCancel(eligibilityInput),
     return: canRequestReturn(eligibilityInput),
+    damage: canReportDamage(eligibilityInput),
     returnBy:
       lastShippedAt && config.returnRequestsEnabled && config.returnWindowDays > 0
         ? returnDeadline(lastShippedAt, config.returnWindowDays)

@@ -520,7 +520,7 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
           </p>
 
           <hr style={hr} />
-          <h3 style={sectionHeading}>Cancellations and returns</h3>
+          <h3 style={sectionHeading}>Cancellations, returns and damage</h3>
           <p className="field-hint" style={{ marginTop: '-0.5rem' }}>
             Requests arrive under Shop → Cancellations &amp; returns for you to approve or decline. Nothing is ever
             decided automatically, and no money moves until you say so.
@@ -530,7 +530,9 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             Let customers ask to cancel an order
           </label>
           <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
-            Only offered while nothing has been dispatched. Once part of an order is on its way, it is a return.
+            Only offered while nothing has been dispatched. Once part of an order is on its way, it is a return - and
+            never offered at all on an order holding something you have marked &ldquo;do not take it back&rdquo;, since
+            that is work you committed to the moment the order landed.
           </p>
           <label style={checkboxRow}>
             <input type="checkbox" checked={config.returnRequestsEnabled} onChange={(e) => set('returnRequestsEnabled', e.target.checked)} />
@@ -552,6 +554,15 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               </p>
             </div>
           )}
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.damageReportsEnabled} onChange={(e) => set('damageReportsEnabled', e.target.checked)} />
+            Let customers report damage, with photographs
+          </label>
+          <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
+            Its own thing rather than a reason on the returns list, because it is your problem rather than a change of
+            mind: no window, no collection, and it works on the made-to-order goods you would never take back. The
+            photographs arrive on the report, which is usually the whole of the conversation.
+          </p>
           <div style={fieldGrid}>
             <div className="field" style={{ margin: 0 }}>
               <label>Minimum order value</label>
@@ -632,6 +643,38 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 the invoice already went out with a number on it, in which case they are asked to ring you rather than quietly change paperwork you
                 have already sent.
               </p>
+            </>
+          )}
+
+          <hr style={hr} />
+          <h3 style={sectionHeading}>Delivery instructions</h3>
+          <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
+            A box on the delivery step for whatever the driver needs to know - the gate code, the side entrance, the neighbour who takes parcels in,
+            the lift that has been out for a fortnight. Always optional for the customer, and it shows up on the order beside their address.
+          </p>
+          <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
+            Worth switching on if your suppliers deliver direct: what the customer writes here is carried onto the purchase order you raise against
+            their order, so it reaches the driver who actually turns up rather than sitting on a screen back here.
+          </p>
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.deliveryInstructionsEnabled} onChange={(e) => set('deliveryInstructionsEnabled', e.target.checked)} />
+            Ask for delivery instructions at checkout
+          </label>
+          {config.deliveryInstructionsEnabled && (
+            <>
+              <div className="field">
+                <label>What to call it</label>
+                <input type="text" value={config.deliveryInstructionsLabel} onChange={(e) => set('deliveryInstructionsLabel', e.target.value)} placeholder="Delivery instructions" />
+                <p className="field-hint">The wording on the checkout box.</p>
+              </div>
+              <div className="field">
+                <label>The line underneath</label>
+                <input type="text" value={config.deliveryInstructionsHint} onChange={(e) => set('deliveryInstructionsHint', e.target.value)} placeholder="Anything the driver needs to know - a gate code, a side entrance, somewhere safe to leave it." />
+                <p className="field-hint">
+                  What you would actually like to be told. Say it in your own terms - &ldquo;access for a 7.5 tonne lorry, and any stairs&rdquo; asks a
+                  different question from &ldquo;where to leave it&rdquo;. Leave it blank for no line at all.
+                </p>
+              </div>
             </>
           )}
 

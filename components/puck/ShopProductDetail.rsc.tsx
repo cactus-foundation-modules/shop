@@ -22,6 +22,7 @@ import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { resolveProductAdminEditHref } from '@/modules/shop/lib/admin-edit'
 import { canSeeStockLevels } from '@/modules/shop/lib/admin-stock'
 import { canSeeProductCodes } from '@/modules/shop/lib/admin-codes'
+import { canSeeReturnsPolicy } from '@/modules/shop/lib/admin-returns'
 import { getSupplierByName } from '@/modules/shop/lib/db/suppliers'
 import { supplierHref } from '@/modules/shop/lib/supplier-url'
 import { orderSizeDeductionView } from '@/modules/shop/lib/order-size-deduction-view'
@@ -59,7 +60,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   // Extra gallery media and contributed tabs are additive and need only the
   // product, so they resolve alongside everything else rather than behind the
   // template.
-  const [media, config, taxDisplay, bp, tags, tagIds, template, provider, galleryExtras, detailTabs, specOverride, adminEditHref, showAdminStock, showAdminCodes] = await Promise.all([
+  const [media, config, taxDisplay, bp, tags, tagIds, template, provider, galleryExtras, detailTabs, specOverride, adminEditHref, showAdminStock, showAdminCodes, showAdminReturns] = await Promise.all([
     getProductMedia(product.id),
     getShopConfigCached(),
     resolveTaxDisplay(),
@@ -78,6 +79,8 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     canSeeStockLevels(),
     // And for the buying codes, which are staff-only for the same reason.
     canSeeProductCodes(),
+    // And for what the returns policy says about this one.
+    canSeeReturnsPolicy(),
   ])
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
   const tagSlugs = tagIds.map((id) => tagById.get(id)).filter((s): s is string => Boolean(s))
@@ -266,6 +269,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     adminEditHref,
     showAdminStock,
     showAdminCodes,
+    showAdminReturns,
   }
   const data = injectShopProductDetailEmbed(template, ctx)
 

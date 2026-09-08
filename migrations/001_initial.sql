@@ -187,6 +187,11 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
     -- sentence. Only meaningful where "returnable" is false, and not read off a
     -- variation child - a child borrows its listing's.
     "non_returnable_note" TEXT,
+    -- Whether a return is a favour rather than a right (045_returns_discretion.sql).
+    -- NULLABLE on the same terms as "returnable" above, and read only where
+    -- returns are allowed at all: a product nobody takes back is not taken back
+    -- at anyone's discretion either.
+    "returns_discretionary" BOOLEAN,
 
     -- Related products / upsells (addendum D)
     "related_mode" TEXT NOT NULL DEFAULT 'AUTOMATIC',
@@ -476,6 +481,14 @@ CREATE TABLE IF NOT EXISTS "shp_orders" (
     "shipping_address" JSONB NOT NULL,
     "billing_address" JSONB,
 
+    -- What the customer wants the driver to know: a gate code, a side entrance,
+    -- somewhere safe to leave it (046_delivery_instructions.sql). Deliberately
+    -- NOT part of shipping_address: an instruction is about this delivery, not
+    -- about the door, so it must not follow a saved address into next month's
+    -- order. It travels - the purchase order raised against this order carries
+    -- it onto the label the supplier's driver reads on a drop-ship.
+    "delivery_instructions" TEXT,
+
     -- Financials
     "subtotal" NUMERIC(10,2) NOT NULL,
     "discount_amount" NUMERIC(10,2) NOT NULL DEFAULT 0,
@@ -564,6 +577,16 @@ CREATE TABLE IF NOT EXISTS "shp_order_items" (
     -- because the product can be deleted, and because flipping a product to
     -- non-returnable must not strip the right from orders already placed.
     "returnable" BOOLEAN NOT NULL DEFAULT true,
+    -- The wording the customer is given, resolved at checkout from the LISTING
+    -- (an order line's product is the hidden variation child, which never
+    -- carries one) and snapshotted with the flag it explains. NULL falls back to
+    -- the stock sentence in lib/returnable.ts.
+    "non_returnable_note" TEXT,
+    -- Whether this line's return is at the shop's discretion, resolved and
+    -- snapshotted beside the flag above (045_returns_discretion.sql). false on
+    -- every line placed before the column existed, which is what they were sold
+    -- under.
+    "returns_discretionary" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "shp_order_items_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "shp_order_items_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE,
@@ -763,6 +786,13 @@ CREATE INDEX IF NOT EXISTS "shp_shipments_tracking_poll_idx"
     ON "shp_shipments" ("tracking_checked_at")
     WHERE "tracking_url" IS NOT NULL AND "delivered_at" IS NULL;
 
+-- The same poller's catch-up pass: a parcel on an order somebody completed by
+-- hand, still without its proof of delivery. See
+-- migrations/042_signature_catchup_index.sql.
+CREATE INDEX IF NOT EXISTS "shp_shipments_signature_catchup_idx"
+    ON "shp_shipments" ("tracking_checked_at")
+    WHERE "tracking_url" IS NOT NULL AND "signature_url" IS NULL;
+
 CREATE TABLE IF NOT EXISTS "shp_shipment_items" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     "shipment_id" TEXT NOT NULL,
@@ -806,6 +836,9 @@ CREATE TABLE IF NOT EXISTS "shp_order_requests" (
     "customer_note" TEXT,
     -- Shown to the customer with the decision. Private notes go on shp_order_notes.
     "admin_note" TEXT,
+    -- What the shop keeps back for collecting the goods, entered on approval
+    -- (045_returns_discretion.sql). NULL is "none recorded", not zero.
+    "return_charge" NUMERIC(10,2),
     "decided_at" TIMESTAMP(3),
     -- Core User id. Plain TEXT, no FK, as shp_refunds.created_by is.
     "decided_by" TEXT,
@@ -813,7 +846,7 @@ CREATE TABLE IF NOT EXISTS "shp_order_requests" (
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "shp_order_requests_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "shp_order_requests_type_check" CHECK ("type" IN ('CANCEL', 'RETURN')),
+    CONSTRAINT "shp_order_requests_type_check" CHECK ("type" IN ('CANCEL', 'RETURN', 'DAMAGE')),
     CONSTRAINT "shp_order_requests_status_check" CHECK ("status" IN ('PENDING', 'APPROVED', 'DECLINED', 'WITHDRAWN')),
     CONSTRAINT "shp_order_requests_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE
 );
@@ -823,9 +856,13 @@ CREATE INDEX IF NOT EXISTS "shp_order_requests_member_id_idx" ON "shp_order_requ
 CREATE INDEX IF NOT EXISTS "shp_order_requests_status_created_at_idx" ON "shp_order_requests" ("status", "created_at");
 
 -- One open request per order: two racing to approval would refund the same
--- lines twice.
+-- lines twice. A damage report is counted separately (045_returns_discretion.sql)
+-- - it refunds nothing by itself, and a second parcel arriving broken must not
+-- have to wait for a return to be decided.
 CREATE UNIQUE INDEX IF NOT EXISTS "shp_order_requests_one_open_idx"
-    ON "shp_order_requests" ("order_id") WHERE "status" = 'PENDING';
+    ON "shp_order_requests" ("order_id") WHERE "status" = 'PENDING' AND "type" <> 'DAMAGE';
+CREATE UNIQUE INDEX IF NOT EXISTS "shp_order_requests_one_open_damage_idx"
+    ON "shp_order_requests" ("order_id") WHERE "status" = 'PENDING' AND "type" = 'DAMAGE';
 
 CREATE TABLE IF NOT EXISTS "shp_order_request_items" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
@@ -842,6 +879,23 @@ CREATE TABLE IF NOT EXISTS "shp_order_request_items" (
 CREATE INDEX IF NOT EXISTS "shp_order_request_items_request_id_idx" ON "shp_order_request_items" ("request_id");
 CREATE UNIQUE INDEX IF NOT EXISTS "shp_order_request_items_request_item_idx"
     ON "shp_order_request_items" ("request_id", "order_item_id");
+
+-- The photographs on a damage report (045_returns_discretion.sql). Nobody
+-- arranges a replacement off a sentence.
+CREATE TABLE IF NOT EXISTS "shp_order_request_photos" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "request_id" TEXT NOT NULL,
+    -- Core Media id. Plain TEXT, no FK, as "decided_by" is.
+    "media_id" TEXT,
+    -- Snapshotted beside the id so the queue needs no join into core.
+    "url" TEXT NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "shp_order_request_photos_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "shp_order_request_photos_request_id_fkey" FOREIGN KEY ("request_id") REFERENCES "shp_order_requests"("id") ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "shp_order_request_photos_request_id_idx" ON "shp_order_request_photos" ("request_id");
 
 -- ---------------------------------------------------------------------------
 -- Order notes and email log

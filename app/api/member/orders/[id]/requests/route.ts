@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { prisma } from '@/lib/db/prisma'
 import { errorResponse } from '@/lib/utils'
+import { MAX_DAMAGE_PHOTOS } from '@/modules/shop/lib/order-requests'
 import { loadOrderDetail } from '@/modules/shop/lib/member-orders'
 import { requireOrderAccess } from '@/modules/shop/lib/order-route-access'
 import { submitOrderRequest } from '@/modules/shop/lib/order-request-actions'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 
 const Body = z.object({
-  type: z.enum(['CANCEL', 'RETURN']),
+  type: z.enum(['CANCEL', 'RETURN', 'DAMAGE']),
   reason: z.string().min(1),
   customerNote: z.string().max(2000).nullable().optional(),
   items: z.array(z.object({ orderItemId: z.string(), quantity: z.number().int().min(1) })).optional(),
+  // Ids of media rows already uploaded through the photos endpoint beside this
+  // one. Ids only - the URL is looked up here rather than taken on trust, so a
+  // hand-rolled POST cannot hang an arbitrary address off somebody's order and
+  // have the owner's queue load it.
+  photoMediaIds: z.array(z.string()).max(MAX_DAMAGE_PHOTOS).optional(),
 })
 
 // PROTECTED - a customer asking for one of their own orders to be called off or
@@ -37,8 +44,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const detail = await loadOrderDetail(id)
   if (!detail) return errorResponse('Order not found', 404)
 
-  const eligibility = parsed.data.type === 'CANCEL' ? detail.cancel : detail.return
+  const eligibility =
+    parsed.data.type === 'CANCEL' ? detail.cancel
+    : parsed.data.type === 'DAMAGE' ? detail.damage
+    : detail.return
   if (!eligibility.allowed) return errorResponse(eligibility.reason, 409)
+
+  // Resolved from the library, and only for a damage report: images, nothing
+  // else, and quietly dropped rather than refused where an id names nothing.
+  // A photograph that failed to save should not lose the report it belongs to.
+  const ids = parsed.data.type === 'DAMAGE' ? parsed.data.photoMediaIds ?? [] : []
+  const photos = ids.length > 0
+    ? (await prisma.media.findMany({
+        where: { id: { in: ids }, mimeType: { startsWith: 'image/' } },
+        select: { id: true, url: true },
+      })).map((media) => ({ mediaId: media.id, url: media.url }))
+    : []
 
   const outcome = await submitOrderRequest({
     orderId: id,
@@ -50,7 +71,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     type: parsed.data.type,
     reason: parsed.data.reason,
     customerNote: parsed.data.customerNote ?? null,
-    items: parsed.data.type === 'RETURN' ? parsed.data.items ?? [] : [],
+    items: parsed.data.type === 'CANCEL' ? [] : parsed.data.items ?? [],
+    photos,
   })
 
   if (!outcome.ok) return errorResponse(outcome.error, outcome.status)

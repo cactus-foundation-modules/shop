@@ -10,6 +10,10 @@ const Body = z.object({
   // server: a refund is money leaving, and it happens because somebody ticked
   // a box that said so, not because a field was missing from a request body.
   refund: z.boolean().optional(),
+  // What the shop keeps back for collecting the goods. Two decimal places and
+  // nothing daft: it is netted off a refund, and a figure with four decimals or
+  // six digits is a slip of the keyboard rather than a policy.
+  returnCharge: z.number().min(0).max(100000).nullable().optional(),
 })
 
 // PROTECTED - approve or decline a customer's cancel/return request.
@@ -34,6 +38,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         adminNote: parsed.data.adminNote ?? null,
         userId: gate.user.id,
         refund: parsed.data.refund === true,
+        returnCharge: parsed.data.returnCharge ?? null,
       })
     : await declineOrderRequest({
         requestId: id,
@@ -46,5 +51,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     request: outcome.request,
     refundError: outcome.refundError ?? null,
     refundedAmount: outcome.refundedAmount ?? null,
+    returnCharge: outcome.request.returnCharge,
   })
 }

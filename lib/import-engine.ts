@@ -51,6 +51,7 @@ type ImportFields = Partial<{
   supplier: string | null; saleSku: string | null; supplierSku: string | null
   featuredHidden: boolean
   returnable: boolean | null; nonReturnableNote: string | null
+  returnsDiscretionary: boolean | null
 }>
 
 // Fields stored as SQL numeric, so Prisma hands them back as decimal strings
@@ -378,6 +379,16 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
         return null
       })())
       put('non_returnable_reason', 'nonReturnableNote', cell(row, 'non_returnable_reason') || null)
+      // Same three-state reading as `returnable` above, and only ever read on a
+      // product that comes back at all: goods nobody takes back are not taken
+      // back at anyone's discretion either.
+      put('returns_discretionary', 'returnsDiscretionary', (() => {
+        const v = cell(row, 'returns_discretionary').trim().toLowerCase()
+        if (v === '') return null
+        if (v === 'false' || v === 'no' || v === 'n' || v === '0') return null
+        if (v === 'true' || v === 'yes' || v === 'y' || v === '1') return true
+        return null
+      })())
       // Status is honoured on both create and update: the sheet gives the owner a
       // DRAFT/ACTIVE/ARCHIVED dropdown, so a Pull that ignored it would silently
       // discard the one edit they most expect to stick. An unreadable or blank

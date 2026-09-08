@@ -44,6 +44,10 @@ export const CSV_COLUMNS = [
   // refuses - which is what makes sweeping one bespoke range worth doing here.
   'returnable',
   'non_returnable_reason',
+  // The third answer: they may ask, and the shop may say no. Blank is
+  // "nothing said" here too, so a sheet that has never heard of the column
+  // leaves every product exactly as it is.
+  'returns_discretionary',
 ] as const
 
 export type CsvColumn = (typeof CSV_COLUMNS)[number]
@@ -65,7 +69,7 @@ const OPTIONAL_CSV_COLUMNS: readonly CsvColumn[] = [
   'is_pre_order', 'pre_order_dispatch_date', 'pre_order_note', 'pre_order_max_quantity',
   'related_mode', 'related_limit', 'upsell_mode', 'upsell_limit',
   'supplier', 'sale_sku', 'min_order_quantity', 'supplier_sku', 'featured_hidden', 'order_size_deduction',
-  'returnable', 'non_returnable_reason',
+  'returnable', 'non_returnable_reason', 'returns_discretionary',
 ]
 
 // Columns whose values are numbers, not text. The CSV writer does not care (every
@@ -79,7 +83,7 @@ export const NUMERIC_CSV_COLUMNS: readonly CsvColumn[] = [
 
 // Columns whose values are booleans. `sku` and `barcode` are excluded from the
 // numeric list on purpose - they are identifiers that may carry leading zeros.
-export const BOOLEAN_CSV_COLUMNS: readonly CsvColumn[] = ['track_inventory', 'is_pre_order', 'featured_hidden', 'returnable']
+export const BOOLEAN_CSV_COLUMNS: readonly CsvColumn[] = ['track_inventory', 'is_pre_order', 'featured_hidden', 'returnable', 'returns_discretionary']
 
 // The three media kinds shp_product_media.type may hold. Kept here (not just in
 // the DB CHECK) because the CSV format encodes the kind as a `TYPE:url` prefix.
@@ -293,6 +297,7 @@ export const CSV_COLUMN_LABELS: Record<CsvColumn, string> = {
   order_size_deduction: 'Order-size deduction',
   returnable: 'Can be returned',
   non_returnable_reason: 'Why it cannot be returned',
+  returns_discretionary: 'Returns are our decision',
 }
 
 export type CsvColumnGroup = { label: string; columns: readonly CsvColumn[] }
@@ -302,7 +307,7 @@ export const CSV_COLUMN_GROUPS: readonly CsvColumnGroup[] = [
   { label: 'Prices and VAT', columns: ['price', 'sale_price', 'retail_price', 'trade_price', 'cost_price', 'order_size_deduction', 'tax_class'] },
   { label: 'Stock', columns: ['track_inventory', 'stock_count', 'low_stock_threshold', 'out_of_stock_behaviour', 'min_order_quantity'] },
   { label: 'Catalogue', columns: ['categories', 'tags', 'collections', 'featured_hidden'] },
-  { label: 'Returns', columns: ['returnable', 'non_returnable_reason'] },
+  { label: 'Returns', columns: ['returnable', 'returns_discretionary', 'non_returnable_reason'] },
   { label: 'Words and pictures', columns: ['description', 'short_description', 'image_urls', 'image_alt', 'meta_title', 'meta_description'] },
   { label: 'Size and weight', columns: ['weight', 'weight_unit', 'dimension_l', 'dimension_w', 'dimension_h', 'dimension_unit'] },
   { label: 'Pre-orders', columns: ['is_pre_order', 'pre_order_dispatch_date', 'pre_order_note', 'pre_order_max_quantity'] },

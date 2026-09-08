@@ -1,5 +1,6 @@
 import { AddToCartButton } from '@/modules/shop/components/public/AddToCartButton'
 import { minOrderQuantity } from '@/modules/shop/lib/min-order'
+import { RETURNS_POLICY_LABEL, returnsPolicy, returnsPolicyNote, nonReturnableNote } from '@/modules/shop/lib/returnable'
 import { GalleryViewportFit } from '@/modules/shop/components/public/GalleryViewportFit'
 import { ProductGallery, ProductSectionTabs, type ProductTab, type TabAction } from '@/modules/shop/components/public/ProductDetailIslands'
 import { StickyStripHeight } from '@/modules/shop/components/public/StickyStripHeight'
@@ -576,7 +577,11 @@ export const shopDetailTitlePuckRscComponent = { ...shopDetailTitlePuckComponent
 // ---------------------------------------------------------------------------
 
 const skuCss = `.spd-sku{font-size:13px;color:var(--color-text-muted)}
-.spd-sku-staff{display:inline-flex;align-items:baseline;gap:8px;margin-top:5px;padding:3px 9px;border:1px dashed var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-text-muted);font-size:12px;line-height:1.35;font-variant-numeric:tabular-nums}
+/* flex-wrap and a ceiling on the width because the returns pill carries a whole
+   sentence - the owner's own wording for why something cannot come back - where
+   the code pills carry a word. Without them one long reason stretches the buy
+   column and pushes the price off the side of a laptop. */
+.spd-sku-staff{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:8px;max-width:100%;margin-top:5px;padding:3px 9px;border:1px dashed var(--color-border);border-radius:8px;background:var(--color-surface);color:var(--color-text-muted);font-size:12px;line-height:1.35;font-variant-numeric:tabular-nums}
 .spd-sku-staff strong{font-weight:700}`
 
 type SkuProps = { _ctx?: DetailPartContext; prefix?: string; align?: string; audience?: string }
@@ -628,7 +633,25 @@ export function ShopDetailSkuRsc(props: SkuProps) {
   // product carries one, on sale or not: the owner reading their own page needs
   // to know which code this stock is currently ordered under.
   const saleSku = showAdminCodes ? product.saleSku : null
-  if (!sku && !saleSku) return null
+  // What the returns policy says about this one, for staff. It lives on the SKU
+  // part rather than in a block of its own because a block of its own would have
+  // to be dragged into every existing Product layout before it appeared, and the
+  // owner asking "can this come back?" is the same owner already reading the
+  // staff strip for the code and the shelf count.
+  //
+  // Withheld on a claimed product, exactly as the Badges part withholds the
+  // parent's stock figure and for the same reason: the provider owns the buy row
+  // there and prints the CHOSEN combination's own answer, so the parent's
+  // alongside it would put two answers on one page and the wrong one is the
+  // bigger, bolder one.
+  const staffReturns = (() => {
+    if (!_ctx.showAdminReturns || _ctx.slot) return null
+    const policy = returnsPolicy(product.returnable, product.returnsDiscretionary)
+    // The stock sentence stands in on the two answers that need one; a product
+    // that simply comes back has nothing to say and prints the label alone.
+    return { policy, note: returnsPolicyNote(policy, product.nonReturnableNote) ?? nonReturnableNote(null) }
+  })()
+  if (!sku && !saleSku && !staffReturns) return null
   const prefix = skuPrefix(props.prefix)
   const staffSku = Boolean(sku) && !isPublic
   return (
@@ -647,6 +670,19 @@ export function ShopDetailSkuRsc(props: SkuProps) {
           // have to wonder whether the customer can see it too.
           <div className="spd-sku-staff" title="Only staff signed in to this site can see this">
             <strong>Sale SKU: {saleSku}</strong>
+            <span>staff only</span>
+          </div>
+        )}
+        {staffReturns && (
+          // Said either way round, never only when the answer is no: a blank
+          // would be indistinguishable from a part that had failed to render,
+          // and "yes" is the answer the owner on the telephone actually wants.
+          // Same reasoning as "Stock: not tracked" over an empty badge.
+          <div className="spd-sku-staff" title="Only staff signed in to this site can see this">
+            <strong>{RETURNS_POLICY_LABEL[staffReturns.policy]}</strong>
+            {/* The customer's own wording, not a summary of it - the point of
+                showing it here is knowing what they will be told. */}
+            {staffReturns.policy !== 'ALLOWED' && <span>{staffReturns.note}</span>}
             <span>staff only</span>
           </div>
         )}
@@ -803,12 +839,31 @@ const orderSizeDeductionCss = `
    in as a shopper picks a combination never shoves the buy button down the page.
    One line of text plus its lead: enough for the sentence at every width the buy
    column is ever given, and the "why?" fold below it opens into flow as folds do. */
-.spd-osd{min-height:1.45rem;margin:0 0 10px}
-.spd-osd-line{margin:0;font-size:14px;line-height:1.45;color:var(--color-text-muted)}
-.spd-osd-why{margin:2px 0 0;font-size:13px;color:var(--color-text-muted)}
+.spd-osd{min-height:2.7rem;margin:0 0 12px}
+/* An inset with an accent edge rather than a filled panel. The buy column
+   already carries a filled card directly beneath this one where a delivery
+   module is installed, and two filled blocks stacked read as a pair of equal
+   announcements - which they are not. The rule carries the emphasis and the
+   ground stays neutral.
+
+   Neutral is also the only ground that survives both themes. --color-primary-subtle
+   was the obvious fill and fails AA in dark: the accent on it lands at 4.25:1 and
+   the muted "why?" at 4.19:1, both under 4.5 at these sizes. On --color-bg-subtle
+   every role clears AA in both themes. Check the arithmetic before swapping the
+   fill for a tinted one. */
+.spd-osd-box{display:inline-block;max-width:100%;padding:9px 14px;background:var(--color-bg-subtle);border-left:3px solid var(--color-primary);border-radius:0 7px 7px 0}
+.spd-osd-line{margin:0;font-size:14.5px;line-height:1.45;color:var(--color-text)}
+/* The figure is the reason anybody reads the line, so it is the one thing set
+   apart - the wording around it stays at body weight. em-relative so it tracks
+   the sentence if the size ever changes. */
+/* What it costs today, struck through so the figure beside it reads as the
+   better of two rather than as a second, unexplained price. */
+.spd-osd-was{color:var(--color-text-muted);text-decoration:line-through;text-decoration-thickness:1px}
+.spd-osd-amount{font-weight:600;font-size:1.1em;color:var(--color-primary)}
+.spd-osd-why{margin:5px 0 0;font-size:13px;color:var(--color-text-muted)}
 .spd-osd-why > summary{cursor:pointer;text-decoration:underline;text-underline-offset:2px;width:max-content}
 .spd-osd-why > summary:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px;border-radius:3px}
-.spd-osd-why > p{margin:6px 0 0}
+.spd-osd-why > p{margin:6px 0 0;color:var(--color-text-muted)}
 `
 
 type OrderSizeDeductionProps = { _ctx?: DetailPartContext; align?: string }
@@ -817,8 +872,15 @@ export function ShopDetailOrderSizeDeduction(props: OrderSizeDeductionProps) {
   return (
     <>
       <Style css={orderSizeDeductionCss} />
+      {/* Same markup and classes as the live path below, sample wording aside -
+          an author styling this in the editor has to be looking at what a
+          shopper gets. */}
       <div className="spd-osd" style={{ opacity: 0.6, ...textAlignStyle(props.align) }}>
-        <p className="spd-osd-line">£110 on Dynamic Office Solutions orders of £350 or more</p>
+        <div className="spd-osd-box">
+          <p className="spd-osd-line">
+            Get it for just <s className="spd-osd-was">£116</s> <span className="spd-osd-amount">£110</span> on Dynamic Office Solutions orders of £350 or more
+          </p>
+        </div>
       </div>
     </>
   )

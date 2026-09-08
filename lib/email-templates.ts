@@ -221,8 +221,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Cancel or return request approved',
     subject: 'Your {{requestType}} request for order {{orderNumber}} is approved',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>Good news - we have approved your {{requestType}} request for order <strong>{{orderNumber}}</strong>.</p>{{#if hasAdminNote}}<p>{{adminNote}}</p>{{/if}}{{#if hasRefund}}<p>A refund of {{refundAmount}} is on its way back to you. Depending on your bank it can take a few working days to show up.</p>{{/if}}<p>Thanks for your patience.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['customerName', 'orderNumber', 'requestType', 'adminNote', 'refundAmount', 'shopName', 'hasAdminNote', 'hasRefund', 'orderUrl', 'hasOrderUrl'],
+      '<p>Hi {{customerName}},</p><p>Good news - we have approved your {{requestType}} request for order <strong>{{orderNumber}}</strong>.</p>{{#if hasAdminNote}}<p>{{adminNote}}</p>{{/if}}{{#if hasReturnCharge}}<p>As we mentioned when you ordered, there is a charge of {{returnCharge}} for collecting this, which we have kept back from what goes to you.</p>{{/if}}{{#if hasRefund}}<p>A refund of {{refundAmount}} is on its way back to you. Depending on your bank it can take a few working days to show up.</p>{{/if}}<p>Thanks for your patience.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'requestType', 'adminNote', 'refundAmount', 'returnCharge', 'shopName', 'hasAdminNote', 'hasRefund', 'hasReturnCharge', 'orderUrl', 'hasOrderUrl'],
     transactional: false,
   },
   {
@@ -281,6 +281,50 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'requestType', 'requestReason', 'requestItems', 'customerNote', 'shopName', 'hasCustomerNote', 'hasItems'],
     transactional: false,
   },
+  // Damage, which is not a return and does not sound like one. Four of its own
+  // rather than three shared ones: "we have approved your damage request" is
+  // not a sentence anybody would write, and an owner softening the wording of a
+  // decline must be able to do it without touching the apology.
+  //
+  // Transactional, all of them, unlike the request emails above. A customer who
+  // has told a shop something arrived broken is owed the answer whatever they
+  // think of its newsletter.
+  {
+    key: 'shop.damage-received',
+    label: 'Damage reported',
+    subject: "We've got your damage report for order {{orderNumber}}",
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>Thanks for telling us - sorry about this. We have your report for order <strong>{{orderNumber}}</strong>{{#if hasPhotos}} along with your photographs ({{photoCount}}){{/if}}, and someone will look at it shortly.</p><p>What you told us: {{requestReason}}</p>{{#if hasItems}}<p><strong>Affected:</strong></p><p>{{requestItems}}</p>{{/if}}<p>Please hold on to the packaging until you hear from us - it is often the fastest way to settle what happened.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'requestReason', 'requestItems', 'photoCount', 'shopName', 'hasItems', 'hasPhotos', 'orderUrl', 'hasOrderUrl'],
+    transactional: true,
+  },
+  {
+    key: 'shop.damage-resolved',
+    label: 'Damage report - putting it right',
+    subject: 'Sorting out the damage to order {{orderNumber}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>Thanks for your patience - we have looked at what you sent us about order <strong>{{orderNumber}}</strong> and we are putting it right.</p>{{#if hasAdminNote}}<p>{{adminNote}}</p>{{/if}}{{#if hasRefund}}<p>A refund of {{refundAmount}} is on its way back to you. Depending on your bank it can take a few working days to show up.</p>{{/if}}<p>Sorry again for the trouble.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'adminNote', 'refundAmount', 'shopName', 'hasAdminNote', 'hasRefund', 'orderUrl', 'hasOrderUrl'],
+    transactional: true,
+  },
+  {
+    key: 'shop.damage-declined',
+    label: 'Damage report - not something we can put right',
+    subject: 'About the damage you reported on order {{orderNumber}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>We have looked carefully at what you sent us about order <strong>{{orderNumber}}</strong>, and we are afraid this is not something we can put right.</p>{{#if hasAdminNote}}<p>{{adminNote}}</p>{{/if}}<p>If there is something we have missed, reply to this email and we will take another look.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'adminNote', 'shopName', 'hasAdminNote', 'orderUrl', 'hasOrderUrl'],
+    transactional: true,
+  },
+  {
+    key: 'shop.admin-new-damage',
+    label: 'Damage reported (admin alert)',
+    subject: 'Damage reported: order {{orderNumber}}',
+    bodyHtml:
+      '<p>{{customerName}} ({{customerEmail}}) has reported damage on order <strong>{{orderNumber}}</strong>.</p><p>What they said: {{requestReason}}</p>{{#if hasItems}}<p><strong>Affected:</strong></p><p>{{requestItems}}</p>{{/if}}{{#if hasCustomerNote}}<p>They added: {{customerNote}}</p>{{/if}}<p>Photographs: {{photoCount}}. They are on the report under Shop &rarr; Cancellations &amp; returns.</p>',
+    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'requestReason', 'requestItems', 'customerNote', 'photoCount', 'shopName', 'hasCustomerNote', 'hasItems', 'hasPhotos'],
+    transactional: false,
+  },
 ]
 
 /** shp_email_templates.trigger to the key core knows it by. The trigger names
@@ -306,4 +350,8 @@ export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   REQUEST_APPROVED: 'shop.request-approved',
   REQUEST_DECLINED: 'shop.request-declined',
   ADMIN_NEW_REQUEST: 'shop.admin-new-request',
+  DAMAGE_RECEIVED: 'shop.damage-received',
+  DAMAGE_RESOLVED: 'shop.damage-resolved',
+  DAMAGE_DECLINED: 'shop.damage-declined',
+  ADMIN_NEW_DAMAGE: 'shop.admin-new-damage',
 }

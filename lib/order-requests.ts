@@ -1,4 +1,4 @@
-import { NOTHING_RETURNABLE_REASON } from '@/modules/shop/lib/returnable'
+import { NOTHING_RETURNABLE_REASON, nonCancellableReason } from '@/modules/shop/lib/returnable'
 import type {
   ShpOrder,
   ShpOrderItemDispatch,
@@ -20,16 +20,66 @@ export const SHP_CANCEL_REASONS = [
   { code: 'OTHER', label: 'Something else' },
 ] as const
 
+// Damage is deliberately NOT on this list. A return is a shopper deciding they
+// do not want something; a broken one is the shop's mistake, and it needs
+// photographs and a replacement rather than a queue position and a refund. Put
+// side by side in a dropdown, "it arrived damaged" is the reason people pick,
+// and it turns every breakage into a return the shop then has to unpick by
+// email. So the offer is made in words instead - see DAMAGED_GOODS_GUIDANCE,
+// which sits above the form.
 export const SHP_RETURN_REASONS = [
-  { code: 'FAULTY', label: 'It arrived damaged or faulty' },
   { code: 'WRONG_ITEM', label: 'The wrong item arrived' },
   { code: 'NOT_AS_DESCRIBED', label: 'It is not as described' },
   { code: 'NO_LONGER_NEEDED', label: 'I no longer need it' },
   { code: 'OTHER', label: 'Something else' },
 ] as const
 
+/**
+ * Codes no longer offered, kept so the requests that carry them still read as
+ * English. Dropping a reason from the list must not turn every historical row
+ * into the word FAULTY on the owner's queue - the request was honestly made
+ * under the old list, and the record of it belongs to the customer.
+ *
+ * Not reachable from reasonsFor, so nothing new can be raised against one, and
+ * a hand-rolled POST quoting an old code is refused like any other rubbish.
+ */
+const RETIRED_REASON_LABELS: Record<string, string> = {
+  FAULTY: 'It arrived damaged or faulty',
+}
+
+/**
+ * What the customer is told instead, above the return form. Damage is a
+ * replacement, not a refund, and it starts with a photograph: a return raised
+ * for a broken leg has the goods collected, checked and refunded when what the
+ * shopper actually wanted was the leg.
+ */
+export const DAMAGED_GOODS_GUIDANCE =
+  'Has something arrived damaged or faulty? Do not start a return - send us photographs of the damage and we will arrange a replacement.'
+
+// Damage has its own list, and FAULTY is on it. The same word means two
+// different things in the two places: on a return it was a shopper explaining
+// why they wanted their money back, and here it is the start of a replacement.
+export const SHP_DAMAGE_REASONS = [
+  { code: 'ARRIVED_DAMAGED', label: 'It arrived damaged' },
+  { code: 'FAULTY', label: 'It has developed a fault' },
+  { code: 'PARTS_MISSING', label: 'Parts are missing or broken' },
+  { code: 'OTHER', label: 'Something else' },
+] as const
+
+/**
+ * How many photographs one report may carry.
+ *
+ * Six, because a damaged desk is a wide shot, the damage, the label on the
+ * carton and one of the packaging it came in, and somebody always sends two of
+ * the same thing. It is a cap on an upload a guest can reach with nothing but a
+ * postcode, so it exists as much to bound that as to keep the queue readable.
+ */
+export const MAX_DAMAGE_PHOTOS = 6
+
 export function reasonsFor(type: ShpOrderRequestType): ReadonlyArray<{ code: string; label: string }> {
-  return type === 'CANCEL' ? SHP_CANCEL_REASONS : SHP_RETURN_REASONS
+  if (type === 'CANCEL') return SHP_CANCEL_REASONS
+  if (type === 'DAMAGE') return SHP_DAMAGE_REASONS
+  return SHP_RETURN_REASONS
 }
 
 export function isValidReason(type: ShpOrderRequestType, code: string): boolean {
@@ -37,7 +87,7 @@ export function isValidReason(type: ShpOrderRequestType, code: string): boolean 
 }
 
 export function reasonLabel(type: ShpOrderRequestType, code: string): string {
-  return reasonsFor(type).find((r) => r.code === code)?.label ?? code
+  return reasonsFor(type).find((r) => r.code === code)?.label ?? RETIRED_REASON_LABELS[code] ?? code
 }
 
 // Statuses where there is nothing left to call off or send back. CANCELLED and
@@ -62,11 +112,30 @@ export type EligibilityInput = {
    * one that actually holds the line, and it reads the columns itself.
    */
   anyReturnable?: boolean
+  /**
+   * The names of any lines the shop does not take back, which are therefore
+   * also the lines it cannot be talked out of supplying once the order is
+   * placed. Empty (or absent, on a caller that has not looked) leaves
+   * cancelling exactly as it was.
+   */
+  nonCancellable?: string[]
   /** The most recent parcel's ship date, or null if nothing has gone out. */
   lastShippedAt: Date | null
-  config: { cancelRequestsEnabled: boolean; returnRequestsEnabled: boolean; returnWindowDays: number }
-  /** Any request already open on this order. */
+  config: {
+    cancelRequestsEnabled: boolean
+    returnRequestsEnabled: boolean
+    returnWindowDays: number
+    damageReportsEnabled: boolean
+  }
+  /** Any cancel or return already open on this order. */
   openRequest?: ShpOrderRequestWithItems | null
+  /**
+   * Any damage report already open on this order, counted separately. A broken
+   * table leg is not the same conversation as a return, and being told to wait
+   * for one before reporting the other is how a shop hears about it by email
+   * instead.
+   */
+  openDamageRequest?: ShpOrderRequestWithItems | null
   now?: Date
 }
 
@@ -86,6 +155,13 @@ export function canRequestCancel(input: EligibilityInput): RequestEligibility {
   }
   if (input.dispatch.some((line) => line.dispatchedQty > 0)) {
     return { allowed: false, reason: 'Part of this order has already been dispatched, so it is a return rather than a cancellation.' }
+  }
+  // Checked last, and only once the order is genuinely still sitting here: goods
+  // a shop will not take back are goods it has already committed to - cut,
+  // upholstered or ordered in specially - the moment the order was placed. The
+  // van not having been yet does not put that back in the box.
+  if (input.nonCancellable && input.nonCancellable.length > 0) {
+    return { allowed: false, reason: nonCancellableReason(input.nonCancellable) }
   }
   return { allowed: true }
 }
@@ -124,6 +200,32 @@ export function canRequestReturn(input: EligibilityInput): RequestEligibility {
         reason: `The ${input.config.returnWindowDays}-day return window for this order closed on ${deadline.toLocaleDateString('en-GB')}. Get in touch if you think something is wrong with it.`,
       }
     }
+  }
+  return { allowed: true }
+}
+
+/**
+ * Reporting damage. The loosest of the three rules on purpose.
+ *
+ * No return window, because a fault does not read a calendar and the shop's
+ * obligations over faulty goods outlive any window it chooses to offer. No
+ * returnable check either: a made-to-measure desk that arrives smashed is still
+ * smashed, and it is exactly the customer who cannot send it back who most
+ * needs a way to say so. All that is required is that something has actually
+ * turned up to be damaged.
+ */
+export function canReportDamage(input: EligibilityInput): RequestEligibility {
+  if (!input.config.damageReportsEnabled) {
+    return { allowed: false, reason: 'Get in touch about anything damaged or faulty and we will put it right.' }
+  }
+  if (input.openDamageRequest) {
+    return { allowed: false, reason: 'You have already reported damage on this order. We will come back to you on it.' }
+  }
+  if (input.order.status === 'CANCELLED') {
+    return { allowed: false, reason: 'This order has been cancelled.' }
+  }
+  if (!input.dispatch.some((line) => line.dispatchedQty > 0)) {
+    return { allowed: false, reason: 'Nothing from this order has been dispatched yet, so there is nothing to report.' }
   }
   return { allowed: true }
 }

@@ -7,6 +7,7 @@ import {
   orderSizeDeductionQualifiedNote,
   orderSizeDeductionRangeLine,
   orderSizeDeductionShortfallNote,
+  orderSizeDeductionLineParts,
   orderSizeDeductionStates,
   tidyMoney,
   type OrderSizeDeductionLine,
@@ -243,6 +244,33 @@ describe('which lines actually lose money', () => {
 describe('the copy', () => {
   const currency = '£'
 
+  it('breaks the line into the parts a renderer dresses, on both wordings', () => {
+    expect(orderSizeDeductionLineParts({
+      reducedPrice: 110, currentPrice: 116, supplier: DYNAMIC, threshold: 350, currencySymbol: currency,
+    })).toEqual({
+      lead: 'Get it for just ',
+      was: '£116',
+      now: '£110',
+      tail: ' on Dynamic Office Solutions orders of £350 or more',
+      text: 'Get it for just £116 £110 on Dynamic Office Solutions orders of £350 or more',
+    })
+
+    expect(orderSizeDeductionLineParts({
+      reducedPrice: 110, currentPrice: 116, supplier: DYNAMIC, threshold: 350, currencySymbol: currency, someOptionsOnly: true,
+    }).lead).toBe('Some options drop to ')
+  })
+
+  it('strikes nothing through when there is no better price to show', () => {
+    // No current price given, or one that does not actually beat the reduced
+    // figure: a line through a number equal to the one beside it would be a
+    // claim about a saving that is not there.
+    expect(orderSizeDeductionLineParts({ reducedPrice: 110, supplier: DYNAMIC, threshold: 350, currencySymbol: currency }).was).toBeNull()
+    expect(orderSizeDeductionLineParts({ reducedPrice: 110, currentPrice: 110, supplier: DYNAMIC, threshold: 350, currencySymbol: currency }).was).toBeNull()
+    expect(orderSizeDeductionLineParts({ reducedPrice: 110, currentPrice: 90, supplier: DYNAMIC, threshold: 350, currencySymbol: currency }).was).toBeNull()
+    // Two figures that format identically are one price wearing two labels.
+    expect(orderSizeDeductionLineParts({ reducedPrice: 110, currentPrice: 110.001, supplier: DYNAMIC, threshold: 350, currencySymbol: currency }).was).toBeNull()
+  })
+
   it('prints whole pounds bare and pence only where there are any', () => {
     expect(tidyMoney(350, currency)).toBe('£350')
     expect(tidyMoney(116.5, currency)).toBe('£116.50')
@@ -251,7 +279,7 @@ describe('the copy', () => {
 
   it('says it the four approved ways', () => {
     expect(orderSizeDeductionLine({ reducedPrice: 110, supplier: DYNAMIC, threshold: 350, currencySymbol: currency }))
-      .toBe('£110 on Dynamic Office Solutions orders of £350 or more')
+      .toBe('Get it for just £110 on Dynamic Office Solutions orders of £350 or more')
 
     expect(orderSizeDeductionRangeLine({ reducedPrice: 110, supplier: DYNAMIC, threshold: 350, currencySymbol: currency }))
       .toBe('Some options drop to £110 on Dynamic Office Solutions orders of £350 or more')
@@ -263,7 +291,7 @@ describe('the copy', () => {
     expect(short.shortfall).toBe(62)
     expect(short.saving).toBe(24)
     expect(orderSizeDeductionShortfallNote(short, currency))
-      .toBe('Add £62 more from Dynamic Office Solutions and £24 comes off this order.')
+      .toBe('Add £62 more from Dynamic Office Solutions and save £24.')
 
     const over = orderSizeDeductionStates(
       [line({ unitPrice: 116, quantity: 4, lineSubtotal: 464, deduction: 6 })],
@@ -325,6 +353,6 @@ describe('the copy', () => {
       'shop-order-size-deduction:Dynamic Office Solutions',
       'shop-order-size-deduction:Furdeco',
     ])
-    expect(notes[1]!.text).toBe('Add £400 more from Furdeco and £10 comes off this order.')
+    expect(notes[1]!.text).toBe('Add £400 more from Furdeco and save £10.')
   })
 })

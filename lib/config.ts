@@ -144,6 +144,30 @@ export const ShpConfigSchema = z.object({
   // box quietly changing its paperwork.
   customerReferenceAfterOrder: z.boolean().default(false),
 
+  // What the customer wants the driver to know: the gate code, the side
+  // entrance, the neighbour who takes parcels in, the lift that is out. Off by
+  // default, for the same reason as the boxes above: a shop whose goods go
+  // through a letterbox has no use for one.
+  //
+  // Never compulsory, and no `required` switch to make it so. An instruction is
+  // by its nature something a shopper either has or has not got, and a shop that
+  // refuses an order for want of one is refusing the shoppers whose door is
+  // perfectly ordinary.
+  //
+  // It rides on the ORDER rather than on the address, because it is about this
+  // delivery rather than about that door: somebody who saves the address and
+  // orders again next month is not still waiting in on Tuesday. Where the shop
+  // drop-ships it reaches the supplier on the purchase order raised against the
+  // order, which is the whole point of collecting it - the lorry belongs to
+  // them, not to us.
+  deliveryInstructionsEnabled: z.boolean().default(false),
+  deliveryInstructionsLabel: z.string().default('Delivery instructions'),
+  // The line under the box. The owner's, because what is worth saying depends
+  // entirely on what turns up: "gate code, or where to leave it" on a shop that
+  // posts things, "access for a 7.5 tonne lorry, and any stairs" on one that
+  // delivers furniture. Blank prints no hint at all.
+  deliveryInstructionsHint: z.string().default('Anything the driver needs to know - a gate code, a side entrance, somewhere safe to leave it.'),
+
   // A billing address that is not the delivery address. Off by default: most
   // shops post the goods to whoever paid for them, and an address nobody needs
   // is one more thing between a shopper and the button.
@@ -377,6 +401,13 @@ export const ShpConfigSchema = z.object({
   // 0 means no window at all rather than "always", so the off switch stays the
   // off switch and this stays a length of time.
   returnWindowDays: z.number().int().min(0).max(3650).default(30),
+  // Reporting something damaged or faulty, with photographs. Separate from
+  // returns and separate from the window, because damage is the shop's problem
+  // rather than a change of mind: it applies to goods that never come back, and
+  // it does not stop being true thirty days after the parcel went out. Default
+  // ON for the same reason the other two are - the alternative is an email with
+  // nothing attached to the order.
+  damageReportsEnabled: z.boolean().default(true),
 
   // "Buy again" on a past order line. Defaults ON,
   // because re-ordering the thing you already liked is the cheapest sale a shop

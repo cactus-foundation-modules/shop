@@ -224,7 +224,7 @@ describe('product CSV format coverage', () => {
     // Leading zeros are meaningful on both, so neither may become a number.
     expect(NUMERIC_CSV_COLUMNS).not.toContain('sku')
     expect(NUMERIC_CSV_COLUMNS).not.toContain('barcode')
-    expect(BOOLEAN_CSV_COLUMNS).toEqual(['track_inventory', 'is_pre_order', 'featured_hidden', 'returnable'])
+    expect(BOOLEAN_CSV_COLUMNS).toEqual(['track_inventory', 'is_pre_order', 'featured_hidden', 'returnable', 'returns_discretionary'])
   })
 })
 

@@ -3,6 +3,7 @@ import { getShopConfigCached, getAvailablePaymentMethods, resolveSupplierLabel, 
 import { getPaymentMethodClientFields, getPaymentMethodLabels, getPaymentMethodLogos, resolvePaymentMethodDescriptions } from '@/modules/shop/lib/payments/registry'
 import { displayTaxMode } from '@/modules/shop/lib/tax-display-shared'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
+import { DELIVERY_INSTRUCTIONS_MAX_LENGTH, deliveryInstructionsLabel } from '@/modules/shop/lib/delivery-instructions'
 import { hasRedeemableCoupons } from '@/modules/shop/lib/db/discounts'
 
 // Client-safe config slice the storefront needs (spec 8.1 GET /config).
@@ -145,6 +146,18 @@ async function buildConfigPayload() {
       enabled: config.customerReferenceFieldEnabled,
       required: config.customerReferenceRequired,
       label: config.customerReferenceLabel.trim() || 'Purchase order number',
+    },
+    // The delivery-instructions box on the delivery step, and what this shop
+    // calls it. No `required`: an instruction is something a shopper either has
+    // or has not got, so the box is never compulsory and the delivery step has
+    // no rule to draw. The route that creates the order still checks the switch
+    // for itself before storing anything, because a setting the browser is told
+    // about is a setting the browser can ignore.
+    deliveryInstructions: {
+      enabled: config.deliveryInstructionsEnabled,
+      label: deliveryInstructionsLabel(config),
+      hint: config.deliveryInstructionsHint.trim(),
+      maxLength: DELIVERY_INSTRUCTIONS_MAX_LENGTH,
     },
     // Whether checkout offers a billing address separate from the delivery one.
     // The delivery step draws the tickbox from this; the route that creates the

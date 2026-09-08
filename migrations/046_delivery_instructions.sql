@@ -1,0 +1,20 @@
+-- What the customer wants the driver to know: the gate code, the side entrance,
+-- the neighbour who takes parcels in, the lift that is out and the three floors
+-- of stairs behind it.
+--
+-- A column on the order rather than a line in the notes, because it has to
+-- travel. On a shop that drop-ships, the person who needs this is not the shop
+-- at all - it is the supplier whose lorry turns up. The purchase order raised
+-- against this order carries it onto the delivery label (see the Purchase
+-- Orders module's shipToFromShopOrder), and a note buried in a free-text field
+-- nobody parses would never have got there.
+--
+-- Deliberately NOT part of shipping_address. An instruction is about this
+-- delivery, not about the door: a shopper who saves the address and orders
+-- again next month is not still waiting in on Tuesday. Keeping it off the
+-- address also keeps it out of every saved address in the book.
+--
+-- Nullable, and off by default in settings: a shop whose goods go through a
+-- letterbox has no use for the box, and an empty box is one more thing between
+-- a shopper and the button.
+ALTER TABLE "shp_orders" ADD COLUMN IF NOT EXISTS "delivery_instructions" TEXT;

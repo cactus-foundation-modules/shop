@@ -45,6 +45,12 @@ type OrderDetail = {
     subtotal: string; discountAmount: string; shippingAmount: string; taxAmount: string; total: string
     taxMode: string; currency: string; couponCode: string | null; shippingRateName: string | null
     shippingAddress: Address; billingAddress: Address | null
+    // What the customer told us about getting the goods to that door. Read-only
+    // here: the place to correct it is the purchase order raised against this
+    // order, which is what the driver actually reads and which has its own box
+    // for it. Null on an order placed before the shop asked, or by a shopper
+    // with nothing to say.
+    deliveryInstructions?: string | null
     paidAt: string | null; createdAt: string; updatedAt: string
     // What the buyer was asked to tick at checkout, worded as they saw it.
     // Null on an order placed while the shop had no tickboxes switched on -
@@ -63,6 +69,9 @@ type OrderDetail = {
   // What this shop calls that reference. Sent with the order so the screen and
   // the checkout call it the same thing.
   customerReferenceLabel?: string
+  // And what it calls the delivery instructions. Optional for the same reason
+  // as the one above: a response from an older deployment still renders.
+  deliveryInstructionsLabel?: string
   // How the provider that took this payment handles refunds, worked out on the
   // server where the provider registry lives. Optional so a response from an
   // older deployment still renders.
@@ -248,6 +257,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   // The shop's own wording for the customer's reference, with a sensible name to
   // fall back on for a response from a server half that predates the field.
   const referenceLabel = data.customerReferenceLabel?.trim() || 'Purchase order number'
+  const instructionsLabel = data.deliveryInstructionsLabel?.trim() || 'Delivery instructions'
 
   // Settled refunds with no credit note against them. Worked out here rather
   // than on the server so the panel does not need a second round trip after
@@ -917,6 +927,18 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                 {addressLines(order.shippingAddress).map((line, i) => <span key={i}>{line}<br /></span>)}
               </address>
               {order.shippingAddress.phone && <p className="sox-sub">{order.shippingAddress.phone}</p>}
+              {/* Only where the customer actually said something. Under the
+                  address rather than in a card of its own, because it is the
+                  rest of that sentence - and set apart, because a gate code
+                  read as though it were an address line is a gate code nobody
+                  acts on. Kept in the print, unlike the Copy button beside it:
+                  a picking list wants it. */}
+              {order.deliveryInstructions?.trim() && (
+                <div className="sox-instructions">
+                  <strong>{instructionsLabel}</strong>
+                  <p>{order.deliveryInstructions.trim()}</p>
+                </div>
+              )}
             </div>
           </section>
 

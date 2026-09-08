@@ -4,9 +4,9 @@ import { listRequestsForAdmin } from '@/modules/shop/lib/db/order-requests'
 import type { ShpOrderRequestStatus, ShpOrderRequestType } from '@/modules/shop/lib/types'
 
 const STATUSES = ['PENDING', 'APPROVED', 'DECLINED', 'WITHDRAWN'] as const
-const TYPES = ['CANCEL', 'RETURN'] as const
+const TYPES = ['CANCEL', 'RETURN', 'DAMAGE'] as const
 
-// PROTECTED - the cancel/return queue.
+// PROTECTED - the cancel, return and damage queue.
 export async function GET(request: NextRequest) {
   const gate = await requireShopUser('shop.orders')
   if (gate.error) return gate.error

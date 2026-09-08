@@ -8,6 +8,7 @@ import { batchLines } from '@/modules/shop/lib/cart-group'
 import type { LineMeta } from '@/modules/shop/lib/types'
 import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 import { CartNotes } from '@/modules/shop/components/public/CartNotes'
+import { CartDeductionNotes, type CartDeductionNote } from '@/modules/shop/components/public/CartDeductionNote'
 import { CHECKOUT_NOTE_DEFAULTS, pickCartNoteOptions, type CartNoteOptions } from '@/modules/shop/components/public/cart-note-options'
 
 type ValidatedLine = {
@@ -146,6 +147,10 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
   // Seeded in the editor so an author can see the note they are styling - the
   // sample basket never reaches a validate, so no module contributes one.
   const [notes, setNotes] = useState<Note[]>(preview ? [{ id: 'sample', text: 'Everything gets to you by Tue 12 Aug' }] : [])
+  // Shop's own order-size line, kept apart from the author-dressed notes above.
+  const [deductionNotes, setDeductionNotes] = useState<CartDeductionNote[]>(
+    preview ? [{ id: 'sample', text: 'Add £113 more from Dynamic Office Solutions and save £30.', amounts: ['£113', '£30'] }] : [],
+  )
   const [symbol, setSymbol] = useState('£')
   const [empty, setEmpty] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
@@ -203,6 +208,7 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
         if (cancelled || !res) return
         setLines(res.lines)
         setNotes(res.notes ?? [])
+        setDeductionNotes(res.deductionNotes ?? [])
       })
     }
     load()
@@ -342,6 +348,7 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
         {/* Whole-basket notes another module contributed to this validate.
             Shop displays them, it never composes them - only how they look is
             the block's business. */}
+        <CartDeductionNotes notes={deductionNotes} />
         <CartNotes notes={notes.map((note) => note.text)} options={{ ...CHECKOUT_NOTE_DEFAULTS, ...pickCartNoteOptions(noteProps) }} />
       </div>
     </section>

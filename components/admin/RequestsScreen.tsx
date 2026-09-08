@@ -6,16 +6,21 @@ import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { reasonLabel } from '@/modules/shop/lib/order-requests'
-import { REQUEST_STATUS_DISPLAY, REQUEST_TYPE_LABEL, badgeClass } from '@/modules/shop/lib/order-display'
+import { REQUEST_DECISION_LABEL, REQUEST_STATUS_DISPLAY, REQUEST_TYPE_LABEL, badgeClass } from '@/modules/shop/lib/order-display'
 import type { ShpOrderRequestStatus, ShpOrderRequestType } from '@/modules/shop/lib/types'
 
-// The queue: every cancel and return a customer has asked for, oldest pending
-// first, with the two buttons that settle it.
+// The queue: every cancellation, return and damage report a customer has
+// raised, oldest pending first, with the two buttons that settle it.
 //
 // Approving is deliberately a two-step: the panel opens, the refund tickbox is
 // shown with what it would cost, and only then does the approve button do
 // anything. A refund is money leaving the business and it should never be one
 // stray click away.
+//
+// The three types share this screen because they share a decision, but they do
+// not read the same. A damage report arrives with photographs and is "put
+// right" rather than approved; a return can carry a collection charge; a
+// cancellation has neither.
 
 type RequestRow = {
   id: string
@@ -31,7 +36,13 @@ type RequestRow = {
   customerName: string
   customerEmail: string
   orderTotal: string
+  returnCharge: string | null
+  /** Something on this request was sold on the understanding that taking it
+   *  back would be a favour rather than a right - so saying no is genuinely on
+   *  the table. */
+  discretionary: boolean
   items: Array<{ id: string; orderItemId: string; quantity: number }>
+  photos: Array<{ id: string; url: string }>
 }
 
 const FILTERS: Array<{ key: 'PENDING' | 'ALL' | ShpOrderRequestStatus; label: string }> = [
@@ -54,6 +65,9 @@ export function RequestsScreen() {
   const [openId, setOpenId] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [refund, setRefund] = useState(false)
+  // Held as a string, like every other money box in the admin: a number state
+  // fights the cursor the moment somebody types "12." on the way to 12.50.
+  const [charge, setCharge] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null)
 
@@ -82,6 +96,7 @@ export function RequestsScreen() {
   function openPanel(row: RequestRow) {
     setOpenId(row.id)
     setNote('')
+    setCharge('')
     // Pre-ticked only when there is money to send back at all. A cancellation
     // of an unpaid order has nothing to refund, so offering it ticked would be
     // an invitation to a confusing error.
@@ -96,7 +111,19 @@ export function RequestsScreen() {
       const res = await fetch(`/api/m/shop/admin/requests/${row.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision, adminNote: note || null, refund: decision === 'APPROVED' && refund }),
+        body: JSON.stringify({
+          decision,
+          adminNote: note || null,
+          refund: decision === 'APPROVED' && refund,
+          // Only ever sent on a return being approved. The server refuses it on
+          // anything else anyway - there is nothing to collect on a cancelled
+          // order, and a shop does not charge somebody for coming to look at
+          // something it broke.
+          returnCharge:
+            decision === 'APPROVED' && row.type === 'RETURN' && charge.trim() !== ''
+              ? Number(charge)
+              : null,
+        }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -111,13 +138,14 @@ export function RequestsScreen() {
           text: `Recorded as ${decision === 'APPROVED' ? 'approved' : 'declined'}, but the refund did not go through: ${data.refundError}`,
         })
       } else {
+        const settled = decision === 'APPROVED'
+          ? row.type === 'DAMAGE' ? 'Marked as being put right' : 'Approved'
+          : row.type === 'DAMAGE' ? 'Turned down' : 'Declined'
         setMessage({
           tone: 'success',
-          text: decision === 'APPROVED'
-            ? data.refundedAmount
-              ? `Approved, and ${formatMoney(data.refundedAmount, currencySymbol)} refunded.`
-              : 'Approved. The customer has been emailed.'
-            : 'Declined. The customer has been emailed.',
+          text: data.refundedAmount
+            ? `${settled}, and ${formatMoney(data.refundedAmount, currencySymbol)} refunded.`
+            : `${settled}. The customer has been emailed.`,
         })
       }
       setOpenId(null)
@@ -132,7 +160,7 @@ export function RequestsScreen() {
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">Cancellations &amp; returns</h1>
+        <h1 className="page-title">Cancellations, returns &amp; damage</h1>
       </div>
 
       <TabStrip
@@ -168,6 +196,12 @@ export function RequestsScreen() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
                   <strong>{REQUEST_TYPE_LABEL[row.type]}</strong>
                   <span className={badgeClass(state.tone)}>{state.label}</span>
+                  {/* The flag that says the decision is genuinely open. Without
+                      it an owner has to open the order and read the lines to
+                      find out whether they are allowed to say no. */}
+                  {row.discretionary && row.type !== 'DAMAGE' && (
+                    <span className={badgeClass('warning')}>Your call</span>
+                  )}
                   <span style={{ color: 'var(--color-text-secondary)' }}>
                     {row.orderNumber} · {row.customerName} ({row.customerEmail})
                   </span>
@@ -179,9 +213,34 @@ export function RequestsScreen() {
 
               <div style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
                 {reasonLabel(row.type, row.reason)}
-                {row.items.length > 0 && ` · ${row.items.reduce((sum, item) => sum + item.quantity, 0)} item(s) to come back`}
+                {row.items.length > 0 && (
+                  row.type === 'DAMAGE'
+                    ? ` · ${row.items.reduce((sum, item) => sum + item.quantity, 0)} item(s) affected`
+                    : ` · ${row.items.reduce((sum, item) => sum + item.quantity, 0)} item(s) to come back`
+                )}
                 {` · order total ${formatMoney(row.orderTotal, currencySymbol)}`}
+                {row.returnCharge != null && ` · ${formatMoney(row.returnCharge, currencySymbol)} return charge kept back`}
               </div>
+
+              {/* Full size behind a click, because the whole decision rests on
+                  what the photographs actually show and a thumbnail of a scuff
+                  settles nothing. */}
+              {row.photos.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  {row.photos.map((photo) => (
+                    <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- a
+                          customer's upload on whichever provider domain the shop
+                          uses; not page furniture the loader is configured for. */}
+                      <img
+                        src={photo.url}
+                        alt="Damage reported by the customer"
+                        style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}
+                      />
+                    </a>
+                  ))}
+                </div>
+              )}
 
               {row.customerNote && (
                 <p style={{ margin: 0, fontStyle: 'italic' }}>&ldquo;{row.customerNote}&rdquo;</p>
@@ -210,28 +269,49 @@ export function RequestsScreen() {
                     <span className="field-hint">This goes in the email either way, so it is worth a sentence.</span>
                   </label>
 
+                  {row.type === 'RETURN' && (
+                    <div className="field" style={{ margin: 0, maxWidth: 220 }}>
+                      <label>Return charge (optional)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={charge}
+                        placeholder="0.00"
+                        onChange={(e) => setCharge(e.target.value)}
+                      />
+                      <p className="field-hint">
+                        What it costs you to collect this, kept back from the refund. Recorded either way, so you can
+                        approve now and refund the balance when the van comes back.
+                      </p>
+                    </div>
+                  )}
+
                   <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <input type="checkbox" checked={refund} onChange={(e) => setRefund(e.target.checked)} />
                     <span>
-                      Refund as part of approving
+                      Refund as part of {row.type === 'DAMAGE' ? 'this' : 'approving'}
                       {row.type === 'CANCEL'
                         ? ' (everything not already refunded)'
-                        : ' (just the items being sent back)'}
+                        : row.type === 'DAMAGE'
+                          ? ' (just the items reported)'
+                          : ' (just the items being sent back)'}
                     </span>
                   </label>
                   {refund && (
                     <p className="field-hint" style={{ margin: 0 }}>
-                      This sends money back through the original payment method now. Leave it unticked to approve first
-                      and refund once the goods are back.
+                      This sends money back through the original payment method now
+                      {row.type === 'RETURN' && charge.trim() !== '' && ', less the charge above'}. Leave it unticked to
+                      {row.type === 'DAMAGE' ? ' sort a replacement instead' : ' approve first and refund once the goods are back'}.
                     </p>
                   )}
 
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button type="button" className="btn btn-primary" onClick={() => decide(row, 'APPROVED')} disabled={busy}>
-                      {busy ? 'Working…' : 'Approve'}
+                      {busy ? 'Working…' : REQUEST_DECISION_LABEL[row.type].approve}
                     </button>
                     <button type="button" className="btn btn-danger" onClick={() => decide(row, 'DECLINED')} disabled={busy}>
-                      Decline
+                      {REQUEST_DECISION_LABEL[row.type].decline}
                     </button>
                     <button type="button" className="btn" onClick={() => setOpenId(null)} disabled={busy}>
                       Not now

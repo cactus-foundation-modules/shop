@@ -18,6 +18,7 @@ import {
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 import { CartLinePrice, CartStickyBar, CartUndoToast, QuantityStepper, RemoveCross, TickIcon, lineSubtotalBeforeDeduction } from '@/modules/shop/components/public/CartChrome'
 import { CartNotes } from '@/modules/shop/components/public/CartNotes'
+import { CartDeductionNotes, type CartDeductionNote } from '@/modules/shop/components/public/CartDeductionNote'
 import { CART_PAGE_NOTE_DEFAULTS, pickCartNoteOptions, type CartNoteOptions } from '@/modules/shop/components/public/cart-note-options'
 import { useCartUndo, useOutOfView } from '@/modules/shop/components/public/use-cart-undo'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
@@ -204,6 +205,11 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   // Whole-basket notes other modules contributed to this validate (a delivery
   // module's "everything by Fri 4 Sep"). Shop displays them, never composes them.
   const [notes, setNotes] = useState<string[]>(preview ? ['Everything gets to you by Tue 12 Aug'] : [])
+  // Shop's own order-size line, kept apart from the author-dressed notes above
+  // so it is drawn whatever the author set those to - see CartDeductionNote.
+  const [deductionNotes, setDeductionNotes] = useState<CartDeductionNote[]>(
+    preview ? [{ id: 'sample', text: 'Add £113 more from Dynamic Office Solutions and save £30.', amounts: ['£113', '£30'] }] : [],
+  )
 
   // The currency symbol is fixed for the shop, so fetch it once rather than on
   // every cart re-validate - changing the delivery picker used to re-fetch it
@@ -254,6 +260,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
       if (data) {
         setLines(data.lines)
         setNotes((data.notes ?? []).map((n) => n.text))
+        setDeductionNotes(data.deductionNotes ?? [])
         writeValidatedCartCache(data.lines)
       }
       setHasLoaded(true)
@@ -1039,6 +1046,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
       {/* Whole-basket notes, under the lines and above the money - they speak
           about the order as a whole, so they belong with neither one line nor
           one figure. Shop displays them, it never composes them. */}
+      {withFooter && <CartDeductionNotes notes={deductionNotes} />}
       {withFooter && <CartNotes notes={notes} options={{ ...CART_PAGE_NOTE_DEFAULTS, ...pickCartNoteOptions(props) }} />}
 
       {/* The totals and the checkout button together: once this block leaves the
@@ -1085,7 +1093,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
       {!preview && withFooter && yes(props.stickyBar) && (
         <CartStickyBar
           visible={stickyVisible}
-          meta={[`${itemCount} item${itemCount === 1 ? '' : 's'}`, ...notes].join(' · ')}
+          meta={[`${itemCount} item${itemCount === 1 ? '' : 's'}`, ...deductionNotes.map((n) => n.text), ...notes].join(' · ')}
           totalLabel={props.totalLabel || 'Total'}
           total={money(total)}
           checkoutLabel={checkoutLabel}

@@ -63,6 +63,8 @@ const line = ({
     minOrderQuantity: 1,
     minOrderPooled: false,
     returnable: true,
+    returnsDiscretionary: false,
+    nonReturnableNote: null,
     lineMeta: null,
   }
 }

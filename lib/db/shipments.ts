@@ -494,9 +494,32 @@ export async function claimSlotNotification(shipmentId: string, orderId: string)
   return claimed > 0
 }
 
-// Parcels worth asking a courier about: a tracking link, not yet delivered, and
-// on an order that is still live. Oldest check first, so a run that hits its cap
-// works its way round rather than asking about the same parcel every hour.
+/** How long a finished order's parcel keeps being asked about while it has no
+ *  proof of delivery. A fortnight covers a courier who uploads the signature
+ *  the following morning, and stops a parcel that will never have one being
+ *  asked about for the rest of the shop's life. */
+const SIGNATURE_CATCHUP_DAYS = 14
+
+// Parcels worth asking a courier about, in two kinds.
+//
+// The first is the obvious one: a tracking link, not yet delivered, on an order
+// that is still live.
+//
+// The second exists because of what happened the first time this ran for real.
+// An owner who marks an order complete HIMSELF - which is the normal thing to do
+// when the van has just been - closes the order before the next hourly check,
+// and the parcel then fails the "still live" test for ever. Its signature is
+// never taken, and the proof of delivery is quietly lost on exactly the orders
+// somebody was paying enough attention to close by hand. So a completed order's
+// parcel stays in the queue while it has no signature and was sent recently
+// enough to be worth asking about.
+//
+// It settles itself: the run that finds the signature writes it, and the row
+// then fails both tests. Cancelled and refunded orders are in neither - nobody
+// wants a proof of delivery for a parcel that was not delivered.
+//
+// Oldest check first, so a run that hits its cap works its way round rather than
+// asking about the same parcel every hour.
 //
 // Capped by the caller. A scheduled route that fans out over an unbounded list
 // is one busy Christmas away from taking longer than its own interval.
@@ -505,8 +528,17 @@ export async function listShipmentsForTrackingPoll(limit: number): Promise<ShpSh
     SELECT s.* FROM "shp_shipments" s
     JOIN "shp_orders" o ON o."id" = s."order_id"
     WHERE s."tracking_url" IS NOT NULL
-      AND s."delivered_at" IS NULL
-      AND o."status" NOT IN ('COMPLETED', 'CANCELLED', 'REFUNDED')
+      AND (
+        (
+          s."delivered_at" IS NULL
+          AND o."status" NOT IN ('COMPLETED', 'CANCELLED', 'REFUNDED')
+        )
+        OR (
+          o."status" = 'COMPLETED'
+          AND s."signature_url" IS NULL
+          AND s."shipped_at" > CURRENT_TIMESTAMP - ${SIGNATURE_CATCHUP_DAYS}::int * INTERVAL '1 day'
+        )
+      )
     ORDER BY s."tracking_checked_at" ASC NULLS FIRST, s."shipped_at" ASC
     LIMIT ${limit}
   `

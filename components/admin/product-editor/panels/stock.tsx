@@ -50,20 +50,42 @@ export function StockPanel({ state, setField, errors, weightBasedShippingEnabled
         </Grid>
       </Section>
 
-      <Section title="Returns" blurb="For anything made to a customer's own order - a desk cut to their measurements, a chair in a fabric they picked off a card. Leave it off for everything you would take back.">
-        <Switch
-          checked={f.nonReturnable}
-          onChange={(v) => setField('nonReturnable', v)}
-          label="Do not accept returns on this"
-          hint="No return button on the order, and the reason below in its place. Cancelling before it has gone out is unaffected."
-        />
-        {f.nonReturnable && (
+      <Section title="Returns" blurb="Three answers, and the middle one is the one most shops actually give. Damage is not covered here - anything that turns up broken is reported with photographs whatever this says, because that is your problem rather than a change of mind.">
+        <Grid cols={2}>
+          <Field
+            label="If they want to send it back"
+            hint={
+              f.returnsPolicy === 'NONE'
+                ? 'No return button on the order, and no cancelling it either once it has been placed - the reason below goes in their place.'
+                : f.returnsPolicy === 'DISCRETIONARY'
+                  ? 'They can ask, and you can say no. Approving one lets you keep a collection charge back from the refund.'
+                  : 'The ordinary rules: they ask within your return window and you approve it.'
+            }
+          >
+            {(p) => (
+              <Select
+                {...p}
+                value={f.returnsPolicy}
+                onChange={(e) => setField('returnsPolicy', e.target.value as typeof f.returnsPolicy)}
+              >
+                <option value="ALLOWED">Take it back as usual</option>
+                <option value="DISCRETIONARY">Only if we agree to it</option>
+                <option value="NONE">Do not take it back</option>
+              </Select>
+            )}
+          </Field>
+        </Grid>
+        {f.returnsPolicy !== 'ALLOWED' && (
           <Reveal>
             <Field
-              label="Tell them why"
+              label={f.returnsPolicy === 'NONE' ? 'Tell them why' : 'Tell them what to expect'}
               optional
               error={errors.nonReturnableNote}
-              hint={'Shown on the order in place of the return button. Leave it empty for "This item cannot be sent back once ordered."'}
+              hint={
+                f.returnsPolicy === 'NONE'
+                  ? 'Shown on the order in place of the return button. Leave it empty for "This item cannot be sent back once ordered."'
+                  : 'Shown on the order beside the item, before they ask. Leave it empty for "We may be able to take this back - ask us and we will let you know. There may be a charge for collecting it."'
+              }
             >
               {(p) => (
                 <TextArea
@@ -72,7 +94,11 @@ export function StockPanel({ state, setField, errors, weightBasedShippingEnabled
                   maxLength={300}
                   value={f.nonReturnableNote}
                   onChange={(e) => setField('nonReturnableNote', e.target.value)}
-                  placeholder="e.g. Made to your own measurements, so we cannot take it back."
+                  placeholder={
+                    f.returnsPolicy === 'NONE'
+                      ? 'e.g. Made to your own measurements, so we cannot take it back.'
+                      : 'e.g. We will take this back if it is unused and boxed, less the cost of collecting it.'
+                  }
                 />
               )}
             </Field>

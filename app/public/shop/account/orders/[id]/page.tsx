@@ -17,13 +17,14 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { formatMoney } from '@/modules/shop/lib/money'
-import { SHP_CANCEL_REASONS, SHP_RETURN_REASONS, reasonLabel } from '@/modules/shop/lib/order-requests'
+import { SHP_CANCEL_REASONS, SHP_DAMAGE_REASONS, SHP_RETURN_REASONS, reasonLabel } from '@/modules/shop/lib/order-requests'
 import {
   ORDER_STATUS_DISPLAY,
   REQUEST_STATUS_DISPLAY,
   REQUEST_TYPE_LABEL,
   addressLines,
   badgeClass,
+  formatDeliveredDay,
   formatOrderDate,
   formatOrderDateTime,
   orderCompanyName,
@@ -63,6 +64,7 @@ import { OrderProgressRail } from '@/modules/shop/components/public/OrderProgres
 import { CourierFaqModal } from '@/modules/shop/components/public/CourierFaqModal'
 import { OrderItemList } from '@/modules/shop/components/public/OrderItemList'
 import { OrderDocuments, type OrderDocument } from '@/modules/shop/components/public/OrderDocuments'
+import { resolveShopMemberOrderPanels } from '@/modules/shop/lib/member-order-panels'
 
 export const metadata = { title: 'Order detail' }
 export const dynamic = 'force-dynamic'
@@ -181,7 +183,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
 
   // `order` is already in hand from the access check above, so it is not taken
   // from the detail a second time.
-  const { lines, shipments, refunds, refundItems, downloads, requests, openRequest } = detail
+  const { lines, shipments, refunds, refundItems, downloads, requests, openRequest, openDamageRequest } = detail
   const symbol = config.currencySymbol
   // Only looked up on a shop that invoices AND is willing to show it, so an
   // ordinary shop's order page costs exactly what it always did.
@@ -304,6 +306,16 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   const deliveryById = new Map(deliveries.map((d) => [d.shipmentId, d]))
   const railBooking = railDelivery(deliveries)
 
+  // When each parcel actually arrived, where the courier told us - their own
+  // signing time first, then when we noticed. Worked out once here rather than
+  // inline, so the parcels card and anything else asking the question get the
+  // same answer.
+  const deliveredOn = new Map<string, Date>(
+    shipments
+      .map((s) => [s.id, s.signedAt ?? s.deliveredAt] as const)
+      .filter((entry): entry is readonly [string, Date] => entry[1] instanceof Date),
+  )
+
   const steps = orderProgressSteps({
     order,
     lines,
@@ -389,6 +401,28 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
         : order.paymentStatus === 'FAILED'
           ? 'That payment did not go through'
           : null
+
+  // Cards a companion module has for this order - somewhere to review what was
+  // bought, in practice. Resolved here rather than inside the JSX because a
+  // provider reads the database, and shop is told nothing about what comes back.
+  // On a shop with no such module installed this is a single map lookup that
+  // finds nothing and returns [] - see lib/member-order-panels.ts.
+  const memberOrderPanels = await resolveShopMemberOrderPanels({
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    customerEmail: order.customerEmail,
+    customerName: order.customerName,
+    // A member is known by their account; a guest who proved the postcode is
+    // known by the order itself, which is the only address they have here.
+    viewerEmail: member?.email ?? order.customerEmail,
+    viewerName: member ? member.displayName || member.username : order.customerName,
+    signedIn: !!member,
+    productIds: Array.from(
+      new Set(lines.map((line) => line.item.productId).filter((id): id is string => !!id)),
+    ),
+  })
 
   // Every piece of paper this order has, in the order it came into existence.
   // The receipt is always first because it is the only one every shop has.
@@ -544,6 +578,22 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           </OrderNote>
         )}
 
+        {/* Its own note rather than a second branch of the one above: a damage
+            report runs alongside a cancellation or a return rather than instead
+            of one, and both can be open at once. */}
+        {openDamageRequest && (
+          <OrderNote tone="info">
+            <p>
+              <strong>Damage reported.</strong>{' '}
+              You told us on {formatOrderDate(openDamageRequest.createdAt, timezone)} -{' '}
+              {reasonLabel(openDamageRequest.type, openDamageRequest.reason)}
+              {openDamageRequest.photos.length > 0 && `, with ${openDamageRequest.photos.length} photograph${openDamageRequest.photos.length === 1 ? '' : 's'}`}
+              . We will email you as soon as somebody has looked at it.
+            </p>
+            <div><WithdrawRequestButton requestId={openDamageRequest.id} /></div>
+          </OrderNote>
+        )}
+
         {/* The receipt: what was bought and what it came to, in one card rather
             than two sections half a screen apart. */}
         <OrderCard
@@ -596,6 +646,17 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           />
         </OrderCard>
 
+        {/* Whatever a companion module has to say about this order, each in a
+            card of shop's own so a contributed panel cannot arrive dressed
+            differently from the rest of the page. Straight after the receipt
+            because the one thing anybody wants to do having just read what they
+            bought is say what they made of it. */}
+        {memberOrderPanels.map(({ id: panelId, title, Panel, payload }) => (
+          <OrderCard key={panelId} title={title}>
+            <Panel payload={payload} />
+          </OrderCard>
+        ))}
+
         {/* Everything that is reference rather than headline. Two columns on a
             desktop, one on a phone - see .sod-grid. */}
         <div className="sod-grid">
@@ -613,17 +674,32 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                       {formatOrderDate(shipment.shippedAt, timezone)}
                       {shipment.carrier ? ` with ${shipment.carrier}` : ''}
                     </span>
-                    {/* The booked delivery, in the customer's own words. The
-                        day is a calendar day and stays one - see
-                        lib/delivery-slot.ts for what happens to it otherwise. */}
-                    {deliveryById.get(shipment.id)?.day && (
+                    {/* Once it has actually arrived, the day it arrived on -
+                        "Arranged for today between 10am and 1pm" is a plan, and
+                        a plan is the wrong tense for something that has already
+                        happened.
+
+                        Only ever printed off a real timestamp from the courier:
+                        `arrived` on its own can mean nothing more than the
+                        booked window having gone by (see lib/order-delivery.ts),
+                        and "Delivered on the 8th" is not a sentence to write
+                        because a clock passed 1pm. Without one, the arrangement
+                        stands as it was. */}
+                    {deliveredOn.get(shipment.id) ? (
+                      <span className="sod-parcel-booked">
+                        Delivered on {formatDeliveredDay(deliveredOn.get(shipment.id) as Date, timezone)}
+                      </span>
+                    ) : deliveryById.get(shipment.id)?.day ? (
+                      /* The booked delivery, in the customer's own words. The
+                         day is a calendar day and stays one - see
+                         lib/delivery-slot.ts for what happens to it otherwise. */
                       <span className="sod-parcel-booked">
                         Arranged for {deliveryById.get(shipment.id)?.day}
                         {deliveryById.get(shipment.id)?.window
                           ? ` ${deliveryById.get(shipment.id)?.window}`
                           : ''}
                       </span>
-                    )}
+                    ) : null}
                     {shipment.trackingNumber && (
                       <span className="sod-dim">Tracking number: {shipment.trackingNumber}</span>
                     )}
@@ -830,18 +906,22 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
               pairs off with whatever card is beside it, and takes the whole row
               on its own when the count is odd - see .sod-grid. Opening it swaps
               the card for a form, which asks for the full width itself. */}
-          {!openRequest && (
+          {(!openRequest || !openDamageRequest) && (
             <OrderRequestPanel
               orderId={order.id}
               cancel={{ allowed: detail.cancel.allowed, reason: detail.cancel.allowed ? undefined : detail.cancel.reason }}
               return={{ allowed: detail.return.allowed, reason: detail.return.allowed ? undefined : detail.return.reason }}
+              damage={{ allowed: detail.damage.allowed, reason: detail.damage.allowed ? undefined : detail.damage.reason }}
               cancelReasons={SHP_CANCEL_REASONS}
               returnReasons={SHP_RETURN_REASONS}
+              damageReasons={SHP_DAMAGE_REASONS}
               lines={lines.map((line) => ({
                 orderItemId: line.item.id,
                 productName: line.item.productName,
                 returnableQty: line.returnableQty,
-                notReturnableNote: line.notReturnableNote,
+                dispatchedQty: line.dispatchedQty,
+                returnsPolicy: line.returnsPolicy,
+                returnsNote: line.returnsNote,
               }))}
               returnBy={detail.returnBy ? formatOrderDate(detail.returnBy, timezone) : null}
             />

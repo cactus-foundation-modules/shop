@@ -26,9 +26,19 @@
 --       time, so a child borrows its listing's.
 --
 --   shp_order_items.returnable
+--   shp_order_items.non_returnable_note
 --       Snapshotted at order creation, like order_size_deduction (042) and
 --       is_pre_order before it. NOT NULL DEFAULT true, so every order placed
 --       before this existed records what was true of it: returnable.
+--
+--       The NOTE is snapshotted for a reason that only shows up on a listing
+--       with variations. An order line's product_id is the hidden CHILD row, and
+--       a child never carries a reason - the owner writes one on the LISTING, and
+--       a reason per colour is nobody's idea of a good time. So reading the note
+--       back off the line's own product would hand every variation the stock
+--       sentence and quietly lose the wording the owner actually wrote. Only the
+--       checkout can see the listing (through shop-variations' cart-line
+--       resolver), so the checkout is where it has to be written down.
 --
 --       Snapshotting rather than reading the product back is not tidiness. A
 --       product can be deleted (product_id is SET NULL), a variation can be
@@ -44,3 +54,4 @@
 ALTER TABLE "shp_products"    ADD COLUMN IF NOT EXISTS "returnable" BOOLEAN;
 ALTER TABLE "shp_products"    ADD COLUMN IF NOT EXISTS "non_returnable_note" TEXT;
 ALTER TABLE "shp_order_items" ADD COLUMN IF NOT EXISTS "returnable" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "shp_order_items" ADD COLUMN IF NOT EXISTS "non_returnable_note" TEXT;

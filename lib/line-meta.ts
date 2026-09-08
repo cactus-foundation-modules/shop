@@ -144,19 +144,33 @@ export type CartLineResolution = {
   // Absent/null leaves the line standing on its own product row, exactly as an
   // ordinary product does.
   minOrder?: CartLineMinOrder | null
-  // Whether this line may be sent back, where the product row alone gives the
-  // wrong answer - the same shape of problem CartLineMinOrder.quantity solves,
+  // What the returns policy says about this line, where the product row alone
+  // gives the wrong answer - the same shape of problem CartLineMinOrder solves,
   // and for the same reason. A variation child's own `returnable` is very nearly
   // always NULL, meaning "whatever the listing says", and only the resolver can
-  // see the listing. Shop takes this over the row when it is given.
+  // see the listing.
   //
-  // The STRICTER of the two wins where both have an opinion: a resolver saying
-  // false settles it. Neither source may talk the other into offering a return
-  // the shop does not do.
+  // Both halves matter, and the note is the half that is easy to miss. A child
+  // NEVER carries a reason - the owner writes one on the listing - so a line that
+  // took its refusal from the listing has to take the listing's wording with it,
+  // or the customer is handed the stock sentence and the owner's own words are
+  // quietly lost. Null note means "none written", which reads as the stock
+  // sentence, not as an empty one.
+  //
+  // On the flag, the STRICTER of the two sources wins: a resolver saying false
+  // settles it, and neither source may talk the other into offering a return the
+  // shop does not do. On the note, the line's OWN row wins where it has one,
+  // matching the flag's child-over-parent rule.
   //
   // Absent/undefined leaves the line on its own row, so an older companion
   // module (or none at all) behaves exactly as it does today.
-  returnable?: boolean | null
+  //
+  // `discretionary` is the third answer: the line comes back, but only if we
+  // say so, and there may be a charge for collecting it. Read only where
+  // `returnable` is true, and folded in the same strict direction - a resolver
+  // saying "at our discretion" is never talked back up into a promise. Absent
+  // reads as false, so an older companion module behaves as it does today.
+  returns?: { returnable: boolean; note: string | null; discretionary?: boolean } | null
 }
 
 // What a resolver can tell shop about a line's minimum order, where the product

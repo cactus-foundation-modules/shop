@@ -86,6 +86,10 @@ const Body = z.object({
   // said", which reads as returnable and lets a shop-variations child fall back
   // to its listing; only an explicit false refuses. See lib/returnable.ts.
   returnable: z.boolean().nullable().optional(),
+  // Whether taking it back is a favour rather than a right. Null is "nothing
+  // said" on the same terms, and it is only ever read where returns are allowed
+  // at all - see lib/returnable.ts.
+  returnsDiscretionary: z.boolean().nullable().optional(),
   nonReturnableNote: z.string().max(300).nullable().optional(),
   // "Keep this one off the featured shelves." Nothing to do with
   // catalogueHidden, which is shop-variations' own state and is not editable

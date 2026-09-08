@@ -106,15 +106,24 @@ export function OrderSizeDeductionClient({
   }, [slug, seed])
 
   if (!line) return null
+  // The sentence arrives already broken into its parts, so nothing here composes
+  // or searches - it only dresses what the server worked out. `was` is what the
+  // shopper pays today and is struck; `now` is what the offer takes it to.
   return (
-    <>
-      <p className="spd-osd-line">{line.text}</p>
+    <div className="spd-osd-box">
+      <p className="spd-osd-line">
+        {line.lead}
+        {line.was && <s className="spd-osd-was">{line.was}</s>}
+        {line.was && ' '}
+        <span className="spd-osd-amount">{line.now}</span>
+        {line.tail}
+      </p>
       {line.note && (
         <details className="spd-osd-why">
           <summary>why?</summary>
           <p>{line.note}</p>
         </details>
       )}
-    </>
+    </div>
   )
 }

@@ -25,6 +25,7 @@ import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 import { CART_DRAWER_CSS } from '@/modules/shop/components/public/cart-drawer-css'
 import { CartLinePrice, CartUndoToast, QuantityStepper, lineSubtotalBeforeDeduction } from '@/modules/shop/components/public/CartChrome'
 import { CartNotes } from '@/modules/shop/components/public/CartNotes'
+import { CartDeductionNotes, type CartDeductionNote } from '@/modules/shop/components/public/CartDeductionNote'
 import { useCartUndo } from '@/modules/shop/components/public/use-cart-undo'
 import { CartLineControlView, LineMetaList, productMetaFields } from '@/modules/shop/components/public/CartLineControlView'
 import { useFitLines } from '@/modules/shop/components/public/fit-line'
@@ -112,6 +113,7 @@ export function CartDrawerClient({
 
   const [lines, setLines] = useState<ValidatedLine[]>([])
   const [notes, setNotes] = useState<string[]>([])
+  const [deductionNotes, setDeductionNotes] = useState<CartDeductionNote[]>([])
   const [currencySymbol, setCurrencySymbol] = useState('£')
   // How this shop is transacted with (see lib/commerce-mode-shared.ts). Shop's
   // own basket-and-checkout until the config lands.
@@ -193,6 +195,7 @@ export function CartDrawerClient({
       if (data) {
         setLines(data.lines)
         setNotes((data.notes ?? []).map((n) => n.text))
+        setDeductionNotes(data.deductionNotes ?? [])
         writeValidatedCartCache(data.lines)
       }
       setHasLoaded(true)
@@ -448,6 +451,7 @@ export function CartDrawerClient({
             {/* Whole-basket lines other modules contributed to this validate (a
                 delivery module's "everything by Fri 4 Sep"). Shop displays them,
                 it never composes them. */}
+            <CartDeductionNotes notes={deductionNotes} />
             <CartNotes notes={notes} options={o} />
             <Link href={commerce.cartCtaHref} className="scd-btn" style={checkoutStyle} onClick={onClose}>
               {commerceModeButtonLabel(commerce.cartCtaLabel, o.drawerCheckoutLabel, DRAWER_DEFAULTS.drawerCheckoutLabel)}

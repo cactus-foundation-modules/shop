@@ -93,6 +93,7 @@ export async function buildProductCsvRows(opts?: { status?: ShpProductStatus; ca
       // product actually marked one way or the other prints a word.
       returnable: p.returnable == null ? '' : String(p.returnable),
       non_returnable_reason: p.nonReturnableNote ?? '',
+      returns_discretionary: p.returnsDiscretionary == null ? '' : String(p.returnsDiscretionary),
     })
   }
   return rows

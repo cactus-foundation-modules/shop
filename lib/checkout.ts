@@ -71,11 +71,20 @@ export type ResolvedCartLine = {
   // subtract again. Null on every line that lost nothing, which is every line on
   // a shop that has not switched the feature on.
   orderSizeDeduction?: number | null
-  // Whether this line may be sent back, resolved once here and snapshotted onto
-  // the order item. A resolver's answer beats the product row where it has one
-  // (a variation child's row is very nearly always blank), and the two are
-  // combined the strict way round - either saying no settles it.
+  // Whether this line may be sent back, settled once here and snapshotted onto
+  // the order item. A resolver's answer is folded in where it has one (a
+  // variation child's own row is very nearly always blank), the strict way round
+  // - either source saying no settles it.
   returnable: boolean
+  // The wording that goes with a refusal OR with a discretion, carried so the
+  // order can still give it after the catalogue has moved on. Null where there
+  // is none written, which reads as the stock sentence, and always null on a
+  // line that simply comes back.
+  nonReturnableNote: string | null
+  // Whether taking it back would be a favour rather than a right. Folded in the
+  // same strict way as the flag above: either source saying "at our discretion"
+  // settles it, so nothing can quietly upgrade a maybe into a promise.
+  returnsDiscretionary: boolean
 }
 
 // Turns a resolver's per-unit charge attributions into this line's own totals,
@@ -212,7 +221,21 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[]): Promise<{
     // saying no is a no - a shop that will not take an item back must not have
     // the other source talk it into offering one.
     const returnable =
-      isReturnable(product.returnable) && metaResolution.returnable !== false
+      isReturnable(product.returnable) && metaResolution.returns?.returnable !== false
+    // And whether the return, where there is one, is ours to refuse. Only read
+    // on a line that comes back at all: goods nobody takes back are not taken
+    // back at anyone's discretion either.
+    const returnsDiscretionary =
+      returnable &&
+      (product.returnsDiscretionary === true || metaResolution.returns?.discretionary === true)
+    // The wording, taken with it. The line's own row first, then the listing's
+    // through the resolver - the same child-over-parent order the flag follows.
+    // Null only where the line simply comes back; a discretion needs its
+    // sentence snapshotted exactly as a refusal does, or the order can no longer
+    // say what the customer was told.
+    const nonReturnableNote = returnable && !returnsDiscretionary
+      ? null
+      : product.nonReturnableNote ?? metaResolution.returns?.note ?? null
 
     // effectivePrice, not product.price: a product on offer is charged its sale
     // price. Resolved here rather than at display time so the figure charged is
@@ -228,6 +251,8 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[]): Promise<{
       isPreOrder: product.isPreOrder,
       minOrderQuantity: minQuantity,
       returnable,
+      nonReturnableNote,
+      returnsDiscretionary,
       // Filled in by the pooling pass below - a resolver's key decides it, and
       // the requirement itself can rise there too.
       minOrderPooled: false,

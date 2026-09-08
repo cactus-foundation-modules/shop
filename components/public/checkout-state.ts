@@ -36,6 +36,11 @@ export type CheckoutState = {
   customerReference: string
   customerPhone: string
   shippingAddress: ShpAddressForm
+  // What the shopper wants the driver to know, where the shop asks. Beside the
+  // address rather than inside it: it is about this delivery, not about the
+  // door, so picking a saved address must never bring last month's "leave it
+  // with number 42" back with it.
+  deliveryInstructions: string
   // Where the invoice goes, when that is not where the parcel goes. Two fields
   // rather than a nullable address on purpose: a shopper who ticks the box,
   // fills it in and then unticks it keeps what they typed, so changing their
@@ -65,7 +70,7 @@ export const EMPTY_ADDRESS: ShpAddressForm = {
 
 export const EMPTY_CHECKOUT_STATE: CheckoutState = {
   customerEmail: '', customerName: '', customerOrganisation: '', customerReference: '', customerPhone: '',
-  shippingAddress: EMPTY_ADDRESS, billingAddressDifferent: false, billingAddress: EMPTY_ADDRESS,
+  shippingAddress: EMPTY_ADDRESS, deliveryInstructions: '', billingAddressDifferent: false, billingAddress: EMPTY_ADDRESS,
   shippingRateId: null, couponCode: null, paymentMethod: null,
   agreements: {},
 }

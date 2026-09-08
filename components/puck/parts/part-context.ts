@@ -179,6 +179,11 @@ export type DetailPartContext = {
   // clearance code is never rendered into a public page. The SKU part reads it
   // and takes the codes themselves off `product`.
   showAdminCodes: boolean
+  // Whether the person looking may be shown what the returns policy says about
+  // this product - see lib/admin-returns.ts. False for every shopper, so neither
+  // the answer nor the owner's wording is ever rendered into a public page. The
+  // SKU part reads it and takes `returnable`/`nonReturnableNote` off `product`.
+  showAdminReturns: boolean
 }
 
 // Injected onto every Product Card part-block, once per product, when a card

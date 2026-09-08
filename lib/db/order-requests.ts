@@ -1,10 +1,11 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import { ORDER_LOCK_NAMESPACE } from '@/modules/shop/lib/db/shipments'
-import { isValidReason } from '@/modules/shop/lib/order-requests'
+import { MAX_DAMAGE_PHOTOS, isValidReason } from '@/modules/shop/lib/order-requests'
 import type {
   ShpOrderRequest,
   ShpOrderRequestItem,
+  ShpOrderRequestPhoto,
   ShpOrderRequestStatus,
   ShpOrderRequestType,
   ShpOrderRequestWithItems,
@@ -31,6 +32,11 @@ function mapRequest(r: Record<string, unknown>): ShpOrderRequest {
     reason: r.reason as string,
     customerNote: (r.customer_note as string | null) ?? null,
     adminNote: (r.admin_note as string | null) ?? null,
+    // Stringified rather than coerced, as every other money column in this
+    // module is. Absent on an install that has not taken migration 045 yet,
+    // which reads the same as "no charge was recorded" - the right answer for
+    // every request decided before the field existed.
+    returnCharge: r.return_charge != null ? (r.return_charge as { toString(): string }).toString() : null,
     decidedAt: (r.decided_at as Date | null) ?? null,
     decidedBy: (r.decided_by as string | null) ?? null,
     createdAt: r.created_at as Date,
@@ -47,12 +53,31 @@ function mapRequestItem(r: Record<string, unknown>): ShpOrderRequestItem {
   }
 }
 
+function mapRequestPhoto(r: Record<string, unknown>): ShpOrderRequestPhoto {
+  return {
+    id: r.id as string,
+    requestId: r.request_id as string,
+    mediaId: (r.media_id as string | null) ?? null,
+    url: r.url as string,
+    createdAt: r.created_at as Date,
+  }
+}
+
+// Lines and photographs for a batch of requests in two queries rather than two
+// per request: the account page and the admin queue both hand whole lists
+// through here.
 async function attachItems(requests: ShpOrderRequest[]): Promise<ShpOrderRequestWithItems[]> {
   if (requests.length === 0) return []
-  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
-    SELECT * FROM "shp_order_request_items"
-    WHERE "request_id" IN (${Prisma.join(requests.map((r) => r.id))})
-  `
+  const ids = Prisma.join(requests.map((r) => r.id))
+  const [rows, photoRows] = await Promise.all([
+    prisma.$queryRaw<Record<string, unknown>[]>`
+      SELECT * FROM "shp_order_request_items" WHERE "request_id" IN (${ids})
+    `,
+    prisma.$queryRaw<Record<string, unknown>[]>`
+      SELECT * FROM "shp_order_request_photos" WHERE "request_id" IN (${ids})
+      ORDER BY "created_at" ASC
+    `,
+  ])
   const byRequest = new Map<string, ShpOrderRequestItem[]>()
   for (const row of rows) {
     const item = mapRequestItem(row)
@@ -60,7 +85,18 @@ async function attachItems(requests: ShpOrderRequest[]): Promise<ShpOrderRequest
     if (list) list.push(item)
     else byRequest.set(item.requestId, [item])
   }
-  return requests.map((request) => ({ ...request, items: byRequest.get(request.id) ?? [] }))
+  const photosByRequest = new Map<string, ShpOrderRequestPhoto[]>()
+  for (const row of photoRows) {
+    const photo = mapRequestPhoto(row)
+    const list = photosByRequest.get(photo.requestId)
+    if (list) list.push(photo)
+    else photosByRequest.set(photo.requestId, [photo])
+  }
+  return requests.map((request) => ({
+    ...request,
+    items: byRequest.get(request.id) ?? [],
+    photos: photosByRequest.get(request.id) ?? [],
+  }))
 }
 
 export async function listRequestsForOrder(orderId: string): Promise<ShpOrderRequestWithItems[]> {
@@ -70,9 +106,13 @@ export async function listRequestsForOrder(orderId: string): Promise<ShpOrderReq
   return attachItems(rows.map(mapRequest))
 }
 
+/** The open cancel or return, if there is one. A damage report is not one of
+ *  those and is asked for separately - see canReportDamage. */
 export async function getOpenRequestForOrder(orderId: string): Promise<ShpOrderRequestWithItems | null> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
-    SELECT * FROM "shp_order_requests" WHERE "order_id" = ${orderId} AND "status" = 'PENDING' LIMIT 1
+    SELECT * FROM "shp_order_requests"
+    WHERE "order_id" = ${orderId} AND "status" = 'PENDING' AND "type" <> 'DAMAGE'
+    LIMIT 1
   `
   if (!rows[0]) return null
   return (await attachItems([mapRequest(rows[0])]))[0] ?? null
@@ -119,7 +159,10 @@ const linePositionQuery = (orderId: string) => Prisma.sql`
     SELECT ri."order_item_id", SUM(ri."quantity") AS requested
     FROM "shp_order_request_items" ri
     JOIN "shp_order_requests" req ON req."id" = ri."request_id"
-    WHERE req."status" IN ('PENDING', 'APPROVED')
+    -- Damage reports excluded on purpose: reporting a broken leg does not spend
+    -- the unit, and counting it here would refuse the return of the very item
+    -- the customer has just told us about.
+    WHERE req."status" IN ('PENDING', 'APPROVED') AND req."type" <> 'DAMAGE'
     GROUP BY ri."order_item_id"
   ) r ON r."order_item_id" = oi."id"
   WHERE oi."order_id" = ${orderId}
@@ -144,6 +187,12 @@ export type CreateOrderRequestInput = {
   customerNote?: string | null
   /** Ignored for CANCEL, which covers the whole order. */
   items?: Array<{ orderItemId: string; quantity: number }>
+  /**
+   * Photographs, on a damage report. Already uploaded and already saved to the
+   * media library by the time they get here - this layer records what they are
+   * and what they belong to, nothing more.
+   */
+  photos?: Array<{ mediaId: string | null; url: string }>
 }
 
 export type CreateOrderRequestResult =
@@ -179,6 +228,17 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
   if (input.type === 'RETURN' && merged.size === 0) {
     return { ok: false, status: 400, error: 'Choose at least one item to send back.' }
   }
+  if (input.type === 'DAMAGE' && merged.size === 0) {
+    return { ok: false, status: 400, error: 'Tell us which item is damaged.' }
+  }
+
+  // Photographs are not required - "parts are missing" is a report of something
+  // that is not there to photograph, and a report with no picture still beats an
+  // email nobody has attached to the order. The form asks hard for them anyway.
+  const photos = (input.photos ?? []).filter((photo) => photo.url.trim().length > 0)
+  if (photos.length > MAX_DAMAGE_PHOTOS) {
+    return { ok: false, status: 400, error: `That is more than ${MAX_DAMAGE_PHOTOS} photographs - pick the ones that show it best.` }
+  }
 
   try {
     return await prisma.$transaction(async (tx): Promise<CreateOrderRequestResult> => {
@@ -192,13 +252,69 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
       `
       if (!orderRows[0]) return { ok: false, status: 404, error: 'Order not found' }
 
-      if (input.type === 'RETURN') {
+      // One open request of this KIND per order, checked here rather than left
+      // to the partial unique indexes alone. Two reasons, and the second is the
+      // one that bites:
+      //
+      //   - under the advisory lock taken above this check IS authoritative, so
+      //     two requests racing on the same order are settled in order rather
+      //     than one of them landing on a constraint,
+      //   - a raw-query constraint violation reaches us through Prisma as
+      //     "Raw query failed. Code: 23505. Message: Key (order_id)=(...)
+      //     already exists." - with the INDEX NAME stripped out. The catch below
+      //     was matching on that name, so a clash surfaced as a 500 rather than
+      //     as the sentence a customer can act on.
+      //
+      // Damage is counted separately, which is the whole point of the split: a
+      // second parcel arriving broken must not wait for a return to be decided.
+      const kind = input.type === 'DAMAGE'
+        ? Prisma.sql`"type" = 'DAMAGE'`
+        : Prisma.sql`"type" <> 'DAMAGE'`
+      const openRows = await tx.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "shp_order_requests"
+        WHERE "order_id" = ${input.orderId} AND "status" = 'PENDING' AND ${kind}
+        LIMIT 1
+      `
+      if (openRows[0]) {
+        return {
+          ok: false,
+          status: 409,
+          error: input.type === 'DAMAGE'
+            ? 'You have already reported damage on this order. We will come back to you on it.'
+            : 'You already have a request open on this order.',
+        }
+      }
+
+      if (input.type !== 'CANCEL') {
         const rows = await tx.$queryRaw<LinePosition[]>(linePositionQuery(input.orderId))
         const byId = new Map(rows.map((r) => [r.order_item_id, r]))
 
         for (const [orderItemId, quantity] of merged) {
           const row = byId.get(orderItemId)
           if (!row) return { ok: false, status: 404, error: 'Order item not found' }
+
+          // Damage is measured against what actually arrived and nothing else.
+          // Not against the returns policy - the goods a shop will not take back
+          // are exactly the goods whose owner most needs to be able to say one
+          // turned up broken - and not against refunds or open returns either,
+          // because reporting damage does not spend the unit.
+          if (input.type === 'DAMAGE') {
+            if (row.dispatched_qty === 0) {
+              return {
+                ok: false,
+                status: 400,
+                error: `${row.product_name} has not been dispatched yet, so there is nothing to report.`,
+              }
+            }
+            if (quantity > row.dispatched_qty) {
+              return {
+                ok: false,
+                status: 400,
+                error: `Only ${row.dispatched_qty} of ${row.product_name} has arrived so far.`,
+              }
+            }
+            continue
+          }
 
           // Checked before the arithmetic, because "you can send back at most 0
           // of the Bespoke Desk" is a worse answer than the true one. The
@@ -243,7 +359,7 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
 
       const items: ShpOrderRequestItem[] = []
       // A CANCEL writes none: it covers the whole order by definition.
-      if (input.type === 'RETURN') {
+      if (input.type !== 'CANCEL') {
         for (const [orderItemId, quantity] of merged) {
           const itemRows = await tx.$queryRaw<[Record<string, unknown>]>`
             INSERT INTO "shp_order_request_items" ("request_id", "order_item_id", "quantity")
@@ -254,18 +370,38 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
         }
       }
 
-      return { ok: true, request: { ...request, items } }
+      const savedPhotos: ShpOrderRequestPhoto[] = []
+      if (input.type === 'DAMAGE') {
+        for (const photo of photos) {
+          const photoRows = await tx.$queryRaw<[Record<string, unknown>]>`
+            INSERT INTO "shp_order_request_photos" ("request_id", "media_id", "url")
+            VALUES (${request.id}, ${photo.mediaId ?? null}, ${photo.url})
+            RETURNING *
+          `
+          savedPhotos.push(mapRequestPhoto(photoRows[0]))
+        }
+      }
+
+      return { ok: true, request: { ...request, items, photos: savedPhotos } }
     })
   } catch (error) {
-    // The partial unique index on (order_id) WHERE status = 'PENDING' is what
-    // actually settles a race between two requests on the same order - the
-    // check above can only see what was committed when it ran. Matched on the
-    // message rather than a Prisma error class, as the pull-job guard does:
-    // raw queries surface the Postgres error wrapped, and the index name is
-    // the part that is reliably in there.
+    // Backstop for the check above, which the advisory lock should already have
+    // made unreachable. Matched on the Postgres error CODE and the column, not
+    // on the index name: Prisma hands a raw-query violation over as
+    // "Raw query failed. Code: 23505. Message: Key (order_id)=(...) already
+    // exists." and the constraint's name is nowhere in it, so the name match
+    // that was here before never fired and a clash came out as a 500.
     const message = error instanceof Error ? error.message : String(error)
-    if (message.includes('shp_order_requests_one_open_idx')) {
-      return { ok: false, status: 409, error: 'You already have a request open on this order.' }
+    const clash = message.includes('shp_order_requests_one_open')
+      || (message.includes('23505') && message.includes('(order_id)'))
+    if (clash) {
+      return {
+        ok: false,
+        status: 409,
+        error: input.type === 'DAMAGE'
+          ? 'You have already reported damage on this order. We will come back to you on it.'
+          : 'You already have a request open on this order.',
+      }
     }
     throw error
   }
@@ -275,6 +411,13 @@ export type DecideRequestInput = {
   requestId: string
   status: Extract<ShpOrderRequestStatus, 'APPROVED' | 'DECLINED'>
   adminNote?: string | null
+  /**
+   * What the shop is keeping back for collecting the goods. Recorded on the
+   * decision whether or not the money moves in the same breath: a shop that
+   * approves today and refunds when the van comes back still has to remember
+   * what it said it would keep. Null (or a decline) records nothing.
+   */
+  returnCharge?: number | null
   /** Core User id of whoever decided. */
   decidedBy: string
 }
@@ -287,6 +430,15 @@ export async function decideRequest(input: DecideRequestInput): Promise<ShpOrder
     UPDATE "shp_order_requests"
     SET "status" = ${input.status},
         "admin_note" = ${input.adminNote?.trim() || null},
+        -- Only a return can carry one: there is nothing to collect on a
+        -- cancellation, and a shop does not charge a customer for coming to
+        -- look at something it broke. Settled in the statement rather than by
+        -- the caller so no route can get it wrong.
+        "return_charge" = CASE
+          WHEN "type" = 'RETURN'
+          THEN ${input.status === 'APPROVED' ? input.returnCharge ?? null : null}::numeric
+          ELSE NULL
+        END,
         "decided_at" = CURRENT_TIMESTAMP,
         "decided_by" = ${input.decidedBy},
         "updated_at" = CURRENT_TIMESTAMP
@@ -325,6 +477,14 @@ export type AdminRequestRow = ShpOrderRequestWithItems & {
   customerName: string
   customerEmail: string
   orderTotal: string
+  /**
+   * Whether anything this request covers was sold on the understanding that
+   * taking it back would be a favour rather than a right. The whole reason the
+   * queue exists is that somebody has to decide, and this is the flag that says
+   * the decision is genuinely open - without it an owner has to open the order
+   * and check the lines to find out whether they are allowed to say no.
+   */
+  discretionary: boolean
 }
 
 export type ListRequestsFilter = {
@@ -350,7 +510,21 @@ export async function listRequestsForAdmin(
     : Prisma.empty
 
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
-    SELECT req.*, o."order_number", o."customer_name", o."customer_email", o."total"
+    SELECT req.*, o."order_number", o."customer_name", o."customer_email", o."total",
+      -- The lines this request covers: the ones it names, or - on a cancel,
+      -- which names none because it covers the lot - every line on the order.
+      EXISTS (
+        SELECT 1 FROM "shp_order_items" oi
+        WHERE oi."order_id" = req."order_id"
+          AND oi."returns_discretionary" = true
+          AND (
+            req."type" = 'CANCEL'
+            OR EXISTS (
+              SELECT 1 FROM "shp_order_request_items" ri
+              WHERE ri."request_id" = req."id" AND ri."order_item_id" = oi."id"
+            )
+          )
+      ) AS discretionary
     FROM "shp_order_requests" req
     JOIN "shp_orders" o ON o."id" = req."order_id"
     ${where}
@@ -372,6 +546,7 @@ export async function listRequestsForAdmin(
     customerName: rows[i]!.customer_name as string,
     customerEmail: rows[i]!.customer_email as string,
     orderTotal: String(rows[i]!.total),
+    discretionary: rows[i]!.discretionary === true,
   }))
 
   return { requests, total: Number(totals?.total ?? 0), pendingCount: Number(totals?.pending ?? 0) }

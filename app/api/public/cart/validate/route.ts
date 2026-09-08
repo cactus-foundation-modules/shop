@@ -138,12 +138,20 @@ export async function POST(request: NextRequest) {
     meta: metaByKey.get(line.lineId ?? line.product.id),
   })))
 
-  // Shop's own note about the order-size deduction goes in the same array, so
-  // the four surfaces that already render `notes` (the full cart, the drawer,
-  // the mobile bar and the checkout items list) each get it for nothing. Silent
-  // where there is nothing worth saying - see orderSizeDeductionNotes - and
-  // silent altogether where the owner would rather the basket simply showed the
-  // lower figure. It leads: it is the one note that is about money.
+  // Shop's own note about the order-size deduction is returned SEPARATELY from
+  // the notes modules contribute, and that separation is the point.
+  //
+  // Those notes are dressed per surface by the author (cart-note-options.ts):
+  // the slide-out draws them green with a tick, the cart page hides them
+  // outright. Both defaults were written when a note meant a delivery estimate,
+  // and neither suits this one - a tick in front of "add £113 more" claims
+  // something is settled when it is an instruction, and hiding it on the cart
+  // page hides the one sentence that exists to move the order value, on exactly
+  // the page where a shopper decides whether to add anything.
+  //
+  // So it travels on its own and every basket draws it itself, always, in the
+  // same look the product page gives the same sentence. Nothing about the
+  // author's note styling changes for anyone.
   //
   // The figures are stored-side, like the thresholds and amounts they come from,
   // so the sentence quotes what the owner typed rather than a tax conversion of
@@ -151,7 +159,6 @@ export async function POST(request: NextRequest) {
   const deductionNotes = config.orderSizeDeductionShowInBasket
     ? orderSizeDeductionNotes(orderSizeDeduction, config.currencySymbol)
     : []
-  const notes = [...deductionNotes, ...providerNotes]
 
-  return NextResponse.json({ lines, notes })
+  return NextResponse.json({ lines, notes: providerNotes, deductionNotes })
 }

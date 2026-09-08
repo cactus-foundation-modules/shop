@@ -138,6 +138,12 @@ export const ordersScreenCss = `
 .sox-detail-row a{color:var(--color-primary);text-decoration:none}
 .sox-detail-row a:hover{text-decoration:underline}
 .sox-address{margin:0;font-size:0.875rem;line-height:1.5;font-style:normal;color:var(--color-text)}
+/* What the customer told the driver. Set apart from the address above it with
+   a rule and a tint, because a gate code skim-read as an address line is a gate
+   code nobody acts on. pre-wrap: somebody who typed three lines meant three. */
+.sox-instructions{margin:0.625rem 0 0;padding:0.5rem 0.625rem;border-radius:var(--radius-sm);background:var(--color-bg-subtle);border-left:2px solid var(--color-border)}
+.sox-instructions strong{display:block;font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.03em;color:var(--color-text-secondary);font-weight:600}
+.sox-instructions p{margin:0.1875rem 0 0;font-size:0.875rem;line-height:1.5;color:var(--color-text);white-space:pre-wrap}
 .sox-copy{appearance:none;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-secondary);border-radius:var(--radius-sm);font-size:0.6875rem;padding:0.125rem 0.5rem;cursor:pointer}
 .sox-copy:hover{background:var(--color-bg-subtle);color:var(--color-text)}
 
