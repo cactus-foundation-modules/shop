@@ -1,4 +1,5 @@
 import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
+import { getOrderDispatchSummary } from '@/modules/shop/lib/db/shipments'
 import { processRefund } from '@/modules/shop/lib/db/refunds'
 import { creditNoteForSettledRefund } from '@/modules/shop/lib/credit-notes'
 import { createOrderRequest, decideRequest, type CreateOrderRequestInput } from '@/modules/shop/lib/db/order-requests'
@@ -9,7 +10,7 @@ import { sendShopEmail } from '@/modules/shop/lib/email'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { netOffReturnCharge } from '@/modules/shop/lib/return-charge'
-import { reasonLabel } from '@/modules/shop/lib/order-requests'
+import { coversWholeOrder, reasonLabel } from '@/modules/shop/lib/order-requests'
 import type { ShpOrder, ShpOrderItem, ShpOrderRequestWithItems } from '@/modules/shop/lib/types'
 
 // What a cancel or return request actually DOES, as opposed to where it is
@@ -20,7 +21,7 @@ import type { ShpOrder, ShpOrderItem, ShpOrderRequestWithItems } from '@/modules
 const TYPE_WORD = { CANCEL: 'cancellation', RETURN: 'return', DAMAGE: 'damage report' } as const
 
 function itemsSummary(request: ShpOrderRequestWithItems, orderItems: ShpOrderItem[]): string {
-  if (request.items.length === 0) return 'The whole order'
+  if (request.items.length === 0 || coversWholeOrder(request, orderItems)) return 'The whole order'
   const byId = new Map(orderItems.map((i) => [i.id, i]))
   return request.items
     .map((line) => `${byId.get(line.orderItemId)?.productName ?? 'Item'} x${line.quantity}`)
@@ -104,15 +105,16 @@ export async function submitOrderRequest(input: CreateOrderRequestInput): Promis
   return { ok: true, request }
 }
 
-// What a refund would cover. A CANCEL is the whole order less anything already
-// refunded; a RETURN is exactly the lines that were asked for. Amounts use
-// unitPrice x quantity, which is what the admin refund modal has always sent -
-// two different arithmetics for the same lines would be worse than either.
+// What a refund would cover: exactly the lines that were asked for, or - on a
+// request that named none, which is what a whole-order cancellation is -
+// everything not already refunded. Amounts use unitPrice x quantity, which is
+// what the admin refund modal has always sent - two different arithmetics for
+// the same lines would be worse than either.
 function refundLines(
   request: ShpOrderRequestWithItems,
   orderItems: ShpOrderItem[],
 ): Array<{ orderItemId: string; quantity: number; amount: number }> {
-  const wanted = request.type === 'CANCEL'
+  const wanted = request.items.length === 0
     ? orderItems.map((item) => ({ orderItemId: item.id, quantity: item.quantity - item.refundedQty }))
     : request.items.map((line) => ({ orderItemId: line.orderItemId, quantity: line.quantity }))
 
@@ -175,6 +177,28 @@ async function issueRefund(
   // one done from the order screen, and needs the same paperwork.
   await creditNoteForSettledRefund(outcome.refundId, { userId })
   return { ok: true, amount: total }
+}
+
+/**
+ * Whether approving this cancellation finishes the order off.
+ *
+ * A cancellation naming no lines is the whole order by definition and closes it
+ * outright, refund or no refund - the customer asked for it to be called off and
+ * we agreed, so leaving it live and dispatchable because a card processor had a
+ * bad minute would be the worse of the two failures.
+ *
+ * One that names lines closes the order only when nothing survives it: an order
+ * of five chairs where two are called off is still an order for three, and
+ * marking it CANCELLED would stop the shop sending them. Read back off the
+ * dispatch summary AFTER the decision has been recorded, so the units this
+ * approval has just taken off are already in the figures - and the same figures
+ * the dispatch screen uses, so the two cannot disagree about whether there is
+ * anything left to pack.
+ */
+async function cancellationClosesOrder(request: ShpOrderRequestWithItems, orderId: string): Promise<boolean> {
+  if (request.items.length === 0) return true
+  const summary = await getOrderDispatchSummary(orderId)
+  return summary.lines.every((line) => line.outstandingQty === 0 && line.dispatchedQty === 0)
 }
 
 export type DecideRequestOutcome =
@@ -253,7 +277,7 @@ export async function approveOrderRequest(input: ApproveInput): Promise<DecideRe
     }
   }
 
-  if (request.type === 'CANCEL') {
+  if (request.type === 'CANCEL' && await cancellationClosesOrder(request, order.id)) {
     // sendEmail is off: the approval email below says the same thing and says
     // it better, and two emails about one decision is one too many.
     const changed = await applyOrderStatusChange({ orderId: order.id, status: 'CANCELLED', sendEmail: false })

@@ -216,8 +216,14 @@ export function RequestsScreen() {
                 {row.items.length > 0 && (
                   row.type === 'DAMAGE'
                     ? ` · ${row.items.reduce((sum, item) => sum + item.quantity, 0)} item(s) affected`
-                    : ` · ${row.items.reduce((sum, item) => sum + item.quantity, 0)} item(s) to come back`
+                    : row.type === 'CANCEL'
+                      // A cancellation naming lines is a part-cancellation. One
+                      // naming none is still the whole order, and says nothing
+                      // here rather than "0 item(s)".
+                      ? ` · ${row.items.reduce((sum, item) => sum + item.quantity, 0)} item(s) to call off`
+                      : ` · ${row.items.reduce((sum, item) => sum + item.quantity, 0)} item(s) to come back`
                 )}
+                {row.type === 'CANCEL' && row.items.length === 0 && ' · the whole order'}
                 {` · order total ${formatMoney(row.orderTotal, currencySymbol)}`}
                 {row.returnCharge != null && ` · ${formatMoney(row.returnCharge, currencySymbol)} return charge kept back`}
               </div>
@@ -292,7 +298,9 @@ export function RequestsScreen() {
                     <span>
                       Refund as part of {row.type === 'DAMAGE' ? 'this' : 'approving'}
                       {row.type === 'CANCEL'
-                        ? ' (everything not already refunded)'
+                        ? row.items.length === 0
+                          ? ' (everything not already refunded)'
+                          : ' (just the items being called off)'
                         : row.type === 'DAMAGE'
                           ? ' (just the items reported)'
                           : ' (just the items being sent back)'}

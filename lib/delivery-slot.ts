@@ -151,6 +151,32 @@ export function formatDeliveryDayRelative(date: string, today: string): string {
   return formatDeliveryDay(date)
 }
 
+/**
+ * The day a delivery ACTUALLY happened, for the line under a ticked step.
+ *
+ * Relative for the two days anybody is reading it on - "today" and "yesterday"
+ * are how people talk about a delivery that has just been - and a plain short
+ * date after that, because "Thursday" stops meaning last Thursday within a
+ * week and a record has to keep making sense in March.
+ *
+ * Deliberately NOT formatDeliveryDayRelative: that one looks forwards, where a
+ * booked delivery lives, and would answer "yesterday" with a bare weekday.
+ */
+export function formatDeliveredDayRelative(date: string, today: string): string {
+  if (!isDeliveryDate(date)) return ''
+  if (!isDeliveryDate(today)) return shortNumericDate(date)
+  if (date === today) return 'today'
+  if (daysBetween(date, today) === 1) return 'yesterday'
+  return shortNumericDate(date)
+}
+
+/** '2026-09-08' as '8/9/26'. Day first and the century dropped, which is how a
+ *  date is written down in this country when it is written down small. */
+function shortNumericDate(date: string): string {
+  const { year, month, day } = dateParts(date)
+  return `${day}/${month}/${String(year).slice(-2)}`
+}
+
 /** Whole days from one calendar day to another. Both are days rather than
  *  moments, so this is arithmetic on the calendar and no timezone comes into
  *  it - the caller has already decided what "today" means. */

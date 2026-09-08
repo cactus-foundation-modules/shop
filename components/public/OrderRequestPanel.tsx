@@ -23,6 +23,11 @@ export type RequestLine = {
   orderItemId: string
   productName: string
   returnableQty: number
+  /** What may still be called off - what is left to supply, on a line the shop
+   *  takes back. Zero on anything bespoke, and zero once it has gone out. */
+  cancellableQty: number
+  /** What is still to come, whatever the returns policy says about it. */
+  outstandingQty: number
   /** What has actually turned up, which is what can be reported damaged. */
   dispatchedQty: number
   /** What the shop said about taking this one back, as sold. */
@@ -109,9 +114,26 @@ export default function OrderRequestPanel(props: Props) {
   // returns policy says: the customer who cannot send it back is the one who
   // most needs a way to tell us it turned up broken.
   const arrived = props.lines.filter((line) => line.dispatchedQty > 0)
-  const chosen = open === 'DAMAGE' ? arrived : returnable
+  // What may still be called off. A cancellation used to be all-or-nothing, so
+  // one packed parcel or one bespoke desk refused the whole order; both are
+  // per-line answers now, and the ones that have to stay are listed underneath
+  // with the reason rather than silently dropped.
+  const cancellable = props.lines.filter((line) => line.cancellableQty > 0)
+  const cannotCancel = props.lines.filter((line) => line.cancellableQty === 0)
+  const chosen = open === 'DAMAGE' ? arrived : open === 'CANCEL' ? cancellable : returnable
   const reasons =
     open === 'CANCEL' ? props.cancelReasons : open === 'DAMAGE' ? props.damageReasons : props.returnReasons
+
+  /** Why a line is not on the cancellation form. Said in the customer's terms:
+   *  "it is a return now" and "we cannot unmake this one" send them to two
+   *  different places, and guessing wrong costs them an email. */
+  function whyNotCancellable(line: RequestLine): string {
+    if (line.dispatchedQty > 0 && line.outstandingQty === 0) {
+      return 'Already on its way, so this one is a return rather than a cancellation.'
+    }
+    if (line.returnsPolicy === 'NONE') return line.returnsNote ?? 'This one cannot be called off once ordered.'
+    return 'There is nothing left to call off on this one.'
+  }
 
   function start(type: ShpOrderRequestType) {
     setOpen(type)
@@ -119,14 +141,16 @@ export default function OrderRequestPanel(props: Props) {
     setNote('')
     setPhotos([])
     setError(null)
-    // Everything still returnable, pre-ticked: sending back the lot is the
-    // common case, and un-ticking is less work than ticking. A damage report
-    // starts at nothing, because the whole point of it is that one particular
-    // thing is broken.
+    // Everything still going, pre-ticked: calling the lot off and sending the
+    // lot back are both the common case, and un-ticking is less work than
+    // ticking. A damage report starts at nothing, because the whole point of it
+    // is that one particular thing is broken.
     setQuantities(
       type === 'RETURN'
         ? Object.fromEntries(returnable.map((line) => [line.orderItemId, line.returnableQty]))
-        : {},
+        : type === 'CANCEL'
+          ? Object.fromEntries(cancellable.map((line) => [line.orderItemId, line.cancellableQty]))
+          : {},
     )
   }
 
@@ -175,6 +199,10 @@ export default function OrderRequestPanel(props: Props) {
       setError('Choose at least one item to send back.')
       return
     }
+    if (open === 'CANCEL' && items.length === 0) {
+      setError('Choose at least one item to call off.')
+      return
+    }
     if (open === 'DAMAGE' && items.length === 0) {
       setError('Tell us which item is damaged.')
       return
@@ -190,7 +218,10 @@ export default function OrderRequestPanel(props: Props) {
           type: open,
           reason,
           customerNote: note || null,
-          items: open === 'CANCEL' ? [] : items,
+          // Named on a cancellation too. The server works out for itself whether
+          // that adds up to the whole order - one place to decide it, rather
+          // than a form and an endpoint that can drift apart about it.
+          items,
           photoMediaIds: open === 'DAMAGE' ? photos.map((photo) => photo.mediaId) : [],
         }),
       })
@@ -243,13 +274,31 @@ export default function OrderRequestPanel(props: Props) {
           </p>
         )}
 
-        {open !== 'CANCEL' && (
-          <div style={{ display: 'grid', gap: '0.5rem' }}>
+        {open === 'CANCEL' && (
+          // Said above the boxes, because the boxes are already filled in. A
+          // shopper who came here to call the whole thing off should be able to
+          // press the button without reading anything; the sentence is for the
+          // one who only wants two of the five gone.
+          <p style={{ margin: 0, ...muted }}>
+            Everything that can still be called off is ticked below. Change the numbers if you only want part of the
+            order stopped.
+          </p>
+        )}
+
+        <div style={{ display: 'grid', gap: '0.5rem' }}>
             <span style={label}>
-              {open === 'DAMAGE' ? 'What has arrived damaged?' : 'What are you sending back?'}
+              {open === 'DAMAGE'
+                ? 'What has arrived damaged?'
+                : open === 'CANCEL'
+                  ? 'What are you calling off?'
+                  : 'What are you sending back?'}
             </span>
             {chosen.map((line) => {
-              const max = open === 'DAMAGE' ? line.dispatchedQty : line.returnableQty
+              const max = open === 'DAMAGE'
+                ? line.dispatchedQty
+                : open === 'CANCEL'
+                  ? line.cancellableQty
+                  : line.returnableQty
               return (
                 <label key={line.orderItemId} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <input
@@ -289,8 +338,22 @@ export default function OrderRequestPanel(props: Props) {
                 ))}
               </div>
             )}
+            {/* The lines that have to stay, and why. Left out entirely, an order
+                of five that offers three reads as broken, and the customer's
+                next move is an email asking about the other two. */}
+            {open === 'CANCEL' && cannotCancel.length > 0 && (
+              <div style={{ display: 'grid', gap: '0.25rem', marginTop: '0.25rem' }}>
+                <span style={label}>These have to stay on the order</span>
+                {cannotCancel.map((line) => (
+                  <p key={line.orderItemId} style={{ margin: 0, ...muted }}>
+                    <strong style={label}>{line.productName}</strong>
+                    {' - '}
+                    {whyNotCancellable(line)}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
-        )}
 
         <label style={{ display: 'grid', gap: '0.25rem' }}>
           <span style={label}>{open === 'DAMAGE' ? 'What has happened?' : 'Why?'}</span>
@@ -381,9 +444,18 @@ export default function OrderRequestPanel(props: Props) {
       </div>
       <div className="sod-card-body">
 
-      {props.cancel.allowed ? (
+      {props.cancel.allowed && cancellable.length > 0 ? (
         <div>
-          <button type="button" className="btn" onClick={() => start('CANCEL')}>Cancel this order</button>
+          <button type="button" className="btn" onClick={() => start('CANCEL')}>
+            {cannotCancel.length > 0 ? 'Cancel part of this order' : 'Cancel this order'}
+          </button>
+          {/* Only worth saying where there is a choice to make. On an order
+              where everything can go, the button already says it all. */}
+          {cannotCancel.length > 0 && (
+            <p style={{ margin: '0.375rem 0 0', ...muted }}>
+              Some of this order can still be stopped. You pick which, and how many.
+            </p>
+          )}
         </div>
       ) : (
         props.cancel.reason && <p style={{ margin: 0, ...muted }}>{props.cancel.reason}</p>

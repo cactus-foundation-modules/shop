@@ -176,6 +176,48 @@ describe('orderProgressSteps with a delivery', () => {
     expect(steps.find((s) => s.key === 'delivery')?.note).toBe('Tomorrow between 10am and 1pm')
   })
 
+  it('says the day it came once the courier has said so', () => {
+    // The defect this answers, seen on a real order: a delivered parcel's rail
+    // still read "Today between 10am and 1pm" under a ticked step - a plan
+    // presented as a record, and one that would have said "Today" the following
+    // morning too.
+    const steps = orderProgressSteps({
+      order,
+      lines,
+      lastShippedAt: new Date('2026-09-06T09:00:00Z'),
+      delivery: {
+        day: 'today',
+        window: 'between 10am and 1pm',
+        progress: 1,
+        underway: false,
+        arrived: true,
+        deliveredOn: 'today',
+      },
+    })
+
+    const step = steps.find((s) => s.key === 'delivery')
+    // The step keeps its neutral name; the note carries the news. 'Delivered'
+    // above 'Delivered today' would be the same word twice.
+    expect(step?.label).toBe('Delivery')
+    expect(step?.note).toBe('Delivered today')
+  })
+
+  it('will not call it delivered on the strength of the clock alone', () => {
+    // `arrived` with no date behind it means only that the booked window has
+    // gone by. That is not the courier saying it turned up, so the step keeps
+    // the arrangement on show rather than inventing a delivery date.
+    const steps = orderProgressSteps({
+      order,
+      lines,
+      lastShippedAt: new Date('2026-09-06T09:00:00Z'),
+      delivery: { day: 'today', window: 'between 10am and 1pm', progress: 1, underway: false, arrived: true },
+    })
+
+    const step = steps.find((s) => s.key === 'delivery')
+    expect(step?.label).toBe('Delivery')
+    expect(step?.note).toBe('Today between 10am and 1pm')
+  })
+
   it('does not tick Complete off a clock', () => {
     // The window passing means the van has been, which is not the same as the
     // order being finished - a delivery can fail.

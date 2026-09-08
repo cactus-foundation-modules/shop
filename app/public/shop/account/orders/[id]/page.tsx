@@ -17,7 +17,13 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { formatMoney } from '@/modules/shop/lib/money'
-import { SHP_CANCEL_REASONS, SHP_DAMAGE_REASONS, SHP_RETURN_REASONS, reasonLabel } from '@/modules/shop/lib/order-requests'
+import {
+  SHP_CANCEL_REASONS,
+  SHP_DAMAGE_REASONS,
+  SHP_RETURN_REASONS,
+  reasonLabel,
+  type RequestEligibility,
+} from '@/modules/shop/lib/order-requests'
 import {
   ORDER_STATUS_DISPLAY,
   REQUEST_STATUS_DISPLAY,
@@ -31,6 +37,8 @@ import {
 } from '@/modules/shop/lib/order-display'
 import { orderProgressSteps, orderStopped } from '@/modules/shop/lib/order-progress'
 import { parcelDelivery, railDelivery } from '@/modules/shop/lib/order-delivery'
+import { formatDeliveredDayRelative, nowInTimezone } from '@/modules/shop/lib/delivery-slot'
+import { calendarDateIn } from '@/lib/config/timezone'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { courierIsPolled } from '@/modules/shop/lib/tracking/stage-meaning'
 import { livePollIntervalMs, positionFreshness } from '@/modules/shop/lib/tracking/live-delivery'
@@ -68,6 +76,18 @@ import { resolveShopMemberOrderPanels } from '@/modules/shop/lib/member-order-pa
 
 export const metadata = { title: 'Order detail' }
 export const dynamic = 'force-dynamic'
+
+/** One of the three offers, as the panel wants it.
+ *
+ * A refusal marked `silent` hands down no reason at all. The endpoint still
+ * answers with one, but a customer looking at an order placed this morning does
+ * not need two lines telling them nothing has been dispatched yet - they can
+ * see that, and printing it turns the card into a list of things they cannot
+ * do. See RequestEligibility in lib/order-requests.ts. */
+function offer(eligibility: RequestEligibility): { allowed: boolean; reason?: string } {
+  if (eligibility.allowed) return { allowed: true }
+  return { allowed: false, reason: eligibility.silent ? undefined : eligibility.reason }
+}
 
 // A member's own order, a week after they placed it.
 //
@@ -316,6 +336,13 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
       .filter((entry): entry is readonly [string, Date] => entry[1] instanceof Date),
   )
 
+  /** 'today', 'yesterday' or '8/9/26', in the shop's own timezone. The instant
+   *  is turned into a calendar day first: a delivery at half past midnight is
+   *  remembered by the day it happened where it happened, not by whatever day
+   *  it was in UTC at the time. */
+  const deliveredDayFor = (at: Date): string =>
+    formatDeliveredDayRelative(calendarDateIn(at, timezone), nowInTimezone(now, timezone).date)
+
   const steps = orderProgressSteps({
     order,
     lines,
@@ -330,6 +357,11 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           // happening.
           underway: railBooking.outForDelivery || railBooking.progress?.phase === 'during',
           arrived: railBooking.arrived,
+          // The day it actually came, where the courier gave one. Worded here
+          // because this is where the timezone is.
+          deliveredOn: deliveredOn.has(railBooking.shipmentId)
+            ? deliveredDayFor(deliveredOn.get(railBooking.shipmentId) as Date)
+            : null,
         }
       : null,
   })
@@ -386,9 +418,19 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   // of questions on screen: with two parcels out with the same courier the
   // questions are the same questions, so the first booked delivery that has any
   // is the one that answers for the order.
+  //
+  // Only parcels that have not arrived. Every one of these questions is about
+  // something that has not happened yet - will they take it upstairs, what
+  // happens if nobody is in, do they ring first - and a delivered parcel still
+  // offering to answer them is the shop asking a question the van settled an
+  // hour ago. A link from an older email lands on the page as normal and simply
+  // opens nothing, which is the behaviour a stale link has always had here.
+  const questionsFor = (shipmentId: string): boolean =>
+    !deliveredOn.has(shipmentId) && (deliveryById.get(shipmentId)?.faqs.length ?? 0) > 0
+
   const query = searchParams ? await searchParams : {}
   const faqRequested = (Array.isArray(query[FAQ_QUERY_KEY]) ? query[FAQ_QUERY_KEY][0] : query[FAQ_QUERY_KEY]) === '1'
-  const faqShipmentId = deliveries.find((d) => d.faqs.length > 0)?.shipmentId ?? null
+  const faqShipmentId = deliveries.find((d) => questionsFor(d.shipmentId))?.shipmentId ?? null
 
   // How this order was settled, in a sentence rather than a status code.
   const methodName = PAYMENT_METHOD_LABELS[shownMethod] ?? methodLabels[shownMethod] ?? shownMethod
@@ -752,7 +794,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                         />
                       </div>
                     )}
-                    {(deliveryById.get(shipment.id)?.faqs.length ?? 0) > 0 && (
+                    {questionsFor(shipment.id) && (
                       <CourierFaqModal
                         faqs={deliveryById.get(shipment.id)?.faqs ?? []}
                         courierName={shipment.carrier?.trim() || null}
@@ -909,9 +951,9 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           {(!openRequest || !openDamageRequest) && (
             <OrderRequestPanel
               orderId={order.id}
-              cancel={{ allowed: detail.cancel.allowed, reason: detail.cancel.allowed ? undefined : detail.cancel.reason }}
-              return={{ allowed: detail.return.allowed, reason: detail.return.allowed ? undefined : detail.return.reason }}
-              damage={{ allowed: detail.damage.allowed, reason: detail.damage.allowed ? undefined : detail.damage.reason }}
+              cancel={offer(detail.cancel)}
+              return={offer(detail.return)}
+              damage={offer(detail.damage)}
               cancelReasons={SHP_CANCEL_REASONS}
               returnReasons={SHP_RETURN_REASONS}
               damageReasons={SHP_DAMAGE_REASONS}
@@ -919,6 +961,8 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                 orderItemId: line.item.id,
                 productName: line.item.productName,
                 returnableQty: line.returnableQty,
+                cancellableQty: line.cancellableQty,
+                outstandingQty: line.outstandingQty,
                 dispatchedQty: line.dispatchedQty,
                 returnsPolicy: line.returnsPolicy,
                 returnsNote: line.returnsNote,

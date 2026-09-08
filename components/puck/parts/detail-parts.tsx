@@ -835,11 +835,15 @@ export const shopDetailPricePuckRscComponent = { ...shopDetailPricePuckComponent
 // is only ever handed finished wording.
 
 const orderSizeDeductionCss = `
-/* Height held open whether or not there is anything to say, so the line fading
-   in as a shopper picks a combination never shoves the buy button down the page.
-   One line of text plus its lead: enough for the sentence at every width the buy
-   column is ever given, and the "why?" fold below it opens into flow as folds do. */
-.spd-osd{min-height:2.7rem;margin:0 0 12px}
+/* Nothing to say, no room taken. The height used to be held open so the line
+   fading in as a shopper picks a combination never shoved the buy button down
+   the page - but the block renders on every product page the moment the feature
+   is switched on, including the ones whose supplier carries no rule and can
+   therefore never show anything, and a permanent empty band between the price
+   and the delivery card was much the worse of the two. The wrapper is empty
+   whenever the island renders nothing, so :empty is the whole condition. */
+.spd-osd{margin:0 0 12px}
+.spd-osd:empty{display:none}
 /* An inset with an accent edge rather than a filled panel. The buy column
    already carries a filled card directly beneath this one where a delivery
    module is installed, and two filled blocks stacked read as a pair of equal

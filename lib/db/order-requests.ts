@@ -1,7 +1,12 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import { ORDER_LOCK_NAMESPACE } from '@/modules/shop/lib/db/shipments'
-import { MAX_DAMAGE_PHOTOS, isValidReason } from '@/modules/shop/lib/order-requests'
+import {
+  MAX_DAMAGE_PHOTOS,
+  cancellableQty,
+  isValidReason,
+  outstandingUnits,
+} from '@/modules/shop/lib/order-requests'
 import type {
   ShpOrderRequest,
   ShpOrderRequestItem,
@@ -147,8 +152,10 @@ const linePositionQuery = (orderId: string) => Prisma.sql`
     oi."quantity"      AS quantity,
     oi."refunded_qty"  AS refunded_qty,
     oi."returnable"    AS returnable,
-    COALESCE(d."dispatched", 0)::int AS dispatched_qty,
-    COALESCE(r."requested", 0)::int  AS requested_qty
+    COALESCE(d."dispatched", 0)::int        AS dispatched_qty,
+    COALESCE(r."requested", 0)::int         AS requested_qty,
+    COALESCE(c."requested", 0)::int         AS cancel_requested_qty,
+    COALESCE(c."approved", 0)::int          AS cancel_approved_qty
   FROM "shp_order_items" oi
   LEFT JOIN (
     SELECT si."order_item_id", SUM(si."quantity") AS dispatched
@@ -159,12 +166,24 @@ const linePositionQuery = (orderId: string) => Prisma.sql`
     SELECT ri."order_item_id", SUM(ri."quantity") AS requested
     FROM "shp_order_request_items" ri
     JOIN "shp_order_requests" req ON req."id" = ri."request_id"
-    -- Damage reports excluded on purpose: reporting a broken leg does not spend
-    -- the unit, and counting it here would refuse the return of the very item
-    -- the customer has just told us about.
-    WHERE req."status" IN ('PENDING', 'APPROVED') AND req."type" <> 'DAMAGE'
+    -- RETURNS only, and damage reports excluded on purpose: reporting a broken
+    -- leg does not spend the unit, and counting it here would refuse the return
+    -- of the very item the customer has just told us about. Cancellations are
+    -- counted separately below because they spend UNDISPATCHED units - netting
+    -- them off here would refuse the return of goods the customer is holding
+    -- because they called off the part that had not been packed yet.
+    WHERE req."status" IN ('PENDING', 'APPROVED') AND req."type" = 'RETURN'
     GROUP BY ri."order_item_id"
   ) r ON r."order_item_id" = oi."id"
+  LEFT JOIN (
+    SELECT ri."order_item_id",
+           SUM(ri."quantity") AS requested,
+           SUM(ri."quantity") FILTER (WHERE req."status" = 'APPROVED') AS approved
+    FROM "shp_order_request_items" ri
+    JOIN "shp_order_requests" req ON req."id" = ri."request_id"
+    WHERE req."status" IN ('PENDING', 'APPROVED') AND req."type" = 'CANCEL'
+    GROUP BY ri."order_item_id"
+  ) c ON c."order_item_id" = oi."id"
   WHERE oi."order_id" = ${orderId}
 `
 
@@ -176,7 +195,24 @@ type LinePosition = {
   /** Snapshotted when the order was placed - see migrations/043_returnable.sql. */
   returnable: boolean
   dispatched_qty: number
+  /** Units a live RETURN has spoken for. */
   requested_qty: number
+  /** Units a live cancellation has spoken for, decided or not. */
+  cancel_requested_qty: number
+  /** The approved subset of those, which is what has actually left the order. */
+  cancel_approved_qty: number
+}
+
+/** How many units of a line may still be called off, from its row. */
+function cancellableFromRow(row: LinePosition): number {
+  const outstanding = outstandingUnits({
+    quantity: row.quantity,
+    refundedQty: row.refunded_qty,
+    dispatchedQty: row.dispatched_qty,
+    cancelledQty: row.cancel_approved_qty,
+  })
+  const pending = row.cancel_requested_qty - row.cancel_approved_qty
+  return cancellableQty({ outstandingQty: outstanding, returnable: row.returnable }, pending)
 }
 
 export type CreateOrderRequestInput = {
@@ -185,7 +221,13 @@ export type CreateOrderRequestInput = {
   type: ShpOrderRequestType
   reason: string
   customerNote?: string | null
-  /** Ignored for CANCEL, which covers the whole order. */
+  /**
+   * The lines the request covers. On a CANCEL an EMPTY list still means the
+   * whole order, which is what every cancellation recorded before customers
+   * could pick lines means and what a "call the lot off" click may still send:
+   * "everything" is not a list, and a stored list would go stale the moment a
+   * line was refunded.
+   */
   items?: Array<{ orderItemId: string; quantity: number }>
   /**
    * Photographs, on a damage report. Already uploaded and already saved to the
@@ -285,13 +327,49 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
         }
       }
 
-      if (input.type !== 'CANCEL') {
+      if (merged.size > 0) {
         const rows = await tx.$queryRaw<LinePosition[]>(linePositionQuery(input.orderId))
         const byId = new Map(rows.map((r) => [r.order_item_id, r]))
 
         for (const [orderItemId, quantity] of merged) {
           const row = byId.get(orderItemId)
           if (!row) return { ok: false, status: 404, error: 'Order item not found' }
+
+          // A cancellation naming lines. Measured against what is still to be
+          // supplied - not against what arrived - because calling something off
+          // is only possible while it is still sitting here.
+          if (input.type === 'CANCEL') {
+            // Checked before the arithmetic, because "you can call off at most 0
+            // of the Bespoke Desk" is a worse answer than the true one. Goods a
+            // shop will not take back are goods it committed to the moment the
+            // order was placed; the storefront does not offer these lines, and a
+            // hand-rolled POST gets the reason rather than a sum.
+            if (!row.returnable) {
+              return {
+                ok: false,
+                status: 400,
+                error: `${row.product_name} cannot be called off once it has been ordered.`,
+              }
+            }
+            const cancellable = cancellableFromRow(row)
+            if (quantity > cancellable) {
+              if (cancellable === 0) {
+                return {
+                  ok: false,
+                  status: 400,
+                  error: row.dispatched_qty > 0
+                    ? `${row.product_name} has already been dispatched, so it is a return rather than a cancellation.`
+                    : `There is nothing left to call off for ${row.product_name}.`,
+                }
+              }
+              return {
+                ok: false,
+                status: 400,
+                error: `You can call off at most ${cancellable} of ${row.product_name}.`,
+              }
+            }
+            continue
+          }
 
           // Damage is measured against what actually arrived and nothing else.
           // Not against the returns policy - the goods a shop will not take back
@@ -358,16 +436,15 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
       const request = mapRequest(created[0])
 
       const items: ShpOrderRequestItem[] = []
-      // A CANCEL writes none: it covers the whole order by definition.
-      if (input.type !== 'CANCEL') {
-        for (const [orderItemId, quantity] of merged) {
-          const itemRows = await tx.$queryRaw<[Record<string, unknown>]>`
-            INSERT INTO "shp_order_request_items" ("request_id", "order_item_id", "quantity")
-            VALUES (${request.id}, ${orderItemId}, ${quantity})
-            RETURNING *
-          `
-          items.push(mapRequestItem(itemRows[0]))
-        }
+      // A CANCEL naming nothing writes nothing: it covers the whole order by
+      // definition, and "everything" is not a list.
+      for (const [orderItemId, quantity] of merged) {
+        const itemRows = await tx.$queryRaw<[Record<string, unknown>]>`
+          INSERT INTO "shp_order_request_items" ("request_id", "order_item_id", "quantity")
+          VALUES (${request.id}, ${orderItemId}, ${quantity})
+          RETURNING *
+        `
+        items.push(mapRequestItem(itemRows[0]))
       }
 
       const savedPhotos: ShpOrderRequestPhoto[] = []
@@ -511,14 +588,22 @@ export async function listRequestsForAdmin(
 
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
     SELECT req.*, o."order_number", o."customer_name", o."customer_email", o."total",
-      -- The lines this request covers: the ones it names, or - on a cancel,
-      -- which names none because it covers the lot - every line on the order.
+      -- The lines this request covers: the ones it names, or - on a request
+      -- that names none, which is what a whole-order cancellation is - every
+      -- line on the order.
+      --
+      -- The test is the ABSENCE of item rows, not the type. A cancellation that
+      -- names two of five lines covers those two, and flagging it off a bespoke
+      -- line the customer never asked about tells the owner their hands are
+      -- tied when they are not.
       EXISTS (
         SELECT 1 FROM "shp_order_items" oi
         WHERE oi."order_id" = req."order_id"
           AND oi."returns_discretionary" = true
           AND (
-            req."type" = 'CANCEL'
+            NOT EXISTS (
+              SELECT 1 FROM "shp_order_request_items" any_ri WHERE any_ri."request_id" = req."id"
+            )
             OR EXISTS (
               SELECT 1 FROM "shp_order_request_items" ri
               WHERE ri."request_id" = req."id" AND ri."order_item_id" = oi."id"

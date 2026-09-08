@@ -3,6 +3,7 @@ import {
   deliveryProgress,
   formatClockTime,
   formatDeliveryDay,
+  formatDeliveredDayRelative,
   formatDeliveryDayRelative,
   formatDeliveryWindow,
   formatDeliveryWindowSpoken,
@@ -190,6 +191,32 @@ describe('formatDeliveryWindowSpoken', () => {
 
   it('needs both ends, same as the exact form', () => {
     expect(formatDeliveryWindowSpoken('10:00', null)).toBe('')
+  })
+})
+
+describe('formatDeliveredDayRelative', () => {
+  it('uses the two words anybody actually says', () => {
+    expect(formatDeliveredDayRelative('2026-09-08', '2026-09-08')).toBe('today')
+    expect(formatDeliveredDayRelative('2026-09-07', '2026-09-08')).toBe('yesterday')
+  })
+
+  it('writes the date down small once it is older than that', () => {
+    // A weekday would be ambiguous within a week and useless after it - the
+    // line under a ticked step is a record, and a record has to still make
+    // sense in March.
+    expect(formatDeliveredDayRelative('2026-09-06', '2026-09-08')).toBe('6/9/26')
+    expect(formatDeliveredDayRelative('2025-12-31', '2026-09-08')).toBe('31/12/25')
+  })
+
+  it('looks backwards, not forwards', () => {
+    // A delivery that has happened cannot be tomorrow. The forward-looking
+    // formatter beside it would call 2026-09-09 'tomorrow'; this one dates it.
+    expect(formatDeliveredDayRelative('2026-09-09', '2026-09-08')).toBe('9/9/26')
+  })
+
+  it('says nothing about a date that is not one', () => {
+    expect(formatDeliveredDayRelative('2026-02-31', '2026-09-08')).toBe('')
+    expect(formatDeliveredDayRelative('', '2026-09-08')).toBe('')
   })
 })
 

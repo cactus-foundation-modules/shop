@@ -57,6 +57,7 @@ suite('cancel, return and damage requests, against a real database', () => {
   // client is built. A static import would bind to whatever the environment held
   // at collection time, which is nothing.
   let requests: typeof import('./order-requests')
+  let shipments: typeof import('./shipments')
 
   beforeAll(async () => {
     server = testServerFromEnv()
@@ -81,6 +82,7 @@ suite('cancel, return and damage requests, against a real database', () => {
 
     process.env.DATABASE_URL = uri
     requests = await import('./order-requests')
+    shipments = await import('./shipments')
 
     // One order, three lines: one the shop takes back, one it does not, and one
     // it will think about. Every rule in here turns on which is which.
@@ -293,5 +295,135 @@ suite('cancel, return and damage requests, against a real database', () => {
     const cancel = rows.find((r) => r.orderNumber === 'DW000201')
     expect(cancel?.discretionary).toBe(true)
     expect(cancel?.items).toEqual([])
+  })
+
+  // Calling off PART of an order, which is three new pieces of raw SQL: the
+  // FILTER aggregate that separates a cancellation already approved from one
+  // merely asked for, the join that takes approved cancellations off the
+  // dispatch figures, and the rewritten EXISTS behind the queue's "your call"
+  // flag. None of the three is anything but a string to `tsc`, to `eslint` or
+  // to the module build gate.
+  describe('cancelling individual lines', () => {
+    beforeAll(async () => {
+      await client.query(`
+        INSERT INTO "shp_orders" (
+          "id","order_number","customer_email","customer_name","shipping_address",
+          "subtotal","total","tax_mode","payment_method"
+        ) VALUES ('ord-3','DW000202','buyer@example.com','A Buyer','{"postcode":"E1 1AA"}','700.00','840.00','EXCLUSIVE','BANK_TRANSFER')
+      `)
+      await client.query(`
+        INSERT INTO "shp_order_items" (
+          "id","order_id","product_name","product_type","quantity","unit_price","tax_rate","tax_amount","total",
+          "returnable","returns_discretionary","non_returnable_note"
+        ) VALUES
+          ('item-3-ok','ord-3','Stock Chair','PHYSICAL',5,'100.00','0.2000','100.00','500.00',true,false,NULL),
+          ('item-3-no','ord-3','Bespoke Desk','PHYSICAL',1,'100.00','0.2000','20.00','100.00',false,false,'Cut to your measurements.'),
+          ('item-3-maybe','ord-3','Big Cupboard','PHYSICAL',1,'100.00','0.2000','20.00','100.00',true,true,NULL)
+      `)
+    }, 60_000)
+
+    it('refuses to call off a line the shop cannot unmake, and says which', async () => {
+      const outcome = await requests.createOrderRequest({
+        orderId: 'ord-3',
+        memberId: null,
+        type: 'CANCEL',
+        reason: 'CHANGED_MIND',
+        items: [{ orderItemId: 'item-3-no', quantity: 1 }],
+      })
+      expect(outcome.ok).toBe(false)
+      expect(!outcome.ok && outcome.error).toContain('Bespoke Desk')
+    })
+
+    it('refuses to call off more than is still sitting here', async () => {
+      const outcome = await requests.createOrderRequest({
+        orderId: 'ord-3',
+        memberId: null,
+        type: 'CANCEL',
+        reason: 'CHANGED_MIND',
+        items: [{ orderItemId: 'item-3-ok', quantity: 6 }],
+      })
+      expect(outcome.ok).toBe(false)
+      expect(!outcome.ok && outcome.error).toContain('at most 5')
+    })
+
+    it('takes a cancellation of two of the five', async () => {
+      const outcome = await requests.createOrderRequest({
+        orderId: 'ord-3',
+        memberId: null,
+        type: 'CANCEL',
+        reason: 'ORDERED_WRONG',
+        items: [{ orderItemId: 'item-3-ok', quantity: 2 }],
+      })
+      expect(outcome.ok).toBe(true)
+      expect(outcome.ok && outcome.request.items).toHaveLength(1)
+      expect(outcome.ok && outcome.request.items[0]!.quantity).toBe(2)
+    })
+
+    // The flag used to be read off the type: a cancellation named no lines, so
+    // it covered the lot. A part-cancellation names lines, and flagging it off a
+    // discretionary line the customer never mentioned tells the owner their
+    // hands are tied when they are not.
+    it('does not flag that as the shop’s to refuse - it names a plain line', async () => {
+      const { requests: rows } = await requests.listRequestsForAdmin({ status: 'PENDING' })
+      const cancel = rows.find((r) => r.orderNumber === 'DW000202')
+      expect(cancel?.discretionary).toBe(false)
+      expect(cancel?.items).toHaveLength(1)
+    })
+
+    it('takes the approved units off what may still be dispatched', async () => {
+      const open = await requests.getOpenRequestForOrder('ord-3')
+      await requests.decideRequest({ requestId: open!.id, status: 'APPROVED', decidedBy: 'user-1' })
+
+      const summary = await shipments.getOrderDispatchSummary('ord-3')
+      const line = summary.lines.find((l) => l.orderItemId === 'item-3-ok')
+      expect(line?.cancelledQty).toBe(2)
+      expect(line?.outstandingQty).toBe(3)
+    })
+
+    // The failure this exists to stop: approved on a shop that settles by hand,
+    // no money moved, nothing took the units off the dispatch screen, and all
+    // five turned up.
+    it('refuses to dispatch units that have been called off', async () => {
+      const outcome = await shipments.createShipment({
+        orderId: 'ord-3',
+        items: [{ orderItemId: 'item-3-ok', quantity: 4 }],
+      })
+      expect(outcome.ok).toBe(false)
+      expect(!outcome.ok && outcome.error).toContain('only 3')
+    })
+
+    it('still lets the rest of the line go out', async () => {
+      const outcome = await shipments.createShipment({
+        orderId: 'ord-3',
+        items: [{ orderItemId: 'item-3-ok', quantity: 3 }],
+      })
+      expect(outcome.ok).toBe(true)
+    })
+
+    it('will not call off a line once it is in the van', async () => {
+      const outcome = await requests.createOrderRequest({
+        orderId: 'ord-3',
+        memberId: null,
+        type: 'CANCEL',
+        reason: 'CHANGED_MIND',
+        items: [{ orderItemId: 'item-3-ok', quantity: 1 }],
+      })
+      expect(outcome.ok).toBe(false)
+      expect(!outcome.ok && outcome.error).toContain('return rather than a cancellation')
+    })
+
+    // Cancellations spend undispatched units and returns spend dispatched ones.
+    // Netting one off the other refuses the return of goods the customer is
+    // holding because they called off the part that had not been packed.
+    it('leaves the dispatched units returnable despite the cancellation', async () => {
+      const outcome = await requests.createOrderRequest({
+        orderId: 'ord-3',
+        memberId: null,
+        type: 'RETURN',
+        reason: 'NO_LONGER_NEEDED',
+        items: [{ orderItemId: 'item-3-ok', quantity: 3 }],
+      })
+      expect(outcome.ok).toBe(true)
+    })
   })
 })

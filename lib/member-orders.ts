@@ -7,7 +7,14 @@ import { listRequestsForOrder } from '@/modules/shop/lib/db/order-requests'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { fillBlankMemberContactDetails } from '@/lib/members/contact'
 import { orderCompanyName } from '@/modules/shop/lib/order-display'
-import { canReportDamage, canRequestCancel, canRequestReturn, returnDeadline, type RequestEligibility } from '@/modules/shop/lib/order-requests'
+import {
+  canReportDamage,
+  canRequestCancel,
+  canRequestReturn,
+  cancellableQty,
+  returnDeadline,
+  type RequestEligibility,
+} from '@/modules/shop/lib/order-requests'
 import { returnsPolicy, returnsPolicyNote, type ReturnsPolicy } from '@/modules/shop/lib/returnable'
 import type {
   ShpDigitalDownload,
@@ -76,9 +83,14 @@ export type MemberOrderLine = {
   imageUrl: string | null
   dispatchedQty: number
   outstandingQty: number
-  /** Units still eligible to go back, once refunds and live requests are off.
+  /** Units still eligible to go back, once refunds and live returns are off.
    *  Always 0 on a line the shop does not take back. */
   returnableQty: number
+  /** Units still eligible to be called off - what is left to supply, less
+   *  anything a live cancellation has already spoken for. Always 0 on a line
+   *  the shop does not take back, which is the same line it cannot be talked
+   *  out of supplying. */
+  cancellableQty: number
   /** Whether this line may go back at all, as snapshotted when it was ordered. */
   returnable: boolean
   /** All three answers as one, from the pair snapshotted onto the line. */
@@ -150,14 +162,27 @@ function buildLines(
   // Units a live request has already spoken for. PENDING and APPROVED both
   // count: an approved return whose goods have not come back yet is not a unit
   // that can be asked for a second time.
-  const spokenFor = new Map<string, number>()
+  //
+  // Counted in two piles, not one. A return spends DISPATCHED units and a
+  // cancellation spends UNDISPATCHED ones, so netting either off the other is
+  // wrong in both directions: a customer who calls off the half that has not
+  // been packed would lose the right to send back the half they are holding,
+  // and vice versa.
+  const returnsSpokenFor = new Map<string, number>()
+  const cancelsSpokenFor = new Map<string, number>()
   for (const request of requests) {
     if (request.status !== 'PENDING' && request.status !== 'APPROVED') continue
     // A damage report names lines without spending them: telling us a leg is
     // broken must not be what stops the customer sending the thing back.
     if (request.type === 'DAMAGE') continue
+    // An APPROVED cancellation has already come off outstandingQty in the
+    // dispatch summary, so only a PENDING one is still to be netted off here.
+    const tally = request.type === 'CANCEL'
+      ? (request.status === 'PENDING' ? cancelsSpokenFor : null)
+      : returnsSpokenFor
+    if (!tally) continue
     for (const line of request.items) {
-      spokenFor.set(line.orderItemId, (spokenFor.get(line.orderItemId) ?? 0) + line.quantity)
+      tally.set(line.orderItemId, (tally.get(line.orderItemId) ?? 0) + line.quantity)
     }
   }
 
@@ -167,15 +192,20 @@ function buildLines(
     const image = media.find((m) => m.isPrimary && m.type === 'IMAGE') ?? media.find((m) => m.type === 'IMAGE')
     const dispatchedQty = position?.dispatchedQty ?? 0
     const policy = returnsPolicy(item.returnable, item.returnsDiscretionary)
+    const outstandingQty = position?.outstandingQty ?? Math.max(item.quantity - item.refundedQty, 0)
     return {
       item,
       productSlug: item.productId ? products.get(item.productId)?.slug ?? null : null,
       imageUrl: image?.url ?? null,
       dispatchedQty,
-      outstandingQty: position?.outstandingQty ?? Math.max(item.quantity - item.refundedQty, 0),
+      outstandingQty,
       returnableQty: item.returnable
-        ? Math.max(dispatchedQty - item.refundedQty - (spokenFor.get(item.id) ?? 0), 0)
+        ? Math.max(dispatchedQty - item.refundedQty - (returnsSpokenFor.get(item.id) ?? 0), 0)
         : 0,
+      cancellableQty: cancellableQty(
+        { outstandingQty, returnable: item.returnable },
+        cancelsSpokenFor.get(item.id) ?? 0,
+      ),
       returnable: item.returnable,
       // Every half off the order's own snapshot. Reading the note back off the
       // line's product looked tidier and was wrong: on a listing with variations
@@ -254,12 +284,14 @@ export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetai
   // per-line figures below say it better than a blanket refusal would.
   const anyReturnable = items.some((item) => item.returnable)
 
-  // The lines that stop the whole order being called off. Goods a shop will not
-  // take back are goods it committed to the moment the order was placed - cut,
-  // upholstered, or ordered in specially - so a cancellation is no more possible
-  // than a return. Named rather than counted, because "part of this order" sends
-  // the customer straight to an email asking which part.
+  // The lines that cannot be called off. Goods a shop will not take back are
+  // goods it committed to the moment the order was placed - cut, upholstered, or
+  // ordered in specially - so a cancellation is no more possible than a return.
+  // Named rather than counted, because "part of this order" sends the customer
+  // straight to an email asking which part.
   const nonCancellable = items.filter((item) => !item.returnable).map((item) => item.productName)
+
+  const lines = buildLines(items, dispatch, requests, products, mediaByProduct)
 
   const eligibilityInput = {
     order,
@@ -270,11 +302,19 @@ export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetai
     openDamageRequest,
     anyReturnable,
     nonCancellable,
+    // Per line, so one dispatched parcel or one bespoke desk no longer refuses
+    // the whole order - it refuses those lines and leaves the rest offerable.
+    cancellable: lines.map((line) => ({
+      productName: line.item.productName,
+      cancellableQty: line.cancellableQty,
+      outstandingQty: line.outstandingQty,
+      returnable: line.returnable,
+    })),
   }
 
   return {
     order,
-    lines: buildLines(items, dispatch, requests, products, mediaByProduct),
+    lines,
     shipments,
     refunds,
     refundItems,

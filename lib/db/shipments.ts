@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
+import { outstandingUnits, unrefundedCancelledUnits } from '@/modules/shop/lib/order-requests'
 import type {
   ShpOrderDispatchSummary,
   ShpOrderItemDispatch,
@@ -119,7 +120,8 @@ const dispatchRowsQuery = (orderId: string) => Prisma.sql`
          oi."refunded_qty" AS refunded_qty,
          oi."is_pre_order" AS is_pre_order,
          oi."product_id" AS product_id,
-         COALESCE(agg."dispatched_qty", 0)::int AS dispatched_qty
+         COALESCE(agg."dispatched_qty", 0)::int AS dispatched_qty,
+         COALESCE(cancelled."cancelled_qty", 0)::int AS cancelled_qty
   FROM "shp_order_items" oi
   LEFT JOIN (
     SELECT si."order_item_id" AS order_item_id, SUM(si."quantity")::int AS dispatched_qty
@@ -128,6 +130,23 @@ const dispatchRowsQuery = (orderId: string) => Prisma.sql`
     WHERE s."order_id" = ${orderId}
     GROUP BY si."order_item_id"
   ) agg ON agg."order_item_id" = oi."id"
+  -- Units an APPROVED cancellation has taken off the order. Aggregated in its
+  -- own subquery before the join, exactly as the dispatch total above is and
+  -- for the same reason: joining the line table straight on fans each order
+  -- line out once per request and every sum afterwards counts it twice.
+  --
+  -- Approved only. A cancellation somebody has merely ASKED for must not stop
+  -- the shop dispatching - the owner may yet say no - and a declined or
+  -- withdrawn one never happened. A whole-order cancellation writes no item
+  -- rows at all and contributes nothing here; it stops dispatch by putting the
+  -- order into CANCELLED instead.
+  LEFT JOIN (
+    SELECT ri."order_item_id" AS order_item_id, SUM(ri."quantity")::int AS cancelled_qty
+    FROM "shp_order_request_items" ri
+    JOIN "shp_order_requests" req ON req."id" = ri."request_id"
+    WHERE req."order_id" = ${orderId} AND req."type" = 'CANCEL' AND req."status" = 'APPROVED'
+    GROUP BY ri."order_item_id"
+  ) cancelled ON cancelled."order_item_id" = oi."id"
   WHERE oi."order_id" = ${orderId}
   ORDER BY oi."product_name" ASC
 `
@@ -140,6 +159,7 @@ type DispatchRow = {
   is_pre_order: boolean
   product_id: string | null
   dispatched_qty: number
+  cancelled_qty: number
 }
 
 // Narrow enough that both the client and a transaction client satisfy it, so
@@ -157,7 +177,13 @@ function toDispatchLine(r: DispatchRow): ShpOrderItemDispatch {
     quantity: r.quantity,
     refundedQty: r.refunded_qty,
     dispatchedQty: r.dispatched_qty,
-    outstandingQty: Math.max(r.quantity - r.refunded_qty - r.dispatched_qty, 0),
+    cancelledQty: r.cancelled_qty,
+    outstandingQty: outstandingUnits({
+      quantity: r.quantity,
+      refundedQty: r.refunded_qty,
+      dispatchedQty: r.dispatched_qty,
+      cancelledQty: r.cancelled_qty,
+    }),
   }
 }
 
@@ -165,10 +191,13 @@ function toDispatchLine(r: DispatchRow): ShpOrderItemDispatch {
 // asking the database the same question twice.
 //
 // Fully dispatched means every unit that could go out has gone out. An order
-// with nothing dispatchable (empty, or refunded down to nothing) is NOT
-// "fully dispatched" - there was never a parcel to send.
+// with nothing dispatchable (empty, refunded down to nothing, or called off) is
+// NOT "fully dispatched" - there was never a parcel to send.
 export function isFullyDispatched(lines: ShpOrderItemDispatch[]): boolean {
-  const dispatchable = lines.reduce((sum, l) => sum + Math.max(l.quantity - l.refundedQty, 0), 0)
+  const dispatchable = lines.reduce(
+    (sum, l) => sum + Math.max(l.quantity - l.refundedQty - unrefundedCancelledUnits(l.cancelledQty, l.refundedQty), 0),
+    0,
+  )
   if (dispatchable === 0) return false
   return lines.every((l) => l.outstandingQty === 0)
 }
@@ -231,18 +260,27 @@ export async function createShipment(input: CreateShipmentInput): Promise<Create
       const row = byId.get(orderItemId)
       if (!row) return { ok: false, status: 404, error: 'Order item not found' }
 
-      // Cannot dispatch units that were never bought, and cannot dispatch units
-      // that have since been refunded.
-      const dispatchable = Math.max(row.quantity - row.refunded_qty, 0)
+      // Cannot dispatch units that were never bought, units that have since
+      // been refunded, or units the shop has agreed to call off.
+      //
+      // That last one is not decoration. A customer who cancels two of five and
+      // has it approved on a shop that settles refunds by hand would otherwise
+      // have all five turn up: the approval moved no money, so nothing took the
+      // units off the dispatch screen and the owner packed what was in front of
+      // them.
+      const calledOff = unrefundedCancelledUnits(row.cancelled_qty, row.refunded_qty)
+      const dispatchable = Math.max(row.quantity - row.refunded_qty - calledOff, 0)
       if (row.dispatched_qty + quantity > dispatchable) {
         const remaining = Math.max(dispatchable - row.dispatched_qty, 0)
         if (remaining === 0) {
           return {
             ok: false,
             status: 400,
-            error: row.refunded_qty > 0
-              ? `There is nothing left to dispatch for ${row.product_name} - the rest has been refunded.`
-              : `${row.product_name} has already been dispatched in full.`,
+            error: calledOff > 0
+              ? `There is nothing left to dispatch for ${row.product_name} - the rest has been cancelled.`
+              : row.refunded_qty > 0
+                ? `There is nothing left to dispatch for ${row.product_name} - the rest has been refunded.`
+                : `${row.product_name} has already been dispatched in full.`,
           }
         }
         return {

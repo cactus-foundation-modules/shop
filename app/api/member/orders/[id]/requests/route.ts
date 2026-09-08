@@ -71,7 +71,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     type: parsed.data.type,
     reason: parsed.data.reason,
     customerNote: parsed.data.customerNote ?? null,
-    items: parsed.data.type === 'CANCEL' ? [] : parsed.data.items ?? [],
+    // Passed straight through on all three kinds now. A cancellation that names
+    // lines is a part-cancellation; one that names none is still the whole
+    // order, which is what every cancellation taken before this meant. The
+    // quantities are re-checked against the order in lib/db/order-requests.ts,
+    // so a hand-rolled POST cannot call off more than is sitting here.
+    items: parsed.data.items ?? [],
     photos,
   })
 

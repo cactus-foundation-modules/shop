@@ -56,8 +56,9 @@ export async function sendShipmentDispatchedEmail(params: { orderId: string; shi
 
   // The summary is the same read the order screen uses, so the figures in the
   // email cannot disagree with the ones the shop owner is looking at. Its lines
-  // already carry outstandingQty = quantity - refundedQty - dispatchedQty
-  // (dispatched across ALL shipments, floored at zero) and the product names.
+  // already carry outstandingQty - what is left once refunded, dispatched and
+  // called-off units are off, dispatched across ALL shipments and floored at
+  // zero, see outstandingUnits in lib/order-requests.ts - and the product names.
   const summary = await getOrderDispatchSummary(params.orderId)
   const lineByOrderItemId = new Map(summary.lines.map((l) => [l.orderItemId, l]))
 

@@ -51,6 +51,19 @@ export type OrderDelivery = {
   /** The window has been and gone. Not the same as the order being complete:
    *  somebody still has to confirm that it actually turned up. */
   arrived: boolean
+  /** The day it ACTUALLY arrived, already worded and relative - 'today',
+   *  'yesterday', or '8/9/26' - where the courier has given a time for it.
+   *  Printed after the word Delivered, so it reads "Delivered today".
+   *
+   *  Worded by the caller rather than passed as a Date, for the same reason the
+   *  step carries no timestamp: this file has no timezone and a delivery day
+   *  formatted in the wrong one is out by a day, which on the one line somebody
+   *  reads to find out when their furniture came is the whole answer wrong.
+   *
+   *  Absent where the courier never said - `arrived` on its own can mean
+   *  nothing more than the booked window having elapsed, and a clock passing
+   *  1pm is not grounds for printing a delivery date. */
+  deliveredOn?: string | null
 }
 
 type ProgressLine = {
@@ -162,10 +175,15 @@ export function orderProgressSteps(input: OrderProgressInput): OrderStep[] {
         // question, and it does not stop being the question because the van has
         // not set off yet.
         : key === 'delivery' && delivery
-          // "Tomorrow between 10am and 1pm". One sentence, capitalised at the
-          // front, because the day arrives lower case so it can also sit inside
-          // "Arranged for tomorrow" on the parcel card.
-          ? sentence([delivery.day, delivery.window].filter(Boolean).join(' '))
+          // The day it came, once it has come. "Today between 10am and 1pm" is
+          // a plan, and a plan left under a ticked step reads as a promise
+          // nobody has confirmed - worse, it still says "Today" tomorrow.
+          ? delivery.deliveredOn
+            ? `Delivered ${delivery.deliveredOn}`
+            // "Tomorrow between 10am and 1pm". One sentence, capitalised at the
+            // front, because the day arrives lower case so it can also sit
+            // inside "Arranged for tomorrow" on the parcel card.
+            : sentence([delivery.day, delivery.window].filter(Boolean).join(' '))
           : null,
       progress: key === 'delivery' && delivery ? delivery.progress : null,
     }

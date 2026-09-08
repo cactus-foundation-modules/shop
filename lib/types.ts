@@ -704,14 +704,23 @@ export type ShpShipmentWithItems = ShpShipment & { items: ShpShipmentItem[] }
 
 // One order line's dispatch position. dispatchedQty is always summed from
 // shp_shipment_items - there is no counter column on the order line - and
-// outstandingQty is what is still owed to the customer once refunded units are
-// taken off, i.e. quantity - refundedQty - dispatchedQty, floored at zero.
+// outstandingQty is what is still owed to the customer once refunded and
+// cancelled units are taken off. See outstandingUnits in lib/order-requests.ts
+// for the arithmetic, which is shared with the dispatch cap so the screen that
+// offers units and the endpoint that accepts them cannot disagree.
 export type ShpOrderItemDispatch = {
   orderItemId: string
   productName: string
   quantity: number
   refundedQty: number
   dispatchedQty: number
+  /**
+   * Units of this line an approved cancellation has taken off the order,
+   * summed from shp_order_request_items - again no counter column. Zero on
+   * every order that has never had a part-cancellation, which is every order
+   * placed before customers could ask for one.
+   */
+  cancelledQty: number
   outstandingQty: number
 }
 
