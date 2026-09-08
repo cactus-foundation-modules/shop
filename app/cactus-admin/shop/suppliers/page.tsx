@@ -28,6 +28,8 @@ export default async function ShopSuppliersPage() {
         label={resolveSupplierLabel(config)}
         enabled={config.supplierFieldEnabled}
         pagesEnabled={config.supplierFieldEnabled && config.supplierPagesEnabled}
+        deductionEnabled={config.orderSizeDeductionEnabled}
+        currencySymbol={config.currencySymbol}
         adminPath={adminPath}
       />
     </div>

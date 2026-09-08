@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { blockedLinesMessage, resolveCartLines, resolveOrderTotals, round2 } from '@/modules/shop/lib/checkout'
-import { findShippingZoneForPostcode, getShippingRateById } from '@/modules/shop/lib/db/tax-shipping'
+import { resolveShippingZoneForPostcode, getShippingRateById } from '@/modules/shop/lib/db/tax-shipping'
+import { excludedPostcodeMessage } from '@/modules/shop/lib/excluded-postcode'
 import { createPendingOrder, type CreateOrderInput } from '@/modules/shop/lib/db/orders'
 import { createCheckoutDraft } from '@/modules/shop/lib/checkout-draft'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
@@ -161,7 +162,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: blockedLinesMessage(blocked) }, { status: 409 })
   }
 
-  const zone = await findShippingZoneForPostcode(data.shippingAddress.postcode)
+  // Delivery area. An excluded postcode is a postcode the shop has said it does
+  // not deliver to, and the order stops here - otherwise it would go through
+  // with no delivery option and no delivery charge, which is the one outcome
+  // worse than refusing it. A shop with no zones set up at all is not excluded
+  // and carries on as before; see resolveShippingZoneForPostcode.
+  const { zone, excluded } = await resolveShippingZoneForPostcode(data.shippingAddress.postcode)
+  if (excluded) {
+    return NextResponse.json({ error: excludedPostcodeMessage(config.excludedPostcodeMessage) }, { status: 400 })
+  }
   const totals = await resolveOrderTotals({
     lines: resolvedLines,
     zoneId: zone?.id ?? null,
@@ -282,6 +291,13 @@ export async function POST(request: NextRequest) {
       isPreOrder: l.isPreOrder,
       preOrderDispatchDate: l.product.preOrderDispatchDate,
       lineMeta: l.lineMeta,
+      // Per unit, and already inside `unitPrice` above - snapshotted so the order
+      // can still say what came off it after the catalogue has moved on.
+      orderSizeDeduction: l.orderSizeDeduction ?? null,
+      // Settled at resolve time (product row, and the listing behind a variation
+      // child) and snapshotted, so the order still knows the terms it was placed
+      // under after the catalogue has moved on.
+      returnable: l.returnable,
     })),
   }
 

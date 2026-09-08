@@ -9,6 +9,15 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { effectivePrice } from '@/modules/shop/lib/pricing'
 import { getCartLineResolvers, getCartLineResolverPrefetchers, resolveLineMeta, type CartLineCharge, type CartLineControl, type CartLineGroup, type CartLineTitle } from '@/modules/shop/lib/line-meta'
 import { minOrderQuantity, minOrderShortfallReason } from '@/modules/shop/lib/min-order'
+import { isReturnable } from '@/modules/shop/lib/returnable'
+import { getDeductionRules } from '@/modules/shop/lib/db/suppliers'
+import {
+  applyOrderSizeDeduction,
+  deductionAmount,
+  type OrderSizeDeductionLine,
+  type OrderSizeDeductionState,
+} from '@/modules/shop/lib/order-size-deduction'
+import { isOnSale } from '@/modules/shop/lib/pricing'
 import type { CartLine } from '@/modules/shop/components/public/cart'
 import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 
@@ -55,6 +64,18 @@ export type ResolvedCartLine = {
   // Which basket group this line belongs to, if a resolver declared one - see
   // CartLineGroup. Display ordering only; it never moves money.
   group?: CartLineGroup | null
+  // What came off this line's unit price because the basket reached its
+  // supplier's order-size threshold (lib/order-size-deduction.ts). PER UNIT, and
+  // ALREADY TAKEN OFF unitPrice - it is a record of what happened, for the cart's
+  // struck-through figure and the order's own snapshot, never an amount to
+  // subtract again. Null on every line that lost nothing, which is every line on
+  // a shop that has not switched the feature on.
+  orderSizeDeduction?: number | null
+  // Whether this line may be sent back, resolved once here and snapshotted onto
+  // the order item. A resolver's answer beats the product row where it has one
+  // (a variation child's row is very nearly always blank), and the two are
+  // combined the strict way round - either saying no settles it.
+  returnable: boolean
 }
 
 // Turns a resolver's per-unit charge attributions into this line's own totals,
@@ -80,6 +101,23 @@ function attributeCharges(
 // Re-checks stock/price/status for every cart line - the only source of
 // truth the checkout flow trusts (spec 8.1 POST /cart/validate).
 export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLine[]> {
+  return (await resolveCartLinesWithDeduction(cart)).lines
+}
+
+/**
+ * The same resolution, plus where each supplier stands on its order-size
+ * threshold - what the basket needs to say a word about it.
+ *
+ * Split from resolveCartLines rather than widening its return type because the
+ * deduction pass is NOT idempotent: the lines it hands back have already had the
+ * money taken off, and running it over them a second time would take it off
+ * again. Anything wanting the states has to get them from the one pass that
+ * produced the lines, which is what this is for.
+ */
+export async function resolveCartLinesWithDeduction(cart: CartLine[]): Promise<{
+  lines: ResolvedCartLine[]
+  orderSizeDeduction: OrderSizeDeductionState[]
+}> {
   // Everything the fold needs, gathered in one batched pass up front rather than
   // per line: the resolvers and their optional batch prefetchers, the shop
   // config, and every cart product in a single query (a getProductById per line
@@ -167,6 +205,15 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       minOrderQuantity(metaResolution.minOrder?.quantity),
     )
 
+    // Whether this may come back, settled here and snapshotted onto the order.
+    // Both sources have to agree for it to be a yes: the product row (blank on
+    // very nearly every variation child, meaning "ask the listing"), and the
+    // resolver, which is the only thing that can see the listing. Either one
+    // saying no is a no - a shop that will not take an item back must not have
+    // the other source talk it into offering one.
+    const returnable =
+      isReturnable(product.returnable) && metaResolution.returnable !== false
+
     // effectivePrice, not product.price: a product on offer is charged its sale
     // price. Resolved here rather than at display time so the figure charged is
     // the one the server worked out, never one the client sent.
@@ -180,6 +227,7 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       availabilityReason,
       isPreOrder: product.isPreOrder,
       minOrderQuantity: minQuantity,
+      returnable,
       // Filled in by the pooling pass below - a resolver's key decides it, and
       // the requirement itself can rise there too.
       minOrderPooled: false,
@@ -197,7 +245,74 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
       group: metaResolution.group ?? null,
     }
   }))
-  return applyMinimumOrderQuantities(resolved.filter((line): line is PoolingLine => line !== null))
+  const pooled = applyMinimumOrderQuantities(resolved.filter((line): line is PoolingLine => line !== null))
+  const deducted = await applyOrderSizeDeductions(pooled, enabledPriceTypes)
+  return { lines: deducted.lines, orderSizeDeduction: deducted.states }
+}
+
+/**
+ * The order-size deduction, over the whole basket - the second whole-basket pass,
+ * immediately after the minimum-order one and for the same reason: the rule is
+ * about the BASKET, not about a line, and cannot be answered until every line is
+ * resolved. See lib/order-size-deduction.ts for the rule itself.
+ *
+ * It reduces `unitPrice`, and deliberately does NOT go through resolveDiscounts.
+ * resolveOrderTotals spreads a discount's `discountRatio` proportionally across
+ * every line's taxable base, so the VAT relief would land partly on full-price
+ * lines that never carried an amount. As a price change the VAT falls exactly
+ * where the money did, and shp_order_items.unit_price records what was charged.
+ *
+ * Two shortcuts keep this free on the shops it is not for: the config switch, and
+ * "does anything in this basket actually carry an amount". An ordinary shop
+ * therefore fires no query at all.
+ */
+export async function applyOrderSizeDeductions(
+  lines: ResolvedCartLine[],
+  enabledPriceTypes: readonly string[] | undefined,
+): Promise<{ lines: ResolvedCartLine[]; states: OrderSizeDeductionState[] }> {
+  const { orderSizeDeductionEnabled } = await getShopConfigCached()
+  if (!orderSizeDeductionEnabled) return { lines, states: [] }
+
+  // The basket as the rule sees it. `lineSubtotal` less the resolver charges is
+  // the goods figure - see goodsValue in the rule module - and `onOffer` is the
+  // live sale test rather than the stamp, so a product whose offer has ended
+  // cannot lose money it no longer carries.
+  const candidates: Array<OrderSizeDeductionLine & { index: number }> = lines.map((line, index) => ({
+    index,
+    supplier: line.product.supplier,
+    unitPrice: line.unitPrice,
+    quantity: line.quantity,
+    lineSubtotal: line.lineSubtotal,
+    charges: line.charges ?? null,
+    deduction: deductionAmount(line.product.orderSizeDeduction),
+    onOffer: isOnSale(line.product, enabledPriceTypes),
+  }))
+
+  // Nothing carrying an amount means nothing to deduct and nothing to say, so
+  // the supplier lookup never happens. A full-price basket from a supplier WITH
+  // a rule is exactly this case: it would qualify, and there is nothing to take.
+  if (!candidates.some((c) => c.onOffer && c.deduction != null)) return { lines, states: [] }
+
+  const rules = await getDeductionRules(
+    candidates.map((c) => c.supplier).filter((name): name is string => !!name),
+  )
+  if (rules.length === 0) return { lines, states: [] }
+
+  const applied = applyOrderSizeDeduction(candidates, rules)
+  const byIndex = new Map(applied.lines.map((l) => [l.index, l]))
+  return {
+    lines: lines.map((line, index) => {
+      const hit = byIndex.get(index)
+      if (!hit || hit.orderSizeDeduction == null) return line
+      return {
+        ...line,
+        unitPrice: hit.unitPrice,
+        lineSubtotal: hit.lineSubtotal,
+        orderSizeDeduction: hit.orderSizeDeduction,
+      }
+    }),
+    states: applied.states,
+  }
 }
 
 // A resolved line while the pooling key is still attached to it. The key never

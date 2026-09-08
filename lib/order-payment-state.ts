@@ -179,6 +179,13 @@ function prospectiveItems(lines: ResolvedCartLine[]): ShpOrderItem[] {
     isPreOrder: line.isPreOrder,
     preOrderDispatchDate: line.product.preOrderDispatchDate,
     lineMeta: line.lineMeta,
+    // Prospective lines carry no money at all (the three figures above are '0'),
+    // so there is nothing for a deduction to have come off yet.
+    orderSizeDeduction: null,
+    // Already settled by the resolve pass, so it is carried rather than assumed -
+    // a payment-note provider that wants to say something about a made-to-order
+    // basket can see it here.
+    returnable: line.returnable,
   }))
 }
 

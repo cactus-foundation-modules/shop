@@ -3,7 +3,11 @@ import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { updateShippingZone, deleteShippingZone, listAllShippingRatesForZone } from '@/modules/shop/lib/db'
 
-const Body = z.object({ name: z.string().min(1).optional(), postcodes: z.array(z.string()).optional() })
+const Body = z.object({
+  name: z.string().min(1).optional(),
+  postcodes: z.array(z.string()).optional(),
+  excludedPostcodes: z.array(z.string()).optional(),
+})
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireShopUser('shop.manage', { allowAccess: true })

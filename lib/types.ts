@@ -168,6 +168,29 @@ export type ShpProduct = {
   // row carries its own and falls back to the parent's, so a minimum can be set
   // once on the product or per combination. See lib/min-order.ts.
   minOrderQuantity: number | null
+  /**
+   * An amount PER UNIT already inside this line's price that comes back off once
+   * the basket holds enough of its supplier's goods - see
+   * lib/order-size-deduction.ts. Null means none, which is not a recorded 0. The
+   * threshold it answers to lives on the supplier.
+   *
+   * A decimal-pound string, like every other NUMERIC on a product - it arrives
+   * from the query layer as a Decimal and is stringified there, never coerced
+   * to a float on the way through.
+   */
+  orderSizeDeduction: string | null
+  /**
+   * Whether this may be sent back. Null is "nothing said", NOT "no" - a
+   * shop-variations child row falls back to its parent, and a product that has
+   * never been touched is returnable. See lib/returnable.ts.
+   */
+  returnable: boolean | null
+  /**
+   * The owner's own wording for why it cannot come back, in place of the stock
+   * sentence. Only meaningful where `returnable` is false; a variation child
+   * borrows its listing's rather than carrying one per combination.
+   */
+  nonReturnableNote: string | null
   relatedMode: ShpRecommendationMode
   upsellMode: ShpRecommendationMode
   relatedLimit: number
@@ -332,6 +355,16 @@ export type ShpSupplier = {
   email: string | null
   address: string | null
   notes: string | null
+  /**
+   * How much of this supplier's goods a basket has to hold before the per-unit
+   * amounts stamped on their products come off (see lib/order-size-deduction.ts).
+   * In stored price terms, matching the products. NULL means this supplier has
+   * no such rule, so nothing of theirs ever deducts however it is stamped.
+   */
+  orderSizeDeductionThreshold: number | null
+  /** The owner's own explanation of why any of that happens, shown under the
+   *  line on the product page. Their wording, not the module's. */
+  orderSizeDeductionNote: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -369,6 +402,8 @@ export type ShpShippingZone = {
   id: string
   name: string
   postcodes: string[]
+  /** Postcodes this zone does not cover, whatever its inclusion list says. */
+  excludedPostcodes: string[]
   createdAt: Date
   updatedAt: Date
 }
@@ -526,6 +561,25 @@ export type ShpOrderItem = {
   preOrderDispatchDate: Date | null
   // Personalisation captured at add-to-cart, priced server-side. NULL for plain lines.
   lineMeta: LineMeta | null
+  /**
+   * What came off this line's unit price for order size, snapshotted at order
+   * creation so the order can still say so after the catalogue has moved on
+   * (see lib/order-size-deduction.ts). PER UNIT, and already taken off
+   * `unitPrice` - a record of what happened, never an amount to subtract again.
+   * Null on every line that carried none, which is every line on a shop that has
+   * not switched the feature on.
+   */
+  orderSizeDeduction: string | null
+  /**
+   * Whether this line may be sent back, resolved at checkout (variation child
+   * over its listing) and snapshotted here. True on every line placed before the
+   * setting existed, and on every line of a shop that has never used it.
+   *
+   * Snapshotted rather than read back off the product because the product may be
+   * gone by then, and because an owner marking a product non-returnable must not
+   * strip the right from orders already placed under the old terms.
+   */
+  returnable: boolean
 }
 
 export type ShpRefundStatus = 'PENDING' | 'COMPLETED' | 'FAILED'
@@ -578,6 +632,34 @@ export type ShpShipment = {
   /** When the courier said it arrived. Not the same as the order being
    *  complete: another parcel may still be out. */
   deliveredAt: Date | null
+  /** Ids off the courier's tracking page, needed to ask where the crew is. The
+   *  route is the day's ROUND rather than this parcel, so it changes daily. */
+  trackingClientId: string | null
+  trackingRouteId: string | null
+  /** The courier's own sentence about how far off the crew is. Shown as they
+   *  wrote it - their sentence and their drop numbers have disagreed. */
+  crewLine: string | null
+  /** Drops left before this one, read out of that sentence. Null means it could
+   *  not be read, which is never treated as "you are next". */
+  dropsAway: number | null
+  /** Last known position of the van, in the courier's own digits. */
+  vehicleLat: string | null
+  vehicleLng: string | null
+  vehicleHeading: number | null
+  /** When the VAN reported that position, as against when WE last read one.
+   *  Two clocks, and the customer is told the first. */
+  vehicleFixedAt: Date | null
+  vehiclePolledAt: Date | null
+  /** Where the courier's page says the van is heading - their pin, not our
+   *  address, so the map agrees with the crew rather than with the postcode. */
+  destinationLat: string | null
+  destinationLng: string | null
+  /** Proof of delivery: the name the courier printed, when they said it was
+   *  signed, and OUR copy of their signature image. */
+  signedBy: string | null
+  signedAt: Date | null
+  signatureUrl: string | null
+  signatureKey: string | null
   notes: string | null
   createdAt: Date
   updatedAt: Date

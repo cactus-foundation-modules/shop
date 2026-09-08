@@ -8,6 +8,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { fillBlankMemberContactDetails } from '@/lib/members/contact'
 import { orderCompanyName } from '@/modules/shop/lib/order-display'
 import { canRequestCancel, canRequestReturn, returnDeadline, type RequestEligibility } from '@/modules/shop/lib/order-requests'
+import { nonReturnableNote } from '@/modules/shop/lib/returnable'
 import type {
   ShpDigitalDownload,
   ShpOrder,
@@ -75,8 +76,14 @@ export type MemberOrderLine = {
   imageUrl: string | null
   dispatchedQty: number
   outstandingQty: number
-  /** Units still eligible to go back, once refunds and live requests are off. */
+  /** Units still eligible to go back, once refunds and live requests are off.
+   *  Always 0 on a line the shop does not take back. */
   returnableQty: number
+  /** Whether this line may go back at all, as snapshotted when it was ordered. */
+  returnable: boolean
+  /** Why it may not, in the owner's own words where they gave any. Null on a
+   *  line that may. */
+  notReturnableNote: string | null
 }
 
 export type MemberOrderFulfilment = 'UNDISPATCHED' | 'PARTIAL' | 'DISPATCHED'
@@ -153,13 +160,23 @@ function buildLines(
     const media = item.productId ? mediaByProduct.get(item.productId) ?? [] : []
     const image = media.find((m) => m.isPrimary && m.type === 'IMAGE') ?? media.find((m) => m.type === 'IMAGE')
     const dispatchedQty = position?.dispatchedQty ?? 0
+    // The note comes off the product as it stands today, while the flag itself
+    // is the order's own snapshot. Deliberately: the flag decides a right the
+    // customer bought under and must not move, but the wording is only wording,
+    // and the owner's latest phrasing is the better one to show. A product since
+    // deleted falls back to the stock sentence.
+    const productNote = item.productId ? products.get(item.productId)?.nonReturnableNote ?? null : null
     return {
       item,
       productSlug: item.productId ? products.get(item.productId)?.slug ?? null : null,
       imageUrl: image?.url ?? null,
       dispatchedQty,
       outstandingQty: position?.outstandingQty ?? Math.max(item.quantity - item.refundedQty, 0),
-      returnableQty: Math.max(dispatchedQty - item.refundedQty - (spokenFor.get(item.id) ?? 0), 0),
+      returnableQty: item.returnable
+        ? Math.max(dispatchedQty - item.refundedQty - (spokenFor.get(item.id) ?? 0), 0)
+        : 0,
+      returnable: item.returnable,
+      notReturnableNote: item.returnable ? null : nonReturnableNote(productNote),
     }
   })
 }
@@ -218,7 +235,13 @@ export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetai
     null,
   )
 
-  const eligibilityInput = { order, dispatch: dispatch.lines, lastShippedAt, config, openRequest }
+  // Whether the shop takes ANY of this order back. Deliberately about the flag
+  // alone and not about what is left after refunds: an order whose returnable
+  // lines have all been sent back already is a different sentence, and the
+  // per-line figures below say it better than a blanket refusal would.
+  const anyReturnable = items.some((item) => item.returnable)
+
+  const eligibilityInput = { order, dispatch: dispatch.lines, lastShippedAt, config, openRequest, anyReturnable }
 
   return {
     order,

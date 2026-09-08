@@ -15,7 +15,7 @@ const PRICE_FIELDS: Record<ShpPriceType, keyof ProductForm> = {
   cost: 'costPrice',
 }
 
-export function PricingPanel({ state, setField, errors, currency, enabledPriceTypes, taxClasses }: PanelProps & { taxClasses: Term[] }) {
+export function PricingPanel({ state, setField, errors, currency, enabledPriceTypes, taxClasses, orderSizeDeductionEnabled }: PanelProps & { taxClasses: Term[] }) {
   const f = state.form
   const on = (type: ShpPriceType) => enabledPriceTypes.includes(type)
   // A product with variations is priced per variation on the Variations tab, so
@@ -122,6 +122,50 @@ export function PricingPanel({ state, setField, errors, currency, enabledPriceTy
           </Grid>
         )}
       </Section>
+
+
+      {/* Order-size deduction. On the Pricing tab because it IS part of the
+          price - money already inside the shelf figure that stops being charged
+          once the basket is big enough. It is not delivery, and must never be
+          worded as carriage: delivery is a service this shop sells, priced
+          wherever the site's shipping is set up. The threshold and the wording
+          shoppers see live on the supplier (Shop > Suppliers), because they are
+          the supplier's rule rather than this product's. */}
+      {orderSizeDeductionEnabled && (
+        <Section
+          title="Order-size deduction"
+          blurb="An amount already inside this price that comes back off once a basket holds enough of this supplier's goods."
+        >
+          <Grid cols={2}>
+            <Field
+              label="Amount inside the price"
+              optional
+              error={errors.orderSizeDeduction}
+              hint="Per item, not per order. Leave blank if this one carries nothing. It only ever comes off while the item is on offer."
+            >
+              {(p) => (
+                <Control
+                  {...p}
+                  inputMode="decimal"
+                  value={f.orderSizeDeduction}
+                  onChange={(e) => setField('orderSizeDeduction', e.target.value)}
+                  prefix={currency}
+                  placeholder="0.00"
+                />
+              )}
+            </Field>
+          </Grid>
+
+          {f.orderSizeDeduction.trim() !== '' && !errors.orderSizeDeduction && Number.isFinite(charged) && (
+            <p className="spe-hint" style={{ marginTop: '0.75rem' }}>
+              Once the basket qualifies, shoppers pay {currency}{Math.max(0, charged - Number(f.orderSizeDeduction)).toFixed(2)} for each of these instead of {currency}{charged.toFixed(2)}.
+              {f.supplier.trim() === ''
+                ? ' Nothing will come off until this product names a supplier, and that supplier has a threshold set.'
+                : ` Set the threshold on ${f.supplier.trim()} under Shop, then Suppliers.`}
+            </p>
+          )}
+        </Section>
+      )}
 
       {internal.length > 0 && (
         <Section title="Your own figures" blurb="Reference prices for you rather than for shoppers. None of these are ever charged.">

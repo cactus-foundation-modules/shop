@@ -67,6 +67,11 @@ function mapOrderItem(r: Record<string, unknown>): ShpOrderItem {
     preOrderDispatchDate: (r.pre_order_dispatch_date as Date | null) ?? null,
     // jsonb comes back already parsed (or null for an unpersonalised line).
     lineMeta: (r.line_meta as LineMeta | null) ?? null,
+    orderSizeDeduction: r.order_size_deduction != null ? (r.order_size_deduction as { toString(): string }).toString() : null,
+    // Defaulted here as well as in the DDL, for the reason the notify_* columns
+    // are: a row read through a query shape cached before the column existed
+    // still answers "returnable" rather than undefined.
+    returnable: (r.returnable as boolean | null | undefined) ?? true,
   }
 }
 
@@ -170,6 +175,12 @@ export type CreateOrderInput = {
     isPreOrder: boolean
     preOrderDispatchDate: Date | null
     lineMeta?: LineMeta | null
+    /** Per unit, already taken off `unitPrice` - see ShpOrderItem. Omitted or
+     *  null on every line that carried none. */
+    orderSizeDeduction?: number | null
+    /** Resolved at checkout (variation child over its listing). Omitted means
+     *  returnable, which is what every line on an untouched catalogue is. */
+    returnable?: boolean
   }>
 }
 
@@ -215,12 +226,12 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
       INSERT INTO "shp_order_items" (
         "order_id", "product_id", "product_name", "product_sku", "product_type",
         "quantity", "unit_price", "tax_rate", "tax_amount", "total", "is_pre_order", "pre_order_dispatch_date",
-        "line_meta"
+        "line_meta", "order_size_deduction", "returnable"
       ) VALUES (
         ${orderId}, ${item.productId}, ${item.productName}, ${item.productSku}, ${item.productType},
         ${item.quantity}, ${item.unitPrice}, ${item.taxRate}, ${item.taxAmount}, ${item.total},
         ${item.isPreOrder}, ${item.preOrderDispatchDate},
-        ${item.lineMeta ? JSON.stringify(item.lineMeta) : null}::jsonb
+        ${item.lineMeta ? JSON.stringify(item.lineMeta) : null}::jsonb, ${item.orderSizeDeduction ?? null}, ${item.returnable ?? true}
       )
     `
   }

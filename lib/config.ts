@@ -92,6 +92,14 @@ export const ShpConfigSchema = z.object({
   postPurchaseAccountPrompt: z.boolean().default(true),
   minimumOrderValue: z.number().nullable().default(null),
   maximumOrderValue: z.number().nullable().default(null),
+
+  // What a shopper is told when their postcode is on a zone's excluded list and
+  // no other zone picks them up. A carve-out with nothing behind it means the
+  // shop does not deliver there, and the checkout says so rather than quietly
+  // offering no delivery option and charging nothing to carry the goods.
+  // Blank falls back to the wording below, so an owner who clears the box gets
+  // a sentence rather than an empty refusal.
+  excludedPostcodeMessage: z.string().default(''),
   requirePhone: z.boolean().default(false),
   checkoutSteps: z.array(CheckoutStepSchema).default(DEFAULT_CHECKOUT_STEPS),
 
@@ -332,6 +340,21 @@ export const ShpConfigSchema = z.object({
   // (shp_suppliers.storefront_visible); this is the shop-wide master switch that
   // decides whether that tick is offered at all.
   supplierPagesEnabled: z.boolean().default(false),
+
+  // Order-size deduction. A shelf price can carry an amount that comes back off
+  // once the basket holds enough of that supplier's goods - see
+  // lib/order-size-deduction.ts for the rule and migrations/042 for where the
+  // figures live. Off by default, and inert until it is on: nothing is read,
+  // nothing is deducted and nothing is said, whatever the catalogue is stamped
+  // with. The amounts themselves are per product and the thresholds per
+  // supplier, so there is nothing shop-wide to configure beyond the two
+  // switches.
+  orderSizeDeductionEnabled: z.boolean().default(false),
+  // Whether the basket and checkout say anything about it. On by default,
+  // because a shopper who is told the amount on the product page and then sees
+  // it silently vanish from the basket has been given a puzzle. Off is for a
+  // shop that would rather the basket simply showed the lower figure.
+  orderSizeDeductionShowInBasket: z.boolean().default(true),
 
   // Back-in-stock (addendum A)
   backInStockAccountPrompt: z.boolean().default(true),

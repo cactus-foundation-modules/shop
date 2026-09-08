@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { resolveCartLines } from '@/modules/shop/lib/checkout'
+import { resolveCartLinesWithDeduction } from '@/modules/shop/lib/checkout'
+import { orderSizeDeductionNotes } from '@/modules/shop/lib/order-size-deduction'
 import { getProductMediaForProducts } from '@/modules/shop/lib/db'
 import { getDefaultTaxZoneId, getTaxRateForZoneAndClass } from '@/modules/shop/lib/db/tax-shipping'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
@@ -25,8 +26,8 @@ export async function POST(request: NextRequest) {
   // parallel with the whole line resolution instead of after it (products that
   // fail to resolve are simply never read out of the map). One query for every
   // line's product, not one per line.
-  const [resolved, mediaByProduct, defaultZoneId, config] = await Promise.all([
-    resolveCartLines(parsed.data.lines),
+  const [{ lines: resolved, orderSizeDeduction }, mediaByProduct, defaultZoneId, config] = await Promise.all([
+    resolveCartLinesWithDeduction(parsed.data.lines),
     getProductMediaForProducts(parsed.data.lines.map((line) => line.productId)),
     // The cart quotes tax before an address exists, so it prices against the
     // shop's default zone (see getDefaultTaxZoneId). The checkout still resolves
@@ -87,6 +88,12 @@ export async function POST(request: NextRequest) {
       quantity: line.quantity,
       unitPrice: shown(line.unitPrice),
       lineSubtotal: shown(line.lineSubtotal),
+      // What came off this unit because the basket reached its supplier's
+      // order-size threshold, and what the unit cost before it did. Both on the
+      // same side of tax as the figures above, because the basket strikes the
+      // one through beside the other. Null on every line that lost nothing.
+      orderSizeDeduction: line.orderSizeDeduction != null ? shown(line.orderSizeDeduction) : null,
+      unitPriceBeforeDeduction: line.orderSizeDeduction != null ? shown(line.unitPrice + line.orderSizeDeduction) : null,
       available: line.available,
       availabilityReason: line.availabilityReason ?? null,
       isPreOrder: line.isPreOrder,
@@ -125,11 +132,26 @@ export async function POST(request: NextRequest) {
   // it carries the shopper's own per-line choices, which the resolved line
   // (deliberately) normalises away.
   const metaByKey = new Map(parsed.data.lines.map((line) => [line.lineId ?? line.productId, line.meta]))
-  const notes = await getCartSummaryNotes(resolved.map((line) => ({
+  const providerNotes = await getCartSummaryNotes(resolved.map((line) => ({
     product: line.product,
     quantity: line.quantity,
     meta: metaByKey.get(line.lineId ?? line.product.id),
   })))
+
+  // Shop's own note about the order-size deduction goes in the same array, so
+  // the four surfaces that already render `notes` (the full cart, the drawer,
+  // the mobile bar and the checkout items list) each get it for nothing. Silent
+  // where there is nothing worth saying - see orderSizeDeductionNotes - and
+  // silent altogether where the owner would rather the basket simply showed the
+  // lower figure. It leads: it is the one note that is about money.
+  //
+  // The figures are stored-side, like the thresholds and amounts they come from,
+  // so the sentence quotes what the owner typed rather than a tax conversion of
+  // it. Deliberate: "orders of £350 or more" is the supplier's rule, not a price.
+  const deductionNotes = config.orderSizeDeductionShowInBasket
+    ? orderSizeDeductionNotes(orderSizeDeduction, config.currencySymbol)
+    : []
+  const notes = [...deductionNotes, ...providerNotes]
 
   return NextResponse.json({ lines, notes })
 }

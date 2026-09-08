@@ -58,6 +58,16 @@ const Body = z.object({
   lowStockThreshold: z.number().int().nullable().optional(),
   outOfStockBehaviour: z.enum(['BLOCK', 'BACKORDER']).optional(),
   minOrderQuantity: z.number().int().nullable().optional(),
+  // An amount PER UNIT already inside this line's price, which comes back off
+  // once the basket holds enough of its supplier's goods. Null clears it, and a
+  // 0 is normalised to null on the way in - a recorded nothing and a blank
+  // behave identically, so only one of them is worth storing.
+  orderSizeDeduction: z.number().nonnegative().nullable().optional(),
+  // Whether the shop takes this one back. Null - the usual state - is "nothing
+  // said", which reads as returnable and lets a shop-variations child fall back
+  // to its listing; only an explicit false refuses. See lib/returnable.ts.
+  returnable: z.boolean().nullable().optional(),
+  nonReturnableNote: z.string().max(300).nullable().optional(),
   featuredHidden: z.boolean().optional(),
 })
 

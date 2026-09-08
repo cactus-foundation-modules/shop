@@ -537,6 +537,10 @@ export function shopProductDetailStarters() {
             block('ShopDetailTitle', 'pdp-title'),
             block('ShopDetailSku', 'pdp-sku'),
             block('ShopDetailPrice', 'pdp-price', { showCompare: 'yes', showSave: 'yes' }),
+            // Directly under the price, where the sentence it prints belongs.
+            // Renders nothing at all until the owner switches the feature on in
+            // Shop settings, so a fresh install is unchanged by its presence.
+            block('ShopDetailOrderSizeDeduction', 'pdp-osd'),
             block('ShopDetailBlurb', 'pdp-blurb'),
             block('ShopDetailPreorder', 'pdp-preorder'),
             block('ShopDetailAddToCart', 'pdp-add', { showStepper: 'yes' }),
@@ -558,6 +562,7 @@ export function shopProductDetailStarters() {
               block('ShopDetailBadges', 'badges-1'),
               block('ShopDetailTitle', 'title-1'),
               block('ShopDetailPrice', 'price-1', { showCompare: 'yes', showSave: 'yes' }),
+              block('ShopDetailOrderSizeDeduction', 'osd-1'),
               block('ShopDetailBlurb', 'blurb-1'),
               block('ShopDetailPreorder', 'preorder-1'),
               block('ShopDetailAddToCart', 'add-1', { showStepper: 'yes' }),
@@ -584,6 +589,7 @@ export function shopProductDetailStarters() {
               block('ShopDetailBadges', 'badges-1'),
               block('ShopDetailTitle', 'title-1'),
               block('ShopDetailPrice', 'price-1', { showCompare: 'yes', showSave: 'yes' }),
+              block('ShopDetailOrderSizeDeduction', 'osd-1'),
               block('ShopDetailAddToCart', 'add-1', { showStepper: 'no' }),
               block('ShopDetailBlurb', 'blurb-1'),
               block('ShopDetailTabs', 'tabs-1'),

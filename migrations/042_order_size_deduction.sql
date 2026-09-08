@@ -1,0 +1,53 @@
+-- ---------------------------------------------------------------------------
+-- 042 - Order-size deduction.
+--
+-- A shelf price can already carry an amount that comes back off once the basket
+-- is big enough. The supplier charges the shop for delivering a single chair,
+-- the shop builds that into the chair's price, and the supplier stops charging
+-- it once the shop orders enough at once - so the shopper who buys enough at
+-- once should stop paying it too.
+--
+-- NOT delivery, and deliberately not named after it. Delivery is a service the
+-- shop sells, priced by whatever shipping arrangement the site runs; this is an
+-- amount already inside the goods price that stops being charged. The two sit on
+-- the same product page and were confused once while this was being specified,
+-- which is why the column says what it is rather than what caused it.
+--
+--   shp_products.order_size_deduction
+--       Per UNIT, in stored price terms. Five chairs at £6 is £30. NULL means
+--       this line carries none, which is not a recorded 0 - a stamped 0 is an
+--       owner saying "this one has nothing in it", and both read the same way
+--       here but only one of them is a decision somebody made.
+--
+--   shp_suppliers.order_size_deduction_threshold
+--       How much of THAT supplier's goods the basket has to hold before the
+--       amounts come off, in stored price terms. NULL means the supplier has no
+--       rule, so nothing of theirs ever deducts however it is stamped.
+--
+--   shp_suppliers.order_size_deduction_note
+--       The owner's own "why?" copy, shown under the line on the product page.
+--       Here rather than in the module's code because every shop's reason is its
+--       own, and a sentence about one shop's suppliers has no business shipping
+--       to every install.
+--
+--   shp_order_items.order_size_deduction
+--       Per unit, snapshotted at order creation, so an order can still say what
+--       came off it after the catalogue has moved on. NULL where the line
+--       carried none - the vast majority of lines, on every shop.
+--
+-- Suppliers are joined to products BY NAME (see 007), so nothing here needs an
+-- id: the threshold hangs off the same row the product's `supplier` text already
+-- points at.
+--
+-- Off until switched on: the whole feature is gated on
+-- orderSizeDeductionEnabled in shop settings, which defaults false, so an
+-- install taking this update gets four unused columns and no behaviour change.
+--
+-- Idempotent throughout, and the same columns are in 001 in place, so a fresh
+-- install and an existing one land in the same place.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE "shp_products"    ADD COLUMN IF NOT EXISTS "order_size_deduction" NUMERIC(10,2);
+ALTER TABLE "shp_suppliers"   ADD COLUMN IF NOT EXISTS "order_size_deduction_threshold" NUMERIC(10,2);
+ALTER TABLE "shp_suppliers"   ADD COLUMN IF NOT EXISTS "order_size_deduction_note" TEXT;
+ALTER TABLE "shp_order_items" ADD COLUMN IF NOT EXISTS "order_size_deduction" NUMERIC(10,2);

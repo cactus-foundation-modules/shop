@@ -68,6 +68,10 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
   // off, matching the shop config's own default, so a shop that never asked for
   // one never sees it flicker in.
   const [supplierField, setSupplierField] = useState<{ enabled: boolean; label: string }>({ enabled: false, label: 'Supplier' })
+  // Whether the Pricing tab offers an order-size deduction box. Starts off,
+  // matching the shop config's own default, so a shop that never asked for it
+  // never sees it flicker in.
+  const [orderSizeDeductionEnabled, setOrderSizeDeductionEnabled] = useState(false)
   // Names from the supplier directory (Shop > Suppliers), which is what the
   // Details tab's dropdown offers. Disabled suppliers are left out by the
   // endpoint, so a name retired from the list stops being offered without
@@ -200,6 +204,7 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
       if (Array.isArray(config.enabledPriceTypes)) setEnabledPriceTypes(config.enabledPriceTypes)
       setWeightBasedShippingEnabled(config.weightBasedShippingEnabled !== false)
       if (config.productUrlStyle === 'ROOT' || config.productUrlStyle === 'SHOP') setProductUrlStyle(config.productUrlStyle)
+      setOrderSizeDeductionEnabled(config.orderSizeDeduction?.enabled === true)
       if (config.supplierField) {
         setSupplierField({
           enabled: config.supplierField.enabled === true,
@@ -416,7 +421,7 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
 
   const tabs: Tab[] = useMemo(() => {
     if (!state) return []
-    const panelProps: PanelProps = { state, setField, patch, errors: visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier }
+    const panelProps: PanelProps = { state, setField, patch, errors: visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier, orderSizeDeductionEnabled }
     const own: Tab[] = [
       { id: 'details', label: 'Details', order: SHOP_TAB_ORDER.details, render: () => <DetailsPanel {...panelProps} productId={productId} productUrlStyle={productUrlStyle} onOpenDescriptionEditor={openDescriptionEditor} /> },
       { id: 'media', label: 'Images', order: SHOP_TAB_ORDER.media, render: () => <MediaPanel {...panelProps} productId={productId} sections={mediaSections} /> },
@@ -436,7 +441,7 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
       render: () => t.node,
     }))
     return [...own, ...contributed].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
-  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier, taxClasses, categories, tags, collections, createTag, productId, siteUrl, productUrlStyle, extraTabs, mediaSections, openDescriptionEditor])
+  }, [state, setField, patch, visibleErrors, currency, enabledPriceTypes, weightBasedShippingEnabled, supplierField, supplierOptions, createSupplier, orderSizeDeductionEnabled, taxClasses, categories, tags, collections, createTag, productId, siteUrl, productUrlStyle, extraTabs, mediaSections, openDescriptionEditor])
 
   // Derived, not stored: a tab that vanishes (the product stopped being digital)
   // or a ?tab= naming a module that isn't installed falls back to the first tab

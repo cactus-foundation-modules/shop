@@ -17,6 +17,45 @@ export function TickIcon() {
   )
 }
 
+/**
+ * What a line cost before the order-size deduction came off it, or null when
+ * nothing did. The per-unit figure the server sent, multiplied out, rather than
+ * the line subtotal plus the deduction: both figures are rounded to the penny
+ * on the shop's display side of tax, and adding two rounded numbers is how the
+ * struck figure ends up a penny out from the one that was actually struck.
+ */
+export function lineSubtotalBeforeDeduction(line: {
+  quantity: number
+  orderSizeDeduction?: number | null
+  unitPriceBeforeDeduction?: number | null
+}): number | null {
+  if (!line.orderSizeDeduction || line.unitPriceBeforeDeduction == null) return null
+  return line.unitPriceBeforeDeduction * line.quantity
+}
+
+/**
+ * A line's price, with what it was before the order-size deduction struck
+ * through beside it (see lib/order-size-deduction.ts).
+ *
+ * One place for it because all three basket renderers show it and a struck
+ * figure that appeared in the drawer but not on the cart page would read as one
+ * of the two being wrong. `was` is null on every line that lost nothing, which
+ * is every line on a shop that has not switched the feature on - so the ordinary
+ * case renders exactly the single span it always did.
+ *
+ * Both figures arrive already converted to whichever side of tax the shop prints
+ * on; nothing here does arithmetic.
+ */
+export function CartLinePrice({ now, was, className, style }: { now: string; was: string | null; className?: string; style?: CSSProperties }) {
+  if (was == null) return <span className={className} style={style}>{now}</span>
+  return (
+    <span className={className} style={style}>
+      <span className="scl-price-was">{was}</span>
+      {now}
+    </span>
+  )
+}
+
 // Remove control: a plain cross, sized for a fingertip on touch (see the
 // pointer:coarse rules in CART_LINE_CSS).
 export function RemoveCross({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {

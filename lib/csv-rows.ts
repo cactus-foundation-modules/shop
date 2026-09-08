@@ -86,7 +86,13 @@ export async function buildProductCsvRows(opts?: { status?: ShpProductStatus; ca
       sale_sku: p.saleSku ?? '',
       supplier_sku: p.supplierSku ?? '',
       min_order_quantity: num(p.minOrderQuantity),
+      order_size_deduction: num(p.orderSizeDeduction),
       featured_hidden: String(p.featuredHidden),
+      // Blank where nothing has been said, so a Pull of an untouched catalogue
+      // writes empty cells and a Push of them back changes nothing. Only a
+      // product actually marked one way or the other prints a word.
+      returnable: p.returnable == null ? '' : String(p.returnable),
+      non_returnable_reason: p.nonReturnableNote ?? '',
     })
   }
   return rows

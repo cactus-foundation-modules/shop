@@ -3,6 +3,7 @@ import { minOrderQuantity } from '@/modules/shop/lib/min-order'
 import { GalleryViewportFit } from '@/modules/shop/components/public/GalleryViewportFit'
 import { ProductGallery, ProductSectionTabs, type ProductTab, type TabAction } from '@/modules/shop/components/public/ProductDetailIslands'
 import { StickyStripHeight } from '@/modules/shop/components/public/StickyStripHeight'
+import { OrderSizeDeductionClient } from '@/modules/shop/components/public/OrderSizeDeductionClient'
 // breakpoints-shared, not breakpoints: these preview components land in the page
 // builder's client bundle, and ./breakpoints reaches prisma via lib/config/site.
 import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
@@ -326,6 +327,15 @@ const badgesCss = `
 .spd-badge-low{background:var(--color-warning-subtle);color:var(--color-warning);border:1px solid var(--color-warning-border)}
 .spd-badge-out{background:var(--color-surface);color:var(--color-text-muted);border:1px solid var(--color-border)}
 .spd-badge-staff{background:var(--color-surface);color:var(--color-text-muted);border:1px dashed var(--color-border);font-variant-numeric:tabular-nums}
+/* The supplier, printed bare as a brand mark rather than "Retailer: Dynamic".
+   Quiet by design: it belongs beside "Sale" and "In stock", not competing with
+   them. A long name wraps inside the flex row rather than widening it - a badge
+   row that pushed a two-column product page sideways was the first attempt. The
+   link keeps a visible focus ring, because the row is otherwise all plain spans
+   and a keyboard user needs to see where they are. */
+.spd-badge-supplier{background:var(--color-surface);color:var(--color-text-muted);border:1px solid var(--color-border);text-decoration:none;overflow-wrap:anywhere;max-width:100%}
+a.spd-badge-supplier:hover{color:var(--color-text);border-color:var(--color-text-muted)}
+a.spd-badge-supplier:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
 /* Owner-defined badge, set on a tag under Shop > Tags. Its colours are per tag
    rather than per site, so there is no token to name here: the part sets
    --spd-tag-* inline on each one and this reads them, falling back to the muted
@@ -340,7 +350,7 @@ const badgesCss = `
 
 type PartProps = { _ctx?: DetailPartContext }
 
-type BadgesProps = { _ctx?: DetailPartContext; showNew?: string; showTrade?: string; showStock?: string; showTag?: string }
+type BadgesProps = { _ctx?: DetailPartContext; showNew?: string; showTrade?: string; showStock?: string; showTag?: string; showSupplier?: string }
 
 // A tag badge's colours ride in as custom properties rather than as background
 // and colour directly, so the stylesheet above can pick the light or dark one
@@ -366,6 +376,7 @@ export function ShopDetailBadges(props: BadgesProps) {
         {props.showTag !== 'no' && <span className="spd-badge spd-badge-tag" style={{ '--spd-tag-bg': 'var(--color-primary)', '--spd-tag-fg': 'var(--color-on-primary)' } as React.CSSProperties}>Sale</span>}
         {props.showNew !== 'no' && <span className="spd-badge spd-badge-new">New</span>}
         {props.showStock !== 'no' && <span className="spd-badge spd-badge-stock">In stock</span>}
+        {props.showSupplier === 'yes' && <span className="spd-badge spd-badge-supplier">Dynamic Office Solutions</span>}
       </div>
     </>
   )
@@ -379,6 +390,10 @@ export function ShopDetailBadgesRsc(props: BadgesProps) {
   const showTrade = props.showTrade !== 'no'
   const showStock = props.showStock !== 'no'
   const showTag = props.showTag !== 'no'
+  // Off unless the author asks for it, unlike the four above: an existing layout
+  // must not sprout a new badge on update. Null on every shop that does not
+  // record a supplier or keeps it to itself - see supplierBadge on the context.
+  const supplierBadge = props.showSupplier === 'yes' ? _ctx.supplierBadge : null
   // The owner's own badges lead, in the order their tags are listed in the
   // admin. Unlike the card, which has room for one, the page prints every badge
   // the product earned - "Sale" and "Ex-display" are both worth saying here.
@@ -414,6 +429,13 @@ export function ShopDetailBadgesRsc(props: BadgesProps) {
             <span className="spd-badge spd-badge-stock">In stock</span>
           )
         )}
+        {supplierBadge && (
+          supplierBadge.href ? (
+            <a className="spd-badge spd-badge-supplier" href={supplierBadge.href}>{supplierBadge.name}</a>
+          ) : (
+            <span className="spd-badge spd-badge-supplier">{supplierBadge.name}</span>
+          )
+        )}
         {staffStock && (
           // "Not tracked" rather than nothing, so a blank is never read as a
           // broken figure: this product simply has stock tracking switched off
@@ -434,8 +456,9 @@ export const shopDetailBadgesPuckComponent = {
     showTrade: { type: 'select' as const, label: 'Show "Trade price" badge', options: yesNo },
     showTag: { type: 'select' as const, label: 'Show your own tag badges', options: yesNo },
     showStock: { type: 'select' as const, label: 'Show stock status badge', options: yesNo },
+    showSupplier: { type: 'select' as const, label: 'Show the supplier as a badge', options: yesNo },
   },
-  defaultProps: { showNew: 'yes', showTrade: 'yes', showTag: 'yes', showStock: 'yes' },
+  defaultProps: { showNew: 'yes', showTrade: 'yes', showTag: 'yes', showStock: 'yes', showSupplier: 'no' },
   render: ShopDetailBadges,
 }
 export const shopDetailBadgesPuckRscComponent = { ...shopDetailBadgesPuckComponent, render: ShopDetailBadgesRsc }
@@ -760,6 +783,72 @@ export const shopDetailPricePuckComponent = {
   render: ShopDetailPrice,
 }
 export const shopDetailPricePuckRscComponent = { ...shopDetailPricePuckComponent, render: ShopDetailPriceRsc }
+
+// ---------------------------------------------------------------------------
+// Order-size deduction (the line under the price)
+// ---------------------------------------------------------------------------
+//
+// A block of its own rather than something appended inside the Price part, and
+// that is not a style choice. A companion module can declare Price covered when
+// the layout carries its own price block - shop-variations does exactly that -
+// and ShopDetailPriceRsc then returns null, so anything tucked inside it renders
+// nothing on precisely the shops that want this.
+//
+// The sentence is composed server-side (lib/order-size-deduction-view.ts) and
+// re-composed server-side when the shopper picks a combination, so the browser
+// is only ever handed finished wording.
+
+const orderSizeDeductionCss = `
+/* Height held open whether or not there is anything to say, so the line fading
+   in as a shopper picks a combination never shoves the buy button down the page.
+   One line of text plus its lead: enough for the sentence at every width the buy
+   column is ever given, and the "why?" fold below it opens into flow as folds do. */
+.spd-osd{min-height:1.45rem;margin:0 0 10px}
+.spd-osd-line{margin:0;font-size:14px;line-height:1.45;color:var(--color-text-muted)}
+.spd-osd-why{margin:2px 0 0;font-size:13px;color:var(--color-text-muted)}
+.spd-osd-why > summary{cursor:pointer;text-decoration:underline;text-underline-offset:2px;width:max-content}
+.spd-osd-why > summary:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px;border-radius:3px}
+.spd-osd-why > p{margin:6px 0 0}
+`
+
+type OrderSizeDeductionProps = { _ctx?: DetailPartContext; align?: string }
+
+export function ShopDetailOrderSizeDeduction(props: OrderSizeDeductionProps) {
+  return (
+    <>
+      <Style css={orderSizeDeductionCss} />
+      <div className="spd-osd" style={{ opacity: 0.6, ...textAlignStyle(props.align) }}>
+        <p className="spd-osd-line">£110 on Dynamic Office Solutions orders of £350 or more</p>
+      </div>
+    </>
+  )
+}
+
+export function ShopDetailOrderSizeDeductionRsc(props: OrderSizeDeductionProps) {
+  const ctx = props._ctx
+  if (!ctx) return null
+  // Null on every shop that has the feature switched off - no markup, no island,
+  // nothing to pay for.
+  if (!ctx.orderSizeDeduction) return null
+  return (
+    <>
+      <Style css={orderSizeDeductionCss} />
+      <div className="spd-osd" style={textAlignStyle(props.align)}>
+        <OrderSizeDeductionClient slug={ctx.product.slug} seed={ctx.orderSizeDeduction.line} />
+      </div>
+    </>
+  )
+}
+
+export const shopDetailOrderSizeDeductionPuckComponent = {
+  label: 'Product: Order-size deduction',
+  fields: {
+    align: { type: 'select' as const, label: 'Alignment', options: alignOptions },
+  },
+  defaultProps: { align: 'left' },
+  render: ShopDetailOrderSizeDeduction,
+}
+export const shopDetailOrderSizeDeductionPuckRscComponent = { ...shopDetailOrderSizeDeductionPuckComponent, render: ShopDetailOrderSizeDeductionRsc }
 
 // ---------------------------------------------------------------------------
 // Blurb (short description)

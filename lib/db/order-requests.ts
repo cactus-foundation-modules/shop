@@ -106,6 +106,7 @@ const linePositionQuery = (orderId: string) => Prisma.sql`
     oi."product_name"  AS product_name,
     oi."quantity"      AS quantity,
     oi."refunded_qty"  AS refunded_qty,
+    oi."returnable"    AS returnable,
     COALESCE(d."dispatched", 0)::int AS dispatched_qty,
     COALESCE(r."requested", 0)::int  AS requested_qty
   FROM "shp_order_items" oi
@@ -129,6 +130,8 @@ type LinePosition = {
   product_name: string
   quantity: number
   refunded_qty: number
+  /** Snapshotted when the order was placed - see migrations/043_returnable.sql. */
+  returnable: boolean
   dispatched_qty: number
   requested_qty: number
 }
@@ -196,6 +199,18 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
         for (const [orderItemId, quantity] of merged) {
           const row = byId.get(orderItemId)
           if (!row) return { ok: false, status: 404, error: 'Order item not found' }
+
+          // Checked before the arithmetic, because "you can send back at most 0
+          // of the Bespoke Desk" is a worse answer than the true one. The
+          // storefront does not offer these lines at all; a hand-rolled POST
+          // gets the reason rather than a sum.
+          if (!row.returnable) {
+            return {
+              ok: false,
+              status: 400,
+              error: `${row.product_name} is not something we can take back.`,
+            }
+          }
 
           // Only what actually arrived can go back, less anything already
           // refunded and anything a live request has already spoken for.

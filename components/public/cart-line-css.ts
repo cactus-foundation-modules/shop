@@ -57,6 +57,17 @@ export const CART_LINE_CSS = `
    which sit beside the real labels but not beside the probe's. */
 .scl-deliv-probe{height:0;overflow:hidden;visibility:hidden;display:grid;font-size:0.8125rem}
 .scl-deliv-probe span{white-space:nowrap;padding-left:1.25rem}
+/* What the line cost before the order-size deduction, struck through beside what
+   it costs now (see CartLinePrice in CartChrome). Muted and a size down, so the
+   figure the shopper is paying stays the one their eye lands on - the same
+   treatment .spd-price-was gets on the product page. Block on the phone, where
+   the price column is narrow enough that two figures on one line would wrap
+   awkwardly; inline beside it everywhere else. */
+.scl-price-was{color:var(--color-text-muted);text-decoration:line-through;font-weight:400;font-size:0.8125rem;margin-right:0.375rem}
+@media (max-width:640px){
+  .scl-price-was{display:block;margin-right:0}
+}
+
 /* On desktop each line is its own flex row, so the delivery column is sized to
    its own max-content - which the probe above makes identical on every line.
    Capped at 45% of the row so an unusually long tier label squeezes the product

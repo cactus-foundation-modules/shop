@@ -43,12 +43,22 @@ export type ProductForm = {
   retailPrice: string
   tradePrice: string
   costPrice: string
+  // An amount per unit already inside the price, refunded once the basket holds
+  // enough of this supplier's goods. Blank means none.
+  orderSizeDeduction: string
   taxClassId: string
   trackInventory: boolean
   stockCount: string
   lowStockThreshold: string
   outOfStockBehaviour: 'BLOCK' | 'BACKORDER'
   minOrderQuantity: string
+  /** Ticked, the shop will not take this one back - a made-to-order desk, a
+   *  chair in a fabric chosen off a card. Off is the default and means the
+   *  ordinary returns rules apply. */
+  nonReturnable: boolean
+  /** The owner's own wording for why, shown to the customer in place of the
+   *  stock sentence. Only read while `nonReturnable` is ticked. */
+  nonReturnableNote: string
   weight: string
   weightUnit: 'kg' | 'lb'
   dimensionL: string
@@ -112,6 +122,10 @@ export type PanelProps = {
    * Off means no box; a supplier already recorded is left on the product rather
    * than blanked, so switching it back on gets it back. */
   supplierField: { enabled: boolean; label: string }
+  /** Whether the shop runs the order-size deduction. Off means no box; an amount
+   * already stamped on a product is left alone rather than blanked, so switching
+   * it back on gets it back - same arrangement as the two above. */
+  orderSizeDeductionEnabled: boolean
   /** Enabled supplier names from the directory, in the order the dropdown offers them. */
   supplierOptions: string[]
   /** Add a supplier to the directory without leaving the product. Resolves to an
@@ -155,12 +169,18 @@ export function toEditorState(payload: ProductPayload): EditorState {
       retailPrice: str(p.retailPrice),
       tradePrice: str(p.tradePrice),
       costPrice: str(p.costPrice),
+      orderSizeDeduction: str(p.orderSizeDeduction),
       taxClassId: str(p.taxClassId),
       trackInventory: bool(p.trackInventory),
       stockCount: str(p.stockCount),
       lowStockThreshold: str(p.lowStockThreshold),
       outOfStockBehaviour: (str(p.outOfStockBehaviour) || 'BLOCK') as ProductForm['outOfStockBehaviour'],
       minOrderQuantity: str(p.minOrderQuantity),
+      // Stored the other way up: the column says "returnable", the box asks the
+      // owner to tick the exception. Null is "nothing said", which is
+      // returnable, so only an explicit false ticks the box.
+      nonReturnable: p.returnable === false,
+      nonReturnableNote: str(p.nonReturnableNote),
       weight: str(p.weight),
       weightUnit: (str(p.weightUnit) || 'kg') as ProductForm['weightUnit'],
       dimensionL: str(p.dimensionL),
@@ -229,6 +249,9 @@ export function toProductBody(s: EditorState): Record<string, unknown> {
     retailPrice: num(f.retailPrice),
     tradePrice: num(f.tradePrice),
     costPrice: num(f.costPrice),
+    // Nothing and a recorded 0 behave identically (see deductionAmount), so only
+    // one of them is worth storing - the same reasoning minOrderQuantity's 1 gets.
+    orderSizeDeduction: num(f.orderSizeDeduction) || null,
     taxClassId: nullable(f.taxClassId),
     trackInventory: f.trackInventory,
     stockCount: f.trackInventory ? int(f.stockCount) : null,
@@ -237,6 +260,11 @@ export function toProductBody(s: EditorState): Record<string, unknown> {
     // A minimum of one is no minimum, so it is stored as nothing rather than as
     // a 1 that would then have to be read past everywhere it is used.
     minOrderQuantity: int(f.minOrderQuantity) != null && Number(f.minOrderQuantity) > 1 ? int(f.minOrderQuantity) : null,
+    // Unticked stores null rather than true, because null is what a variation
+    // child reads as "ask the listing" - stamping true would have every product
+    // shouting an answer it has not been asked for. Both read as returnable.
+    returnable: f.nonReturnable ? false : null,
+    nonReturnableNote: f.nonReturnable ? nullable(f.nonReturnableNote) : null,
     weight: num(f.weight),
     weightUnit: f.weight.trim() === '' ? null : f.weightUnit,
     dimensionL: num(f.dimensionL),
@@ -283,9 +311,10 @@ export type ShopTabId = keyof typeof SHOP_TAB_ORDER
 const TAB_FIELDS: Record<ShopTabId, ReadonlyArray<keyof ProductForm>> = {
   details: ['name', 'status', 'sku', 'barcode', 'supplierSku', 'supplier', 'shortDescription', 'description'],
   media: [],
-  pricing: ['price', 'salePrice', 'saleSku', 'retailPrice', 'tradePrice', 'costPrice', 'taxClassId'],
+  pricing: ['price', 'salePrice', 'saleSku', 'retailPrice', 'tradePrice', 'costPrice', 'orderSizeDeduction', 'taxClassId'],
   stock: [
     'trackInventory', 'stockCount', 'lowStockThreshold', 'outOfStockBehaviour', 'minOrderQuantity',
+    'nonReturnable', 'nonReturnableNote',
     'isPreOrder', 'preOrderDispatchDate', 'preOrderNote', 'preOrderMaxQuantity',
     'weight', 'weightUnit', 'dimensionL', 'dimensionW', 'dimensionH', 'dimensionUnit',
   ],
@@ -355,8 +384,23 @@ export function validate(s: EditorState): Errors {
     e.lowStockThreshold = 'Low stock threshold must be a whole number.'
   }
 
+  // Matches the column the API accepts it into, so a note that would be cut off
+  // at the far end is caught while the owner is still looking at it.
+  if (f.nonReturnable && f.nonReturnableNote.trim().length > 300) {
+    e.nonReturnableNote = 'Keep the reason under 300 characters - it sits beside the order line.'
+  }
+
   for (const key of ['weight', 'dimensionL', 'dimensionW', 'dimensionH'] as const) {
     if (!positiveNumber(f[key])) e[key] = 'Must be a number, and not negative.'
+  }
+
+  if (!positiveNumber(f.orderSizeDeduction)) {
+    e.orderSizeDeduction = 'Must be a number, and not negative.'
+  } else if (f.orderSizeDeduction.trim() !== '' && f.price.trim() !== '' && Number(f.orderSizeDeduction) >= Number(f.price)) {
+    // A row stamped with more than the thing is worth would price at zero and
+    // say nothing about it. Refused here as well as reported in Shop > Reports,
+    // because a typo caught at the keyboard is cheaper than one found in a report.
+    e.orderSizeDeduction = 'That is the whole price or more. It has to be less than the price.'
   }
 
   if (f.minOrderQuantity.trim() !== '' && (!Number.isInteger(Number(f.minOrderQuantity)) || Number(f.minOrderQuantity) < 1)) {

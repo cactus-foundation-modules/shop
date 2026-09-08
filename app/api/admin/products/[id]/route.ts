@@ -77,6 +77,16 @@ const Body = z.object({
   // The fewest the shop will sell in one go. Null clears it; 1 and below mean
   // the same thing as null and are normalised on the way in.
   minOrderQuantity: z.number().int().nullable().optional(),
+  // An amount PER UNIT already inside this line's price, which comes back off
+  // once the basket holds enough of its supplier's goods. Null clears it, and a
+  // 0 is normalised to null on the way in - a recorded nothing and a blank
+  // behave identically, so only one of them is worth storing.
+  orderSizeDeduction: z.number().nonnegative().nullable().optional(),
+  // Whether the shop takes this one back. Null - the usual state - is "nothing
+  // said", which reads as returnable and lets a shop-variations child fall back
+  // to its listing; only an explicit false refuses. See lib/returnable.ts.
+  returnable: z.boolean().nullable().optional(),
+  nonReturnableNote: z.string().max(300).nullable().optional(),
   // "Keep this one off the featured shelves." Nothing to do with
   // catalogueHidden, which is shop-variations' own state and is not editable
   // from here at all.

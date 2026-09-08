@@ -80,6 +80,10 @@ type ShipmentDetail = {
   // see modules/shop/lib/delivery-slot.ts.
   deliveryDate: string | null; deliverySlotStart: string | null; deliverySlotEnd: string | null
   slotNotifiedAt: string | null
+  // What the courier's own tracking last said, and the proof of delivery taken
+  // from it. `signatureUrl` is the shop's own copy of their image.
+  trackingStage: string | null; deliveredAt: string | null
+  signedBy: string | null; signedAt: string | null; signatureUrl: string | null
   items: Array<{ id: string; orderItemId: string; quantity: number }>
 }
 type DispatchDetail = {
@@ -659,6 +663,30 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                               : ' - no time window yet'}
                             {shipment.slotNotifiedAt ? ' · customer told' : ''}
                           </p>
+                        )}
+                        {shipment.trackingStage && (
+                          <p className="sox-list-sub">
+                            Courier says: {shipment.trackingStage}
+                            {shipment.deliveredAt ? ` · delivered ${formatDate(shipment.deliveredAt)}` : ''}
+                          </p>
+                        )}
+                        {shipment.signatureUrl && (
+                          <>
+                            <p className="sox-list-sub">
+                              Signed for
+                              {shipment.signedBy ? ` by ${shipment.signedBy}` : ''}
+                              {shipment.signedAt ? ` · ${formatDateTime(shipment.signedAt)}` : ''}
+                            </p>
+                            {/* eslint-disable-next-line @next/next/no-img-element -- a third-party
+                                signature of unknown dimensions; next/image wants a size nobody here
+                                can give it. */}
+                            <img
+                              className="sox-signature"
+                              src={shipment.signatureUrl}
+                              alt={shipment.signedBy ? `Signature of ${shipment.signedBy}` : 'Delivery signature'}
+                              loading="lazy"
+                            />
+                          </>
                         )}
                       </div>
                       <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => setEditingParcelId(shipment.id)}>Details</button>

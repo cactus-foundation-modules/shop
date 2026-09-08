@@ -68,6 +68,18 @@ export const SupplierBody = z.object({
     .max(100, 'A discount cannot be more than 100%')
     .nullable()
     .optional(),
+  // How much of this supplier's goods a basket has to hold before the per-unit
+  // amounts stamped on their products come off - see lib/order-size-deduction.ts.
+  // null = no rule at all, which is a different thing from a recorded 0 (that
+  // would be a threshold every basket clears).
+  orderSizeDeductionThreshold: z
+    .number()
+    .min(0, 'A threshold cannot be negative')
+    .nullable()
+    .optional(),
+  // The owner's own "why?" copy for the product page. Their wording, not the
+  // module's, which is what keeps every site's explanation out of core.
+  orderSizeDeductionNote: optionalText(2000),
   status: z.enum(['ENABLED', 'DISABLED']).optional(),
   contactName: optionalText(200),
   phone: optionalText(50),

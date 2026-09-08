@@ -5,13 +5,24 @@ import {
   allShipmentsDelivered,
   getOrderDispatchSummary,
   listShipmentsForTrackingPoll,
+  recordSignature,
   recordTrackingCheck,
+  recordTrackingPageDetails,
   recordTrackingStage,
 } from '@/modules/shop/lib/db/shipments'
+import { getOrderById } from '@/modules/shop/lib/db/orders'
+import { getSiteTimezone } from '@/lib/config/timezone.server'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { courierIsPolled, stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import { furthestStage, isMultidropUrl, parseMultidropStages } from '@/modules/shop/lib/tracking/multidrop'
+import {
+  dropsAwayFromCrewLine,
+  parseCrewLine,
+  parseSignature,
+  parseTrackingConfig,
+} from '@/modules/shop/lib/tracking/multidrop-page'
+import { captureSignature } from '@/modules/shop/lib/tracking/signature-capture'
 
 // Hourly (manifest cronJobs). Asks each live parcel's courier where it has got
 // to, and finishes an order off when every parcel on it has arrived.
@@ -50,7 +61,14 @@ const CONCURRENCY = 3
  *  cannot hold the whole run open. */
 const TIMEOUT_MS = 8000
 
-type Outcome = { checked: number; moved: number; delivered: number; completed: number; failed: number }
+type Outcome = {
+  checked: number
+  moved: number
+  delivered: number
+  completed: number
+  failed: number
+  signatures: number
+}
 
 async function fetchTrackingPage(url: string): Promise<string | null> {
   const controller = new AbortController()
@@ -79,7 +97,7 @@ async function handle(request: NextRequest) {
   if (!secret) return errorResponse('CRON_SECRET is not configured', 503)
   if (request.headers.get('authorization') !== `Bearer ${secret}`) return errorResponse('Unauthorized', 401)
 
-  const config = await getShopConfigCached()
+  const [config, timezone] = await Promise.all([getShopConfigCached(), getSiteTimezone()])
 
   // The early exit. No courier is set up for polling, so there is nothing this
   // run could learn however many parcels are out.
@@ -90,7 +108,7 @@ async function handle(request: NextRequest) {
   const parcels = await listShipmentsForTrackingPoll(PARCEL_LIMIT)
   if (parcels.length === 0) return NextResponse.json({ ok: true, checked: 0 })
 
-  const outcome: Outcome = { checked: 0, moved: 0, delivered: 0, completed: 0, failed: 0 }
+  const outcome: Outcome = { checked: 0, moved: 0, delivered: 0, completed: 0, failed: 0, signatures: 0 }
   const ordersToReview = new Set<string>()
 
   for (let i = 0; i < parcels.length; i += CONCURRENCY) {
@@ -131,6 +149,42 @@ async function handle(request: NextRequest) {
       }
 
       await recordTrackingStage(parcel.id, { stage: stage.label, delivered })
+
+      // The rest of the same page, which cost nothing extra to fetch: the ids
+      // the live map needs to ask where the van is, and the courier's own
+      // sentence about how far off the crew is.
+      const page = parseTrackingConfig(html)
+      const crewLine = parseCrewLine(html)
+      await recordTrackingPageDetails(parcel.id, {
+        clientId: page.clientId,
+        routeId: page.routeId,
+        crewLine,
+        dropsAway: dropsAwayFromCrewLine(crewLine),
+        destinationLat: page.destinationLat,
+        destinationLng: page.destinationLng,
+      })
+
+      // Proof of delivery, taken once and only once - see recordSignature for
+      // why the guard is in the WHERE clause as well as here. Everything about
+      // it is allowed to fail quietly: the parcel has still been delivered, and
+      // an argument about a missing picture is a better one to have than an
+      // order stuck open because a bucket was busy.
+      if (delivered && !parcel.signatureUrl) {
+        const signature = parseSignature(html, timezone)
+        if (signature?.imageUrl) {
+          const order = await getOrderById(parcel.orderId)
+          const stored = await captureSignature(signature.imageUrl, order?.orderNumber ?? parcel.id)
+          if (stored) {
+            await recordSignature(parcel.id, {
+              signedBy: signature.signedBy,
+              signedAt: signature.signedAt,
+              url: stored.url,
+              key: stored.key,
+            })
+            outcome.signatures += 1
+          }
+        }
+      }
     }))
   }
 

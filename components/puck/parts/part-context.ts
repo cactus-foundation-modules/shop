@@ -7,6 +7,7 @@ import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 import type { CardFact, CardOverlay } from '@/modules/shop/lib/card-media'
 import type { PriceView } from '@/modules/shop/lib/pricing'
 import type { ResolvedShopCommerceMode } from '@/modules/shop/lib/commerce-mode-shared'
+import type { OrderSizeDeductionLineView } from '@/modules/shop/lib/order-size-deduction'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
 // Shared context passed to the shop's part-blocks (the small draggable pieces
@@ -102,6 +103,21 @@ export type DetailPartContext = {
   // Suppliers). Parts read this rather than the config, so the two switches are
   // resolved once per page rather than once per part.
   supplierLabel: string | null
+  // The supplier as a BADGE - the bare name, and where its page lives when the
+  // shop publishes one. Sits in the badge row above the title, where it reads as
+  // a brand mark rather than as a disclosure; the labelled Specification row is
+  // a separate thing and keeps its label. Null where the shop does not record a
+  // supplier, keeps it to itself, or this product has none. The PARENT listing's
+  // supplier, not the chosen variation's: a brand mark that flickered as options
+  // changed would read as a fault.
+  supplierBadge: { name: string; href: string | null } | null
+  // Order-size deduction (lib/order-size-deduction.ts). Null on every shop that
+  // has the feature switched off, where the part renders nothing and mounts no
+  // island at all. `line` is the sentence the page OPENS with, already worked out
+  // server-side and already on the shop's display side of tax; null where this
+  // product carries nothing, which on a listing with variations is the usual case
+  // - the island fills it in once the shopper settles on a combination.
+  orderSizeDeduction: { line: OrderSizeDeductionLineView | null } | null
   // Set by the injector when a companion module claims this product through the
   // `shop.product-detail-parts` point (see lib/detail-slot.ts). Null on a
   // shop-only site and for every unclaimed product, where the parts below render

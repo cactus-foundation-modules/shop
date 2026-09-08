@@ -430,14 +430,18 @@ export async function reconcileStaleRefunds(
       id: string
       order_id: string
       intended_items: unknown
-      payment_provider: string | null
+      payment_method: string | null
       payment_reference: string | null
       reason: string | null
       created_by: string
     }[]
   >`
+    -- payment_method, not payment_provider: shp_orders has never had a column by
+    -- that name, so this whole statement was a 42883-shaped undefined_column and the
+    -- hourly reconcile cron 500'd on every single run. The value is the payment
+    -- METHOD id (STRIPE, PAYPAL, ...), which is exactly what the registry keys on.
     SELECT r."id", r."order_id", r."intended_items", r."reason", r."created_by",
-           o."payment_provider", o."payment_reference"
+           o."payment_method", o."payment_reference"
     FROM "shp_refunds" r
     JOIN "shp_orders" o ON o."id" = r."order_id"
     WHERE r."status" = 'PENDING'
@@ -460,12 +464,12 @@ export async function reconcileStaleRefunds(
       continue
     }
 
-    const provider = row.payment_provider ? lookup(row.payment_provider) : null
+    const provider = row.payment_method ? lookup(row.payment_method) : null
     if (!provider?.getRefundStatus) {
       outcomes.push({
         ...base,
         resolved: 'STILL_UNKNOWN',
-        reason: `${row.payment_provider ?? 'This payment method'} cannot be asked about a refund automatically`,
+        reason: `${row.payment_method ?? 'This payment method'} cannot be asked about a refund automatically`,
       })
       continue
     }

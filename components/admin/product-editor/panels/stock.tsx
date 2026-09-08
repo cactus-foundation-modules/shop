@@ -1,6 +1,6 @@
 'use client'
 
-import { Control, Field, Grid, Reveal, Section, Select, Switch } from '@/modules/shop/components/admin/product-editor/fields'
+import { Control, Field, Grid, Reveal, Section, Select, Switch, TextArea } from '@/modules/shop/components/admin/product-editor/fields'
 import type { PanelProps } from '@/modules/shop/components/admin/product-editor/model'
 
 export function StockPanel({ state, setField, errors, weightBasedShippingEnabled }: PanelProps) {
@@ -48,6 +48,36 @@ export function StockPanel({ state, setField, errors, weightBasedShippingEnabled
             {(p) => <Control {...p} inputMode="numeric" value={f.minOrderQuantity} onChange={(e) => setField('minOrderQuantity', e.target.value)} placeholder="1" />}
           </Field>
         </Grid>
+      </Section>
+
+      <Section title="Returns" blurb="For anything made to a customer's own order - a desk cut to their measurements, a chair in a fabric they picked off a card. Leave it off for everything you would take back.">
+        <Switch
+          checked={f.nonReturnable}
+          onChange={(v) => setField('nonReturnable', v)}
+          label="Do not accept returns on this"
+          hint="No return button on the order, and the reason below in its place. Cancelling before it has gone out is unaffected."
+        />
+        {f.nonReturnable && (
+          <Reveal>
+            <Field
+              label="Tell them why"
+              optional
+              error={errors.nonReturnableNote}
+              hint={'Shown on the order in place of the return button. Leave it empty for "This item cannot be sent back once ordered."'}
+            >
+              {(p) => (
+                <TextArea
+                  {...p}
+                  rows={2}
+                  maxLength={300}
+                  value={f.nonReturnableNote}
+                  onChange={(e) => setField('nonReturnableNote', e.target.value)}
+                  placeholder="e.g. Made to your own measurements, so we cannot take it back."
+                />
+              )}
+            </Field>
+          </Reveal>
+        )}
       </Section>
 
       <Section title="Pre-order" blurb="For something you are taking money for now and posting later.">

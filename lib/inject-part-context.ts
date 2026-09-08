@@ -15,6 +15,7 @@ const DETAIL_PART_TYPES = new Set([
   'ShopDetailTitle',
   'ShopDetailSku',
   'ShopDetailPrice',
+  'ShopDetailOrderSizeDeduction',
   'ShopDetailBlurb',
   'ShopDetailPreorder',
   'ShopDetailAddToCart',

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { blockedLinesMessage, resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkout'
-import { findShippingZoneForPostcode, listShippingRatesForZone } from '@/modules/shop/lib/db/tax-shipping'
+import { resolveShippingZoneForPostcode, listShippingRatesForZone } from '@/modules/shop/lib/db/tax-shipping'
+import { excludedPostcodeMessage } from '@/modules/shop/lib/excluded-postcode'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { formatMoney } from '@/modules/shop/lib/money'
@@ -41,7 +42,14 @@ export async function POST(request: NextRequest) {
   }
   if (resolvedLines.length === 0) return NextResponse.json({ error: 'Your basket is empty' }, { status: 400 })
 
-  const zone = postcode ? await findShippingZoneForPostcode(postcode) : null
+  // Same delivery-area rule as payment-intent, told early: this route is what
+  // the review step asks as soon as an address exists, so the shopper hears it
+  // before they reach for a card rather than after.
+  const resolvedZone = postcode ? await resolveShippingZoneForPostcode(postcode) : null
+  if (resolvedZone?.excluded) {
+    return NextResponse.json({ error: excludedPostcodeMessage(config.excludedPostcodeMessage) }, { status: 400 })
+  }
+  const zone = resolvedZone?.zone ?? null
   const shippingRates = zone ? await listShippingRatesForZone(zone.id) : []
 
   const totals = await resolveOrderTotals({

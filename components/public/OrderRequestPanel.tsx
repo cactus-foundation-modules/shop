@@ -15,6 +15,8 @@ export type RequestLine = {
   orderItemId: string
   productName: string
   returnableQty: number
+  /** Why this one cannot go back, where it cannot. Null on a returnable line. */
+  notReturnableNote: string | null
 }
 
 type Props = {
@@ -37,6 +39,11 @@ export default function OrderRequestPanel(props: Props) {
   const [error, setError] = useState<string | null>(null)
 
   const returnable = props.lines.filter((line) => line.returnableQty > 0)
+  // Listed under the form rather than left out of it. A shopper who ordered four
+  // things and is shown two needs to know what happened to the other two, or the
+  // form reads as broken - and this is also where they are told why, which is
+  // the part that stops the email asking.
+  const notReturnable = props.lines.filter((line) => line.notReturnableNote != null)
   const reasons = open === 'CANCEL' ? props.cancelReasons : props.returnReasons
 
   function start(type: ShpOrderRequestType) {
@@ -122,6 +129,20 @@ export default function OrderRequestPanel(props: Props) {
                 </span>
               </label>
             ))}
+            {notReturnable.length > 0 && (
+              <div style={{ display: 'grid', gap: '0.25rem', marginTop: '0.25rem' }}>
+                {notReturnable.map((line) => (
+                  <p
+                    key={line.orderItemId}
+                    style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}
+                  >
+                    <strong style={{ fontWeight: 'var(--font-medium)' }}>{line.productName}</strong>
+                    {' - '}
+                    {line.notReturnableNote}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

@@ -1,0 +1,46 @@
+-- ---------------------------------------------------------------------------
+-- 043 - Whether a line may be sent back.
+--
+-- The returns machinery (015_order_requests.sql) has so far assumed everything
+-- a shop sells can come back. Plenty cannot: a desk cut to a customer's own
+-- measurements, a chair upholstered in a fabric chosen off a card, anything
+-- made to order. Under the Consumer Contracts Regulations those are exempt from
+-- the cooling-off right in the first place, and a shop that offers a "Return
+-- something" button on them is promising what it cannot deliver.
+--
+--   shp_products.returnable
+--       NULLABLE on purpose, and that is the whole design. NULL is not "no",
+--       it is "nothing said here" - which on a variation child means "whatever
+--       the listing says", exactly as min_order_quantity works (021). A
+--       NOT NULL DEFAULT true would have every child row shouting "returnable"
+--       over a parent that says otherwise. Resolution order is child, then
+--       parent, then returnable: a shop that never touches this keeps the
+--       behaviour it has today.
+--
+--   shp_products.non_returnable_note
+--       The owner's own wording for why, shown to the customer in place of the
+--       stock sentence. "Made to your measurements, so we cannot take it back"
+--       reads better than anything shipped in a module, and every shop's reason
+--       is its own. Only meaningful where returnable is false. Not carried on
+--       variation children - a reason per colour is nobody's idea of a good
+--       time, so a child borrows its listing's.
+--
+--   shp_order_items.returnable
+--       Snapshotted at order creation, like order_size_deduction (042) and
+--       is_pre_order before it. NOT NULL DEFAULT true, so every order placed
+--       before this existed records what was true of it: returnable.
+--
+--       Snapshotting rather than reading the product back is not tidiness. A
+--       product can be deleted (product_id is SET NULL), a variation can be
+--       rebuilt, and - worst of the three - an owner flipping a product to
+--       non-returnable would otherwise strip the right from orders already
+--       placed under the old terms. What was true at the checkout is what the
+--       customer bought under.
+--
+-- Idempotent, and the same columns sit in 001_initial.sql in place, so a fresh
+-- install and an existing one land in the same place.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE "shp_products"    ADD COLUMN IF NOT EXISTS "returnable" BOOLEAN;
+ALTER TABLE "shp_products"    ADD COLUMN IF NOT EXISTS "non_returnable_note" TEXT;
+ALTER TABLE "shp_order_items" ADD COLUMN IF NOT EXISTS "returnable" BOOLEAN NOT NULL DEFAULT true;

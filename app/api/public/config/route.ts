@@ -120,6 +120,11 @@ async function buildConfigPayload() {
       showOnFrontend: config.supplierShowOnFrontend,
       scope: config.supplierFieldScope,
     },
+    // Whether the shop runs the order-size deduction (lib/order-size-deduction.ts).
+    // Storefront rendering is decided server-side, exactly as supplierField
+    // above is - this slice exists for the admin product editor, which reads its
+    // config from here and only offers the box when the feature is on.
+    orderSizeDeduction: { enabled: config.orderSizeDeductionEnabled },
     guestCheckoutEnabled: config.guestCheckoutEnabled,
     minimumOrderValue: config.minimumOrderValue,
     maximumOrderValue: config.maximumOrderValue,

@@ -16,7 +16,7 @@ import {
   SHOP_DEFAULT_COMMERCE_MODE,
 } from '@/modules/shop/lib/commerce-mode-shared'
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
-import { CartStickyBar, CartUndoToast, QuantityStepper, RemoveCross, TickIcon } from '@/modules/shop/components/public/CartChrome'
+import { CartLinePrice, CartStickyBar, CartUndoToast, QuantityStepper, RemoveCross, TickIcon, lineSubtotalBeforeDeduction } from '@/modules/shop/components/public/CartChrome'
 import { CartNotes } from '@/modules/shop/components/public/CartNotes'
 import { CART_PAGE_NOTE_DEFAULTS, pickCartNoteOptions, type CartNoteOptions } from '@/modules/shop/components/public/cart-note-options'
 import { useCartUndo, useOutOfView } from '@/modules/shop/components/public/use-cart-undo'
@@ -53,6 +53,13 @@ type ValidatedLine = {
   // Which basket group this line belongs to, when a resolver declared one - the
   // cart keeps the set together and indents the attachments (see lib/cart-group).
   group?: CartLineGroup | null
+  // What came off each unit because the basket reached its supplier's order-size
+  // threshold, and what the unit cost before it did (lib/order-size-deduction.ts).
+  // Both already on the shop's display side of tax. Null/absent on every line
+  // that lost nothing, which is every line on a shop that has not switched the
+  // feature on.
+  orderSizeDeduction?: number | null
+  unitPriceBeforeDeduction?: number | null
   // This line's tax rate as a fraction, quoted against the shop's default zone.
   taxRate?: number
 }
@@ -401,6 +408,12 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   // Every figure on the cart goes through here, so a shop quoting by hand shows
   // its "POA" everywhere at once rather than in some rows and not others.
   const money = (n: number) => commerceModeMoney(commerce, `${currencySymbol}${n.toFixed(2)}`)
+  // What the line cost before the order-size deduction, ready to strike through.
+  // Null on every line that lost nothing - see lineSubtotalBeforeDeduction.
+  const wasPrice = (line: ValidatedLine) => {
+    const before = lineSubtotalBeforeDeduction(line)
+    return before == null ? null : money(before)
+  }
   // Where the cart leads and what the button says: shop's own checkout, or the
   // quote flow an add-on has put in its place.
   const checkoutLabel = commerceModeButtonLabel(commerce.cartCtaLabel, props.checkoutLabel, 'Proceed to checkout')
@@ -831,7 +844,14 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   }
 
   const renderLinePrice = (line: ValidatedLine) =>
-    showLinePrice ? <span className="scl-price" style={{ minWidth: 70, textAlign: 'right', color: accent, fontWeight: 600 }}>{money(line.lineSubtotal)}</span> : null
+    showLinePrice ? (
+      <CartLinePrice
+        className="scl-price"
+        style={{ minWidth: 70, textAlign: 'right', color: accent, fontWeight: 600 }}
+        now={money(line.lineSubtotal)}
+        was={wasPrice(line)}
+      />
+    ) : null
 
   // ---- Line list (rows / cards) ----
   function renderItemsFlow() {
@@ -943,7 +963,11 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
                     {anyDelivery && <td style={{ ...rowTd, minWidth: 0 }}>{renderDelivery(line)}</td>}
                     {showUnitPrice && <td style={{ ...rowTd, textAlign: 'right', whiteSpace: 'nowrap' }}>{money(line.unitPrice)}</td>}
                     <td style={{ ...rowTd, textAlign: 'center' }}>{renderQty(line)}</td>
-                    {showLinePrice && <td style={{ ...rowTd, textAlign: 'right', color: accent, fontWeight: 600, whiteSpace: 'nowrap' }}>{money(line.lineSubtotal)}</td>}
+                    {showLinePrice && (
+                      <td style={{ ...rowTd, textAlign: 'right', color: accent, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        <CartLinePrice now={money(line.lineSubtotal)} was={wasPrice(line)} />
+                      </td>
+                    )}
                     {showRemove && <td style={{ ...rowTd, textAlign: 'right' }}>{renderRemove(line)}</td>}
                   </tr>
                   {confirm && (

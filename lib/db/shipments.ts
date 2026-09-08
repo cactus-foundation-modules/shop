@@ -40,6 +40,21 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     trackingStageAt: (r.tracking_stage_at as Date | null) ?? null,
     trackingCheckedAt: (r.tracking_checked_at as Date | null) ?? null,
     deliveredAt: (r.delivered_at as Date | null) ?? null,
+    trackingClientId: (r.tracking_client_id as string | null) ?? null,
+    trackingRouteId: (r.tracking_route_id as string | null) ?? null,
+    crewLine: (r.crew_line as string | null) ?? null,
+    dropsAway: (r.drops_away as number | null) ?? null,
+    vehicleLat: (r.vehicle_lat as string | null) ?? null,
+    vehicleLng: (r.vehicle_lng as string | null) ?? null,
+    vehicleHeading: (r.vehicle_heading as number | null) ?? null,
+    vehicleFixedAt: (r.vehicle_fixed_at as Date | null) ?? null,
+    vehiclePolledAt: (r.vehicle_polled_at as Date | null) ?? null,
+    destinationLat: (r.destination_lat as string | null) ?? null,
+    destinationLng: (r.destination_lng as string | null) ?? null,
+    signedBy: (r.signed_by as string | null) ?? null,
+    signedAt: (r.signed_at as Date | null) ?? null,
+    signatureUrl: (r.signature_url as string | null) ?? null,
+    signatureKey: (r.signature_key as string | null) ?? null,
     notes: (r.notes as string | null) ?? null,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
@@ -533,6 +548,96 @@ export async function recordTrackingStage(shipmentId: string, input: {
         "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${shipmentId}
   `
+}
+
+/**
+ * The rest of what the courier's page said: the ids their map endpoint needs,
+ * their sentence about the crew, and the number read out of it.
+ *
+ * Overwrites rather than coalescing, and that is the point. A round that has
+ * finished stops printing a crew sentence, and a parcel still showing
+ * yesterday's "1 more drop to make" would have somebody waiting at a window.
+ * Absent on the page means absent here.
+ */
+export async function recordTrackingPageDetails(shipmentId: string, input: {
+  clientId: string | null
+  routeId: string | null
+  crewLine: string | null
+  dropsAway: number | null
+  destinationLat: string | null
+  destinationLng: string | null
+}): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "tracking_client_id" = ${input.clientId}::text,
+        "tracking_route_id" = ${input.routeId}::text,
+        "crew_line" = ${input.crewLine}::text,
+        "drops_away" = ${input.dropsAway}::int,
+        "destination_lat" = COALESCE(${input.destinationLat}::text, "destination_lat"),
+        "destination_lng" = COALESCE(${input.destinationLng}::text, "destination_lng"),
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId}
+  `
+}
+
+/**
+ * Where the van was, and when it said so.
+ *
+ * Two timestamps because they answer different questions: `vehicle_fixed_at` is
+ * the courier's own, and `vehicle_polled_at` is ours. A customer is shown the
+ * first - "updated four minutes ago" is about the van, not about our diligence.
+ */
+export async function recordVehiclePosition(shipmentId: string, input: {
+  lat: string
+  lng: string
+  heading: number | null
+  fixedAt: Date | null
+}): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "vehicle_lat" = ${input.lat}::text,
+        "vehicle_lng" = ${input.lng}::text,
+        "vehicle_heading" = ${input.heading}::int,
+        "vehicle_fixed_at" = ${input.fixedAt}::timestamp,
+        "vehicle_polled_at" = CURRENT_TIMESTAMP,
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId}
+  `
+}
+
+/**
+ * The proof of delivery, written once.
+ *
+ * `WHERE "signature_url" IS NULL` is the whole safety of it: this runs from a
+ * scheduled job that will see the same delivered page every hour until the
+ * order is closed, and without the guard every one of those runs would fetch
+ * the courier's image again and leave another orphan in the bucket.
+ */
+export async function recordSignature(shipmentId: string, input: {
+  signedBy: string | null
+  signedAt: Date | null
+  url: string
+  key: string
+}): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "signed_by" = ${input.signedBy}::text,
+        "signed_at" = ${input.signedAt}::timestamp,
+        "signature_url" = ${input.url},
+        "signature_key" = ${input.key},
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId} AND "signature_url" IS NULL
+  `
+}
+
+/** One parcel, for the live position route. By id and order together, so a
+ *  shipment id from one order can never be read through another order's
+ *  access. */
+export async function getShipmentForOrder(orderId: string, shipmentId: string): Promise<ShpShipment | null> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "shp_shipments" WHERE "id" = ${shipmentId} AND "order_id" = ${orderId} LIMIT 1
+  `
+  return rows[0] ? mapShipment(rows[0]) : null
 }
 
 /** Marks only that this parcel was looked at, for a fetch that failed. Without

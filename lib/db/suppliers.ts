@@ -2,6 +2,11 @@ import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import type { PuckData, ShpSupplier, ShpSupplierCatalogue, ShpSupplierWithCounts } from '@/modules/shop/lib/types'
 
+// Just enough of a Prisma client to run a tagged-template query, so the live SQL
+// probe can hand in one pointed at its own throwaway database - same arrangement
+// as lib/db/addresses.ts.
+type RawQuerier = { $queryRaw: typeof prisma.$queryRaw }
+
 // ---------------------------------------------------------------------------
 // Suppliers
 //
@@ -40,6 +45,9 @@ function mapSupplier(r: Record<string, unknown>): ShpSupplier {
     descriptionPuck: r.description_puck && typeof r.description_puck === 'object' ? (r.description_puck as PuckData) : null,
     metaTitle: (r.meta_title as string | null) ?? null,
     metaDescription: (r.meta_description as string | null) ?? null,
+    // numeric(10,2) - a Decimal from Prisma raw, like discount_percent above.
+    orderSizeDeductionThreshold: decimalToNumber(r.order_size_deduction_threshold),
+    orderSizeDeductionNote: (r.order_size_deduction_note as string | null) ?? null,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
   }
@@ -96,7 +104,9 @@ function mapCatalogue(r: Record<string, unknown>): ShpSupplierCatalogue {
 const SUPPLIER_LIST_COLUMNS = Prisma.sql`
   "id", "name", "slug", "storefront_visible", "short_description", "description",
   "meta_title", "meta_description", "account_number", "discount_percent", "status",
-  "contact_name", "phone", "email", "address", "notes", "created_at", "updated_at"
+  "contact_name", "phone", "email", "address", "notes",
+  "order_size_deduction_threshold", "order_size_deduction_note",
+  "created_at", "updated_at"
 `
 
 export type SupplierCatalogueFields = {
@@ -121,6 +131,8 @@ export type SupplierFields = {
   email?: string | null
   address?: string | null
   notes?: string | null
+  orderSizeDeductionThreshold?: number | null
+  orderSizeDeductionNote?: string | null
 }
 
 /**
@@ -265,13 +277,15 @@ export async function createSupplier(data: SupplierFields): Promise<{ id: string
       "name", "slug", "storefront_visible", "short_description", "description",
       "description_puck", "meta_title", "meta_description",
       "account_number", "discount_percent", "status",
-      "contact_name", "phone", "email", "address", "notes"
+      "contact_name", "phone", "email", "address", "notes",
+      "order_size_deduction_threshold", "order_size_deduction_note"
     ) VALUES (
       ${data.name}, ${slug}, ${data.storefrontVisible === true},
       ${data.shortDescription ?? null}, ${data.description ?? null},
       ${data.descriptionPuck ? JSON.stringify(data.descriptionPuck) : null}::jsonb, ${data.metaTitle ?? null}, ${data.metaDescription ?? null},
       ${data.accountNumber ?? null}, ${data.discountPercent ?? null}, ${data.status ?? 'ENABLED'},
-      ${data.contactName ?? null}, ${data.phone ?? null}, ${data.email ?? null}, ${data.address ?? null}, ${data.notes ?? null}
+      ${data.contactName ?? null}, ${data.phone ?? null}, ${data.email ?? null}, ${data.address ?? null}, ${data.notes ?? null},
+      ${data.orderSizeDeductionThreshold ?? null}, ${data.orderSizeDeductionNote ?? null}
     )
     RETURNING "id"
   `
@@ -292,6 +306,8 @@ export async function updateSupplier(id: string, fields: Partial<Omit<SupplierFi
   if (fields.email !== undefined) sets.push(Prisma.sql`"email" = ${fields.email}`)
   if (fields.address !== undefined) sets.push(Prisma.sql`"address" = ${fields.address}`)
   if (fields.notes !== undefined) sets.push(Prisma.sql`"notes" = ${fields.notes}`)
+  if (fields.orderSizeDeductionThreshold !== undefined) sets.push(Prisma.sql`"order_size_deduction_threshold" = ${fields.orderSizeDeductionThreshold}`)
+  if (fields.orderSizeDeductionNote !== undefined) sets.push(Prisma.sql`"order_size_deduction_note" = ${fields.orderSizeDeductionNote}`)
   if (fields.slug !== undefined) {
     // Blanking the address is not an option - the page has to live somewhere -
     // so an empty box falls back to the name, same as it did on create.
@@ -367,4 +383,127 @@ export async function listStorefrontSuppliers(): Promise<Array<{ id: string; nam
      ORDER BY "name" ASC
   `
   return rows.map((r) => ({ id: r.id, name: r.name, slug: r.slug, shortDescription: r.short_description }))
+}
+
+/**
+ * The order-size deduction rules for a named handful of suppliers - see
+ * lib/order-size-deduction.ts for what a rule means.
+ *
+ * Matched on LOWER("name"), which is what the unique index is on and what
+ * products are filed under. Only suppliers that actually have a threshold come
+ * back: a NULL is "no rule", and returning it as a row would have the rule
+ * module scoring a supplier whose shopper can never qualify.
+ *
+ * Called only when the feature is switched on AND something in the basket
+ * carries an amount, so an ordinary shop never fires it at all.
+ */
+export async function getDeductionRules(
+  names: readonly string[],
+  // How the live-database probe in lib/backup/shop-sql.test.ts runs this against
+  // its own throwaway database. Nothing in the app passes it - raw SQL is a
+  // string to every gate there is, so the only proof it parses is Postgres.
+  opts: { client?: RawQuerier } = {},
+): Promise<Array<{ supplier: string; threshold: number; note: string | null }>> {
+  const db = opts.client ?? prisma
+  const wanted = [...new Set(names.map((n) => n.trim().toLowerCase()).filter((n) => n !== ''))]
+  if (wanted.length === 0) return []
+  const rows = await db.$queryRaw<Array<{ name: string; order_size_deduction_threshold: unknown; order_size_deduction_note: string | null }>>`
+    SELECT "name", "order_size_deduction_threshold", "order_size_deduction_note"
+      FROM "shp_suppliers"
+     WHERE LOWER("name") IN (${Prisma.join(wanted)})
+       AND "order_size_deduction_threshold" IS NOT NULL
+  `
+  return rows.flatMap((r) => {
+    const threshold = decimalToNumber(r.order_size_deduction_threshold)
+    if (threshold == null) return []
+    return [{ supplier: r.name, threshold, note: r.order_size_deduction_note ?? null }]
+  })
+}
+
+/** One row of a mis-stamped-amount report - see listOrderSizeDeductionChecks. */
+export type OrderSizeDeductionCheck = {
+  id: string
+  name: string
+  sku: string | null
+  supplier: string
+  price: string
+  salePrice: string | null
+  orderSizeDeduction: string | null
+}
+
+/**
+ * Two things worth an owner's attention, from one pass over the catalogue.
+ *
+ * `impossible` - a stamped amount at or above what the thing is charged for.
+ *   The basket floors such a line at zero rather than going negative, so this
+ *   would sell at nothing and say nothing about it. The product editor refuses
+ *   it at the keyboard; this catches the rows that arrived by import or by a
+ *   script, which is how the catalogue is actually filled.
+ *
+ * `missing` - a product on offer, from a supplier who HAS a threshold, with no
+ *   amount stamped on it. Either a deliberate omission or money a shopper will
+ *   never get back, and there is no way to tell the two apart from here - which
+ *   is exactly why it is a report and not an error.
+ *
+ * Deliberately generic: it knows nothing about catalogues, sale-code prefixes or
+ * whatever script stamped the rows. It compares three columns and a join, which
+ * is all any shop's version of this rule can be.
+ *
+ * Capped, because the second list is potentially "every product on offer" on a
+ * shop that has switched the feature on and stamped nothing yet - a screen with
+ * four thousand rows on it is not a report.
+ */
+export async function listOrderSizeDeductionChecks(
+  limit = 200,
+  opts: { client?: RawQuerier } = {},
+): Promise<{
+  impossible: OrderSizeDeductionCheck[]
+  missing: OrderSizeDeductionCheck[]
+}> {
+  const db = opts.client ?? prisma
+  // "On offer" here has to mean what effectivePrice means, or the report would
+  // flag rows the checkout would never deduct from: a sale price that is set,
+  // non-negative and genuinely under the normal price. The shop-wide "are sale
+  // prices switched on at all" half is settled by the caller, which does not
+  // open this report on a shop that has them off.
+  const onOffer = Prisma.sql`
+    p."sale_price" IS NOT NULL AND p."sale_price" >= 0 AND p."sale_price" < p."price"
+  `
+  const columns = Prisma.sql`
+    p."id", p."name", p."sku", p."supplier", p."price", p."sale_price", p."order_size_deduction"
+  `
+  const [impossible, missing] = await Promise.all([
+    // No supplier join and no offer test: a row stamped with more than the thing
+    // is worth is wrong whoever supplies it and whether or not it is on offer
+    // today, because the day it goes on offer it sells for nothing.
+    db.$queryRaw<Record<string, unknown>[]>`
+      SELECT ${columns} FROM "shp_products" p
+       WHERE p."order_size_deduction" IS NOT NULL
+         AND p."status" <> 'ARCHIVED'
+         AND p."order_size_deduction" >= COALESCE(p."sale_price", p."price")
+       ORDER BY p."name" ASC
+       LIMIT ${limit}
+    `,
+    db.$queryRaw<Record<string, unknown>[]>`
+      SELECT ${columns} FROM "shp_products" p
+       JOIN "shp_suppliers" s ON LOWER(s."name") = LOWER(p."supplier")
+       WHERE p."order_size_deduction" IS NULL
+         AND p."status" = 'ACTIVE'
+         AND s."order_size_deduction_threshold" IS NOT NULL
+         AND ${onOffer}
+       ORDER BY p."name" ASC
+       LIMIT ${limit}
+    `,
+  ])
+  const map = (r: Record<string, unknown>): OrderSizeDeductionCheck => ({
+    id: r.id as string,
+    name: r.name as string,
+    sku: (r.sku as string | null) ?? null,
+    supplier: (r.supplier as string | null) ?? '',
+    // NUMERIC comes back from Prisma raw as a Decimal, never a JS number.
+    price: (r.price as { toString(): string }).toString(),
+    salePrice: r.sale_price != null ? (r.sale_price as { toString(): string }).toString() : null,
+    orderSizeDeduction: r.order_size_deduction != null ? (r.order_size_deduction as { toString(): string }).toString() : null,
+  })
+  return { impossible: impossible.map(map), missing: missing.map(map) }
 }

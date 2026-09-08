@@ -32,6 +32,18 @@ export const CSV_COLUMNS = [
   // The owner's "keep this one off the featured shelves" tick. Appended for the
   // same column-order reason as `sale_sku` above.
   'featured_hidden',
+  // The amount already inside the price that comes back off once the basket
+  // holds enough of this supplier's goods. Appended for the same column-order
+  // reason as `sale_sku` above.
+  'order_size_deduction',
+  // Whether the shop takes this one back, and the owner's wording for why not.
+  // Appended for the same column-order reason as `sale_sku` above. Unlike every
+  // other boolean column here a BLANK cell is meaningful: it is "nothing said",
+  // which reads as returnable and lets a variation fall back to its listing, so
+  // an import that never touches the column changes nothing. Only "false"
+  // refuses - which is what makes sweeping one bespoke range worth doing here.
+  'returnable',
+  'non_returnable_reason',
 ] as const
 
 export type CsvColumn = (typeof CSV_COLUMNS)[number]
@@ -52,7 +64,8 @@ const OPTIONAL_CSV_COLUMNS: readonly CsvColumn[] = [
   'download_limit', 'download_expiry',
   'is_pre_order', 'pre_order_dispatch_date', 'pre_order_note', 'pre_order_max_quantity',
   'related_mode', 'related_limit', 'upsell_mode', 'upsell_limit',
-  'supplier', 'sale_sku', 'min_order_quantity', 'supplier_sku', 'featured_hidden',
+  'supplier', 'sale_sku', 'min_order_quantity', 'supplier_sku', 'featured_hidden', 'order_size_deduction',
+  'returnable', 'non_returnable_reason',
 ]
 
 // Columns whose values are numbers, not text. The CSV writer does not care (every
@@ -61,12 +74,12 @@ const OPTIONAL_CSV_COLUMNS: readonly CsvColumn[] = [
 export const NUMERIC_CSV_COLUMNS: readonly CsvColumn[] = [
   'price', 'sale_price', 'retail_price', 'trade_price', 'cost_price', 'stock_count', 'low_stock_threshold', 'weight',
   'dimension_l', 'dimension_w', 'dimension_h', 'download_limit', 'download_expiry',
-  'pre_order_max_quantity', 'min_order_quantity', 'related_limit', 'upsell_limit',
+  'pre_order_max_quantity', 'min_order_quantity', 'related_limit', 'upsell_limit', 'order_size_deduction',
 ]
 
 // Columns whose values are booleans. `sku` and `barcode` are excluded from the
 // numeric list on purpose - they are identifiers that may carry leading zeros.
-export const BOOLEAN_CSV_COLUMNS: readonly CsvColumn[] = ['track_inventory', 'is_pre_order', 'featured_hidden']
+export const BOOLEAN_CSV_COLUMNS: readonly CsvColumn[] = ['track_inventory', 'is_pre_order', 'featured_hidden', 'returnable']
 
 // The three media kinds shp_product_media.type may hold. Kept here (not just in
 // the DB CHECK) because the CSV format encodes the kind as a `TYPE:url` prefix.
@@ -277,15 +290,19 @@ export const CSV_COLUMN_LABELS: Record<CsvColumn, string> = {
   min_order_quantity: 'Minimum order quantity',
   supplier_sku: 'Supplier code',
   featured_hidden: 'Keep off featured shelves',
+  order_size_deduction: 'Order-size deduction',
+  returnable: 'Can be returned',
+  non_returnable_reason: 'Why it cannot be returned',
 }
 
 export type CsvColumnGroup = { label: string; columns: readonly CsvColumn[] }
 
 export const CSV_COLUMN_GROUPS: readonly CsvColumnGroup[] = [
   { label: 'The basics', columns: ['sku', 'name', 'slug', 'type', 'status', 'barcode', 'supplier', 'supplier_sku', 'sale_sku'] },
-  { label: 'Prices and VAT', columns: ['price', 'sale_price', 'retail_price', 'trade_price', 'cost_price', 'tax_class'] },
+  { label: 'Prices and VAT', columns: ['price', 'sale_price', 'retail_price', 'trade_price', 'cost_price', 'order_size_deduction', 'tax_class'] },
   { label: 'Stock', columns: ['track_inventory', 'stock_count', 'low_stock_threshold', 'out_of_stock_behaviour', 'min_order_quantity'] },
   { label: 'Catalogue', columns: ['categories', 'tags', 'collections', 'featured_hidden'] },
+  { label: 'Returns', columns: ['returnable', 'non_returnable_reason'] },
   { label: 'Words and pictures', columns: ['description', 'short_description', 'image_urls', 'image_alt', 'meta_title', 'meta_description'] },
   { label: 'Size and weight', columns: ['weight', 'weight_unit', 'dimension_l', 'dimension_w', 'dimension_h', 'dimension_unit'] },
   { label: 'Pre-orders', columns: ['is_pre_order', 'pre_order_dispatch_date', 'pre_order_note', 'pre_order_max_quantity'] },

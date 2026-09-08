@@ -16,7 +16,7 @@ import {
 import type { LineMeta } from '@/modules/shop/lib/types'
 import type { CartLineTitle } from '@/modules/shop/lib/line-meta'
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
-import { CartStickyBar, CartUndoToast, QuantityStepper, RemoveCross } from '@/modules/shop/components/public/CartChrome'
+import { CartLinePrice, CartStickyBar, CartUndoToast, QuantityStepper, RemoveCross, lineSubtotalBeforeDeduction } from '@/modules/shop/components/public/CartChrome'
 import { useCartUndo, useOutOfView } from '@/modules/shop/components/public/use-cart-undo'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
@@ -32,6 +32,13 @@ type ValidatedLine = {
   minOrderPooled?: boolean
   lineId?: string | null; lineMeta?: LineMeta | null
   displayTitle?: CartLineTitle | null
+  // What came off each unit because the basket reached its supplier's order-size
+  // threshold, and what the unit cost before it did (lib/order-size-deduction.ts).
+  // Both already on the shop's display side of tax. Null/absent on every line
+  // that lost nothing, which is every line on a shop that has not switched the
+  // feature on.
+  orderSizeDeduction?: number | null
+  unitPriceBeforeDeduction?: number | null
 }
 
 const lineKey = (l: Pick<ValidatedLine, 'productId' | 'lineId'>) => l.lineId ?? l.productId
@@ -135,6 +142,12 @@ export function CartPageClient() {
   // Every figure on this fallback cart goes through here, so a shop quoting by
   // hand shows its "POA" in the lines, the subtotal and the sticky bar alike.
   const money = (n: number) => commerceModeMoney(commerce, formatMoney(n, currencySymbol))
+  // What the line cost before the order-size deduction, ready to strike through.
+  // Null on every line that lost nothing - see lineSubtotalBeforeDeduction.
+  const wasPrice = (line: ValidatedLine) => {
+    const before = lineSubtotalBeforeDeduction(line)
+    return before == null ? null : money(before)
+  }
   const checkoutLabel = commerceModeButtonLabel(commerce.cartCtaLabel, null, 'Proceed to checkout')
 
   // Shimmer skeleton while the localStorage cart is validated, so the page
@@ -200,7 +213,7 @@ export function CartPageClient() {
               min={line.minOrderPooled ? 1 : minOrderQuantity(line.minOrderQuantity)}
               onChange={(next) => setLineQuantity(lineKey(line), next)}
             />
-            <span className="scl-price" style={{ minWidth: 70, textAlign: 'right' }}>{money(line.lineSubtotal)}</span>
+            <CartLinePrice className="scl-price" style={{ minWidth: 70, textAlign: 'right' }} now={money(line.lineSubtotal)} was={wasPrice(line)} />
             <RemoveCross
               label={`Remove ${line.displayTitle?.name || line.name}`}
               onClick={() => removeLine(lineKey(line), line.displayTitle?.name || line.name)}

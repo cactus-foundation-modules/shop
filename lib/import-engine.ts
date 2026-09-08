@@ -45,15 +45,17 @@ type ImportFields = Partial<{
   downloadLimit: number | null; downloadExpiry: number | null
   isPreOrder: boolean; preOrderDispatchDate: Date | null; preOrderNote: string | null; preOrderMaxQuantity: number | null
   minOrderQuantity: number | null
+  orderSizeDeduction: number | null
   relatedMode: ShpRecommendationMode; upsellMode: ShpRecommendationMode; relatedLimit: number; upsellLimit: number
   metaTitle: string | null; metaDescription: string | null; barcode: string | null
   supplier: string | null; saleSku: string | null; supplierSku: string | null
   featuredHidden: boolean
+  returnable: boolean | null; nonReturnableNote: string | null
 }>
 
 // Fields stored as SQL numeric, so Prisma hands them back as decimal strings
 // ("10.00") that must be compared as numbers, not text.
-const DECIMAL_FIELDS = new Set(['price', 'salePrice', 'retailPrice', 'tradePrice', 'costPrice', 'weight', 'dimensionL', 'dimensionW', 'dimensionH'])
+const DECIMAL_FIELDS = new Set(['price', 'salePrice', 'retailPrice', 'tradePrice', 'costPrice', 'weight', 'dimensionL', 'dimensionW', 'dimensionH', 'orderSizeDeduction'])
 
 // A CSV row carries every column on every export, whether or not the owner
 // actually touched it - so re-importing (and every Google-Sheet Pull) used to
@@ -355,6 +357,27 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
         const n = numOrNull(cell(row, 'min_order_quantity'))
         return n != null && n > 1 ? Math.floor(n) : null
       })())
+      // The amount already inside the price. A sheet saying 0 means "this one
+      // carries nothing", so it lands as null - a recorded nothing and a blank
+      // behave identically everywhere downstream, so only one is worth storing.
+      put('order_size_deduction', 'orderSizeDeduction', (() => {
+        const n = numOrNull(cell(row, 'order_size_deduction'))
+        return n != null && n > 0 ? n : null
+      })())
+      // Returns. The only tri-state column in the sheet, and deliberately so: a
+      // blank is "nothing said", which is what lets a variation fall back to its
+      // listing and what stops a sweep of an untouched column marking three
+      // hundred products as something. Only "false"/"no" refuses; anything else
+      // readable as a yes stores an explicit true, which a variation child needs
+      // to be able to overrule a bespoke listing.
+      put('returnable', 'returnable', (() => {
+        const v = cell(row, 'returnable').trim().toLowerCase()
+        if (v === '') return null
+        if (v === 'false' || v === 'no' || v === 'n' || v === '0') return false
+        if (v === 'true' || v === 'yes' || v === 'y' || v === '1') return true
+        return null
+      })())
+      put('non_returnable_reason', 'nonReturnableNote', cell(row, 'non_returnable_reason') || null)
       // Status is honoured on both create and update: the sheet gives the owner a
       // DRAFT/ACTIVE/ARCHIVED dropdown, so a Pull that ignored it would silently
       // discard the one edit they most expect to stick. An unreadable or blank

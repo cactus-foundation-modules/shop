@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.400",
+  "version": "0.1.401",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1548",
@@ -35,6 +35,20 @@
     }
   ],
   "requiredEnvVars": [],
+  "cspOrigins": {
+    "script": [
+      "https://unpkg.com"
+    ],
+    "style": [
+      "https://unpkg.com"
+    ],
+    "connect": [
+      "https://tiles.openfreemap.org"
+    ],
+    "img": [
+      "https://tiles.openfreemap.org"
+    ]
+  },
   "cookieCategories": [],
   "cacheBypassCookies": [
     "cactus_shop_order_access"
@@ -429,6 +443,15 @@
       "import": "./components/puck/parts/detail-parts",
       "component": "shopDetailPricePuckComponent",
       "rscComponent": "shopDetailPricePuckRscComponent",
+      "layoutTypes": [
+        "shopProductDetail"
+      ]
+    },
+    {
+      "type": "ShopDetailOrderSizeDeduction",
+      "import": "./components/puck/parts/detail-parts",
+      "component": "shopDetailOrderSizeDeductionPuckComponent",
+      "rscComponent": "shopDetailOrderSizeDeductionPuckRscComponent",
       "layoutTypes": [
         "shopProductDetail"
       ]

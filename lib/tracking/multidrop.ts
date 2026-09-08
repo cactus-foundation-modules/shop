@@ -27,6 +27,8 @@
 // sense of comes back as no stages, which the caller treats as "nothing learned
 // this time" rather than as an answer.
 
+import { textOf } from '@/modules/shop/lib/tracking/html-text'
+
 export type TrackingStage = {
   /** 1-based position in the courier's own timeline. */
   position: number
@@ -40,27 +42,52 @@ export type TrackingStage = {
   time: string | null
 }
 
-// Each step's own chunk of markup: from its opening tag to the start of the
-// next one, or to the end. Split rather than matched as a balanced element,
-// because a step CONTAINS another div (its timestamp) and a regex that stops at
-// the first closing tag swallows the timestamp into the stage's name.
+// Each step's own chunk of markup, found by counting divs in and out from its
+// opening tag.
+//
+// Neither shortcut works here. Stopping at the first `</div>` swallows the
+// timestamp into the stage's name, because a step CONTAINS a div. Stopping at
+// the NEXT step - the way this once did - has no next step to stop at on the
+// last one, so step 7 ran to the end of the document: on 8 September 2026 a
+// delivered parcel's stage was recorded as "Complete" followed by the contact
+// buttons, the signature card, the feedback panel and the page's own config
+// script, which matched no setting, so the order was never completed. Counting
+// depth is the only reading that is right at both ends.
 const STEP_SPLIT = /<div\s+id="tl-step(\d+)"/i
 const STEP_SPLIT_ALL = /<div\s+id="tl-step(\d+)"/gi
 const CLASS_PATTERN = /class="([^"]*)"/i
 const TIME_PATTERN = /<div\s+class="tl-time"[^>]*>([\s\S]*?)<\/div>/i
+const DIV_TAG = /<div\b|<\/div\s*>/gi
 
-/** Tags out, entities in, whitespace collapsed. */
-function textOf(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\s+/g, ' ')
-    .trim()
+// Longest a stage's name may be and still be a stage. The settings box these
+// are matched against caps a stage at 120 characters, so anything past that is
+// not something an owner could have configured, whatever it is. Belt to the
+// depth count's braces: a future redesign that defeats the counting produces no
+// stage at all rather than a page dump in a field the shop makes decisions on.
+const MAX_LABEL_LENGTH = 120
+
+/**
+ * Where the element opening at `start` closes, or null if the markup never
+ * closes it. The index of its final `</div>`, so a slice to it holds the whole
+ * element and nothing after it.
+ */
+function elementEnd(html: string, start: number): number | null {
+  const openTagEnd = html.indexOf('>', start)
+  if (openTagEnd === -1) return null
+
+  DIV_TAG.lastIndex = openTagEnd + 1
+  let depth = 1
+  let match: RegExpExecArray | null
+  while ((match = DIV_TAG.exec(html)) !== null) {
+    // '<div' or '</div>' - the second character is the only one that differs.
+    if (match[0][1] === '/') {
+      depth -= 1
+      if (depth === 0) return match.index
+    } else {
+      depth += 1
+    }
+  }
+  return null
 }
 
 /**
@@ -75,7 +102,14 @@ export function parseMultidropStages(html: string): TrackingStage[] {
   const stages: TrackingStage[] = []
 
   for (let i = 0; i < starts.length; i++) {
-    const chunk = html.slice(starts[i] as number, starts[i + 1] ?? html.length)
+    const start = starts[i] as number
+    // The element's own end where the markup is well formed. Where it is not,
+    // the next step is a safe bound and the last step has none - a step whose
+    // extent cannot be established is skipped rather than guessed at.
+    const end = elementEnd(html, start) ?? starts[i + 1]
+    if (end === undefined) continue
+
+    const chunk = html.slice(start, end)
     const position = Number(chunk.match(STEP_SPLIT)?.[1])
     if (!Number.isFinite(position)) continue
 
@@ -91,7 +125,7 @@ export function parseMultidropStages(html: string): TrackingStage[] {
     const label = textOf(chunk.replace(TIME_PATTERN, ' '))
       .replace(/\s*-\s*\d{1,2}\s+\w+\s+\d{4}\s*$/, '')
       .trim()
-    if (!label) continue
+    if (!label || label.length > MAX_LABEL_LENGTH) continue
 
     stages.push({
       position,

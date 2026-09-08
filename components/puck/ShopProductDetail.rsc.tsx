@@ -22,6 +22,9 @@ import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { resolveProductAdminEditHref } from '@/modules/shop/lib/admin-edit'
 import { canSeeStockLevels } from '@/modules/shop/lib/admin-stock'
 import { canSeeProductCodes } from '@/modules/shop/lib/admin-codes'
+import { getSupplierByName } from '@/modules/shop/lib/db/suppliers'
+import { supplierHref } from '@/modules/shop/lib/supplier-url'
+import { orderSizeDeductionView } from '@/modules/shop/lib/order-size-deduction-view'
 import type { PuckData } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { shopProductDetailPuckComponent, type ShopProductDetailProps } from './ShopProductDetail'
@@ -98,6 +101,14 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
 
   const digitalFile =
     product.type === 'DIGITAL' && product.digitalFileId ? await getDigitalFileById(product.digitalFileId) : null
+
+  // ONE supplier read, serving both the badge above the title and the order-size
+  // deduction line under the price. Skipped entirely unless something on the page
+  // could use it: a shop that neither shows the supplier nor runs the deduction
+  // fires no query at all, which is every shop until an owner switches one on.
+  const wantsSupplier =
+    (config.supplierFieldEnabled && config.supplierShowOnFrontend) || config.orderSizeDeductionEnabled
+  const supplier = wantsSupplier && product.supplier ? await getSupplierByName(product.supplier) : null
 
   const images = media
     .filter((m) => m.type !== 'VIDEO_URL')
@@ -193,6 +204,41 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
       ? <Render config={getModuleLayoutPuckRscConfig('shopProductDescription') as any} data={product.descriptionPuck as Data} />
       : undefined
 
+  // The badge's name comes off the product, not the directory row, so a product
+  // filed under a name nobody has added to the address book still shows it. The
+  // LINK needs the row, and needs the shop to publish supplier pages at all and
+  // this supplier's own page to be published; anything short of that prints the
+  // name unlinked rather than a link to a 404.
+  const supplierBadge = (): DetailPartContext['supplierBadge'] => {
+    if (!config.supplierFieldEnabled || !config.supplierShowOnFrontend) return null
+    const name = product.supplier?.trim()
+    if (!name) return null
+    const linkable = config.supplierPagesEnabled && supplier?.storefrontVisible === true && supplier.slug
+    return { name, href: linkable ? supplierHref(supplier.slug!) : null }
+  }
+
+  // The order-size deduction line the page OPENS with. On a listing whose
+  // combinations a companion module picks (`slot`), the amount on this row is the
+  // listing's and the combination the shopper lands on may carry none - so the
+  // wording says "some options" and the client island settles it the moment one
+  // is chosen. Figures converted to the shop's display side of tax with the same
+  // adjuster the price block uses, so the two agree.
+  const orderSizeDeductionLineView = () => {
+    if (supplier?.orderSizeDeductionThreshold == null) return null
+    return orderSizeDeductionView({
+      product,
+      rule: {
+        supplier: supplier.name,
+        threshold: supplier.orderSizeDeductionThreshold,
+        note: supplier.orderSizeDeductionNote,
+      },
+      enabledPriceTypes: config.enabledPriceTypes,
+      adjust: displayAdjust,
+      currencySymbol: config.currencySymbol,
+      someOptionsOnly: slot != null,
+    })
+  }
+
   const ctx: DetailPartContext = {
     product,
     images,
@@ -208,6 +254,8 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     priceSuffix: taxDisplay.display.suffix,
     showRetailPrice: config.showRetailPrice,
     supplierLabel: config.supplierFieldEnabled && config.supplierShowOnFrontend ? resolveSupplierLabel(config) : null,
+    supplierBadge: supplierBadge(),
+    orderSizeDeduction: config.orderSizeDeductionEnabled ? { line: orderSizeDeductionLineView() } : null,
     slot,
     coveredParts,
     layoutBlockTypes: [...blockTypes],

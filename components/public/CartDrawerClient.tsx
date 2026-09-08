@@ -23,7 +23,7 @@ import { minOrderQuantity } from '@/modules/shop/lib/min-order'
 import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } from '@/modules/shop/components/public/validated-cache'
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 import { CART_DRAWER_CSS } from '@/modules/shop/components/public/cart-drawer-css'
-import { CartUndoToast, QuantityStepper } from '@/modules/shop/components/public/CartChrome'
+import { CartLinePrice, CartUndoToast, QuantityStepper, lineSubtotalBeforeDeduction } from '@/modules/shop/components/public/CartChrome'
 import { CartNotes } from '@/modules/shop/components/public/CartNotes'
 import { useCartUndo } from '@/modules/shop/components/public/use-cart-undo'
 import { CartLineControlView, LineMetaList, productMetaFields } from '@/modules/shop/components/public/CartLineControlView'
@@ -57,6 +57,13 @@ type ValidatedLine = {
   control?: CartLineControl | null
   displayTitle?: CartLineTitle | null
   group?: CartLineGroup | null
+  // What came off each unit because the basket reached its supplier's order-size
+  // threshold, and what the unit cost before it did (lib/order-size-deduction.ts).
+  // Both already on the shop's display side of tax. Null/absent on every line
+  // that lost nothing, which is every line on a shop that has not switched the
+  // feature on.
+  orderSizeDeduction?: number | null
+  unitPriceBeforeDeduction?: number | null
 }
 
 const lineKey = (l: Pick<ValidatedLine, 'productId' | 'lineId'>) => l.lineId ?? l.productId
@@ -228,6 +235,12 @@ export function CartDrawerClient({
   if (!host) return null
 
   const money = (n: number) => commerceModeMoney(commerce, `${currencySymbol}${n.toFixed(2)}`)
+  // What the line cost before the order-size deduction, ready to strike through.
+  // Null on every line that lost nothing - see lineSubtotalBeforeDeduction.
+  const wasPrice = (line: ValidatedLine) => {
+    const before = lineSubtotalBeforeDeduction(line)
+    return before == null ? null : money(before)
+  }
   const subtotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
   const showImage = o.drawerShowImage !== 'no'
   const showDelivery = o.drawerShowDelivery !== 'no'
@@ -350,7 +363,7 @@ export function CartDrawerClient({
                   single track, so the stepper and the Remove link sit exactly as
                   wide as the price above them whatever the figure reads. */}
               <div className="scd-side">
-                <span className="scd-price">{money(line.lineSubtotal)}</span>
+                <CartLinePrice className="scd-price" now={money(line.lineSubtotal)} was={wasPrice(line)} />
                 <div className="scd-qty">
                   <QuantityStepper
                     value={line.quantity}

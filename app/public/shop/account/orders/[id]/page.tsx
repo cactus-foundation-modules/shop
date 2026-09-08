@@ -25,10 +25,15 @@ import {
   addressLines,
   badgeClass,
   formatOrderDate,
+  formatOrderDateTime,
   orderCompanyName,
 } from '@/modules/shop/lib/order-display'
 import { orderProgressSteps, orderStopped } from '@/modules/shop/lib/order-progress'
 import { parcelDelivery, railDelivery } from '@/modules/shop/lib/order-delivery'
+import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
+import { courierIsPolled } from '@/modules/shop/lib/tracking/stage-meaning'
+import { livePollIntervalMs, positionFreshness } from '@/modules/shop/lib/tracking/live-delivery'
+import DeliveryLiveMap, { type LiveDeliveryState } from '@/modules/shop/components/public/DeliveryLiveMap'
 import { FAQ_QUERY_KEY } from '@/modules/shop/lib/courier-faqs'
 import { listInvoicesForOrder } from '@/modules/shop/lib/db/invoices'
 import { listCreditNotesForOrder } from '@/modules/shop/lib/db/credit-notes'
@@ -330,6 +335,41 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
       }
     : null
 
+  // The van, for the parcel the rail is describing. Everything here is read
+  // from what the scheduled job last stored, so the page renders with a van
+  // already on it and no third party in the way of it loading; the component
+  // then keeps it moving on its own clock. See the live-delivery route.
+  //
+  // Offered only while a van is genuinely out with this parcel: a courier the
+  // shop polls, a stage that means out for delivery, and nothing delivered yet.
+  const liveShipment = railShipment
+    && railBooking?.outForDelivery
+    && !railBooking.arrived
+    && courierIsPolled(courierForShipment(config, railShipment))
+    ? railShipment
+    : null
+  const liveDelivery: LiveDeliveryState | null = liveShipment
+    ? {
+        live: true,
+        crewLine: liveShipment.crewLine,
+        dropsAway: liveShipment.dropsAway,
+        destination: liveShipment.destinationLat && liveShipment.destinationLng
+          ? { lat: liveShipment.destinationLat, lng: liveShipment.destinationLng }
+          : null,
+        arrived: false,
+        pollAfterMs: livePollIntervalMs(liveShipment.dropsAway),
+        position: liveShipment.vehicleLat && liveShipment.vehicleLng
+          ? {
+              lat: liveShipment.vehicleLat,
+              lng: liveShipment.vehicleLng,
+              heading: liveShipment.vehicleHeading,
+              fixedAt: liveShipment.vehicleFixedAt ? liveShipment.vehicleFixedAt.toISOString() : null,
+            }
+          : null,
+        freshness: positionFreshness(liveShipment.vehicleFixedAt, now),
+      }
+    : null
+
   // Which parcel's questions the delivery email asked for. One order, one set
   // of questions on screen: with two parcels out with the same courier the
   // questions are the same questions, so the first booked delivery that has any
@@ -432,6 +472,13 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           </OrderNote>
         ) : (
           <OrderProgressRail steps={steps} timezone={timezone} van={van} />
+        )}
+
+        {/* Where the van actually is, while it is out. Under the rail rather
+            than inside it: the rail is the order's whole life from placed to
+            complete, and this is one afternoon of it. */}
+        {liveDelivery && liveShipment && (
+          <DeliveryLiveMap orderId={order.id} shipmentId={liveShipment.id} initial={liveDelivery} />
         )}
 
         {order.status === 'ON_HOLD' && (
@@ -607,6 +654,28 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                         Track {shipments.length === 1 ? 'your parcel' : `parcel ${index + 1}`}
                       </a>
                     )}
+                    {/* Proof of delivery, once the courier has handed one
+                        over. Our own copy of their image - see
+                        lib/tracking/signature-capture.ts for why it is not
+                        their link. */}
+                    {shipment.signatureUrl && (
+                      <div className="sod-signed">
+                        <p className="sod-signed-by">
+                          Signed for
+                          {shipment.signedBy ? ` by ${shipment.signedBy}` : ''}
+                          {shipment.signedAt ? ` at ${formatOrderDateTime(shipment.signedAt, timezone)}` : ''}
+                        </p>
+                        {/* eslint-disable-next-line @next/next/no-img-element -- a signature is
+                            an arbitrary third-party image of unknown dimensions; next/image wants
+                            a size it cannot be told and a loader this file has no business picking. */}
+                        <img
+                          className="sod-signed-img"
+                          src={shipment.signatureUrl}
+                          alt={shipment.signedBy ? `Signature of ${shipment.signedBy}` : 'Delivery signature'}
+                          loading="lazy"
+                        />
+                      </div>
+                    )}
                     {(deliveryById.get(shipment.id)?.faqs.length ?? 0) > 0 && (
                       <CourierFaqModal
                         faqs={deliveryById.get(shipment.id)?.faqs ?? []}
@@ -772,6 +841,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                 orderItemId: line.item.id,
                 productName: line.item.productName,
                 returnableQty: line.returnableQty,
+                notReturnableNote: line.notReturnableNote,
               }))}
               returnBy={detail.returnBy ? formatOrderDate(detail.returnBy, timezone) : null}
             />

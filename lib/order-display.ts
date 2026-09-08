@@ -65,6 +65,15 @@ export function formatOrderDate(date: Date, timezone: string): string {
   return formatInSiteTimezone(date, timezone, { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+/** "8 September 2026 at 14:23" - a date that has to carry a time with it,
+ *  which on this page means exactly one thing: when a courier says a parcel was
+ *  signed for. A date on its own would be answering a different question. */
+export function formatOrderDateTime(date: Date, timezone: string): string {
+  return formatInSiteTimezone(date, timezone, {
+    day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+}
+
 /** "3 Aug" - the same date with the wind taken out of it, for the progress rail,
  *  where four full dates side by side is four times more type than the four
  *  words above them and reads as the important part. The year is dropped on

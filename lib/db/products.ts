@@ -48,6 +48,12 @@ function mapProduct(r: Record<string, unknown>): ShpProduct {
     preOrderMaxQuantity: (r.pre_order_max_quantity as number | null) ?? null,
     preOrderCount: r.pre_order_count as number,
     minOrderQuantity: (r.min_order_quantity as number | null) ?? null,
+    orderSizeDeduction: r.order_size_deduction != null ? (r.order_size_deduction as { toString(): string }).toString() : null,
+    // Undefined (a query shape cached before the column existed) reads as null,
+    // which is "nothing said" and therefore returnable - the same answer the
+    // shop gave before there was a column at all.
+    returnable: (r.returnable as boolean | null | undefined) ?? null,
+    nonReturnableNote: (r.non_returnable_note as string | null) ?? null,
     relatedMode: r.related_mode as ShpProduct['relatedMode'],
     upsellMode: r.upsell_mode as ShpProduct['upsellMode'],
     relatedLimit: r.related_limit as number,
@@ -535,6 +541,11 @@ export type CreateProductInput = {
   preOrderNote?: string | null
   preOrderMaxQuantity?: number | null
   minOrderQuantity?: number | null
+  /** Per unit, decimal pounds. See migrations/042_order_size_deduction.sql. */
+  orderSizeDeduction?: string | number | null
+  /** Null (the default) is "nothing said", not "no" - see lib/returnable.ts. */
+  returnable?: boolean | null
+  nonReturnableNote?: string | null
   relatedMode?: ShpProduct['relatedMode']
   upsellMode?: ShpProduct['upsellMode']
   relatedLimit?: number | null
@@ -552,7 +563,8 @@ export async function createProduct(data: CreateProductInput): Promise<{ id: str
       "track_inventory", "stock_count", "low_stock_threshold", "out_of_stock_behaviour",
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
       "download_limit", "download_expiry", "meta_title", "meta_description",
-      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity", "min_order_quantity",
+      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity", "min_order_quantity", "order_size_deduction",
+      "returnable", "non_returnable_note",
       "related_mode", "upsell_mode", "related_limit", "upsell_limit", "catalogue_hidden", "featured_hidden"
     ) VALUES (
       ${data.name}, ${data.slug}, ${data.type}, ${data.status ?? 'DRAFT'}, ${data.description ?? null}, ${data.shortDescription ?? null}, ${data.sku ?? null}, ${data.saleSku ?? null}, ${data.supplierSku ?? null}, ${data.barcode ?? null}, ${data.supplier ?? null},
@@ -560,7 +572,8 @@ export async function createProduct(data: CreateProductInput): Promise<{ id: str
       ${data.trackInventory ?? false}, ${data.stockCount ?? null}, ${data.lowStockThreshold ?? null}, ${data.outOfStockBehaviour ?? 'BLOCK'},
       ${data.weight ?? null}, ${data.weightUnit ?? null}, ${data.dimensionL ?? null}, ${data.dimensionW ?? null}, ${data.dimensionH ?? null}, ${data.dimensionUnit ?? null},
       ${data.downloadLimit ?? null}, ${data.downloadExpiry ?? null}, ${data.metaTitle ?? null}, ${data.metaDescription ?? null},
-      ${data.isPreOrder ?? false}, ${data.preOrderDispatchDate ?? null}, ${data.preOrderNote ?? null}, ${data.preOrderMaxQuantity ?? null}, ${data.minOrderQuantity ?? null},
+      ${data.isPreOrder ?? false}, ${data.preOrderDispatchDate ?? null}, ${data.preOrderNote ?? null}, ${data.preOrderMaxQuantity ?? null}, ${data.minOrderQuantity ?? null}, ${data.orderSizeDeduction ?? null},
+      ${data.returnable ?? null}, ${data.nonReturnableNote ?? null},
       ${data.relatedMode ?? 'AUTOMATIC'}, ${data.upsellMode ?? 'AUTOMATIC'}, ${data.relatedLimit ?? 4}, ${data.upsellLimit ?? 4}, ${data.catalogueHidden ?? false}, ${data.featuredHidden ?? false}
     )
     RETURNING "id"
@@ -611,6 +624,9 @@ export type UpdateProductInput = Partial<{
   preOrderNote: string | null
   preOrderMaxQuantity: number | null
   minOrderQuantity: number | null
+  orderSizeDeduction: string | number | null
+  returnable: boolean | null
+  nonReturnableNote: string | null
   relatedMode: ShpProduct['relatedMode']
   upsellMode: ShpProduct['upsellMode']
   relatedLimit: number
@@ -632,6 +648,8 @@ const COLUMN_MAP: Record<Exclude<keyof UpdateProductInput, 'descriptionPuck'>, s
   metaDescription: 'meta_description', ogImageId: 'og_image_id', masterCategoryId: 'master_category_id', isPreOrder: 'is_pre_order',
   preOrderDispatchDate: 'pre_order_dispatch_date', preOrderNote: 'pre_order_note',
   preOrderMaxQuantity: 'pre_order_max_quantity', minOrderQuantity: 'min_order_quantity',
+  orderSizeDeduction: 'order_size_deduction',
+  returnable: 'returnable', nonReturnableNote: 'non_returnable_note',
   relatedMode: 'related_mode', upsellMode: 'upsell_mode',
   relatedLimit: 'related_limit', upsellLimit: 'upsell_limit', catalogueHidden: 'catalogue_hidden',
   featuredHidden: 'featured_hidden',
@@ -810,7 +828,8 @@ export async function duplicateProduct(sourceId: string, next: { name: string; s
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
       "digital_file_id", "download_limit", "download_expiry",
       "meta_title", "meta_description", "og_image_id", "master_category_id",
-      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity", "min_order_quantity",
+      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity", "min_order_quantity", "order_size_deduction",
+      "returnable", "non_returnable_note",
       "related_mode", "upsell_mode", "related_limit", "upsell_limit", "featured_hidden"
     )
     SELECT
@@ -820,7 +839,8 @@ export async function duplicateProduct(sourceId: string, next: { name: string; s
       "weight", "weight_unit", "dimension_l", "dimension_w", "dimension_h", "dimension_unit",
       "digital_file_id", "download_limit", "download_expiry",
       "meta_title", "meta_description", "og_image_id", "master_category_id",
-      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity", "min_order_quantity",
+      "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity", "min_order_quantity", "order_size_deduction",
+      "returnable", "non_returnable_note",
       "related_mode", "upsell_mode", "related_limit", "upsell_limit", "featured_hidden"
     FROM "shp_products" WHERE "id" = ${sourceId}
     RETURNING "id"

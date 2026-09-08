@@ -1,3 +1,4 @@
+import { NOTHING_RETURNABLE_REASON } from '@/modules/shop/lib/returnable'
 import type {
   ShpOrder,
   ShpOrderItemDispatch,
@@ -51,6 +52,16 @@ export type RequestEligibility =
 export type EligibilityInput = {
   order: Pick<ShpOrder, 'status' | 'paymentStatus'>
   dispatch: Pick<ShpOrderItemDispatch, 'outstandingQty' | 'dispatchedQty'>[]
+  /**
+   * Whether ANY line on this order may be sent back at all, as snapshotted at
+   * checkout. False on an order of nothing but made-to-order goods, where the
+   * window and the dispatch state are beside the point.
+   *
+   * Optional so a caller that has not looked it up gets today's behaviour rather
+   * than a silent "no" - the per-line check in lib/db/order-requests.ts is the
+   * one that actually holds the line, and it reads the columns itself.
+   */
+  anyReturnable?: boolean
   /** The most recent parcel's ship date, or null if nothing has gone out. */
   lastShippedAt: Date | null
   config: { cancelRequestsEnabled: boolean; returnRequestsEnabled: boolean; returnWindowDays: number }
@@ -95,6 +106,12 @@ export function canRequestReturn(input: EligibilityInput): RequestEligibility {
   }
   if (!input.dispatch.some((line) => line.dispatchedQty > 0)) {
     return { allowed: false, reason: 'Nothing from this order has been dispatched yet, so there is nothing to send back.' }
+  }
+  // Checked BEFORE the window, so an order of nothing but bespoke goods is told
+  // the honest reason rather than being handed a deadline that was never going
+  // to help it. Undefined means the caller did not look, which is not a "no".
+  if (input.anyReturnable === false) {
+    return { allowed: false, reason: NOTHING_RETURNABLE_REASON }
   }
   if (input.config.returnWindowDays === 0) {
     return { allowed: false, reason: 'This shop does not take returns through the website. Get in touch and we will help.' }

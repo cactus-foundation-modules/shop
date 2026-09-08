@@ -192,7 +192,7 @@ describe('product CSV format coverage', () => {
       'download_limit', 'download_expiry', 'is_pre_order', 'pre_order_dispatch_date',
       'pre_order_note', 'pre_order_max_quantity', 'related_mode', 'related_limit',
       'upsell_mode', 'upsell_limit', 'min_order_quantity', 'supplier_sku',
-      'featured_hidden',
+      'featured_hidden', 'order_size_deduction', 'returnable', 'non_returnable_reason',
     ]) {
       expect(CSV_COLUMNS).toContain(column)
     }
@@ -218,13 +218,13 @@ describe('product CSV format coverage', () => {
   })
 
   it('types numeric and boolean columns for the sheet, and leaves identifiers as text', () => {
-    for (const column of ['price', 'sale_price', 'retail_price', 'trade_price', 'stock_count', 'weight', 'dimension_l', 'related_limit']) {
+    for (const column of ['price', 'sale_price', 'retail_price', 'trade_price', 'stock_count', 'weight', 'dimension_l', 'related_limit', 'order_size_deduction']) {
       expect(NUMERIC_CSV_COLUMNS).toContain(column)
     }
     // Leading zeros are meaningful on both, so neither may become a number.
     expect(NUMERIC_CSV_COLUMNS).not.toContain('sku')
     expect(NUMERIC_CSV_COLUMNS).not.toContain('barcode')
-    expect(BOOLEAN_CSV_COLUMNS).toEqual(['track_inventory', 'is_pre_order', 'featured_hidden'])
+    expect(BOOLEAN_CSV_COLUMNS).toEqual(['track_inventory', 'is_pre_order', 'featured_hidden', 'returnable'])
   })
 })
 

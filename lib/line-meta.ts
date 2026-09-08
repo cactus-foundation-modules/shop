@@ -144,6 +144,19 @@ export type CartLineResolution = {
   // Absent/null leaves the line standing on its own product row, exactly as an
   // ordinary product does.
   minOrder?: CartLineMinOrder | null
+  // Whether this line may be sent back, where the product row alone gives the
+  // wrong answer - the same shape of problem CartLineMinOrder.quantity solves,
+  // and for the same reason. A variation child's own `returnable` is very nearly
+  // always NULL, meaning "whatever the listing says", and only the resolver can
+  // see the listing. Shop takes this over the row when it is given.
+  //
+  // The STRICTER of the two wins where both have an opinion: a resolver saying
+  // false settles it. Neither source may talk the other into offering a return
+  // the shop does not do.
+  //
+  // Absent/undefined leaves the line on its own row, so an older companion
+  // module (or none at all) behaves exactly as it does today.
+  returnable?: boolean | null
 }
 
 // What a resolver can tell shop about a line's minimum order, where the product

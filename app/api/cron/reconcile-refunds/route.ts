@@ -19,7 +19,16 @@ async function handle(request: NextRequest) {
   const auth = request.headers.get('authorization')
   if (auth !== `Bearer ${secret}`) return errorResponse('Unauthorized', 401)
 
-  const outcomes = await reconcileStaleRefunds((providerId) => getPaymentProvider(providerId) ?? null)
+  let outcomes
+  try {
+    outcomes = await reconcileStaleRefunds((providerId) => getPaymentProvider(providerId) ?? null)
+  } catch (err) {
+    // Caught and reported rather than thrown. An uncaught error here is masked by the
+    // framework into a bare "Internal Server Error", so core's cron dispatcher records
+    // "HTTP 500" and the owner is told an hourly job failed with no hint as to why -
+    // which is how a query naming a column that has never existed ran unnoticed.
+    return errorResponse(err instanceof Error ? err.message : 'the refund reconcile failed', 500)
+  }
 
   // A refund this run has just confirmed as gone through is money that moved
   // without anybody watching, so it has had no credit note and the books have

@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { TabStrip } from '@/components/admin/TabStrip'
 import { setTabParams } from '@/modules/shop/lib/admin/tab-url'
 import type { ShpTaxClass, ShpShippingZone, ShpTaxZoneRate, ShpShippingRate, ShpShippingRateType } from '@/modules/shop/lib/types'
 import type { PriceDisplayTax } from '@/modules/shop/lib/tax-display-shared'
 import { useConfirm } from '@/modules/shop/components/admin/dialogs'
+import { isUnderstoodPostcodePattern } from '@/modules/shop/lib/postcode-patterns'
 import { CourierSettingsPanel } from '@/modules/shop/components/admin/CourierSettingsPanel'
 
 const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.25rem 0' }
@@ -47,7 +48,11 @@ function slugifyTaxClassCode(name: string): string {
 }
 
 function zoneSummary(z: ShpShippingZone): string {
-  return z.postcodes.length === 0 ? 'All postcodes (catch-all)' : `${z.postcodes.length} postcode prefix${z.postcodes.length === 1 ? '' : 'es'}`
+  const covered = z.postcodes.length === 0
+    ? 'All postcodes (catch-all)'
+    : `${z.postcodes.length} postcode rule${z.postcodes.length === 1 ? '' : 's'}`
+  if (z.excludedPostcodes.length === 0) return covered
+  return `${covered}, ${z.excludedPostcodes.length} excluded`
 }
 
 /** A whole-page tab another module hangs beside this screen through `shop.tax-shipping-tabs`. */
@@ -81,6 +86,17 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
   const [openZoneId, setOpenZoneId] = useState<string | null>(null)
   const [zoneName, setZoneName] = useState('')
   const [zonePostcodesText, setZonePostcodesText] = useState('')
+  const [zoneExcludedText, setZoneExcludedText] = useState('')
+  // Lines that would sit in the box doing nothing. Worth pointing out rather
+  // than saving quietly: an exclusion list is usually pasted in one go, and a
+  // rule that silently matches nobody is only noticed when an order arrives
+  // from somewhere the shop does not deliver to.
+  const unreadableZoneLines = useMemo(
+    () => `${zonePostcodesText}\n${zoneExcludedText}`
+      .split('\n').map((line) => line.trim()).filter(Boolean)
+      .filter((line) => !isUnderstoodPostcodePattern(line)),
+    [zonePostcodesText, zoneExcludedText],
+  )
   const [zoneMessage, setZoneMessage] = useState('')
 
   const [taxRateInputs, setTaxRateInputs] = useState<Record<string, string>>({})
@@ -207,17 +223,18 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
   async function createZone() {
     const res = await fetch('/api/m/shop/admin/shipping-zones', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'New zone', postcodes: [] }),
+      body: JSON.stringify({ name: 'New zone', postcodes: [], excludedPostcodes: [] }),
     })
     const { id } = await res.json()
     loadZones()
-    openZone(id, 'New zone', [])
+    openZone(id, 'New zone', [], [])
   }
 
-  function openZone(id: string, name: string, postcodes: string[]) {
+  function openZone(id: string, name: string, postcodes: string[], excludedPostcodes: string[]) {
     setOpenZoneId(id)
     setZoneName(name)
     setZonePostcodesText(postcodes.join('\n'))
+    setZoneExcludedText(excludedPostcodes.join('\n'))
     setZoneMessage('')
     setEditingRateId(null)
     fetch(`/api/m/shop/admin/tax-zone-rates?zoneId=${id}`).then(async (r) => {
@@ -232,16 +249,17 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
 
   function toggleZone(z: ShpShippingZone) {
     if (openZoneId === z.id) setOpenZoneId(null)
-    else openZone(z.id, z.name, z.postcodes)
+    else openZone(z.id, z.name, z.postcodes, z.excludedPostcodes)
   }
 
   async function saveZone() {
     if (!openZoneId) return
     setZoneMessage('')
     const postcodes = zonePostcodesText.split('\n').map((s) => s.trim()).filter(Boolean)
+    const excludedPostcodes = zoneExcludedText.split('\n').map((s) => s.trim()).filter(Boolean)
     await fetch(`/api/m/shop/admin/shipping-zones/${openZoneId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: zoneName, postcodes }),
+      body: JSON.stringify({ name: zoneName, postcodes, excludedPostcodes }),
     })
     setZoneMessage('Zone saved.')
     loadZones()
@@ -480,7 +498,13 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
         <details style={detailsStyle}>
           <summary style={summaryStyle}>How zones work</summary>
           <p className="field-hint" style={{ marginTop: '0.5rem' }}>
-            For one flat rate covering your whole country (e.g. 20% UK VAT everywhere), create a single zone and leave its postcode list empty - no need to list every postcode. Only add prefixes if you need different rates for different regions (e.g. a zone per US state for state sales tax). A prefix matches anything starting with it - &quot;SW&quot; covers all London SW postcodes, &quot;9&quot; covers US ZIP codes starting with 9. The longest matching prefix wins, so a shopper is only ever placed in one zone.
+            For one flat rate covering your whole country (e.g. 20% UK VAT everywhere), create a single zone and leave its postcode list empty - no need to list every postcode. Only add rules if you need different rates for different regions (e.g. a zone per US state for state sales tax). The most specific rule wins, so a shopper is only ever placed in one zone.
+          </p>
+          <p className="field-hint" style={{ marginTop: '0.5rem' }}>
+            Both boxes take the same two kinds of line. A <strong>prefix</strong> matches anything starting with it - &quot;SW&quot; covers all London SW postcodes, &quot;9&quot; covers US ZIP codes starting with 9. A <strong>range</strong> covers whole districts by number - &quot;AB30-AB32&quot; is AB30, AB31 and AB32 and nothing else. Use a range wherever the numbers matter: &quot;PO30-PO41&quot; is the Isle of Wight and leaves Portsmouth&apos;s PO3 alone, which no prefix can do.
+          </p>
+          <p className="field-hint" style={{ marginTop: '0.5rem' }}>
+            The excluded box wins over everything, this zone&apos;s own list included. That is how you say &quot;everywhere except the Highlands&quot;: leave the covered box empty and paste the Highlands into the excluded one. If a shopper&apos;s postcode is excluded everywhere, the checkout tells them you do not deliver there rather than taking the order for nothing - you can word that message under Settings.
           </p>
         </details>
 
@@ -503,16 +527,26 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
             {openZoneId === z.id && (
               <div style={{ padding: '0.75rem', borderTop: '1px solid var(--color-border)' }}>
                 {zoneMessage && <div className="alert alert-success">{zoneMessage}</div>}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
                   <div className="field" style={{ margin: 0 }}>
                     <label>Zone name</label>
                     <input value={zoneName} onChange={(e) => setZoneName(e.target.value)} />
                   </div>
                   <div className="field" style={{ margin: 0 }}>
-                    <label>Postcode prefixes (one per line, optional)</label>
-                    <textarea rows={3} value={zonePostcodesText} onChange={(e) => setZonePostcodesText(e.target.value)} placeholder={'Leave blank to cover every postcode'} />
+                    <label htmlFor="zone-postcodes">Postcodes covered (one per line, optional)</label>
+                    <textarea id="zone-postcodes" rows={4} value={zonePostcodesText} onChange={(e) => setZonePostcodesText(e.target.value)} placeholder={'Leave blank to cover every postcode'} />
+                  </div>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label htmlFor="zone-excluded">Postcodes excluded (one per line, optional)</label>
+                    <textarea id="zone-excluded" rows={4} value={zoneExcludedText} onChange={(e) => setZoneExcludedText(e.target.value)} placeholder={'e.g. IV1-IV56'} />
                   </div>
                 </div>
+                {unreadableZoneLines.length > 0 && (
+                  <div className="alert alert-warning" style={{ marginTop: '0.75rem' }}>
+                    These lines are not a postcode or a range, so they will match nothing:{' '}
+                    <strong>{unreadableZoneLines.join(', ')}</strong>. A range needs the same area on both sides, like AB30-AB32.
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
                   <button className="btn btn-primary btn-sm" onClick={saveZone}>Save zone</button>
                   <button className="btn btn-ghost btn-sm" style={{ color: 'var(--color-destructive)' }} onClick={deleteZone}>Delete zone</button>

@@ -176,4 +176,10 @@ export const ordersScreenCss = `
   .sox-toolbar{gap:0.375rem}
   .sox-orderhead h1{font-size:1.25rem}
 }
+
+/* Proof of delivery on the order screen. Sized down hard: the courier sends a
+   1800px scan, and nobody needs a wall poster of somebody's signature. */
+.sox-signature{margin-top:0.375rem;max-width:12rem;width:100%;height:auto;
+  border:1px solid var(--color-border);border-radius:0.25rem;
+  background:var(--color-surface);padding:0.25rem}
 `

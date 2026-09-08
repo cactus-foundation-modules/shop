@@ -10,13 +10,17 @@ export async function GET() {
   return NextResponse.json({ zones })
 }
 
-const Body = z.object({ name: z.string().min(1), postcodes: z.array(z.string()).default([]) })
+const Body = z.object({
+  name: z.string().min(1),
+  postcodes: z.array(z.string()).default([]),
+  excludedPostcodes: z.array(z.string()).default([]),
+})
 
 export async function POST(request: NextRequest) {
   const gate = await requireShopUser('shop.manage')
   if (gate.error) return gate.error
   const parsed = Body.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid zone' }, { status: 400 })
-  const { id } = await createShippingZone(parsed.data.name, parsed.data.postcodes)
+  const { id } = await createShippingZone(parsed.data.name, parsed.data.postcodes, parsed.data.excludedPostcodes)
   return NextResponse.json({ id }, { status: 201 })
 }

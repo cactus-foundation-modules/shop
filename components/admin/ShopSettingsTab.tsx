@@ -9,6 +9,7 @@ import type { ShpAdminPaymentMethod } from '@/modules/shop/lib/payments/admin-me
 import { PaymentsSettings, PAYMENT_METHODS_TAB, isHostedPaymentPanelTab } from '@/modules/shop/components/admin/PaymentsSettings'
 import { PRICE_TYPES, PRICE_TYPE_META } from '@/modules/shop/lib/pricing'
 import { setTabParams, readTabParam } from '@/modules/shop/lib/admin/tab-url'
+import { DEFAULT_EXCLUDED_POSTCODE_MESSAGE } from '@/modules/shop/lib/excluded-postcode'
 
 type SubTab = 'general' | 'checkout' | 'payments' | 'invoices' | 'notifications'
 
@@ -392,6 +393,27 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
           )}
 
           <hr style={hr} />
+          <h3 style={sectionHeading}>Order-size deduction</h3>
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.orderSizeDeductionEnabled} onChange={(e) => set('orderSizeDeductionEnabled', e.target.checked)} />
+            Take an amount off once a basket is big enough
+          </label>
+          <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
+            For when a supplier builds a per-item amount into what they charge you and stops charging it once you order enough at once. Set the amount on each product under Prices, and how big the basket has to be on the supplier under Suppliers. It only ever comes off items that are on offer, and nothing at all happens until you have set both.
+          </p>
+          {config.orderSizeDeductionEnabled && (
+            <>
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.orderSizeDeductionShowInBasket} onChange={(e) => set('orderSizeDeductionShowInBasket', e.target.checked)} />
+                Say so in the basket
+              </label>
+              <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
+                A line telling shoppers how much more they need to add, or how much has already come off. Off shows the lower prices with no explanation.
+              </p>
+            </>
+          )}
+
+          <hr style={hr} />
           <h3 style={sectionHeading}>SEO</h3>
           <div className="field"><label>Shop title</label><input value={config.shopTitle} onChange={(e) => set('shopTitle', e.target.value)} /></div>
           <div className="field"><label>Meta description</label><textarea rows={3} value={config.shopMetaDescription} onChange={(e) => set('shopMetaDescription', e.target.value)} /></div>
@@ -539,6 +561,19 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               <label>Maximum order value</label>
               <input type="number" step="0.01" min={0} value={config.maximumOrderValue ?? ''} onChange={(e) => set('maximumOrderValue', e.target.value ? Number(e.target.value) : null)} placeholder="No maximum" />
             </div>
+          </div>
+
+          <div className="field">
+            <label>What to say about a postcode you do not deliver to</label>
+            <input
+              value={config.excludedPostcodeMessage}
+              onChange={(e) => set('excludedPostcodeMessage', e.target.value)}
+              placeholder={DEFAULT_EXCLUDED_POSTCODE_MESSAGE}
+            />
+            <p className="field-hint">
+              Shown at checkout when the delivery postcode is on a zone&rsquo;s excluded list and no other zone covers it. Set those lists up
+              under Tax &amp; shipping. Leave this blank for the wording above.
+            </p>
           </div>
 
           <hr style={hr} />

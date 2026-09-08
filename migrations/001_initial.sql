@@ -28,6 +28,10 @@ CREATE TABLE IF NOT EXISTS "shp_shipping_zones" (
     -- Array of postcode prefixes or exact codes — JSONB rather than TEXT[] to
     -- match the codebase's one existing array-column precedent (dir_entries.tags).
     "postcodes" JSONB NOT NULL DEFAULT '[]',
+    -- Postcodes this zone deliberately does not cover, same shape and same
+    -- reasoning as above. Carves the Highlands and the islands back out of an
+    -- otherwise catch-all zone, which no inclusion list can express.
+    "excluded_postcodes" JSONB NOT NULL DEFAULT '[]',
     "name" TEXT NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -167,6 +171,22 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
     -- NULL, and anything below 1, mean no minimum. A shop-variations child row
     -- carries its own, falling back to its parent's when it has none.
     "min_order_quantity" INTEGER,
+
+    -- An amount PER UNIT already inside this line's price that comes back off
+    -- once the basket holds enough of its supplier's goods
+    -- (042_order_size_deduction.sql). NULL means none, which is not a recorded 0.
+    -- The threshold it answers to lives on the supplier, not here.
+    "order_size_deduction" NUMERIC(10,2),
+
+    -- Whether this may be sent back (043_returnable.sql). NULLABLE on purpose:
+    -- NULL is "nothing said", which on a shop-variations child row means
+    -- "whatever the listing says". Resolved child, then parent, then true, so a
+    -- catalogue that never touches it stays fully returnable.
+    "returnable" BOOLEAN,
+    -- The owner's own wording for why not, shown in place of the stock
+    -- sentence. Only meaningful where "returnable" is false, and not read off a
+    -- variation child - a child borrows its listing's.
+    "non_returnable_note" TEXT,
 
     -- Related products / upsells (addendum D)
     "related_mode" TEXT NOT NULL DEFAULT 'AUTOMATIC',
@@ -533,6 +553,17 @@ CREATE TABLE IF NOT EXISTS "shp_order_items" (
     -- priced server-side by a shop.cart-line-resolver provider. NULL when the
     -- line carries no personalisation.
     "line_meta" JSONB,
+    -- What came off this line's unit price for order size, snapshotted so the
+    -- order can still say so after the catalogue has moved on
+    -- (042_order_size_deduction.sql). Per unit, and already taken off
+    -- "unit_price" - it is a record of what happened, never an amount to
+    -- subtract again. NULL on every line that carried none.
+    "order_size_deduction" NUMERIC(10,2),
+    -- Whether this line may be sent back, resolved and snapshotted at checkout
+    -- (043_returnable.sql). Snapshotted rather than read back off the product
+    -- because the product can be deleted, and because flipping a product to
+    -- non-returnable must not strip the right from orders already placed.
+    "returnable" BOOLEAN NOT NULL DEFAULT true,
 
     CONSTRAINT "shp_order_items_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "shp_order_items_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE,
@@ -687,6 +718,31 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     "tracking_stage_at" TIMESTAMP(3),
     "tracking_checked_at" TIMESTAMP(3),
     "delivered_at" TIMESTAMP(3),
+    -- Where the van is, while it is out with this parcel, and the courier's own
+    -- sentence about how far off it is. Positions are TEXT in the courier's own
+    -- digits: they are copied and handed to a map, never summed. `fixed_at` is
+    -- when the VAN reported, `polled_at` when we last read one - the gap between
+    -- them is what tells a customer whether the van is stopped or the feed is.
+    -- Also shipped as migrations/041_delivery_live_tracking.sql.
+    "tracking_client_id" TEXT,
+    "tracking_route_id" TEXT,
+    "crew_line" TEXT,
+    "drops_away" INTEGER,
+    "vehicle_lat" TEXT,
+    "vehicle_lng" TEXT,
+    "vehicle_heading" INTEGER,
+    "vehicle_fixed_at" TIMESTAMP(3),
+    "vehicle_polled_at" TIMESTAMP(3),
+    -- Where the courier's van is heading, as their page gives it. Their pin
+    -- rather than our address: it is what the crew is actually driving to.
+    "destination_lat" TEXT,
+    "destination_lng" TEXT,
+    -- Proof of delivery, kept as OUR copy of the courier's image rather than a
+    -- link to theirs. Also in migrations/041_delivery_live_tracking.sql.
+    "signed_by" TEXT,
+    "signed_at" TIMESTAMP(3),
+    "signature_url" TEXT,
+    "signature_key" TEXT,
     "notes" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

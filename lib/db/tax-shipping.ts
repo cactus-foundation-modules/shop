@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
+import { bestPostcodeMatch, matchesAnyPostcodePattern } from '@/modules/shop/lib/postcode-patterns'
 import type { ShpTaxClass, ShpShippingZone, ShpTaxZoneRate, ShpShippingRate } from '@/modules/shop/lib/types'
 
 // ---------------------------------------------------------------------------
@@ -78,6 +79,7 @@ function mapZone(r: Record<string, unknown>): ShpShippingZone {
     id: r.id as string,
     name: r.name as string,
     postcodes: (r.postcodes as string[] | null) ?? [],
+    excludedPostcodes: (r.excluded_postcodes as string[] | null) ?? [],
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
   }
@@ -93,17 +95,20 @@ export async function getShippingZoneById(id: string): Promise<ShpShippingZone |
   return rows[0] ? mapZone(rows[0]) : null
 }
 
-export async function createShippingZone(name: string, postcodes: string[]): Promise<{ id: string }> {
+export async function createShippingZone(name: string, postcodes: string[], excludedPostcodes: string[] = []): Promise<{ id: string }> {
   const rows = await prisma.$queryRaw<[{ id: string }]>`
-    INSERT INTO "shp_shipping_zones" ("name", "postcodes") VALUES (${name}, ${JSON.stringify(postcodes)}::jsonb) RETURNING "id"
+    INSERT INTO "shp_shipping_zones" ("name", "postcodes", "excluded_postcodes")
+    VALUES (${name}, ${JSON.stringify(postcodes)}::jsonb, ${JSON.stringify(excludedPostcodes)}::jsonb)
+    RETURNING "id"
   `
   return rows[0]
 }
 
-export async function updateShippingZone(id: string, fields: { name?: string; postcodes?: string[] }): Promise<void> {
+export async function updateShippingZone(id: string, fields: { name?: string; postcodes?: string[]; excludedPostcodes?: string[] }): Promise<void> {
   const sets: Prisma.Sql[] = []
   if (fields.name !== undefined) sets.push(Prisma.sql`"name" = ${fields.name}`)
   if (fields.postcodes !== undefined) sets.push(Prisma.sql`"postcodes" = ${JSON.stringify(fields.postcodes)}::jsonb`)
+  if (fields.excludedPostcodes !== undefined) sets.push(Prisma.sql`"excluded_postcodes" = ${JSON.stringify(fields.excludedPostcodes)}::jsonb`)
   if (sets.length === 0) return
   sets.push(Prisma.sql`"updated_at" = CURRENT_TIMESTAMP`)
   await prisma.$executeRaw`UPDATE "shp_shipping_zones" SET ${Prisma.join(sets, ', ')} WHERE "id" = ${id}`
@@ -126,26 +131,55 @@ export async function getDefaultTaxZoneId(): Promise<string | null> {
   return (zones.find((z) => z.postcodes.length === 0) ?? zones[0]!).id
 }
 
-// Longest matching postcode prefix (case-insensitive) wins - a shopper's full
-// postcode is checked against each zone's prefix list. A zone with no prefixes
-// listed is a catch-all, matched only when no other zone's prefix matches -
-// this is how a single "United Kingdom" zone can cover the whole country
-// without an admin listing every postcode.
-export async function findShippingZoneForPostcode(postcode: string): Promise<ShpShippingZone | null> {
-  const zones = await listShippingZones()
-  const normalised = postcode.replace(/\s+/g, '').toUpperCase()
-  let best: { zone: ShpShippingZone; prefixLen: number } | null = null
-  let catchAll: ShpShippingZone | null = null
+/** All decideShippingZone needs of a zone. */
+export type ZoneLists = { postcodes: string[]; excludedPostcodes: string[] }
+
+/** A zone decision, and why there is no zone when there is no zone. */
+export type ShippingZoneResolution = {
+  zone: ShpShippingZone | null
+  /**
+   * True only when the shopper had a zone taken away from them - some zone's
+   * excluded list named their postcode and nothing else picked them up. It is
+   * false for a shop that simply has no zones set up yet, which is the ordinary
+   * state of a new install and must not be mistaken for a refusal to deliver.
+   */
+  excluded: boolean
+}
+
+// Longest matching postcode pattern (case-insensitive) wins - a shopper's
+// postcode is checked against each zone's list. A zone with no patterns listed
+// is a catch-all, matched only when no other zone matches - this is how a single
+// "United Kingdom" zone can cover the whole country without an admin listing
+// every postcode.
+//
+// A zone's excluded list is checked first and takes the zone out of the running
+// outright, catch-all included. That is the point of it: the way to say "we
+// deliver everywhere except the Highlands" is a catch-all zone that carves them
+// back out, and an exclusion that lost to the catch-all would carve nothing.
+//
+// Patterns may be prefixes or district ranges - see lib/postcode-patterns.ts.
+export async function resolveShippingZoneForPostcode(postcode: string): Promise<ShippingZoneResolution> {
+  return decideShippingZone(await listShippingZones(), postcode)
+}
+
+/** The decision itself, with the zones already in hand. Pure, so it is tested. */
+export function decideShippingZone<Z extends ZoneLists>(zones: Z[], postcode: string): { zone: Z | null; excluded: boolean } {
+  let best: { zone: Z; score: number } | null = null
+  let catchAll: Z | null = null
+  let excludedAnywhere = false
   for (const zone of zones) {
+    if (matchesAnyPostcodePattern(zone.excludedPostcodes, postcode)) { excludedAnywhere = true; continue }
     if (zone.postcodes.length === 0) { catchAll = catchAll ?? zone; continue }
-    for (const raw of zone.postcodes) {
-      const prefix = raw.replace(/\s+/g, '').toUpperCase()
-      if (prefix && normalised.startsWith(prefix) && (!best || prefix.length > best.prefixLen)) {
-        best = { zone, prefixLen: prefix.length }
-      }
-    }
+    const score = bestPostcodeMatch(zone.postcodes, postcode)
+    if (score !== null && (!best || score > best.score)) best = { zone, score }
   }
-  return best?.zone ?? catchAll
+  const zone = best?.zone ?? catchAll
+  return { zone, excluded: zone === null && excludedAnywhere }
+}
+
+/** The zone alone, for callers with nothing useful to do about an exclusion. */
+export async function findShippingZoneForPostcode(postcode: string): Promise<ShpShippingZone | null> {
+  return (await resolveShippingZoneForPostcode(postcode)).zone
 }
 
 // ---------------------------------------------------------------------------
