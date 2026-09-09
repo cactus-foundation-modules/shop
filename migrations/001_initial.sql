@@ -627,6 +627,37 @@ CREATE TABLE IF NOT EXISTS "shp_checkout_drafts" (
 CREATE INDEX IF NOT EXISTS "shp_checkout_drafts_expires_at_idx" ON "shp_checkout_drafts" ("expires_at");
 
 -- ---------------------------------------------------------------------------
+-- Payments that were taken and produced no order.
+--
+-- A draft becomes an order at settlement, on the far side of the money, so a
+-- failure there leaves the shop paid for something it has no record of. This is
+-- what materialiseDraftOrder writes down before re-throwing, and what the orders
+-- screen shouts about. See migrations/048_stranded_payments.sql for the whole
+-- story; the two are kept identical so a fresh install and an updated one land
+-- in the same place.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS "shp_stranded_payments" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "draft_id" TEXT NOT NULL,
+    "order_number" TEXT NOT NULL,
+    "payment_method" TEXT NOT NULL,
+    "customer_email" TEXT,
+    "customer_name" TEXT,
+    "total" NUMERIC(10,2) NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'GBP',
+    "error" TEXT NOT NULL,
+    "attempts" INTEGER NOT NULL DEFAULT 1,
+    "first_seen_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "last_seen_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "shp_stranded_payments_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "shp_stranded_payments_draft_id_key" ON "shp_stranded_payments" ("draft_id");
+CREATE INDEX IF NOT EXISTS "shp_stranded_payments_last_seen_at_idx" ON "shp_stranded_payments" ("last_seen_at");
+
+-- ---------------------------------------------------------------------------
 -- Digital downloads
 -- ---------------------------------------------------------------------------
 

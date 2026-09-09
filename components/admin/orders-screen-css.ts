@@ -188,4 +188,27 @@ export const ordersScreenCss = `
 .sox-signature{margin-top:0.375rem;max-width:12rem;width:100%;height:auto;
   border:1px solid var(--color-border);border-radius:0.25rem;
   background:var(--color-surface);padding:0.25rem}
+
+/* "We took the money and could not write the order." The loudest thing on the
+   orders screen, deliberately: this is the one failure the shop cannot see any
+   other way, and the customer's next move is the telephone. Warning tokens
+   rather than a second palette, so it tracks light and dark like everything
+   else. See lib/stranded-payments. */
+.sox-stranded{margin-bottom:1rem;padding:0.875rem 1rem;border-radius:0.5rem;
+  background:var(--color-warning-bg);border:1px solid var(--color-warning-border);
+  color:var(--color-warning)}
+.sox-stranded-title{margin:0;font-size:0.9375rem;font-weight:650}
+.sox-stranded-lead{margin:0.25rem 0 0.625rem;font-size:0.8125rem;line-height:1.45}
+.sox-stranded-list{margin:0;padding:0;list-style:none;display:grid;gap:0.5rem}
+.sox-stranded-item{padding:0.5rem 0.625rem;border-radius:0.375rem;
+  border:1px solid var(--color-warning-border);background:var(--color-surface)}
+.sox-stranded-line{display:flex;flex-wrap:wrap;gap:0.5rem;align-items:baseline;
+  font-size:0.8125rem;color:var(--color-text)}
+.sox-stranded-num{font-weight:650}
+.sox-stranded-meta{font-size:0.75rem;color:var(--color-text-muted)}
+/* The raw failure, kept readable but out of the way - it is for whoever ends up
+   diagnosing it, not for the owner deciding whether to ring the customer. */
+.sox-stranded-error{margin:0.375rem 0 0;font-size:0.6875rem;line-height:1.4;
+  font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);
+  color:var(--color-text-muted);word-break:break-word;overflow-wrap:anywhere}
 `

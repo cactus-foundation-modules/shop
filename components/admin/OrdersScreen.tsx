@@ -53,6 +53,21 @@ type Overview = {
   revenue30d: string
 }
 
+// A payment that was taken where the order could not be written. Mirrors
+// StrandedPayment in lib/stranded-payments; see that file for why it exists.
+type Stranded = {
+  draftId: string
+  orderNumber: string
+  paymentMethod: string
+  customerEmail: string | null
+  customerName: string | null
+  total: string
+  currency: string
+  error: string
+  attempts: number
+  firstSeenAt: string
+}
+
 // Every control on the screen lives in one object, which is also exactly what
 // goes in the query string. That is what makes a filtered list linkable, gives
 // the browser's back button something sensible to do, and lets a tile at the
@@ -148,6 +163,7 @@ export function OrdersScreen() {
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [metrics, setMetrics] = useState<Record<string, RowMetrics>>({})
   const [overview, setOverview] = useState<Overview | null>(null)
+  const [stranded, setStranded] = useState<Stranded[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -216,7 +232,12 @@ export function OrdersScreen() {
   // current filter, so paging through a list has no business re-running them.
   useEffect(() => {
     fetch('/api/m/shop/admin/orders?perPage=1&stats=1')
-      .then(async (r) => { if (r.ok) setOverview((await r.json()).overview ?? null) })
+      .then(async (r) => {
+        if (!r.ok) return
+        const body = (await r.json()) as { overview?: Overview | null; stranded?: Stranded[] | null }
+        setOverview(body.overview ?? null)
+        setStranded(body.stranded ?? [])
+      })
       .catch(() => {})
   }, [overviewToken])
 
@@ -329,6 +350,38 @@ export function OrdersScreen() {
           <a className="btn btn-secondary btn-sm" href={`/api/m/shop/admin/orders/export?${filtersToParams(filters)}`}>Export CSV</a>
         </div>
       </div>
+
+      {stranded.length > 0 && (
+        <div className="sox-stranded" role="alert">
+          <p className="sox-stranded-title">
+            {stranded.length === 1
+              ? 'A payment was taken but the order was never created'
+              : `${stranded.length} payments were taken but their orders were never created`}
+          </p>
+          <p className="sox-stranded-lead">
+            The customer has been charged and there is no order here to show for it. Check the payment with your
+            provider before doing anything else - in most cases the order can be recovered rather than refunded.
+          </p>
+          <ul className="sox-stranded-list">
+            {stranded.map((s) => (
+              <li key={s.draftId} className="sox-stranded-item">
+                <div className="sox-stranded-line">
+                  <span className="sox-stranded-num">{s.orderNumber}</span>
+                  <span>{formatMoney(s.total, currencySymbol)}</span>
+                  <span>{s.paymentMethod}</span>
+                  {s.customerName && <span>{s.customerName}</span>}
+                  {s.customerEmail && <span className="sox-stranded-meta">{s.customerEmail}</span>}
+                </div>
+                <div className="sox-stranded-meta">
+                  First seen {new Date(s.firstSeenAt).toLocaleString('en-GB')}
+                  {s.attempts > 1 ? ` - ${s.attempts} attempts` : ''}
+                </div>
+                <p className="sox-stranded-error">{s.error}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="sox-tiles">
         <button

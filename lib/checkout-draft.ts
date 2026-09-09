@@ -20,6 +20,7 @@ import { prisma } from '@/lib/db/prisma'
 import { randomUUID } from 'crypto'
 import { getOrderById, insertOrderRows, type CreateOrderInput } from '@/modules/shop/lib/db/orders'
 import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
+import { clearStrandedPayment, recordStrandedPayment } from '@/modules/shop/lib/stranded-payments'
 
 // How long a draft is kept before it is swept. Deliberately generous: a bank
 // payment can take days to confirm, and a draft thrown away while its money is
@@ -123,9 +124,61 @@ export async function getCheckoutDraft(id: string): Promise<ShpCheckoutDraft | n
  */
 export async function materialiseDraftOrder(id: string): Promise<{ id: string; orderNumber: string } | null> {
   const existing = await getOrderById(id)
-  if (existing) return { id: existing.id, orderNumber: existing.orderNumber }
+  if (existing) {
+    await clearStrandedPayment(id)
+    return { id: existing.id, orderNumber: existing.orderNumber }
+  }
 
-  const created = await prisma.$transaction(async (tx) => {
+  const created = await createFromDraft(id)
+
+  // No draft: either it was swept, or the caller that held the lock has just
+  // turned it into the order. Look again before giving up.
+  if (!created) {
+    const settled = await getOrderById(id)
+    if (settled) {
+      await clearStrandedPayment(id)
+      return { id: settled.id, orderNumber: settled.orderNumber }
+    }
+    return null
+  }
+
+  // Whatever went wrong before, it did not stop this order existing. An alarm
+  // that stays lit after the thing it is warning about has resolved itself is an
+  // alarm the owner learns to ignore.
+  await clearStrandedPayment(id)
+
+  // The same call the immediate path makes the moment an order is created, and
+  // for the same reason: this is the first point at which a module can say what
+  // this payment method means for these lines. Deliberately outside the
+  // transaction - a module having a bad day must not undo a paid order.
+  await applyOrderPaymentState(created.id)
+
+  return created
+}
+
+/**
+ * The draft-to-order transaction, and the alarm on its failure path.
+ *
+ * Anything thrown in here means the money is real and the order is not: every
+ * caller is a settlement path that already has a payment in its hand. Nothing
+ * else in the system can tell - the draft is left exactly as it was by the
+ * rollback, indistinguishable from a checkout somebody simply walked away from.
+ * So the failure is written down before it is re-thrown. See lib/stranded-payments.
+ *
+ * The error still propagates, unchanged. The provider's webhook should keep
+ * retrying, and a retry that succeeds clears the record on its way past.
+ */
+async function createFromDraft(id: string): Promise<{ id: string; orderNumber: string } | null> {
+  try {
+    return await runDraftTransaction(id)
+  } catch (err) {
+    await recordStrandedPayment(id, err)
+    throw err
+  }
+}
+
+async function runDraftTransaction(id: string): Promise<{ id: string; orderNumber: string } | null> {
+  return prisma.$transaction(async (tx) => {
     // FOR UPDATE is what makes the double call safe. The second caller blocks
     // here until the first commits, and then finds no draft - because deleting
     // it and inserting the order are the same transaction, so the two can never
@@ -140,19 +193,4 @@ export async function materialiseDraftOrder(id: string): Promise<{ id: string; o
     await tx.$executeRaw`DELETE FROM "shp_checkout_drafts" WHERE "id" = ${id}`
     return order
   })
-
-  // No draft: either it was swept, or the caller that held the lock has just
-  // turned it into the order. Look again before giving up.
-  if (!created) {
-    const settled = await getOrderById(id)
-    return settled ? { id: settled.id, orderNumber: settled.orderNumber } : null
-  }
-
-  // The same call the immediate path makes the moment an order is created, and
-  // for the same reason: this is the first point at which a module can say what
-  // this payment method means for these lines. Deliberately outside the
-  // transaction - a module having a bad day must not undo a paid order.
-  await applyOrderPaymentState(created.id)
-
-  return created
 }
