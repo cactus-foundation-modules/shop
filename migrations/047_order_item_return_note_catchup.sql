@@ -1,0 +1,23 @@
+-- ---------------------------------------------------------------------------
+-- The returns note on an ORDER LINE, for installs that applied 043 before it
+-- had one.
+--
+-- 043_returnable.sql was edited in place after it had already run on a live
+-- install: it started life adding the two product columns, and the two
+-- order-line columns were added to the same file afterwards. A migration that
+-- has run never runs again - the applied list is keyed by name, not content -
+-- so those installs have shp_order_items.returnable (which arrived with a
+-- DEFAULT and so appeared) but never got non_returnable_note at all.
+--
+-- That is not cosmetic. The checkout INSERTs the note onto every line it
+-- writes, so the first order placed after the update would fail outright on a
+-- column that is not there.
+--
+-- Named as its own file rather than fixing 043, for the reason the miss
+-- happened in the first place: editing an applied migration changes nothing on
+-- an install that already ran it. 043 and 001_initial.sql both keep the column
+-- so a fresh install still lands in the same place, and IF NOT EXISTS makes the
+-- overlap harmless.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE "shp_order_items" ADD COLUMN IF NOT EXISTS "non_returnable_note" TEXT;
