@@ -806,6 +806,10 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     "stops_total" INTEGER,
     "minutes_to_stop" INTEGER,
     "driver_name" TEXT,
+    -- The courier's own "it is on a van today", where they report one at all.
+    -- NULL means they do not, and the stage settings decide instead. See
+    -- migrations/050_carrier_out_for_delivery.sql.
+    "carrier_out_for_delivery" BOOLEAN,
     -- Proof of delivery, kept as OUR copy of the courier's image rather than a
     -- link to theirs. Also in migrations/041_delivery_live_tracking.sql.
     "signed_by" TEXT,

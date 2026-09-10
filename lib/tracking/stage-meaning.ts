@@ -21,6 +21,36 @@ function normalise(value: string): string {
   return value.trim().toLowerCase()
 }
 
+/**
+ * A carrier's stage, cut into the parts an owner could actually have typed.
+ *
+ * Multidrop's stages are tidy names - "Assigned to Crew" - and match whole. A
+ * carrier scan does not: GFS report "OUT FOR DELIVERY, ETA: 11:41 - 12:41" and
+ * DPD "Delivered, signed for by MOTHER". The times are different on every
+ * parcel, so an exact match against a settings box could never once succeed,
+ * and an owner would sit there typing stages that never took.
+ *
+ * Split on the punctuation carriers use to staple that detail on, and each
+ * piece is compared whole. Deliberately NOT a substring test: "delivered"
+ * appears inside "not delivered" and "attempted delivery", and a shop whose
+ * orders completed themselves on a failed delivery would be worse off than one
+ * with no automation at all.
+ */
+function segments(stage: string): string[] {
+  return normalise(stage)
+    .split(/[,;.]|\s+-\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+/** Whether one of the owner's phrases names this stage. The whole stage counts
+ *  as a segment, so a courier with tidy names behaves exactly as it did before
+ *  any of this existed. */
+function named(list: string[], stage: string): boolean {
+  const parts = new Set([normalise(stage), ...segments(stage)])
+  return list.some((entry) => parts.has(normalise(entry)))
+}
+
 export function stageMeaning(
   courier: Pick<ShpCourier, 'outForDeliveryStages' | 'deliveredStages'> | null,
   stage: string | null | undefined,
@@ -32,8 +62,8 @@ export function stageMeaning(
   // same words twice has made a mistake, and of the two readings "it has
   // arrived" is the one that stops the shop chasing a parcel that is already in
   // somebody's hallway.
-  if (courier.deliveredStages.some((s) => normalise(s) === name)) return 'delivered'
-  if (courier.outForDeliveryStages.some((s) => normalise(s) === name)) return 'out-for-delivery'
+  if (named(courier.deliveredStages, name)) return 'delivered'
+  if (named(courier.outForDeliveryStages, name)) return 'out-for-delivery'
   return 'progress'
 }
 

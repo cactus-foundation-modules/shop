@@ -812,23 +812,40 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                     {/* Proof of delivery, once the courier has handed one
                         over. Our own copy of their image - see
                         lib/tracking/signature-capture.ts for why it is not
-                        their link. */}
-                    {shipment.signatureUrl && (
+                        their link.
+
+                        Worded for both kinds, because couriers have stopped
+                        agreeing on what proof is: some still take a signature
+                        on a handset, others photograph the parcel where they
+                        left it. "Received by Beckley at 12:20" is true of both
+                        and reads like a person wrote it; "Signed for" against a
+                        photograph of a doorstep is not true of either.
+
+                        The name and time show even where no picture came with
+                        them - a courier who names who took it in has given the
+                        useful half of a proof of delivery. */}
+                    {(shipment.signatureUrl || shipment.signedBy) && (
                       <div className="sod-signed">
                         <p className="sod-signed-by">
-                          Signed for
-                          {shipment.signedBy ? ` by ${shipment.signedBy}` : ''}
+                          {shipment.signedBy ? `Received by ${shipment.signedBy}` : 'Delivered'}
                           {shipment.signedAt ? ` at ${formatOrderDateTime(shipment.signedAt, timezone)}` : ''}
                         </p>
-                        {/* eslint-disable-next-line @next/next/no-img-element -- a signature is
-                            an arbitrary third-party image of unknown dimensions; next/image wants
-                            a size it cannot be told and a loader this file has no business picking. */}
-                        <img
-                          className="sod-signed-img"
-                          src={shipment.signatureUrl}
-                          alt={shipment.signedBy ? `Signature of ${shipment.signedBy}` : 'Delivery signature'}
-                          loading="lazy"
-                        />
+                        {shipment.signatureUrl && (
+                          <>
+                            {/* eslint-disable-next-line @next/next/no-img-element -- proof of
+                                delivery is an arbitrary third-party image of unknown dimensions;
+                                next/image wants a size it cannot be told and a loader this file
+                                has no business picking. */}
+                            <img
+                              className="sod-signed-img"
+                              src={shipment.signatureUrl}
+                              alt={shipment.signedBy
+                                ? `Proof of delivery, received by ${shipment.signedBy}`
+                                : 'Proof of delivery'}
+                              loading="lazy"
+                            />
+                          </>
+                        )}
                       </div>
                     )}
                     {questionsFor(shipment.id) && (

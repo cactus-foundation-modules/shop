@@ -41,24 +41,37 @@ export function spokenMinutes(minutes: number): string {
 }
 
 export type LiveProgress = {
-  /** 'Mozam is on drop 9 of 98.', or '' where the courier has not said. */
+  /** 'Mozam has 2 more drops to make before yours.', or '' where the courier
+   *  has not said enough to work it out. */
   round: string
-  /** 'You are drop 34, about an hour and a half away.', or ''. */
+  /** 'About 15 minutes away.', or ''. */
   yours: string
-  /** How far through the round they are, 0-1, for a bar. Null where the numbers
-   *  do not support one - and never faked from the estimate, which would draw a
-   *  bar that disagreed with the sentence beside it. */
+  /** How close the driver is to THIS parcel, 0-1, for a bar.
+   *
+   *  Measured against your own drop, not against the driver's day. Drawn the
+   *  other way it is honest arithmetic and a useless picture: 32 of 98 shows a
+   *  third of a bar while the van is two streets away, which reads as "not for
+   *  hours" to the one person the bar is for. Null where the numbers do not
+   *  support one, and never faked from the estimate. */
   fraction: number | null
+}
+
+/** How many drops the driver still has before this one, or null. Negative
+ *  never happens in their data but is floored anyway: a courier who has passed
+ *  your stop without delivering is a question for somebody, not a bar drawn
+ *  backwards. */
+function dropsAway(stopNumber: number | null, stopsCompleted: number | null): number | null {
+  if (stopNumber === null || stopsCompleted === null) return null
+  return Math.max(0, stopNumber - stopsCompleted)
 }
 
 /**
  * The live progress of one delivery, in words a person would use.
  *
  * Everything is optional and every part is dropped rather than guessed. A
- * courier that gives a driver's name and nothing else says "Mozam is out with
- * it"; one that gives numbers and no name says "the driver". Nothing here ever
- * says "you are next" - that is a claim about the van, and the only honest
- * version of it is the courier's own count.
+ * courier that gives numbers and no name says "your driver". Nothing here ever
+ * says "you are next" off its own bat - that is a claim about the van, and the
+ * only honest version of it is the courier's own count reaching yours.
  */
 export function liveProgress(input: {
   driverName: string | null
@@ -70,27 +83,32 @@ export function liveProgress(input: {
   now: Date
 }): LiveProgress {
   const driver = input.driverName?.trim() || 'Your driver'
-  const { stopNumber, stopsCompleted, stopsTotal } = input
+  const away = dropsAway(input.stopNumber, input.stopsCompleted)
 
-  const round = stopsCompleted !== null && stopsTotal !== null && stopsTotal > 0
-    ? `${driver} is on drop ${stopsCompleted} of ${stopsTotal}.`
-    : ''
+  // What somebody actually wants to know: how many doors before mine. The
+  // driver's total round is not mentioned at all - it only ever made a near
+  // delivery sound far off.
+  const round = away === null
+    ? ''
+    : away === 0
+      ? `${driver} is on their way to you now.`
+      : away === 1
+        ? `${driver} has one more drop to make before yours.`
+        : `${driver} has ${away} more drops to make before yours.`
 
   const remaining = input.minutesToStop === null
     ? null
     : Math.max(0, input.minutesToStop - minutesSince(input.checkedAt, input.now))
 
-  const parts: string[] = []
-  if (stopNumber !== null) parts.push(`You are drop ${stopNumber}`)
-  // The estimate on its own is still worth saying, and reads differently
-  // depending on whether a drop number came with it.
-  if (remaining !== null) {
-    parts.push(parts.length > 0 ? spokenMinutes(remaining) : `Your parcel is ${spokenMinutes(remaining)}`)
-  }
-  const yours = parts.length > 0 ? `${parts.join(', ')}.` : ''
+  const spoken = remaining === null ? '' : spokenMinutes(remaining)
+  const yours = spoken
+    ? `${spoken.charAt(0).toUpperCase()}${spoken.slice(1)}.`
+    : ''
 
-  const fraction = stopsCompleted !== null && stopsTotal !== null && stopsTotal > 0
-    ? Math.min(1, Math.max(0, stopsCompleted / stopsTotal))
+  // Against your own drop, so the bar fills as the van approaches YOU. A round
+  // with your stop first is full from the start, which is correct.
+  const fraction = away !== null && input.stopNumber !== null && input.stopNumber > 0
+    ? Math.min(1, Math.max(0, (input.stopsCompleted as number) / input.stopNumber))
     : null
 
   return { round, yours, fraction }

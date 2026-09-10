@@ -686,6 +686,9 @@ export type ShpShipment = {
   minutesToStop: number | null
   /** The driver's first name, as the courier prints it. */
   driverName: string | null
+  /** The courier's own "on a van today", where they report one. Null means
+   *  they do not, and the stage settings decide. */
+  carrierOutForDelivery: boolean | null
   /** Ids off the courier's tracking page, needed to ask where the crew is. The
    *  route is the day's ROUND rather than this parcel, so it changes daily. */
   trackingClientId: string | null

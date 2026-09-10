@@ -1,0 +1,21 @@
+-- The courier's own answer to "is it on a van today".
+--
+-- Sits beside tracking_stage rather than replacing it, and for the same reason
+-- delivered_at sits beside the stage: some carriers report a state, others
+-- report a sentence, and the two are read completely differently.
+--
+-- A stage is matched against words the owner typed into a settings box. That
+-- works for a carrier whose stages are tidy names, and for a scan feed like
+-- GFS's where "OUT FOR DELIVERY, ETA: 11:41 - 12:41" still carries the phrase
+-- itself. It cannot work for a carrier who writes to the customer: DPD say
+-- "Your parcel will be with you today between 11:41 and 12:41", which is a
+-- different string on every parcel and contains no phrase anybody could have
+-- typed in advance. They do, however, report the fact as a boolean - and a
+-- boolean from the carrier is better evidence than a sentence somebody matched.
+--
+-- NULL means the courier does not report it, which is not the same as false:
+-- on those the stage settings decide, exactly as before.
+--
+-- Idempotent, and mirrored in 001_initial.sql for fresh installs.
+
+ALTER TABLE "shp_shipments" ADD COLUMN IF NOT EXISTS "carrier_out_for_delivery" BOOLEAN;

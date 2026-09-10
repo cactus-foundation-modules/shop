@@ -46,6 +46,7 @@ function shipment(patch: Partial<ShpShipmentWithItems>): ShpShipmentWithItems {
     stopsTotal: null,
     minutesToStop: null,
     driverName: null,
+    carrierOutForDelivery: null,
     trackingClientId: null,
     trackingRouteId: null,
     crewLine: null,
@@ -103,6 +104,46 @@ describe('parcelDelivery', () => {
     )
     expect(delivery.day).toBe('tomorrow')
     expect(delivery.window).toBe('')
+  })
+})
+
+describe('what the courier says beats what the stage words say', () => {
+  // DPD write to the customer - "Your parcel will be with you today between
+  // 11:41 and 12:41" - which no settings box could ever match. Their flag can.
+  it('is out for delivery on the courier flag alone', () => {
+    const delivery = parcelDelivery(
+      config,
+      shipment({
+        deliveryDate: '2026-09-10',
+        trackingStage: 'Your parcel will be with you today between 11:41 and 12:41',
+        carrierOutForDelivery: true,
+      }),
+      new Date('2026-09-10T09:00:00Z'),
+      'Europe/London',
+    )
+    expect(delivery.outForDelivery).toBe(true)
+  })
+
+  // Null is "they do not report it", not "no" - so the stage settings still
+  // decide on every courier that only ever gives words.
+  it('falls back to the stage words when the courier reports nothing', () => {
+    const delivery = parcelDelivery(
+      config,
+      shipment({ deliveryDate: '2026-09-10', trackingStage: 'Assigned to Crew', carrierOutForDelivery: null }),
+      new Date('2026-09-10T09:00:00Z'),
+      'Europe/London',
+    )
+    expect(delivery.outForDelivery).toBe(true)
+  })
+
+  it('believes a courier who says it is NOT out yet', () => {
+    const delivery = parcelDelivery(
+      config,
+      shipment({ deliveryDate: '2026-09-10', trackingStage: 'Assigned to Crew', carrierOutForDelivery: false }),
+      new Date('2026-09-10T09:00:00Z'),
+      'Europe/London',
+    )
+    expect(delivery.outForDelivery).toBe(false)
   })
 })
 

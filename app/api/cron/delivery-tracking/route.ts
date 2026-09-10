@@ -6,6 +6,7 @@ import {
   getOrderDispatchSummary,
   listShipmentsForTrackingPoll,
   recordCarrierReading,
+  recordReceipt,
   recordSignature,
   recordTrackingCheck,
   recordTrackingPageDetails,
@@ -107,7 +108,11 @@ async function handle(request: NextRequest) {
       outcome.checked += 1
       const stage = reading.stage
       const meaning = stageMeaning(courier, stage)
-      const delivered = meaning === 'delivered'
+      // The courier's own flag where they give one, and the owner's reading of
+      // their words where they do not. A boolean from the carrier is better
+      // evidence than a sentence somebody matched, and it is the only half of
+      // this that cannot be defeated by a courier rewording their scans.
+      const delivered = reading.delivered ?? meaning === 'delivered'
       if (stage !== parcel.trackingStage) outcome.moved += 1
       if (delivered && !parcel.deliveredAt) {
         outcome.delivered += 1
@@ -127,6 +132,7 @@ async function handle(request: NextRequest) {
         stopsTotal: reading.stopsTotal,
         minutesToStop: reading.minutesToStop,
         driverName: reading.driverName,
+        outForDelivery: reading.outForDelivery,
       })
 
       // The ids the live map asks with, where the courier gives any. Written
@@ -142,29 +148,49 @@ async function handle(request: NextRequest) {
         destinationLng: reading.destinationLng,
       })
 
+      // Proof of delivery in words, where the courier gives one. Written
+      // before the picture is attempted, because it is the half that always
+      // arrives: some carriers hand over a name and a time to anybody and keep
+      // the photograph behind a login nobody can automate.
+      if (reading.receivedBy) {
+        await recordReceipt(parcel.id, { receivedBy: reading.receivedBy, receivedAt: reading.receivedAt })
+      }
+
       // Proof of delivery, taken once and only once - see recordSignature for
       // why the guard is in the WHERE clause as well as here. Everything about
       // it is allowed to fail quietly: the parcel has still been delivered, and
       // an argument about a missing picture is a better one to have than an
       // order stuck open because a bucket was busy.
       //
-      // Only Multidrop hands one over today. That is a fact about the couriers,
-      // not a decision here: this reads whatever signature the reading came
-      // with, and a courier that starts giving one needs no change at this end.
-      if (delivered && !parcel.signatureUrl && reading.multidropHtml) {
-        const signature = parseSignature(reading.multidropHtml, timezone)
-        if (signature?.imageUrl) {
-          const order = await getOrderById(parcel.orderId)
-          const stored = await captureSignature(signature.imageUrl, order?.orderNumber ?? parcel.id)
-          if (stored) {
-            await recordSignature(parcel.id, {
-              signedBy: signature.signedBy,
-              signedAt: signature.signedAt,
-              url: stored.url,
-              key: stored.key,
-            })
-            outcome.signatures += 1
-          }
+      // Whether that picture is a signature scrawled on a handset or a
+      // photograph of a box on a doorstep is the courier's business, not this
+      // route's. Multidrop gives the first, DPD the second, and both are
+      // stored the same way and shown in the same place.
+      if (delivered && !parcel.signatureUrl) {
+        const order = await getOrderById(parcel.orderId)
+        const reference = order?.orderNumber ?? parcel.id
+        const signature = reading.multidropHtml ? parseSignature(reading.multidropHtml, timezone) : null
+
+        const stored = signature?.imageUrl
+          ? await captureSignature(signature.imageUrl, reference)
+          : reading.proofImage
+            ? await captureSignature(reading.proofImage.url, reference, {
+                headers: reading.proofImage.headers,
+                label: 'delivery-photo',
+              })
+            : null
+
+        if (stored) {
+          await recordSignature(parcel.id, {
+            // The name off the courier's own page where they printed one, and
+            // the name they gave in the payload otherwise - a photograph comes
+            // with "received by BECKLEY" rather than with a scrawl.
+            signedBy: signature?.signedBy ?? reading.receivedBy,
+            signedAt: signature?.signedAt ?? reading.receivedAt,
+            url: stored.url,
+            key: stored.key,
+          })
+          outcome.signatures += 1
         }
       }
     }))

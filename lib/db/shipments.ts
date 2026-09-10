@@ -55,6 +55,7 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     stopsTotal: (r.stops_total as number | null) ?? null,
     minutesToStop: (r.minutes_to_stop as number | null) ?? null,
     driverName: (r.driver_name as string | null) ?? null,
+    carrierOutForDelivery: (r.carrier_out_for_delivery as boolean | null) ?? null,
     trackingClientId: (r.tracking_client_id as string | null) ?? null,
     trackingRouteId: (r.tracking_route_id as string | null) ?? null,
     crewLine: (r.crew_line as string | null) ?? null,
@@ -694,6 +695,7 @@ export async function recordCarrierReading(shipmentId: string, input: {
   stopsTotal: number | null
   minutesToStop: number | null
   driverName: string | null
+  outForDelivery: boolean | null
 }): Promise<void> {
   const events = input.events.length > 0 ? JSON.stringify(input.events) : null
   await prisma.$executeRaw`
@@ -706,6 +708,7 @@ export async function recordCarrierReading(shipmentId: string, input: {
         "stops_total" = ${input.stopsTotal}::int,
         "minutes_to_stop" = ${input.minutesToStop}::int,
         "driver_name" = COALESCE(${input.driverName}::text, "driver_name"),
+        "carrier_out_for_delivery" = ${input.outForDelivery}::boolean,
         "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${shipmentId}
   `
@@ -758,6 +761,29 @@ export async function recordSignature(shipmentId: string, input: {
         "signature_key" = ${input.key},
         "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${shipmentId} AND "signature_url" IS NULL
+  `
+}
+
+/**
+ * Proof of delivery where the courier gives a name and a time but no picture.
+ *
+ * Separate from recordSignature because the guard has to be different. That one
+ * is protected by `signature_url IS NULL` - it exists to stop an hourly job
+ * fetching the same image into the bucket over and over. There is nothing to
+ * fetch here and nothing to orphan, so this may run every time; what it must
+ * NOT do is overwrite a real signature with a bare name, hence the guard on the
+ * name rather than on the url.
+ */
+export async function recordReceipt(shipmentId: string, input: {
+  receivedBy: string
+  receivedAt: Date | null
+}): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "signed_by" = ${input.receivedBy}::text,
+        "signed_at" = COALESCE(${input.receivedAt}::timestamp, "signed_at"),
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId} AND "signed_by" IS DISTINCT FROM ${input.receivedBy}::text
   `
 }
 

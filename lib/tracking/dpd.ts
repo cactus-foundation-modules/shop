@@ -90,6 +90,20 @@ export const dpdParcelSchema = z.object({
     trackingStatusCurrent: z.string().nullish(),
     parcelStatusHtml: z.string().nullish(),
     deliveredToConsumer: z.boolean().nullish(),
+    outForDeliveryDetails: z.object({
+      outForDelivery: z.boolean().nullish(),
+    }).nullish(),
+    image: z.array(z.object({
+      key: z.string().nullish(),
+      type: z.string().nullish(),
+      caption: z.string().nullish(),
+    })).nullish(),
+    deliveryDetails: z.object({
+      podDetails: z.object({
+        podName: z.string().nullish(),
+        podDate: z.string().nullish(),
+      }).nullish(),
+    }).nullish(),
     deliveryDepot: z.object({
       depotCode: z.string().nullish(),
       route: z.object({
@@ -210,6 +224,23 @@ export function readDpd(input: {
     // page, and the route's display name has come back empty on a round whose
     // driver had not started.
     driverName: dpdDriverName(data?.parcelStatusHtml) ?? routeData?.driverDisplayName?.trim() ?? null,
+    // Their own boolean, and only from the session feed - the anonymous one
+    // does not carry it, where `undefined` correctly reads as "did not say"
+    // rather than as "not delivered".
+    delivered: data?.deliveredToConsumer ?? null,
+    // Their flag, and the reason this reader does not try to match their
+    // status sentence: "Your parcel will be with you today between 11:41 and
+    // 12:41" is a different string on every parcel and on every delivery, so
+    // no words an owner could type would ever match it.
+    outForDelivery: data?.outForDeliveryDetails?.outForDelivery ?? null,
+    // Their proof of delivery, in words. The PHOTOGRAPH beside it in the same
+    // payload cannot be had: `/v1/parcels/{code}/images/{key}?imageType=S5`
+    // answers 403 to a follow-my-parcel session, and the session that can see
+    // it is the postcode login, which is behind a reCAPTCHA. A name and a time
+    // settle most arguments about a delivery anyway; the picture settles the
+    // rest, and for those there is the courier's own page.
+    receivedBy: data?.deliveryDetails?.podDetails?.podName?.trim() || null,
+    receivedAt: asDate(data?.deliveryDetails?.podDetails?.podDate),
   }
 }
 
@@ -224,4 +255,42 @@ export function dpdRouteCode(parcel: unknown): string | null {
 export function dpdDepotCode(parcel: unknown): string | null {
   const parsed = dpdParcelSchema.safeParse(parcel)
   return parsed.success ? parsed.data.data.deliveryDepot?.depotCode?.trim() ?? null : null
+}
+
+/**
+ * The proof-of-delivery photograph on a delivered parcel, where there is one.
+ *
+ * DPD stopped taking signatures and started taking pictures - the entry is
+ * `{ key, type: 'S5', caption: 'Delivered to recipient' }` and it only appears
+ * once the parcel has actually been handed over. The key is theirs and is
+ * passed through untouched, stars and all.
+ */
+export function dpdPodImage(parcel: unknown): { key: string; imageType: string } | null {
+  const parsed = dpdParcelSchema.safeParse(parcel)
+  if (!parsed.success) return null
+  for (const image of parsed.data.data.image ?? []) {
+    const key = image.key?.trim()
+    const imageType = image.type?.trim()
+    if (key && imageType) return { key, imageType }
+  }
+  return null
+}
+
+/** Where that picture is served from. */
+export function dpdImageUrl(parcelCode: string, image: { key: string; imageType: string }): string {
+  return `https://apis.track.dpd.co.uk/v1/parcels/${encodeURI(parcelCode)}/images/${encodeURI(image.key)}`
+    + `?imageType=${encodeURIComponent(image.imageType)}`
+}
+
+/**
+ * The headers that picture needs, which are not the ones anything else needs.
+ *
+ * Two things, and it is 403 without either. The session cookie - the same one
+ * that unlocks the round and the stop number - and a Referer of the tracking
+ * site's ROOT. A Referer naming the parcel is refused, which is the opposite of
+ * how referer checks usually behave and cost an afternoon to find: the address
+ * a browser would actually send is the one that does not work.
+ */
+export function dpdImageHeaders(cookie: string): Record<string, string> {
+  return { cookie, referer: 'https://track.dpd.co.uk/' }
 }

@@ -18,7 +18,15 @@ import {
   parseTrackingConfig,
 } from '@/modules/shop/lib/tracking/multidrop-page'
 import { gfsParcelNumberFromUrl, gfsScanUrl, readGfsPage } from '@/modules/shop/lib/tracking/gfs'
-import { dpdDepotCode, dpdParcelCodeFromUrl, dpdRouteCode, readDpd } from '@/modules/shop/lib/tracking/dpd'
+import {
+  dpdDepotCode,
+  dpdImageHeaders,
+  dpdImageUrl,
+  dpdParcelCodeFromUrl,
+  dpdPodImage,
+  dpdRouteCode,
+  readDpd,
+} from '@/modules/shop/lib/tracking/dpd'
 import { fetchDpdParcel, fetchDpdRoute, mintDpdSession } from '@/modules/shop/lib/tracking/dpd-session'
 import { EMPTY_READING, type TrackingReading } from '@/modules/shop/lib/tracking/reading'
 import type { ShpCourier } from '@/modules/shop/lib/courier-faqs'
@@ -32,6 +40,11 @@ export type ParcelReading = TrackingReading & {
   /** The Multidrop page, kept so the caller can go on to read a signature off
    *  it. Nothing else needs it, and no other reader has one. */
   multidropHtml: string | null
+  /** A proof-of-delivery picture the caller may fetch and keep, where the
+   *  courier has one. The headers come with it because some couriers serve it
+   *  from a session rather than a public bucket, and the reader is the only
+   *  thing here holding that session. */
+  proofImage: { url: string; headers: Record<string, string> } | null
   /** Ids the live map asks with. Multidrop only - DPD do not give a guest the
    *  round's map, and their driver endpoint has no position on it either. */
   clientId: string | null
@@ -45,6 +58,7 @@ export type ParcelReading = TrackingReading & {
 const EMPTY_PARCEL_READING: ParcelReading = {
   ...EMPTY_READING,
   multidropHtml: null,
+  proofImage: null,
   clientId: null,
   routeId: null,
   crewLine: null,
@@ -125,9 +139,19 @@ async function readDpdParcel(parcel: ShpShipment): Promise<ParcelReading | null>
 
   const reading = readDpd({ parcel: payloads.parcel, events: payloads.events, route })
   if (!reading.stage) return null
+
+  // Their photograph of the delivered parcel, which replaced the signature they
+  // used to take. Only on a delivered parcel, and only with the session - see
+  // dpdImageHeaders for the Referer that decides between a picture and a 403.
+  const image = dpdPodImage(payloads.parcel)
+  const proofImage = image && cookie
+    ? { url: dpdImageUrl(parcelCode, image), headers: dpdImageHeaders(cookie) }
+    : null
+
   return {
     ...EMPTY_PARCEL_READING,
     ...reading,
+    proofImage,
     // Their route id, kept for the same reason Multidrop's is: it says which
     // round the parcel was on, and it changes daily.
     routeId: routeCode,

@@ -48,6 +48,25 @@ export type TrackingReading = {
   minutesToStop: number | null
   /** The driver's first name, as the courier prints it. */
   driverName: string | null
+  /** The courier's own answer to "has it arrived", where they give one at all.
+   *
+   *  Null means they did not say, NOT "no" - and the difference matters: the
+   *  caller falls back to reading the stage against the shop's settings, which
+   *  is the only thing a courier who reports nothing but words can offer.
+   *  Where a courier does give a flag it wins outright, because a boolean from
+   *  the carrier is better evidence than a sentence somebody matched. */
+  delivered: boolean | null
+  /** The courier's own "it is on a van today". Null means they do not report
+   *  it, and the stage settings decide instead - which is the only thing a
+   *  courier who reports nothing but words can offer. */
+  outForDelivery: boolean | null
+  /** Who the courier says took it in, in their spelling. Proof of delivery
+   *  without a picture, and worth having on its own: most disputes are settled
+   *  by a name and a time, and some carriers give those to anybody while
+   *  keeping the photograph behind a login. */
+  receivedBy: string | null
+  /** When the courier says it was taken in, which is not when we noticed. */
+  receivedAt: Date | null
 }
 
 export const EMPTY_READING: TrackingReading = {
@@ -60,6 +79,10 @@ export const EMPTY_READING: TrackingReading = {
   stopsTotal: null,
   minutesToStop: null,
   driverName: null,
+  delivered: null,
+  outForDelivery: null,
+  receivedBy: null,
+  receivedAt: null,
 }
 
 /**

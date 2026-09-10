@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   dpdDepotCode,
+  dpdImageHeaders,
+  dpdImageUrl,
+  dpdPodImage,
   dpdDriverId,
   dpdDriverName,
   dpdEvents,
@@ -195,5 +198,63 @@ describe('route and driver ids', () => {
     expect(dpdDriverId('0045', 'DR62251')).toBe('0045*DR62251')
     expect(dpdDriverId(null, 'DR62251')).toBeNull()
     expect(dpdDriverId('0045', null)).toBeNull()
+  })
+})
+
+// The delivered payload, captured the moment DW000182 landed on 10 September
+// 2026. DPD no longer take a signature: they photograph the parcel where they
+// left it, and name whoever took it in.
+const DELIVERED = {
+  data: {
+    ...SESSION.data,
+    trackingStatusCurrent: 'Your parcel has been delivered and received by BECKLEY at 12:20 on Thu 10 Sep 2026',
+    deliveredToConsumer: true,
+    undelivered: false,
+    outForDeliveryDetails: { outForDelivery: true, mapAvailable: false },
+    deliveryDetails: {
+      podDetails: {
+        podName: 'Beckley',
+        podNeighbour: null,
+        podSafePlaceCode: null,
+        podDate: '2026-09-10 12:20:00',
+        podDriverCode: 'DR62251',
+      },
+    },
+    image: [{ key: '0045*21438*215*3600*22*001*0*1', caption: 'Delivered to recipient', type: 'S5', subType: 'P' }],
+  },
+}
+
+describe('proof of delivery', () => {
+  it('reads who took it and when, in their spelling', () => {
+    const reading = readDpd({ parcel: DELIVERED, events: EVENTS })
+    expect(reading.receivedBy).toBe('Beckley')
+    expect(reading.receivedAt?.getHours()).toBe(12)
+    expect(reading.receivedAt?.getMinutes()).toBe(20)
+    expect(reading.delivered).toBe(true)
+  })
+
+  it('finds the photograph only once there is one', () => {
+    expect(dpdPodImage(DELIVERED)).toEqual({ key: '0045*21438*215*3600*22*001*0*1', imageType: 'S5' })
+    // Out for delivery but not yet handed over: no picture exists.
+    expect(dpdPodImage(SESSION)).toBeNull()
+    expect(dpdPodImage(ANONYMOUS)).toBeNull()
+  })
+
+  it('builds the address that actually serves it', () => {
+    const url = dpdImageUrl('15505217095248*21437', { key: '0045*21438*215*3600*22*001*0*1', imageType: 'S5' })
+    expect(url).toBe(
+      'https://apis.track.dpd.co.uk/v1/parcels/15505217095248*21437'
+      + '/images/0045*21438*215*3600*22*001*0*1?imageType=S5',
+    )
+  })
+
+  // Both headers are load-bearing and the Referer is the surprising one: the
+  // tracking site's ROOT is accepted where the address naming the parcel - the
+  // one a browser would really send - is refused with a 403.
+  it('sends the session and a bare referer', () => {
+    expect(dpdImageHeaders('sessionId=abc')).toEqual({
+      cookie: 'sessionId=abc',
+      referer: 'https://track.dpd.co.uk/',
+    })
   })
 })

@@ -50,3 +50,30 @@ describe('courierIsPolled', () => {
     expect(courierIsPolled(null)).toBe(false)
   })
 })
+
+// Carriers staple the day's detail onto the stage itself, so the words an owner
+// typed are only ever part of what comes back.
+describe('stages with the courier own detail stapled on', () => {
+  const courier = {
+    outForDeliveryStages: ['OUT FOR DELIVERY'],
+    deliveredStages: ['DELIVERED'],
+  }
+
+  it('matches the part the owner actually typed', () => {
+    expect(stageMeaning(courier, 'OUT FOR DELIVERY, ETA: 11:41 - 12:41')).toBe('out-for-delivery')
+    expect(stageMeaning(courier, 'DELIVERED, SIGNED FOR BY MOTHER')).toBe('delivered')
+  })
+
+  // The whole reason this is segment matching and not a substring test. A shop
+  // whose orders completed themselves on a failed delivery would be worse off
+  // than one with no automation at all.
+  it('never matches a stage that merely contains the word', () => {
+    expect(stageMeaning(courier, 'NOT DELIVERED - CUSTOMER NOT IN')).toBe('progress')
+    expect(stageMeaning(courier, 'ATTEMPTED DELIVERY')).toBe('progress')
+    expect(stageMeaning(courier, 'PARCEL WILL BE DELIVERED TOMORROW')).toBe('progress')
+  })
+
+  it('still matches a tidy stage whole, as it always did', () => {
+    expect(stageMeaning({ ...courier, deliveredStages: ['Complete'] }, 'Complete')).toBe('delivered')
+  })
+})

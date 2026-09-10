@@ -89,7 +89,10 @@ export function parcelDelivery(
     day: formatDeliveryDayRelative(date, nowInTimezone(now, timezone).date),
     window: formatDeliveryWindowSpoken(shipment.deliverySlotStart, shipment.deliverySlotEnd),
     progress,
-    outForDelivery: meaning === 'out-for-delivery',
+    // The courier's own flag where they report one, and the owner's reading of
+    // their stage words where they do not. Same rule as `delivered` in the
+    // poller: a boolean from the carrier beats a sentence somebody matched.
+    outForDelivery: shipment.carrierOutForDelivery ?? meaning === 'out-for-delivery',
     // Delivered is the courier's word for it where there is one, and the window
     // having gone by where there is not. The clock is the weaker of the two and
     // never overrules the stronger.
@@ -101,7 +104,7 @@ export function parcelDelivery(
     // Only while it is actually out with a driver. The numbers persist in the
     // row until the next poll overwrites them, and a stop number shown against
     // a parcel that arrived yesterday would be a sentence about nothing.
-    live: meaning === 'out-for-delivery'
+    live: (shipment.carrierOutForDelivery ?? meaning === 'out-for-delivery')
       ? liveProgress({
           driverName: shipment.driverName,
           stopNumber: shipment.stopNumber,

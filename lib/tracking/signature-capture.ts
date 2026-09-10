@@ -53,14 +53,29 @@ const EXTENSION: Record<string, string> = {
 }
 
 /**
- * Fetch the courier's signature image and store it as the site's own.
+ * Fetch the courier's proof of delivery and store it as the site's own.
  *
  * `reference` names the file for a human going through a bucket later - the
  * order number, typically. It is not what makes the object hard to find: the
  * key carries a random component of its own, exactly as an uploaded product
  * image does.
+ *
+ * `options.headers` exists because not every courier serves the picture from a
+ * public bucket. DPD's is behind the same session as the parcel's own data AND
+ * refuses a Referer that names the parcel - a bare `https://track.dpd.co.uk/`
+ * is accepted where the full tracking address is 403ed, `*` and all. The
+ * caller holds that session, so it passes the headers rather than this file
+ * learning who DPD are.
+ *
+ * `options.label` names the file. A signature and a photograph of a parcel on a
+ * doorstep are both proof of delivery and are stored the same way, but a bucket
+ * full of things called "signature" that are photographs helps nobody.
  */
-export async function captureSignature(imageUrl: string, reference: string): Promise<CapturedSignature | null> {
+export async function captureSignature(
+  imageUrl: string,
+  reference: string,
+  options: { headers?: Record<string, string>; label?: string } = {},
+): Promise<CapturedSignature | null> {
   const provider = await getActiveMediaProvider()
   if (!provider || !isMediaProviderConfigured(provider)) return null
 
@@ -70,7 +85,10 @@ export async function captureSignature(imageUrl: string, reference: string): Pro
     const res = await fetch(imageUrl, {
       signal: controller.signal,
       redirect: 'follow',
-      headers: { 'user-agent': 'CactusShopDeliveryTracking/1.0 (+proof of delivery)' },
+      headers: {
+        'user-agent': 'CactusShopDeliveryTracking/1.0 (+proof of delivery)',
+        ...(options.headers ?? {}),
+      },
       cache: 'no-store',
     })
     if (!res.ok) return null
@@ -86,7 +104,7 @@ export async function captureSignature(imageUrl: string, reference: string): Pro
     const mimeType = sniffImageType(buffer)
     if (!mimeType) return null
 
-    const filename = `delivery-signature-${reference}.${EXTENSION[mimeType]}`
+    const filename = `${options.label ?? 'delivery-signature'}-${reference}.${EXTENSION[mimeType]}`
     const stored = await uploadMedia(buffer, mimeType, provider, filename)
     return stored.key && stored.url ? { url: stored.url, key: stored.key } : null
   } catch {
