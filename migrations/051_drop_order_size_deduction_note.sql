@@ -1,0 +1,25 @@
+-- ---------------------------------------------------------------------------
+-- 051 - Drop the order-size deduction's "why?" wording.
+--
+-- 042 gave every supplier a box for the owner's own explanation of why the
+-- amount comes off, shown on the product page behind a small "why?" link.
+--
+-- Nobody wanted it. A shop does not owe the person paying less an explanation of
+-- why they are paying less, and a link inviting the question put a doubt in
+-- front of an offer that was doing perfectly well on its own. The box is gone
+-- from the Suppliers screen, the link is gone from the product page, and the
+-- column follows them: an unread column is a thing the next person has to work
+-- out the status of.
+--
+-- Only wording is lost. The threshold, the per-product amounts and every
+-- snapshotted figure on past orders are all untouched, so nothing about what
+-- comes off which basket changes here.
+--
+-- 042 is released, so its bytes are frozen (see scripts/check-frozen-migrations)
+-- and it still adds the column. A fresh install therefore adds it here and drops
+-- it again eight files later, which is untidy and entirely harmless - and is the
+-- only arrangement that leaves a fresh install and an existing one in the same
+-- place. Idempotent either way.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE "shp_suppliers" DROP COLUMN IF EXISTS "order_size_deduction_note";

@@ -118,12 +118,6 @@ export function OrderSizeDeductionClient({
         <span className="spd-osd-amount">{line.now}</span>
         {line.tail}
       </p>
-      {line.note && (
-        <details className="spd-osd-why">
-          <summary>why?</summary>
-          <p>{line.note}</p>
-        </details>
-      )}
     </div>
   )
 }

@@ -373,9 +373,6 @@ export type ShpSupplier = {
    * no such rule, so nothing of theirs ever deducts however it is stamped.
    */
   orderSizeDeductionThreshold: number | null
-  /** The owner's own explanation of why any of that happens, shown under the
-   *  line on the product page. Their wording, not the module's. */
-  orderSizeDeductionNote: string | null
   createdAt: Date
   updatedAt: Date
 }

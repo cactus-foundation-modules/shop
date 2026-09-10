@@ -22,7 +22,6 @@ type Supplier = {
   accountNumber: string | null
   discountPercent: number | null
   orderSizeDeductionThreshold: number | null
-  orderSizeDeductionNote: string | null
   status: 'ENABLED' | 'DISABLED'
   contactName: string | null
   phone: string | null
@@ -49,7 +48,6 @@ type SupplierForm = {
   accountNumber: string
   discountPercent: string
   orderSizeDeductionThreshold: string
-  orderSizeDeductionNote: string
   status: 'ENABLED' | 'DISABLED'
   contactName: string
   phone: string
@@ -62,7 +60,7 @@ type SupplierForm = {
 const emptyForm: SupplierForm = {
   name: '', slug: '', storefrontVisible: false, shortDescription: '', description: '',
   metaTitle: '', metaDescription: '', accountNumber: '', discountPercent: '',
-  orderSizeDeductionThreshold: '', orderSizeDeductionNote: '', status: 'ENABLED',
+  orderSizeDeductionThreshold: '', status: 'ENABLED',
   contactName: '', phone: '', email: '', address: '', notes: '', catalogues: [],
 }
 
@@ -115,7 +113,6 @@ export function SuppliersScreen({ label, enabled, pagesEnabled, deductionEnabled
         accountNumber: s.accountNumber ?? '',
         discountPercent: s.discountPercent == null ? '' : String(s.discountPercent),
         orderSizeDeductionThreshold: s.orderSizeDeductionThreshold == null ? '' : String(s.orderSizeDeductionThreshold),
-        orderSizeDeductionNote: s.orderSizeDeductionNote ?? '',
         status: s.status,
         contactName: s.contactName ?? '',
         phone: s.phone ?? '',
@@ -142,9 +139,6 @@ export function SuppliersScreen({ label, enabled, pagesEnabled, deductionEnabled
         ...form,
         discountPercent: numOrNull(form.discountPercent),
         orderSizeDeductionThreshold: numOrNull(form.orderSizeDeductionThreshold),
-        // Blank means "no wording", which is null rather than an empty string -
-        // the two would otherwise both exist for the same missing value.
-        orderSizeDeductionNote: form.orderSizeDeductionNote.trim() || null,
         // A row the owner added and then left blank is not a catalogue - drop it
         // rather than bouncing the whole save on "give the catalogue a name".
         catalogues: form.catalogues
@@ -308,10 +302,10 @@ export function SuppliersScreen({ label, enabled, pagesEnabled, deductionEnabled
           )}
           <label>Account number<input value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} style={inputStyle} placeholder="Your account with them" /></label>
           <label>Discount (%)<input type="number" step="0.01" min="0" max="100" value={form.discountPercent} onChange={(e) => setForm({ ...form, discountPercent: e.target.value })} style={inputStyle} placeholder="Leave empty for none" /></label>
-          {/* The order-size threshold and the owner's own wording for it. Here
-              rather than on the product because it is the SUPPLIER's rule: one
-              figure covers everything filed under this name. Not delivery - the
-              site's shipping is set up elsewhere entirely. */}
+          {/* The order-size threshold. Here rather than on the product because
+              it is the SUPPLIER's rule: one figure covers everything filed under
+              this name. Not delivery - the site's shipping is set up elsewhere
+              entirely. */}
           {deductionEnabled && (
             <fieldset style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.75rem', margin: 0, display: 'grid', gap: '0.5rem' }}>
               <legend style={{ padding: '0 0.375rem', fontSize: '0.875rem' }}>Order-size deduction</legend>
@@ -326,16 +320,6 @@ export function SuppliersScreen({ label, enabled, pagesEnabled, deductionEnabled
                   onChange={(e) => setForm({ ...form, orderSizeDeductionThreshold: e.target.value })}
                   style={inputStyle}
                   placeholder="Leave empty for no deduction at all"
-                />
-              </label>
-              <label>
-                Your &ldquo;why?&rdquo; wording
-                <textarea
-                  rows={2}
-                  value={form.orderSizeDeductionNote}
-                  onChange={(e) => setForm({ ...form, orderSizeDeductionNote: e.target.value })}
-                  style={inputStyle}
-                  placeholder="Shown on the product page behind a small 'why?' link. Leave empty and no link appears."
                 />
               </label>
             </fieldset>

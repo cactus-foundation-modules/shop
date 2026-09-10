@@ -233,7 +233,6 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
       rule: {
         supplier: supplier.name,
         threshold: supplier.orderSizeDeductionThreshold,
-        note: supplier.orderSizeDeductionNote,
       },
       enabledPriceTypes: config.enabledPriceTypes,
       adjust: displayAdjust,

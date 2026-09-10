@@ -77,9 +77,6 @@ export const SupplierBody = z.object({
     .min(0, 'A threshold cannot be negative')
     .nullable()
     .optional(),
-  // The owner's own "why?" copy for the product page. Their wording, not the
-  // module's, which is what keeps every site's explanation out of core.
-  orderSizeDeductionNote: optionalText(2000),
   status: z.enum(['ENABLED', 'DISABLED']).optional(),
   contactName: optionalText(200),
   phone: optionalText(50),

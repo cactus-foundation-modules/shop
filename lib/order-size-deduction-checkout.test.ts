@@ -73,7 +73,7 @@ beforeEach(() => {
   config.mockReset()
   rules.mockReset()
   config.mockResolvedValue({ orderSizeDeductionEnabled: true })
-  rules.mockResolvedValue([{ supplier: DYNAMIC, threshold: 350, note: null }])
+  rules.mockResolvedValue([{ supplier: DYNAMIC, threshold: 350 }])
 })
 
 describe('applyOrderSizeDeductions', () => {

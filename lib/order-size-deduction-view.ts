@@ -88,5 +88,5 @@ export function orderSizeDeductionView(params: DeductionViewParams): OrderSizeDe
     currencySymbol,
     someOptionsOnly,
   })
-  return { ...parts, note: rule.note }
+  return parts
 }

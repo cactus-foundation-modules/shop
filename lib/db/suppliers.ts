@@ -47,7 +47,6 @@ function mapSupplier(r: Record<string, unknown>): ShpSupplier {
     metaDescription: (r.meta_description as string | null) ?? null,
     // numeric(10,2) - a Decimal from Prisma raw, like discount_percent above.
     orderSizeDeductionThreshold: decimalToNumber(r.order_size_deduction_threshold),
-    orderSizeDeductionNote: (r.order_size_deduction_note as string | null) ?? null,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
   }
@@ -105,7 +104,7 @@ const SUPPLIER_LIST_COLUMNS = Prisma.sql`
   "id", "name", "slug", "storefront_visible", "short_description", "description",
   "meta_title", "meta_description", "account_number", "discount_percent", "status",
   "contact_name", "phone", "email", "address", "notes",
-  "order_size_deduction_threshold", "order_size_deduction_note",
+  "order_size_deduction_threshold",
   "created_at", "updated_at"
 `
 
@@ -132,7 +131,6 @@ export type SupplierFields = {
   address?: string | null
   notes?: string | null
   orderSizeDeductionThreshold?: number | null
-  orderSizeDeductionNote?: string | null
 }
 
 /**
@@ -278,14 +276,14 @@ export async function createSupplier(data: SupplierFields): Promise<{ id: string
       "description_puck", "meta_title", "meta_description",
       "account_number", "discount_percent", "status",
       "contact_name", "phone", "email", "address", "notes",
-      "order_size_deduction_threshold", "order_size_deduction_note"
+      "order_size_deduction_threshold"
     ) VALUES (
       ${data.name}, ${slug}, ${data.storefrontVisible === true},
       ${data.shortDescription ?? null}, ${data.description ?? null},
       ${data.descriptionPuck ? JSON.stringify(data.descriptionPuck) : null}::jsonb, ${data.metaTitle ?? null}, ${data.metaDescription ?? null},
       ${data.accountNumber ?? null}, ${data.discountPercent ?? null}, ${data.status ?? 'ENABLED'},
       ${data.contactName ?? null}, ${data.phone ?? null}, ${data.email ?? null}, ${data.address ?? null}, ${data.notes ?? null},
-      ${data.orderSizeDeductionThreshold ?? null}, ${data.orderSizeDeductionNote ?? null}
+      ${data.orderSizeDeductionThreshold ?? null}
     )
     RETURNING "id"
   `
@@ -307,7 +305,6 @@ export async function updateSupplier(id: string, fields: Partial<Omit<SupplierFi
   if (fields.address !== undefined) sets.push(Prisma.sql`"address" = ${fields.address}`)
   if (fields.notes !== undefined) sets.push(Prisma.sql`"notes" = ${fields.notes}`)
   if (fields.orderSizeDeductionThreshold !== undefined) sets.push(Prisma.sql`"order_size_deduction_threshold" = ${fields.orderSizeDeductionThreshold}`)
-  if (fields.orderSizeDeductionNote !== undefined) sets.push(Prisma.sql`"order_size_deduction_note" = ${fields.orderSizeDeductionNote}`)
   if (fields.slug !== undefined) {
     // Blanking the address is not an option - the page has to live somewhere -
     // so an empty box falls back to the name, same as it did on create.
@@ -403,12 +400,12 @@ export async function getDeductionRules(
   // its own throwaway database. Nothing in the app passes it - raw SQL is a
   // string to every gate there is, so the only proof it parses is Postgres.
   opts: { client?: RawQuerier } = {},
-): Promise<Array<{ supplier: string; threshold: number; note: string | null }>> {
+): Promise<Array<{ supplier: string; threshold: number }>> {
   const db = opts.client ?? prisma
   const wanted = [...new Set(names.map((n) => n.trim().toLowerCase()).filter((n) => n !== ''))]
   if (wanted.length === 0) return []
-  const rows = await db.$queryRaw<Array<{ name: string; order_size_deduction_threshold: unknown; order_size_deduction_note: string | null }>>`
-    SELECT "name", "order_size_deduction_threshold", "order_size_deduction_note"
+  const rows = await db.$queryRaw<Array<{ name: string; order_size_deduction_threshold: unknown }>>`
+    SELECT "name", "order_size_deduction_threshold"
       FROM "shp_suppliers"
      WHERE LOWER("name") IN (${Prisma.join(wanted)})
        AND "order_size_deduction_threshold" IS NOT NULL
@@ -416,7 +413,7 @@ export async function getDeductionRules(
   return rows.flatMap((r) => {
     const threshold = decimalToNumber(r.order_size_deduction_threshold)
     if (threshold == null) return []
-    return [{ supplier: r.name, threshold, note: r.order_size_deduction_note ?? null }]
+    return [{ supplier: r.name, threshold }]
   })
 }
 

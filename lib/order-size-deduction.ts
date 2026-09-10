@@ -15,13 +15,11 @@
 
 import { formatMoney } from '@/modules/shop/lib/money'
 
-/** A supplier's rule: how much of their goods the basket needs, and the owner's
- *  own explanation of why any of this is happening. `threshold` is in stored
- *  price terms, matching the amounts on the products. */
+/** A supplier's rule: how much of their goods the basket needs. `threshold` is
+ *  in stored price terms, matching the amounts on the products. */
 export type OrderSizeDeductionRule = {
   supplier: string
   threshold: number
-  note: string | null
 }
 
 /** One basket line, as the rule sees it. Structural rather than the checkout's
@@ -60,7 +58,6 @@ export type OrderSizeDeductionState = {
    *  every carrying line. The figure a qualified basket has saved, or the one a
    *  short basket stands to save if it reaches the threshold as it is. */
   saving: number
-  note: string | null
 }
 
 /** Round to the penny. Local rather than imported from lib/checkout so this file
@@ -160,7 +157,6 @@ export function orderSizeDeductionStates(
       threshold: rule.threshold,
       shortfall: qualified ? 0 : round2(rule.threshold - goodsSubtotal),
       saving: round2(saving),
-      note: rule.note,
     }
   })
 }
@@ -211,10 +207,9 @@ export function applyOrderSizeDeduction<T extends OrderSizeDeductionLine>(
 // Copy
 // ---------------------------------------------------------------------------
 //
-// Shop composes these from figures and the supplier's own name; the "why?" is
-// the owner's note off the supplier record. Nothing here says discount, saving,
-// carriage or delivery - all four are a different thing, and three of them are
-// somebody else's feature.
+// Shop composes these from figures and the supplier's own name. Nothing here
+// says discount, saving, carriage or delivery - all four are a different thing,
+// and three of them are somebody else's feature.
 
 /** Money as this copy prints it: whole pounds bare, pence only where there are
  *  any. "£350" reads as a threshold; "£350.00" reads as a bill. */
@@ -224,11 +219,10 @@ export function tidyMoney(amount: number, currencySymbol = '£'): string {
 }
 
 /**
- * The finished product-page line: the sentence itself, and the owner's own
- * "why?" copy to fold underneath it. Composed server-side - by the detail block
- * as the page opens, and by the public route once the shopper picks a
- * combination - so the browser is handed wording rather than figures to
- * assemble, and the two paths can never word it differently.
+ * The finished product-page line. Composed server-side - by the detail block as
+ * the page opens, and by the public route once the shopper picks a combination
+ * - so the browser is handed wording rather than figures to assemble, and the
+ * two paths can never word it differently.
  */
 export type OrderSizeDeductionLineView = {
   /**
@@ -238,7 +232,6 @@ export type OrderSizeDeductionLineView = {
    * reassembling the pieces and risking a different sentence.
    */
   text: string
-  note: string | null
   /** "Get it for just " on a definite product, the range lead-in on a listing. */
   lead: string
   /**

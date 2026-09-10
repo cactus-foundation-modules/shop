@@ -24,7 +24,6 @@ const DYNAMIC = 'Dynamic Office Solutions'
 const rule = (over: Partial<OrderSizeDeductionRule> = {}): OrderSizeDeductionRule => ({
   supplier: DYNAMIC,
   threshold: 350,
-  note: null,
   ...over,
 })
 

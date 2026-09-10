@@ -852,7 +852,7 @@ const orderSizeDeductionCss = `
 
    Neutral is also the only ground that survives both themes. --color-primary-subtle
    was the obvious fill and fails AA in dark: the accent on it lands at 4.25:1 and
-   the muted "why?" at 4.19:1, both under 4.5 at these sizes. On --color-bg-subtle
+   the muted struck price at 4.19:1, both under 4.5 at these sizes. On --color-bg-subtle
    every role clears AA in both themes. Check the arithmetic before swapping the
    fill for a tinted one. */
 .spd-osd-box{display:inline-block;max-width:100%;padding:9px 14px;background:var(--color-bg-subtle);border-left:3px solid var(--color-primary);border-radius:0 7px 7px 0}
@@ -864,10 +864,6 @@ const orderSizeDeductionCss = `
    better of two rather than as a second, unexplained price. */
 .spd-osd-was{color:var(--color-text-muted);text-decoration:line-through;text-decoration-thickness:1px}
 .spd-osd-amount{font-weight:600;font-size:1.1em;color:var(--color-primary)}
-.spd-osd-why{margin:5px 0 0;font-size:13px;color:var(--color-text-muted)}
-.spd-osd-why > summary{cursor:pointer;text-decoration:underline;text-underline-offset:2px;width:max-content}
-.spd-osd-why > summary:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px;border-radius:3px}
-.spd-osd-why > p{margin:6px 0 0;color:var(--color-text-muted)}
 `
 
 type OrderSizeDeductionProps = { _ctx?: DetailPartContext; align?: string }
