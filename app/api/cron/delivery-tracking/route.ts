@@ -5,6 +5,7 @@ import {
   allShipmentsDelivered,
   getOrderDispatchSummary,
   listShipmentsForTrackingPoll,
+  recordCarrierReading,
   recordSignature,
   recordTrackingCheck,
   recordTrackingPageDetails,
@@ -15,13 +16,8 @@ import { getSiteTimezone } from '@/lib/config/timezone.server'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { courierIsPolled, stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
-import { furthestStage, isMultidropUrl, parseMultidropStages } from '@/modules/shop/lib/tracking/multidrop'
-import {
-  dropsAwayFromCrewLine,
-  parseCrewLine,
-  parseSignature,
-  parseTrackingConfig,
-} from '@/modules/shop/lib/tracking/multidrop-page'
+import { readParcelTracking } from '@/modules/shop/lib/tracking/read-parcel'
+import { parseSignature } from '@/modules/shop/lib/tracking/multidrop-page'
 import { captureSignature } from '@/modules/shop/lib/tracking/signature-capture'
 
 // Hourly (manifest cronJobs). Asks each live parcel's courier where it has got
@@ -57,10 +53,6 @@ const PARCEL_LIMIT = 25
  *  service anyone is paying for. */
 const CONCURRENCY = 3
 
-/** Per request. Long enough for a slow page, short enough that a hung server
- *  cannot hold the whole run open. */
-const TIMEOUT_MS = 8000
-
 type Outcome = {
   checked: number
   moved: number
@@ -68,28 +60,6 @@ type Outcome = {
   completed: number
   failed: number
   signatures: number
-}
-
-async function fetchTrackingPage(url: string): Promise<string | null> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: { 'user-agent': 'CactusShopDeliveryTracking/1.0 (+order status)' },
-      cache: 'no-store',
-    })
-    if (!res.ok) return null
-    return await res.text()
-  } catch {
-    // A timeout, a DNS failure, a courier having an afternoon. Nothing is
-    // written except the check timestamp: silence is not evidence of anything,
-    // and least of all of a parcel not having arrived.
-    return null
-  } finally {
-    clearTimeout(timer)
-  }
 }
 
 async function handle(request: NextRequest) {
@@ -114,54 +84,62 @@ async function handle(request: NextRequest) {
   for (let i = 0; i < parcels.length; i += CONCURRENCY) {
     await Promise.all(parcels.slice(i, i + CONCURRENCY).map(async (parcel) => {
       const courier = courierForShipment(config, parcel)
-      // A parcel whose courier is not polled, or whose link is not one this can
-      // read, is stamped as checked and left alone - otherwise it sits at the
-      // front of the queue for ever, being skipped.
-      if (!courierIsPolled(courier) || !isMultidropUrl(parcel.trackingUrl)) {
+      // A parcel whose courier is not followed is stamped as checked and left
+      // alone - otherwise it sits at the front of the queue for ever, being
+      // skipped.
+      if (!courierIsPolled(courier)) {
         await recordTrackingCheck(parcel.id)
         return
       }
 
-      const html = await fetchTrackingPage(parcel.trackingUrl as string)
-      if (!html) {
-        outcome.failed += 1
-        await recordTrackingCheck(parcel.id)
-        return
-      }
-
-      const stage = furthestStage(parseMultidropStages(html))
-      if (!stage) {
-        // The page loaded and said nothing we recognise - a login screen, a
-        // redesign, an order they no longer hold. Recorded as looked-at, and
-        // nothing is concluded from it.
+      // Which courier this is, and therefore which shape of request, is the
+      // reader's business. What comes back is the same either way.
+      const reading = courier ? await readParcelTracking(courier, parcel) : null
+      if (!reading?.stage) {
+        // The request failed, or the page loaded and said nothing this reader
+        // recognised - a login screen, a redesign, an order they no longer
+        // hold. Recorded as looked-at, and nothing is concluded from it.
         outcome.failed += 1
         await recordTrackingCheck(parcel.id)
         return
       }
 
       outcome.checked += 1
-      const meaning = stageMeaning(courier, stage.label)
+      const stage = reading.stage
+      const meaning = stageMeaning(courier, stage)
       const delivered = meaning === 'delivered'
-      if (stage.label !== parcel.trackingStage) outcome.moved += 1
+      if (stage !== parcel.trackingStage) outcome.moved += 1
       if (delivered && !parcel.deliveredAt) {
         outcome.delivered += 1
         ordersToReview.add(parcel.orderId)
       }
 
-      await recordTrackingStage(parcel.id, { stage: stage.label, delivered })
+      await recordTrackingStage(parcel.id, { stage, delivered })
 
-      // The rest of the same page, which cost nothing extra to fetch: the ids
-      // the live map needs to ask where the van is, and the courier's own
-      // sentence about how far off the crew is.
-      const page = parseTrackingConfig(html)
-      const crewLine = parseCrewLine(html)
+      // The rest of what the same request already cost: the history, the window
+      // the van is working to today, and where this parcel sits on the round.
+      await recordCarrierReading(parcel.id, {
+        events: reading.events,
+        windowFrom: reading.windowFrom,
+        windowTo: reading.windowTo,
+        stopNumber: reading.stopNumber,
+        stopsCompleted: reading.stopsCompleted,
+        stopsTotal: reading.stopsTotal,
+        minutesToStop: reading.minutesToStop,
+        driverName: reading.driverName,
+      })
+
+      // The ids the live map asks with, where the courier gives any. Written
+      // separately from the reading above because they PERSIST: they identify
+      // the round, and a poll that could not see one must not wipe the one we
+      // already had.
       await recordTrackingPageDetails(parcel.id, {
-        clientId: page.clientId,
-        routeId: page.routeId,
-        crewLine,
-        dropsAway: dropsAwayFromCrewLine(crewLine),
-        destinationLat: page.destinationLat,
-        destinationLng: page.destinationLng,
+        clientId: reading.clientId,
+        routeId: reading.routeId,
+        crewLine: reading.crewLine,
+        dropsAway: reading.dropsAway,
+        destinationLat: reading.destinationLat,
+        destinationLng: reading.destinationLng,
       })
 
       // Proof of delivery, taken once and only once - see recordSignature for
@@ -169,8 +147,12 @@ async function handle(request: NextRequest) {
       // it is allowed to fail quietly: the parcel has still been delivered, and
       // an argument about a missing picture is a better one to have than an
       // order stuck open because a bucket was busy.
-      if (delivered && !parcel.signatureUrl) {
-        const signature = parseSignature(html, timezone)
+      //
+      // Only Multidrop hands one over today. That is a fact about the couriers,
+      // not a decision here: this reads whatever signature the reading came
+      // with, and a courier that starts giving one needs no change at this end.
+      if (delivered && !parcel.signatureUrl && reading.multidropHtml) {
+        const signature = parseSignature(reading.multidropHtml, timezone)
         if (signature?.imageUrl) {
           const order = await getOrderById(parcel.orderId)
           const stored = await captureSignature(signature.imageUrl, order?.orderNumber ?? parcel.id)

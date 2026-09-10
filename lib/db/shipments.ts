@@ -1,3 +1,4 @@
+import { trackingEventsSchema, type TrackingEvent } from '@/modules/shop/lib/tracking/reading'
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import { outstandingUnits, unrefundedCancelledUnits } from '@/modules/shop/lib/order-requests'
@@ -41,6 +42,19 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     trackingStageAt: (r.tracking_stage_at as Date | null) ?? null,
     trackingCheckedAt: (r.tracking_checked_at as Date | null) ?? null,
     deliveredAt: (r.delivered_at as Date | null) ?? null,
+    trackingShortCode: (r.tracking_short_code as string | null) ?? null,
+    // jsonb comes back as a parsed value, and one written by an older build
+    // could be anything at all - so it is checked rather than cast. A row that
+    // does not look like a history reads as no history, which is what the page
+    // renders for every parcel that has never had one.
+    trackingEvents: trackingEventsSchema.safeParse(r.tracking_events).data ?? [],
+    deliveryWindowFrom: (r.delivery_window_from as Date | null) ?? null,
+    deliveryWindowTo: (r.delivery_window_to as Date | null) ?? null,
+    stopNumber: (r.stop_number as number | null) ?? null,
+    stopsCompleted: (r.stops_completed as number | null) ?? null,
+    stopsTotal: (r.stops_total as number | null) ?? null,
+    minutesToStop: (r.minutes_to_stop as number | null) ?? null,
+    driverName: (r.driver_name as string | null) ?? null,
     trackingClientId: (r.tracking_client_id as string | null) ?? null,
     trackingRouteId: (r.tracking_route_id as string | null) ?? null,
     crewLine: (r.crew_line as string | null) ?? null,
@@ -91,6 +105,9 @@ export type CreateShipmentInput = {
   shippedAt?: Date | null
   trackingNumber?: string | null
   trackingUrl?: string | null
+  /** The code out of a follow-my-parcel link. Stored as the code, never the
+   *  whole address: the address is the courier's to restructure. */
+  trackingShortCode?: string | null
   carrier?: string | null
   courierId?: string | null
   /** 'YYYY-MM-DD'. Validated by the caller, and again by the table's own CHECK. */
@@ -294,11 +311,13 @@ export async function createShipment(input: CreateShipmentInput): Promise<Create
     const shippedAt = input.shippedAt ?? new Date()
     const created = await tx.$queryRaw<[Record<string, unknown>]>`
       INSERT INTO "shp_shipments" (
-        "order_id", "shipped_at", "tracking_number", "tracking_url", "carrier", "courier_id",
+        "order_id", "shipped_at", "tracking_number", "tracking_url", "tracking_short_code",
+        "carrier", "courier_id",
         "delivery_date", "delivery_slot_start", "delivery_slot_end", "notes"
       )
       VALUES (
         ${input.orderId}, ${shippedAt}, ${input.trackingNumber ?? null}, ${input.trackingUrl ?? null},
+        ${input.trackingShortCode ?? null},
         ${input.carrier ?? null}, ${input.courierId ?? null},
         ${input.deliveryDate ?? null}, ${input.deliverySlotStart ?? null}, ${input.deliverySlotEnd ?? null},
         ${input.notes ?? null}
@@ -470,6 +489,9 @@ export async function deleteShipment(shipmentId: string, orderId: string): Promi
 export type UpdateShipmentDetailsInput = {
   trackingNumber?: string | null
   trackingUrl?: string | null
+  /** The code out of a follow-my-parcel link. Stored as the code, never the
+   *  whole address: the address is the courier's to restructure. */
+  trackingShortCode?: string | null
   carrier?: string | null
   courierId?: string | null
   deliveryDate?: string | null
@@ -491,6 +513,7 @@ export async function updateShipmentDetails(
 
   if (patch.trackingNumber !== undefined) set('tracking_number', patch.trackingNumber)
   if (patch.trackingUrl !== undefined) set('tracking_url', patch.trackingUrl)
+  if (patch.trackingShortCode !== undefined) set('tracking_short_code', patch.trackingShortCode)
   if (patch.carrier !== undefined) set('carrier', patch.carrier)
   if (patch.courierId !== undefined) set('courier_id', patch.courierId)
   if (patch.deliveryDate !== undefined) set('delivery_date', patch.deliveryDate)
@@ -565,7 +588,7 @@ export async function listShipmentsForTrackingPoll(limit: number): Promise<ShpSh
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
     SELECT s.* FROM "shp_shipments" s
     JOIN "shp_orders" o ON o."id" = s."order_id"
-    WHERE s."tracking_url" IS NOT NULL
+    WHERE (s."tracking_url" IS NOT NULL OR s."tracking_short_code" IS NOT NULL)
       AND (
         (
           s."delivered_at" IS NULL
@@ -645,6 +668,44 @@ export async function recordTrackingPageDetails(shipmentId: string, input: {
         "drops_away" = ${input.dropsAway}::int,
         "destination_lat" = COALESCE(${input.destinationLat}::text, "destination_lat"),
         "destination_lng" = COALESCE(${input.destinationLng}::text, "destination_lng"),
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId}
+  `
+}
+
+/**
+ * What the carrier said about the parcel beyond its stage.
+ *
+ * Written whole, every poll, including the nulls. That is deliberate and it is
+ * the opposite of how the page details are written a few lines up: those are
+ * ids that persist, while these describe TODAY. A parcel that was 34th on the
+ * round this morning is not 34th tomorrow, and a stop number left behind
+ * because the courier stopped mentioning it would be a sentence on a customer's
+ * order page that was true yesterday. The exception is the history, which only
+ * ever grows: an empty read leaves the stored one alone rather than wiping a
+ * timeline because a feed had a bad minute.
+ */
+export async function recordCarrierReading(shipmentId: string, input: {
+  events: TrackingEvent[]
+  windowFrom: Date | null
+  windowTo: Date | null
+  stopNumber: number | null
+  stopsCompleted: number | null
+  stopsTotal: number | null
+  minutesToStop: number | null
+  driverName: string | null
+}): Promise<void> {
+  const events = input.events.length > 0 ? JSON.stringify(input.events) : null
+  await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "tracking_events" = COALESCE(${events}::jsonb, "tracking_events"),
+        "delivery_window_from" = ${input.windowFrom}::timestamp,
+        "delivery_window_to" = ${input.windowTo}::timestamp,
+        "stop_number" = ${input.stopNumber}::int,
+        "stops_completed" = ${input.stopsCompleted}::int,
+        "stops_total" = ${input.stopsTotal}::int,
+        "minutes_to_stop" = ${input.minutesToStop}::int,
+        "driver_name" = COALESCE(${input.driverName}::text, "driver_name"),
         "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${shipmentId}
   `

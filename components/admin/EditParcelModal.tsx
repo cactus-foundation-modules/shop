@@ -27,6 +27,7 @@ export type EditableParcel = {
   carrier: string | null
   trackingNumber: string | null
   trackingUrl: string | null
+  trackingShortCode: string | null
   deliveryDate: string | null
   deliverySlotStart: string | null
   deliverySlotEnd: string | null
@@ -47,6 +48,7 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
     carrier: parcel.carrier ?? '',
     trackingNumber: parcel.trackingNumber ?? '',
     trackingUrl: parcel.trackingUrl ?? '',
+    trackingShortCode: parcel.trackingShortCode ?? '',
     deliveryDate: parcel.deliveryDate ?? '',
     deliverySlotStart: parcel.deliverySlotStart ?? '',
     deliverySlotEnd: parcel.deliverySlotEnd ?? '',

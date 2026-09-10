@@ -1,3 +1,4 @@
+import { dpdShortCodeFromUrl } from '@/modules/shop/lib/tracking/dpd'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
@@ -39,6 +40,25 @@ const TrackingUrl = z
 const DeliveryDate = z.string().trim().refine(isDeliveryDate, 'That is not a real date.')
 const SlotTime = z.string().trim().refine(isSlotTime, 'A delivery time looks like 10:00.')
 
+/**
+ * A courier's follow-my-parcel link, reduced to the code inside it.
+ *
+ * Accepted as the whole address or as the bare code, because an owner pasting
+ * out of an email will do either, and stored as the code: the address around it
+ * is the courier's to restructure, and a stored URL would be one redesign away
+ * from being a link to nowhere. Anything that is neither is rejected here
+ * rather than saved and quietly ignored by the poller.
+ */
+const TrackingShortCode = z.string().trim().transform((value, ctx) => {
+  if (!value) return null
+  const code = dpdShortCodeFromUrl(value)
+  if (!code) {
+    ctx.addIssue({ code: 'custom', message: 'That does not look like a follow-my-parcel link.' })
+    return z.NEVER
+  }
+  return code
+})
+
 const DeliveryFields = {
   /** The courier picked from the shop's own list. Its name is read from
    *  settings server-side rather than taken from the browser, so a renamed
@@ -56,6 +76,7 @@ const Body = z.object({
   items: z.array(z.object({ orderItemId: z.string(), quantity: z.number().int().min(1) })).min(1),
   trackingNumber: z.string().nullable().optional(),
   trackingUrl: TrackingUrl.nullable().optional(),
+  trackingShortCode: TrackingShortCode.nullable().optional(),
   ...DeliveryFields,
   notes: z.string().nullable().optional(),
   // Owners back-date a parcel that went out on Friday and is only being
@@ -176,6 +197,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     shippedAt: parsed.data.shippedAt ?? null,
     trackingNumber: parsed.data.trackingNumber ?? null,
     trackingUrl: parsed.data.trackingUrl ?? null,
+    trackingShortCode: parsed.data.trackingShortCode ?? null,
     carrier: courier.choice.carrier,
     courierId: courier.choice.courierId,
     deliveryDate: parsed.data.deliveryDate ?? null,
@@ -217,6 +239,7 @@ const PatchBody = z.object({
   shipmentId: z.string().min(1),
   trackingNumber: z.string().nullable().optional(),
   trackingUrl: TrackingUrl.nullable().optional(),
+  trackingShortCode: TrackingShortCode.nullable().optional(),
   ...DeliveryFields,
   notes: z.string().nullable().optional(),
   /** Whether saving a newly-confirmed window emails the customer about it.

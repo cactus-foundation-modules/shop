@@ -7,6 +7,8 @@ import {
 } from '@/modules/shop/lib/delivery-slot'
 import { courierForShipment, customerMaySeeTracking, faqsForShipment, type ShpCourier } from '@/modules/shop/lib/courier-faqs'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
+import { liveProgress, type LiveProgress } from '@/modules/shop/lib/tracking/live-line'
+import type { TrackingEvent } from '@/modules/shop/lib/tracking/reading'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import type { ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
@@ -44,8 +46,23 @@ export type ParcelDelivery = {
   arrived: boolean
   /** Whether the customer is offered the courier's own tracking page. */
   showTracking: boolean
+  /** What that button says, and the line under it. The courier's setting where
+   *  they have one, and the wording the shop has always used where they have
+   *  not - which is what every shop that never touches it keeps. */
+  trackingLabel: string
+  trackingHint: string
+  /** Where the driver has got to, in words. Empty parts where the courier has
+   *  not said, and never inferred from the clock. */
+  live: LiveProgress
+  /** The courier's own history for this parcel, newest first. */
+  events: TrackingEvent[]
   faqs: ShpCourier['faqs']
 }
+
+/** What the button out to the courier says when nobody has changed it. The
+ *  wording the shop used before couriers had their own, so an install that
+ *  updates into this feature sees no difference. */
+export const DEFAULT_TRACKING_LABEL = 'Track your parcel'
 
 export function parcelDelivery(
   config: Pick<ShpConfig, 'deliveryCouriers'>,
@@ -54,7 +71,8 @@ export function parcelDelivery(
   timezone: string,
 ): ParcelDelivery {
   const date = shipment.deliveryDate ?? ''
-  const meaning = stageMeaning(courierForShipment(config, shipment), shipment.trackingStage)
+  const courier = courierForShipment(config, shipment)
+  const meaning = stageMeaning(courier, shipment.trackingStage)
   const progress = date
     ? deliveryProgress({
         date,
@@ -78,6 +96,23 @@ export function parcelDelivery(
     arrived: meaning === 'delivered'
       || (meaning === 'progress' && progress?.phase === 'passed'),
     showTracking: customerMaySeeTracking(config, shipment),
+    trackingLabel: courier?.trackingLinkLabel.trim() || DEFAULT_TRACKING_LABEL,
+    trackingHint: courier?.trackingLinkHint.trim() ?? '',
+    // Only while it is actually out with a driver. The numbers persist in the
+    // row until the next poll overwrites them, and a stop number shown against
+    // a parcel that arrived yesterday would be a sentence about nothing.
+    live: meaning === 'out-for-delivery'
+      ? liveProgress({
+          driverName: shipment.driverName,
+          stopNumber: shipment.stopNumber,
+          stopsCompleted: shipment.stopsCompleted,
+          stopsTotal: shipment.stopsTotal,
+          minutesToStop: shipment.minutesToStop,
+          checkedAt: shipment.trackingCheckedAt,
+          now,
+        })
+      : { round: '', yours: '', fraction: null },
+    events: shipment.trackingEvents,
     faqs: faqsForShipment(config, shipment),
   }
 }

@@ -112,6 +112,41 @@ export function CourierSettings({ value, onChange }: {
             order page instead.
           </p>
 
+          {courier.showTrackingLink && (
+            <div style={{ display: 'grid', gap: '0.75rem', marginTop: '0.5rem' }}>
+              <div className="field">
+                <label>What that button says</label>
+                <input
+                  type="text"
+                  value={courier.trackingLinkLabel}
+                  placeholder="Track your parcel"
+                  onChange={(e) => patchCourier(courier.id, { trackingLinkLabel: e.target.value })}
+                />
+                <span className="field-hint">
+                  Worth changing on a courier you follow automatically. The customer already has the
+                  timeline, the window and the driver on your page, so sending them out to
+                  &ldquo;track your parcel&rdquo; offers them something they have just read - and
+                  hides what their courier&rsquo;s page is actually good for. On DPD, that is a safe
+                  place, a neighbour, or moving it to another day. Leave it empty for the usual
+                  wording.
+                </span>
+              </div>
+
+              <div className="field">
+                <label>The line underneath it</label>
+                <input
+                  type="text"
+                  value={courier.trackingLinkHint}
+                  placeholder="Optional"
+                  onChange={(e) => patchCourier(courier.id, { trackingLinkHint: e.target.value })}
+                />
+                <span className="field-hint">
+                  A few words on what they can change there. Shown only if you fill it in.
+                </span>
+              </div>
+            </div>
+          )}
+
           <div className="field" style={{ marginTop: '0.75rem' }}>
             <label>Follow this courier&rsquo;s tracking automatically</label>
             <select
@@ -120,13 +155,32 @@ export function CourierSettings({ value, onChange }: {
             >
               <option value="none">No - I&rsquo;ll update deliveries myself</option>
               <option value="multidrop">Yes - Multidrop tracking pages</option>
+              <option value="gfs">Yes - GFS parcel pages</option>
+              <option value="dpd">Yes - DPD</option>
             </select>
             <span className="field-hint">
-              Checks each parcel&rsquo;s tracking page once an hour and keeps the answer on your own
-              site, so the customer never has to visit theirs. Only for couriers whose tracking link
-              is a multidrop.link address.
+              Checks each parcel once an hour - every minute once it is out on a van - and keeps the
+              answer on your own site, so the customer never has to visit theirs. Pick the one that
+              matches your tracking links: Multidrop for multidrop.link, GFS for parcels booked
+              through Global Freight Solutions, DPD for track.dpd.co.uk.
             </span>
           </div>
+
+          {courier.trackingSource === 'gfs' && (
+            <div className="field" style={{ marginTop: '0.5rem' }}>
+              <label>Which carrier GFS hand your parcels to</label>
+              <input
+                type="text"
+                value={courier.gfsCarrier}
+                placeholder="DPD"
+                onChange={(e) => patchCourier(courier.id, { gfsCarrier: e.target.value })}
+              />
+              <span className="field-hint">
+                GFS are the booking company rather than the van. Their page needs telling who is
+                actually carrying it - usually DPD.
+              </span>
+            </div>
+          )}
 
           {courier.trackingSource !== 'none' && (
             <div style={{ display: 'grid', gap: '0.75rem', marginTop: '0.5rem' }}>
@@ -218,8 +272,11 @@ export function CourierSettings({ value, onChange }: {
           name: '',
           showTrackingLink: true,
           trackingSource: 'none',
+          gfsCarrier: 'DPD',
           outForDeliveryStages: [],
           deliveredStages: [],
+          trackingLinkLabel: '',
+          trackingLinkHint: '',
           faqs: [],
         }])}
       >

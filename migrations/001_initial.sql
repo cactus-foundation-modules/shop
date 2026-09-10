@@ -791,6 +791,21 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     -- rather than our address: it is what the crew is actually driving to.
     "destination_lat" TEXT,
     "destination_lng" TEXT,
+    -- What a carrier's own systems know beyond the stage: the scan history in
+    -- their words, the window the van is working to today, where this parcel
+    -- sits on the round, and who is driving. The short code is the tail of a
+    -- courier's follow-my-parcel link and is a SESSION KEY, not an identifier -
+    -- it unlocks all of the above and cannot be derived from a parcel number.
+    -- Also shipped as migrations/049_carrier_scan_tracking.sql.
+    "tracking_short_code" TEXT,
+    "tracking_events" JSONB,
+    "delivery_window_from" TIMESTAMP(3),
+    "delivery_window_to" TIMESTAMP(3),
+    "stop_number" INTEGER,
+    "stops_completed" INTEGER,
+    "stops_total" INTEGER,
+    "minutes_to_stop" INTEGER,
+    "driver_name" TEXT,
     -- Proof of delivery, kept as OUR copy of the courier's image rather than a
     -- link to theirs. Also in migrations/041_delivery_live_tracking.sql.
     "signed_by" TEXT,
@@ -816,6 +831,12 @@ CREATE INDEX IF NOT EXISTS "shp_shipments_order_id_idx" ON "shp_shipments" ("ord
 CREATE INDEX IF NOT EXISTS "shp_shipments_tracking_poll_idx"
     ON "shp_shipments" ("tracking_checked_at")
     WHERE "tracking_url" IS NOT NULL AND "delivered_at" IS NULL;
+
+-- A parcel whose only feed is a follow-my-parcel code, which the query above
+-- would never see. See migrations/049_carrier_scan_tracking.sql.
+CREATE INDEX IF NOT EXISTS "shp_shipments_tracking_poll_code_idx"
+    ON "shp_shipments" ("tracking_checked_at")
+    WHERE "tracking_short_code" IS NOT NULL AND "delivered_at" IS NULL;
 
 -- The same poller's catch-up pass: a parcel on an order somebody completed by
 -- hand, still without its proof of delivery. See

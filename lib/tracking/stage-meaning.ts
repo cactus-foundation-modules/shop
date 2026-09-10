@@ -37,7 +37,11 @@ export function stageMeaning(
   return 'progress'
 }
 
-/** Whether this courier is one the shop reads on a schedule at all. */
+/** Whether this courier is one the shop reads on a schedule at all.
+ *
+ *  Asked as "not none" rather than by listing the sources, so adding a reader
+ *  never means remembering to add it here too - the failure that would cause is
+ *  silent, and looks exactly like a courier whose website is down. */
 export function courierIsPolled(courier: Pick<ShpCourier, 'trackingSource'> | null): boolean {
-  return courier?.trackingSource === 'multidrop'
+  return Boolean(courier) && courier?.trackingSource !== 'none'
 }

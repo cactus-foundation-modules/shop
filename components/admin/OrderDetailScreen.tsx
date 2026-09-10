@@ -84,6 +84,9 @@ type OrderDetail = {
 type DispatchLine = { orderItemId: string; productName: string; quantity: number; refundedQty: number; dispatchedQty: number; outstandingQty: number }
 type ShipmentDetail = {
   id: string; shippedAt: string; trackingNumber: string | null; trackingUrl: string | null
+  // The follow-my-parcel code, where the courier issued one and somebody has
+  // pasted it in. What it unlocks is in lib/tracking/dpd.ts.
+  trackingShortCode: string | null
   carrier: string | null; courierId: string | null; notes: string | null
   // The booked delivery, as text: 'YYYY-MM-DD' and 'HH:MM'. Never a timestamp -
   // see modules/shop/lib/delivery-slot.ts.

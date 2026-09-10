@@ -485,9 +485,27 @@ export const ShpConfigSchema = z.object({
         // not need a release. Match is case-insensitive and trimmed; a stage
         // named in neither list is progress the shop notes and says nothing
         // about.
-        trackingSource: z.enum(['none', 'multidrop']).default('none'),
+        trackingSource: z.enum(['none', 'multidrop', 'gfs', 'dpd']).default('none'),
+        // Which carrier to ask GFS about. GFS are a broker - they hand the
+        // parcel to somebody, and their page wants to be told who. Only read
+        // when trackingSource is 'gfs'.
+        gfsCarrier: z.string().min(1).max(40).default('DPD'),
         outForDeliveryStages: z.array(z.string().min(1).max(120)).default([]),
         deliveredStages: z.array(z.string().min(1).max(120)).default([]),
+        // What the button to the courier's own page says, and the line under
+        // it.
+        //
+        // Empty means the wording the shop has always used, so nothing changes
+        // for a shop that never touches this. It exists because the REASON to
+        // click through stopped being tracking: on a courier the shop reads
+        // itself, the customer already has the timeline, the window and the
+        // driver on their own order page, and a button marked "Track your
+        // parcel" would send them out for something they have just read - and
+        // bury the thing their courier's page is actually for. On DPD that is
+        // the safe place, the neighbour and moving the delivery to another day,
+        // none of which any shop can do on the customer's behalf.
+        trackingLinkLabel: z.string().max(60).default(''),
+        trackingLinkHint: z.string().max(200).default(''),
         faqs: z
           .array(
             z.object({

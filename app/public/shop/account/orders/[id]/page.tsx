@@ -36,7 +36,8 @@ import {
   orderCompanyName,
 } from '@/modules/shop/lib/order-display'
 import { orderProgressSteps, orderStopped } from '@/modules/shop/lib/order-progress'
-import { parcelDelivery, railDelivery } from '@/modules/shop/lib/order-delivery'
+import { ParcelTracking } from '@/modules/shop/components/public/ParcelTracking'
+import { DEFAULT_TRACKING_LABEL, parcelDelivery, railDelivery, type ParcelDelivery } from '@/modules/shop/lib/order-delivery'
 import { formatDeliveredDayRelative, nowInTimezone } from '@/modules/shop/lib/delivery-slot'
 import { calendarDateIn } from '@/lib/config/timezone'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
@@ -776,15 +777,37 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                         account number, pro-forma status, the supplier's
                         branding - and the courier's settings say so. Staff
                         still see the link on the order screen. */}
+                    {/* What the carrier has said since: the driver's progress
+                        in words, and their own history. Shown before the button
+                        out to them, because it is the answer to the question
+                        that button used to be the only way of asking. */}
+                    {deliveryById.get(shipment.id) && (
+                      <ParcelTracking delivery={deliveryById.get(shipment.id) as ParcelDelivery} />
+                    )}
                     {deliveryById.get(shipment.id)?.showTracking !== false && safeTrackingUrl(shipment.trackingUrl) && (
-                      <a
-                        className="sod-btn sod-btn-ghost sod-track"
-                        href={safeTrackingUrl(shipment.trackingUrl)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Track {shipments.length === 1 ? 'your parcel' : `parcel ${index + 1}`}
-                      </a>
+                      <>
+                        {/* The label is the courier's own setting where they
+                            have one. On a courier the shop follows itself, the
+                            customer has just read the timeline, the window and
+                            the driver above - so a button offering to "track
+                            your parcel" would send them out for what they have
+                            in front of them, and bury the safe place, the
+                            neighbour and the change of date that only the
+                            courier can do. */}
+                        <a
+                          className="sod-btn sod-btn-ghost sod-track"
+                          href={safeTrackingUrl(shipment.trackingUrl)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {deliveryById.get(shipment.id)?.trackingLabel === DEFAULT_TRACKING_LABEL
+                            ? `Track ${shipments.length === 1 ? 'your parcel' : `parcel ${index + 1}`}`
+                            : deliveryById.get(shipment.id)?.trackingLabel}
+                        </a>
+                        {deliveryById.get(shipment.id)?.trackingHint && (
+                          <span className="sod-dim">{deliveryById.get(shipment.id)?.trackingHint}</span>
+                        )}
+                      </>
                     )}
                     {/* Proof of delivery, once the courier has handed one
                         over. Our own copy of their image - see

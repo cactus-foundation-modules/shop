@@ -2,6 +2,8 @@
 // Table/column names in modules/shop/migrations/001_initial.sql are the
 // source of truth; these types describe the camelCase shape callers see.
 
+import type { TrackingEvent } from '@/modules/shop/lib/tracking/reading'
+
 export type PuckData = { root: { props?: Record<string, unknown> }; content: unknown[]; zones?: Record<string, unknown> }
 
 // Per-line personalisation, normalised for generic display. A shop.cart-line-resolver
@@ -665,6 +667,25 @@ export type ShpShipment = {
   /** When the courier said it arrived. Not the same as the order being
    *  complete: another parcel may still be out. */
   deliveredAt: Date | null
+  /** The code out of a courier's follow-my-parcel link, where they issue one.
+   *  A session key rather than an identifier: it unlocks the window, the stop
+   *  number and the driver, and cannot be derived from a parcel number. */
+  trackingShortCode: string | null
+  /** The courier's scan history in their own words, newest first. */
+  trackingEvents: TrackingEvent[]
+  /** The window the van is working to TODAY, as against the slot the shop was
+   *  promised at booking. The two disagree often enough to keep both. */
+  deliveryWindowFrom: Date | null
+  deliveryWindowTo: Date | null
+  /** This parcel's place on the round, and how far along the driver is. */
+  stopNumber: number | null
+  stopsCompleted: number | null
+  stopsTotal: number | null
+  /** The courier's own estimate in minutes, kept as minutes because it decays
+   *  from the moment it was read. */
+  minutesToStop: number | null
+  /** The driver's first name, as the courier prints it. */
+  driverName: string | null
   /** Ids off the courier's tracking page, needed to ask where the crew is. The
    *  route is the day's ROUND rather than this parcel, so it changes daily. */
   trackingClientId: string | null

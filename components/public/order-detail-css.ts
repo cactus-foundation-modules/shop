@@ -231,6 +231,32 @@ export const ORDER_DETAIL_CSS = `
    it is set apart from the parcel's own small print rather than joining it. */
 .sod-parcel-booked{font-weight:600;color:var(--color-primary-dark)}
 
+/* --- What the carrier says ------------------------------------------------ */
+/* The driver's progress in words, and the courier's own history under it. Set
+   apart from the parcel's small print because it is the live half of the card:
+   what is happening now, as against what was arranged a week ago. */
+.sod-tracking{display:grid;gap:0.5rem;margin-top:0.5rem}
+.sod-live-round{margin:0;color:var(--color-text-secondary)}
+.sod-live-yours{margin:0;font-weight:600;color:var(--color-text)}
+/* How far through the round the driver is. A track and a fill, both tokens -
+   the fill is the same accent the booked-delivery line uses, so the two live
+   parts of the card read as one thing. */
+.sod-live-bar{height:0.375rem;border-radius:999px;background:var(--color-bg-subtle);
+  border:1px solid var(--color-border);overflow:hidden}
+.sod-live-bar>span{display:block;height:100%;background:var(--color-primary);
+  border-radius:999px}
+.sod-history>summary{cursor:pointer;font-size:0.875rem;color:var(--color-text-secondary)}
+.sod-history>summary:hover{color:var(--color-text)}
+.sod-history-list{list-style:none;margin:0.5rem 0 0;padding:0;display:grid;gap:0.5rem;
+  font-size:0.875rem}
+.sod-history-list>li{display:grid;gap:0.125rem;padding-left:0.75rem;
+  border-left:2px solid var(--color-border)}
+/* The newest scan is the one that matters, and it is the one at the top. */
+.sod-history-list>li:first-child{border-left-color:var(--color-primary)}
+.sod-history-when{color:var(--color-text-muted);font-variant-numeric:tabular-nums}
+.sod-history-what{color:var(--color-text)}
+.sod-history-where{color:var(--color-text-muted);font-size:0.8125rem}
+
 /* --- Where the van is ---------------------------------------------------- */
 .sod-live{display:grid;gap:0.5rem;margin-top:0.75rem}
 .sod-live-line{margin:0;font-weight:600;color:var(--color-text)}

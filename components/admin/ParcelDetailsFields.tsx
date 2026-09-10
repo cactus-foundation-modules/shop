@@ -21,6 +21,9 @@ export type ParcelDetails = {
   carrier: string
   trackingNumber: string
   trackingUrl: string
+  /** The courier's follow-my-parcel link, or the bare code out of it. Pasted
+   *  whole; the route reduces it to the code. */
+  trackingShortCode: string
   /** 'YYYY-MM-DD', as the date input gives it. */
   deliveryDate: string
   /** 'HH:MM', as the time input gives it. */
@@ -34,6 +37,7 @@ export const EMPTY_PARCEL_DETAILS: ParcelDetails = {
   carrier: '',
   trackingNumber: '',
   trackingUrl: '',
+  trackingShortCode: '',
   deliveryDate: '',
   deliverySlotStart: '',
   deliverySlotEnd: '',
@@ -52,6 +56,7 @@ export function parcelDetailsPayload(details: ParcelDetails): Record<string, str
     carrier: picked ? null : details.carrier.trim() || null,
     trackingNumber: details.trackingNumber.trim() || null,
     trackingUrl: details.trackingUrl.trim() || null,
+    trackingShortCode: details.trackingShortCode.trim() || null,
     deliveryDate: details.deliveryDate.trim() || null,
     deliverySlotStart: details.deliverySlotStart.trim() || null,
     deliverySlotEnd: details.deliverySlotEnd.trim() || null,
@@ -155,6 +160,22 @@ export function ParcelDetailsFields({ couriers, value, onChange }: {
         <span style={hintStyle}>
           The courier&rsquo;s own page for this parcel. Whether the customer is offered it is that
           courier&rsquo;s own setting - either way it stays here for you.
+        </span>
+      </label>
+
+      <label>Follow-my-parcel link (optional)
+        <input
+          value={value.trackingShortCode}
+          onChange={(e) => set('trackingShortCode', e.target.value)}
+          placeholder="https://www.dpd.co.uk/d/…"
+          inputMode="url"
+          style={fieldStyle}
+        />
+        <span style={hintStyle}>
+          The short link the courier emails you once they have the parcel - not the same as the
+          tracking link above. Paste it here and your own order page can show the delivery window,
+          the driver&rsquo;s name and how many drops away they are. Usually arrives the day before,
+          so it is normally added by editing the parcel rather than at dispatch.
         </span>
       </label>
 
