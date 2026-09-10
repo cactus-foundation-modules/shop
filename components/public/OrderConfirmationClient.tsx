@@ -6,6 +6,8 @@ import { announceConversion } from '@/lib/analytics/conversion'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { sortLinesByGroup } from '@/modules/shop/lib/cart-group'
 import { ORDER_CONFIRMATION_CSS } from '@/modules/shop/components/public/order-confirmation-css'
+import { TRACK_ORDER_CSS } from '@/modules/shop/components/public/track-order-css'
+import OrderAccessForm from '@/modules/shop/components/public/OrderAccessForm'
 import RegisterForm from '@/components/members/RegisterForm'
 import type { ShpAddress } from '@/modules/shop/lib/types'
 
@@ -259,14 +261,14 @@ function UpdateChannelsCard({
     setSaved(false)
     setError('')
     try {
-      const params = new URLSearchParams(window.location.search)
+      // Nothing off the address is sent: the route decides from this browser's
+      // own cookie whether it may touch this order, exactly as the status route
+      // does. See app/api/public/orders/notifications.
       const res = await fetch('/api/m/shop/public/orders/notifications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderNumber,
-          token: params.get('t') ?? undefined,
-          email: params.get('email') ?? undefined,
           channels: { email: draft.email, sms: draft.sms },
           phone: draft.phone,
         }),
@@ -346,6 +348,61 @@ function formatOrderDate(iso: string): string {
   return date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+type ReceiptChallengeState = {
+  kind: 'postcode' | 'email'
+  orderNumber: string
+  /** Absent on a confirmation link old enough to have carried the customer's
+   *  email address in its own query string. There the email is both what names
+   *  the order and what opens it, so no token is needed or wanted. */
+  token: string | null
+}
+
+// The gate somebody sees when they open a confirmation link on a device that
+// did not check out - a forwarded message, a shared browser, the other half of
+// a household clicking a link out of a chat.
+//
+// The receipt is the one page in the shop that says a customer's name, their
+// full delivery address and what they spent, all on one screen and all without
+// anybody signing in, so the link alone stops short of opening it. Drawn in the
+// same form and the same words as the postcode gate on the order page, because
+// it is the same question - see components/public/OrderAccessForm.
+//
+// It says the order number and nothing else about the order. The address it is
+// on already carries that, which is how they got here.
+function ReceiptAccessGate({
+  challenge,
+  onProved,
+}: {
+  challenge: ReceiptChallengeState
+  onProved: () => void
+}) {
+  return (
+    <>
+      <style dangerouslySetInnerHTML={{ __html: TRACK_ORDER_CSS }} />
+      <div className="sot">
+        <header className="sot-head">
+          <h1 className="sot-title">Order {challenge.orderNumber}</h1>
+          <p className="sot-lede">
+            {challenge.kind === 'postcode'
+              ? 'One quick check that it is you. This looks like a different device to the one the order was placed on, so pop in the postcode it is being delivered to and your receipt is all yours.'
+              : 'One quick check that it is you. This looks like a different device to the one the order was placed on, so pop in the email address we sent your confirmation to and your receipt is all yours.'}
+          </p>
+        </header>
+
+        <div className="sot-card">
+          <OrderAccessForm
+            mode="receipt"
+            orderNumber={challenge.orderNumber}
+            token={challenge.token ?? undefined}
+            challenge={challenge.kind}
+            onProved={onProved}
+          />
+        </div>
+      </div>
+    </>
+  )
+}
+
 // Client island for the order-confirmation view (reads order from the URL query).
 // Registered Puck block wrapper (ShopOrderConfirmation) is a server component that
 // renders this, so Puck's RSC <Render> never serialises its renderDropZone
@@ -353,6 +410,14 @@ function formatOrderDate(iso: string): string {
 export function OrderConfirmationClient() {
   const [data, setData] = useState<OrderStatusResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Set when the server says this browser is not one that may open this receipt
+  // - the link was opened somewhere other than the machine that checked out.
+  // Carries what the gate needs, because the gate renders on the server first
+  // and there is no `window` there to read the address out of.
+  const [challenge, setChallenge] = useState<ReceiptChallengeState | null>(null)
+  // Bumped once the postcode is accepted, purely to send the effect round again
+  // now that the browser holds the proof. Nothing else reads it.
+  const [attempt, setAttempt] = useState(0)
   // Whether we watched this order settle rather than arriving to find it done.
   // Only that shopper waited, so only that shopper is owed the good news.
   const [watched, setWatched] = useState(false)
@@ -367,19 +432,34 @@ export function OrderConfirmationClient() {
     // to them before this change keeps working. Neither is invented here - the
     // server decides which one it will accept.
     const token = params.get('t')
-    const email = params.get('email')
-    if (!orderNumber || (!token && !email)) {
+    // The shape this page's own address used to have, before the token: the
+    // customer's email in the query string. Nothing hands those out any more,
+    // but people bookmark receipts, so one still arrives now and then. It is not
+    // honoured as a key - a secret in an address is exactly what the token
+    // replaced - it only tells us which question to ask.
+    const legacyEmailLink = !token && !!params.get('email')
+    if (!orderNumber) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- guard clause on URL params read at mount, no async boundary applies
       setError('Missing order details')
+      return
+    }
+    // Only on the first pass. The address still says `?email=` after they have
+    // answered - nothing rewrites it - so without this the gate would put itself
+    // straight back up on top of the receipt it had just earned.
+    if (legacyEmailLink && attempt === 0) {
+      setChallenge({ kind: 'email', orderNumber, token: null })
       return
     }
 
     // Narrowed once here: the guard above doesn't reach inside the hoisted
     // helpers below, and an assertion at each use is a worse way to say it.
     const placedOrderNumber: string = orderNumber
-    const url = token
-      ? `/api/m/shop/public/orders/status?orderNumber=${encodeURIComponent(orderNumber)}&t=${encodeURIComponent(token)}`
-      : `/api/m/shop/public/orders/status?orderNumber=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(email!)}`
+    // The token, where this browser has one. A browser that has already proved
+    // itself needs nothing in the address at all - its receipt cookie names the
+    // order - which is what lets the gate below hand straight over to the
+    // receipt without a token to pass on.
+    const url = `/api/m/shop/public/orders/status?orderNumber=${encodeURIComponent(orderNumber)}`
+      + (token ? `&t=${encodeURIComponent(token)}` : '')
     const startedAt = Date.now()
     let cancelled = false
     let loaded = false
@@ -401,12 +481,25 @@ export function OrderConfirmationClient() {
     }
 
     async function load(): Promise<OrderStatusResponse | null> {
-      let body: OrderStatusResponse & { error?: string }
+      let body: OrderStatusResponse & { error?: string; challenge?: 'postcode' | 'email' }
       try {
         const res = await fetch(url)
         body = await res.json()
         if (cancelled) return null
         if (!res.ok) {
+          // Not an error at all: the link was opened on a device that did not
+          // buy anything, and the shop wants the delivery postcode before it
+          // shows somebody's address and order total to whoever is holding it.
+          //
+          // Only ever on the first read, for the same reason the error below is:
+          // a receipt already on screen must not be snatched away and replaced
+          // with a form because one poll happened to land after the grant
+          // expired. That page is theirs; they proved it a moment ago.
+          if (res.status === 403 && body.challenge && !loaded) {
+            setChallenge({ kind: body.challenge, orderNumber: placedOrderNumber, token })
+
+            return null
+          }
           // Only the very first read is allowed to call the order missing. A
           // failed poll is a blip on a page already showing a real order, and
           // replacing that with an error is a worse answer than the one already
@@ -465,7 +558,16 @@ export function OrderConfirmationClient() {
       if (timer) clearTimeout(timer)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [])
+  }, [attempt])
+
+  if (challenge) {
+    return (
+      <ReceiptAccessGate
+        challenge={challenge}
+        onProved={() => { setChallenge(null); setAttempt((n) => n + 1) }}
+      />
+    )
+  }
 
   if (error) {
     return (

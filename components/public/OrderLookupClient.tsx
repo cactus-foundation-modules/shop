@@ -3,6 +3,21 @@
 import { useState } from 'react'
 import { formatMoney } from '@/modules/shop/lib/money'
 
+// The old way into an order: its number, printed on every email the shop sends,
+// plus the email address it was placed with.
+//
+// It used to ask the status route for `?orderNumber=…&email=…` in one GET, which
+// put a customer's address in a query string - and therefore in the site's
+// access logs, in the browser's history and in the Referer header sent to every
+// third party the next page loads. Worse, the resulting address WAS the key:
+// anybody who came across it saw the whole order.
+//
+// So it is two steps now, and neither carries a secret in an address. The email
+// is POSTed to the receipt-access route, which checks it and - if it is right -
+// writes this browser a signed cookie saying it may see that order. The status
+// route is then asked for the order by number alone and answers off the cookie.
+// See app/api/public/orders/receipt-access and lib/receipt-access-cookie.
+
 type OrderStatusData = {
   order: { orderNumber: string; status: string; total: string; paymentStatus: string }
   items: Array<{ productName: string; quantity: number; total: string }>
@@ -18,11 +33,32 @@ export function OrderLookupClient({ orderNumber }: { orderNumber: string }) {
   async function lookup() {
     setLoading(true)
     setError(null)
-    const res = await fetch(`/api/m/shop/public/orders/status?orderNumber=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(email)}`)
-    const body = await res.json()
-    setLoading(false)
-    if (res.ok) setData(body)
-    else setError(body.error ?? 'Order not found')
+    try {
+      const proof = await fetch('/api/m/shop/public/orders/receipt-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderNumber, answer: email }),
+      })
+      const proofBody = await proof.json().catch(() => null)
+      if (!proof.ok || !proofBody?.ok) {
+        setError(proofBody?.error ?? 'Order not found')
+        return
+      }
+
+      const res = await fetch(
+        `/api/m/shop/public/orders/status?orderNumber=${encodeURIComponent(orderNumber)}`,
+      )
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        setError(body?.error ?? 'Order not found')
+        return
+      }
+      setData(body)
+    } catch {
+      setError('We could not reach the shop just then. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (data) {

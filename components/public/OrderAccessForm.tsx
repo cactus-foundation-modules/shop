@@ -18,6 +18,19 @@ import { useRouter } from 'next/navigation'
 //   confirm - the postcode gate on an order page reached from a link in an
 //             email. The order is already known, so there is nothing to type
 //             but the postcode.
+//   document - the same gate again, on an invoice, credit note or proforma. The
+//             answer is the ORDER's postcode, and passing it lets the page
+//             itself render on the next pass, so this one simply refreshes.
+//   receipt - the same gate on the confirmation page, for somebody opening the
+//             shop's own receipt link on a device that did not check out. It
+//             posts to a different route (the caller holds a signed token
+//             rather than an order id) and it does not navigate anywhere: the
+//             page it interrupts is the page they wanted, so it simply steps
+//             out of the way. It asks for the email address rather than the
+//             postcode in two cases - an order with no delivery postcode, and a
+//             confirmation link old enough to have carried the address in its
+//             own query string - and in the second there is no token either.
+//             See lib/order-receipt-challenge.ts.
 
 type Props =
   | {
@@ -34,15 +47,55 @@ type Props =
       /** What the request is made against, so nothing has to be typed. */
       orderId: string
     }
+  | {
+      mode: 'receipt'
+      orderNumber: string
+      orderId?: undefined
+      /** The signed receipt token off the confirmation link, which is what says
+       *  which order is being asked about. Absent on a link old enough to have
+       *  carried the customer's email address instead, where the email is both
+       *  what identifies the order and what opens it. */
+      token?: string
+      /** Which question this order can be opened with, as the server decided. */
+      challenge: 'postcode' | 'email'
+      /** Called once the answer is accepted, so the page can get on with
+       *  showing the receipt rather than reloading itself. */
+      onProved: () => void
+    }
+  | {
+      mode: 'document'
+      orderNumber?: undefined
+      orderId?: undefined
+      /** Which of the shop's three documents is being opened. */
+      kind: 'invoice' | 'credit-note' | 'proforma'
+      /** Its own number, as it appears in its address. */
+      number: string
+      /** The permanent link token off that address, which says which document
+       *  is being asked about and nothing about who is asking. */
+      token: string
+      challenge: 'postcode' | 'email'
+    }
 
 export default function OrderAccessForm(props: Props) {
   const router = useRouter()
   const [orderNumber, setOrderNumber] = useState(props.orderNumber ?? '')
-  const [postcode, setPostcode] = useState('')
+  // Named for what it is rather than for the postcode it usually holds: on a
+  // receipt whose order has no delivery postcode, and on an older confirmation
+  // link, the same box takes the email address instead.
+  const [answer, setAnswer] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const confirming = props.mode === 'confirm'
+  const receipt = props.mode === 'receipt'
+  // Not named `document`: this is a client component, and shadowing the DOM's
+  // own global inside one is a trap waiting for whoever edits it next.
+  const documentMode = props.mode === 'document'
+  // The two that answer a challenge and stay where they are, as against the two
+  // that look an order up and navigate to it.
+  const proving = receipt || documentMode
+  // Whether the order number box is hidden because the page already knows it.
+  const confirming = props.mode === 'confirm' || proving
+  const askingEmail = proving && props.challenge === 'email'
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -51,20 +104,45 @@ export default function OrderAccessForm(props: Props) {
     setError(null)
 
     try {
-      const res = await fetch('/api/m/shop/public/orders/track', {
+      const endpoint = receipt
+        ? '/api/m/shop/public/orders/receipt-access'
+        : documentMode
+          ? '/api/m/shop/public/documents/access'
+          : '/api/m/shop/public/orders/track'
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
-          confirming
-            ? { orderId: props.orderId, postcode }
-            : { orderNumber, postcode },
+          props.mode === 'receipt'
+            ? { orderNumber: props.orderNumber, token: props.token, answer }
+            : props.mode === 'document'
+              ? { kind: props.kind, number: props.number, token: props.token, answer }
+              : props.mode === 'confirm'
+                ? { orderId: props.orderId, postcode: answer }
+                : { orderNumber, postcode: answer },
         ),
       })
       const body = await res.json().catch(() => null)
 
-      if (!res.ok || !body?.path) {
+      if (!res.ok || !(proving ? body?.ok : body?.path)) {
         setError(body?.error ?? 'Something went wrong. Please try again.')
         setBusy(false)
+        return
+      }
+
+      if (props.mode === 'receipt') {
+        // Left busy on purpose: the gate is about to be replaced by the receipt
+        // itself, and a button that springs back to life first only invites a
+        // second submission of an answer already accepted.
+        props.onProved()
+        return
+      }
+
+      if (documentMode) {
+        // The document is drawn on the server, and the cookie that opens it has
+        // just been written - so there is nowhere to go, only this page to draw
+        // again. Left busy for the same reason as above.
+        router.refresh()
         return
       }
 
@@ -103,19 +181,22 @@ export default function OrderAccessForm(props: Props) {
         )}
 
         <div className="sot-field">
-          <label htmlFor="sot-postcode">Delivery postcode</label>
+          <label htmlFor="sot-postcode">{askingEmail ? 'Email address' : 'Delivery postcode'}</label>
           <input
             id="sot-postcode"
-            name="postcode"
-            value={postcode}
-            onChange={(e) => setPostcode(e.target.value)}
-            autoComplete="postal-code"
-            autoCapitalize="characters"
+            name={askingEmail ? 'email' : 'postcode'}
+            type={askingEmail ? 'email' : 'text'}
+            value={answer}
+            onChange={(e) => setAnswer(e.target.value)}
+            autoComplete={askingEmail ? 'email' : 'postal-code'}
+            autoCapitalize={askingEmail ? 'none' : 'characters'}
             spellCheck={false}
             required
           />
           <span className="sot-hint">
-            The postcode the order is being delivered to. Spaces and capitals do not matter.
+            {askingEmail
+              ? 'The address we sent your order confirmation to.'
+              : 'The postcode the order is being delivered to. Spaces and capitals do not matter.'}
           </span>
         </div>
       </div>

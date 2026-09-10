@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { getSessionFromCookie } from '@/lib/auth/session'
-import { getMemberFromCookie } from '@/lib/members/session'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { verifyProformaToken, proformaPdfPath } from '@/modules/shop/lib/invoice-token'
+import { proformaPdfPath } from '@/modules/shop/lib/invoice-token'
+import { resolveDocumentAccess } from '@/modules/shop/lib/document-access'
+import DocumentAccessGate from '@/modules/shop/components/public/DocumentAccessGate'
 import { loadProforma, proformaDocContext } from '@/modules/shop/lib/proforma'
 import { renderProformaDocument } from '@/modules/shop/lib/proforma-document'
 import { renderDocumentRunningFooter } from '@/modules/shop/lib/invoice-document'
@@ -69,13 +69,25 @@ export default async function ShopProformaPage({
   // (no session, no query), the member whose order it is, and a staff session.
   // Anything else is a 404 rather than a 403 - order numbers run in sequence, so
   // "wrong token" and "not yours" must look identical from outside.
-  let allowed = verifyProformaToken(order.orderNumber, token)
-  if (!allowed) {
-    const [member, user] = await Promise.all([getMemberFromCookie(), getSessionFromCookie()])
-    if (member) allowed = Boolean(order.memberId && order.memberId === member.id)
-    if (!allowed && user) allowed = true
+  // The same rule as the invoice that will replace it, asked through the same
+  // one place - see lib/document-access.ts. A proforma is numbered by its ORDER,
+  // so its link token is over the order number rather than a document number of
+  // its own; everything else about the question is identical.
+  const access = await resolveDocumentAccess({
+    kind: 'proforma', number: order.orderNumber, token, order,
+  })
+  if (!access.allowed) {
+    if (!access.challenge) notFound()
+    return (
+      <DocumentAccessGate
+        title={`Proforma for order ${order.orderNumber}`}
+        challenge={access.challenge}
+        kind="proforma"
+        number={order.orderNumber}
+        token={token ?? ''}
+      />
+    )
   }
-  if (!allowed) notFound()
 
   const config = await getShopConfigCached()
   const ctx = await proformaDocContext(order, items, { print })

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSessionFromCookie } from '@/lib/auth/session'
-import { getMemberFromCookie } from '@/lib/members/session'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
-import { verifyProformaToken } from '@/modules/shop/lib/invoice-token'
+import { proformaPath } from '@/modules/shop/lib/invoice-token'
+import { resolveDocumentAccess } from '@/modules/shop/lib/document-access'
 import { InvoicePdfUnavailableError, invoicePdfFilename } from '@/modules/shop/lib/invoice-pdf'
 import { renderProformaPdf } from '@/modules/shop/lib/proforma-pdf'
 import { loadProforma } from '@/modules/shop/lib/proforma'
@@ -30,13 +29,19 @@ export async function GET(request: NextRequest, context: { params: Promise<{ num
   if (!loaded) return NextResponse.json({ error: 'We could not find that proforma.' }, { status: 404 })
   const { order } = loaded
 
-  let allowed = verifyProformaToken(order.orderNumber, request.nextUrl.searchParams.get('t'))
-  if (!allowed) {
-    const [member, user] = await Promise.all([getMemberFromCookie(), getSessionFromCookie()])
-    if (member) allowed = Boolean(order.memberId && order.memberId === member.id)
-    if (!allowed && user) allowed = true
+  const access = await resolveDocumentAccess({
+    kind: 'proforma',
+    number: order.orderNumber,
+    token: request.nextUrl.searchParams.get('t'),
+    order,
+    allowReceiptCookie: true,
+  })
+  if (!access.allowed) {
+    if (access.challenge) {
+      return NextResponse.redirect(new URL(proformaPath(order.orderNumber), request.nextUrl))
+    }
+    return NextResponse.json({ error: 'We could not find that proforma.' }, { status: 404 })
   }
-  if (!allowed) return NextResponse.json({ error: 'We could not find that proforma.' }, { status: 404 })
 
   const config = await getShopConfigCached()
   if (!config.invoicePdfEnabled) {

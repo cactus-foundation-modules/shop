@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getOrderByNumber, getOrderByNumberAndEmail, getOrderItems } from '@/modules/shop/lib/db/orders'
+import { getOrderByNumber, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { getProductMediaForProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getPaymentProvider, getPaymentMethodLabels } from '@/modules/shop/lib/payments/registry'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 import { verifyOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
+import { receiptChallengeFor } from '@/modules/shop/lib/order-receipt-challenge'
+import { mayOpenReceipt } from '@/modules/shop/lib/order-viewer'
 import { getOrderNotifyChannels } from '@/modules/shop/lib/order-notify'
 import { manualPaymentInstructions, paymentOutstanding } from '@/modules/shop/lib/payment-instructions'
 import { settlementMethod } from '@/modules/shop/lib/order-pay-online'
@@ -22,39 +24,63 @@ const BUILT_IN_METHOD_LABELS: Record<string, string> = {
   STRIPE: 'Card', PAYPAL: 'PayPal', BANK_TRANSFER: 'Bank transfer', CASH: 'Cash',
 }
 
-// Guest order lookup: order number + email must both match - no enumeration (spec 8.1).
+// What the confirmation page reads. NOTHING in the address opens it any more.
+//
+// It used to take `?email=<the customer's address>`, which was a secret in a
+// query string - and therefore in the site's access logs, in browser history
+// and in the Referer sent to every third party the page loads. It then took a
+// signed `?t=` token instead, which fixed the privacy of it but not the sharing:
+// a receipt link is forwarded, pasted into a group chat, left in a shared
+// browser and synced across a household, and whoever held it saw the customer's
+// name, their delivery address and what they paid.
+//
+// So the token now only says WHICH order. Whether it may be shown is decided by
+// what this BROWSER has: it bought the thing (the receipt cookie, granted at the
+// till), it is signed in as the owner, or it has answered the delivery-postcode
+// challenge here. Everything that is typed rather than clicked goes through
+// POST /orders/receipt-access - see that route, and lib/order-viewer.ts for the
+// rule this shares with the order page.
 export async function GET(request: NextRequest) {
   const closed = await shopClosedResponse()
   if (closed) return closed
 
   // Order numbers are a prefix and a sequence (DW000123 - see lib/order-number),
-  // so half the pair is not a secret at all and the email is the whole lock.
-  // Unthrottled, that lock can be picked at whatever rate the network allows,
-  // and what falls out is the customer's name, full delivery address and order
-  // total. Every other public route here is limited; this one was the gap.
+  // so the number is not a secret at all. Unthrottled, whatever stands behind it
+  // can be picked at whatever rate the network allows, and what falls out is the
+  // customer's name, full delivery address and order total.
   const ip = getClientIpFromRequest(request)
   if (!checkInMemoryRateLimit(`order-status:${ip}`, 20, 15 * 60 * 1000)) {
     return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
   }
 
   const orderNumber = request.nextUrl.searchParams.get('orderNumber')
-  const email = request.nextUrl.searchParams.get('email')
-  // Two ways to prove which order may be shown, and they are for two different
-  // callers. `email` is the guest order-LOOKUP form, where the shopper types
-  // both halves - untouched. `t` is the signed token on the confirmation link
-  // the shop hands out itself, which used to carry the customer's email in the
-  // query string instead. See lib/order-receipt-token.
+  // The signed token on the shop's own confirmation link. Optional, because a
+  // browser that has already proved itself carries the order in its receipt
+  // cookie and needs nothing in the address at all.
   const token = request.nextUrl.searchParams.get('t')
-  if (!orderNumber || (!email && !token)) {
-    return NextResponse.json({ error: 'orderNumber and email are required' }, { status: 400 })
+  if (!orderNumber) {
+    return NextResponse.json({ error: 'orderNumber is required' }, { status: 400 })
   }
 
-  const order = verifyOrderReceiptToken(orderNumber, token)
-    ? await getOrderByNumber(orderNumber)
-    : email
-      ? await getOrderByNumberAndEmail(orderNumber, email)
-      : null
+  const viaToken = verifyOrderReceiptToken(orderNumber, token)
+  const order = await getOrderByNumber(orderNumber)
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+
+  if (!(await mayOpenReceipt(request, order))) {
+    // With a genuine link, say what to type: the link is already proof the order
+    // exists, so a challenge gives nothing away. Without one, say nothing at all
+    // - a 403 on a real order number and a 404 on an invented one would make
+    // this route a way of counting the shop's sales.
+    if (!viaToken) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+    return NextResponse.json(
+      {
+        error: 'Please confirm this order is yours.',
+        challenge: receiptChallengeFor(order),
+        orderNumber: order.orderNumber,
+      },
+      { status: 403 },
+    )
+  }
 
   const items = await getOrderItems(order.id)
   const config = await getShopConfigCached()

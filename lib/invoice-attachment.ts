@@ -1,6 +1,6 @@
 import { getInvoiceForOrder } from '@/modules/shop/lib/db/invoices'
 import { invoicePdfFilename, printPath } from '@/modules/shop/lib/invoice-pdf'
-import { signCreditNoteToken, signInvoiceToken } from '@/modules/shop/lib/invoice-token'
+import { documentPagePath, signDocumentPrintToken } from '@/modules/shop/lib/document-print-token'
 import type { EmailAttachment } from '@/lib/email/index'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 
@@ -47,7 +47,10 @@ export async function invoiceEmailAttachment(orderId: string, config: ShpConfig)
       import('@/modules/shop/lib/invoice-pdf'),
       import('@/modules/shop/lib/invoice-document'),
     ])
-    const path = printPath(`/shop/invoice/${encodeURIComponent(invoice.invoiceNumber)}`, signInvoiceToken(invoice.invoiceNumber))
+    const path = printPath(
+      documentPagePath('invoice', invoice.invoiceNumber),
+      signDocumentPrintToken('invoice', invoice.invoiceNumber),
+    )
     // The same sheet the download button prints on - its own layout type, so a
     // shop that wants its invoices on A5 gets them on A5 in the inbox too.
     const bytes = await renderInvoicePdf(path, await documentPageSetup('shopInvoice'))
@@ -86,7 +89,10 @@ export async function creditNoteEmailAttachment(
       import('@/modules/shop/lib/invoice-pdf'),
       import('@/modules/shop/lib/invoice-document'),
     ])
-    const path = printPath(`/shop/credit-note/${encodeURIComponent(creditNoteNumber)}`, signCreditNoteToken(creditNoteNumber))
+    const path = printPath(
+      documentPagePath('credit-note', creditNoteNumber),
+      signDocumentPrintToken('credit-note', creditNoteNumber),
+    )
     // A credit note is drawn on the invoice's layout, so it is printed on the
     // invoice's sheet - exactly as the download route prints it.
     const bytes = await renderInvoicePdf(path, await documentPageSetup('shopInvoice'))

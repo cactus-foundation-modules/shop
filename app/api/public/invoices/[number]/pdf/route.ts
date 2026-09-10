@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSessionFromCookie } from '@/lib/auth/session'
-import { getMemberFromCookie } from '@/lib/members/session'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getInvoiceByNumber } from '@/modules/shop/lib/db/invoices'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
+import { documentPagePath, resolveDocumentAccess } from '@/modules/shop/lib/document-access'
+import { signDocumentPrintToken } from '@/modules/shop/lib/document-print-token'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
-import { signInvoiceToken, verifyInvoiceToken } from '@/modules/shop/lib/invoice-token'
+import { invoicePath } from '@/modules/shop/lib/invoice-token'
 import { InvoicePdfUnavailableError, invoicePdfFilename, printPath, renderInvoicePdf } from '@/modules/shop/lib/invoice-pdf'
 import { documentPageSetup } from '@/modules/shop/lib/invoice-document'
 
@@ -15,9 +15,11 @@ import { documentPageSetup } from '@/modules/shop/lib/invoice-document'
 // harder than the read routes: five a minute per address is plenty for somebody
 // saving their own invoice and useless to anybody trying to make the box sweat.
 //
-// Access is the same three ways the invoice page itself allows: the signed link,
-// the member whose order it is, or a staff session. Deliberately not behind the
-// shop gate - a closed shop still owes people their paperwork.
+// Access is whatever the invoice page itself allows, asked through the same one
+// place (lib/document-access.ts) - and one thing more: this route is not a
+// rendered page, so no shared cache ever holds its answer, which is what lets it
+// honour the receipt cookie the page cannot. See that file. Deliberately not
+// behind the shop gate - a closed shop still owes people their paperwork.
 
 export async function GET(request: NextRequest, context: { params: Promise<{ number: string }> }) {
   const ip = getClientIpFromRequest(request)
@@ -30,18 +32,21 @@ export async function GET(request: NextRequest, context: { params: Promise<{ num
   const invoice = await getInvoiceByNumber(invoiceNumber)
   if (!invoice) return NextResponse.json({ error: 'We could not find that invoice.' }, { status: 404 })
 
-  let allowed = verifyInvoiceToken(invoice.invoiceNumber, request.nextUrl.searchParams.get('t'))
-  if (!allowed) {
-    const [member, user] = await Promise.all([getMemberFromCookie(), getSessionFromCookie()])
-    if (member) {
-      const order = await getOrderById(invoice.orderId)
-      allowed = Boolean(order?.memberId && order.memberId === member.id)
+  const token = request.nextUrl.searchParams.get('t')
+  const order = await getOrderById(invoice.orderId)
+  const access = await resolveDocumentAccess({
+    kind: 'invoice', number: invoice.invoiceNumber, token, order, allowReceiptCookie: true,
+  })
+  if (!access.allowed) {
+    // A genuine link goes to the document's own page, which is the only place
+    // that can draw the postcode form. Anything else is the same 404 the page
+    // gives: invoice numbers are sequential, so "wrong token" and "not yours"
+    // must look identical from outside.
+    if (access.challenge) {
+      return NextResponse.redirect(new URL(invoicePath(invoice.invoiceNumber), request.nextUrl))
     }
-    if (!allowed && user) allowed = true
+    return NextResponse.json({ error: 'We could not find that invoice.' }, { status: 404 })
   }
-  // Same 404 as the page: an invoice number is sequential, so "wrong token" and
-  // "not yours" must look identical from outside.
-  if (!allowed) return NextResponse.json({ error: 'We could not find that invoice.' }, { status: 404 })
 
   const config = await getShopConfigCached()
   if (!config.invoicePdfEnabled) {
@@ -53,7 +58,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ num
     // and a block can drop anything that only makes sense on screen. The token
     // is minted here rather than passed through: the browser doing the printing
     // has no session of its own.
-    const path = printPath(`/shop/invoice/${encodeURIComponent(invoice.invoiceNumber)}`, signInvoiceToken(invoice.invoiceNumber))
+    const path = printPath(
+      documentPagePath('invoice', invoice.invoiceNumber),
+      signDocumentPrintToken('invoice', invoice.invoiceNumber),
+    )
     const pdf = await renderInvoicePdf(path, await documentPageSetup('shopInvoice'))
     return new NextResponse(pdf as unknown as BodyInit, {
       headers: {

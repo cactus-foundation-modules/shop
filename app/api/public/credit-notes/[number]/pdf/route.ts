@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSessionFromCookie } from '@/lib/auth/session'
-import { getMemberFromCookie } from '@/lib/members/session'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getCreditNoteByNumber } from '@/modules/shop/lib/db/credit-notes'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
+import { documentPagePath, resolveDocumentAccess } from '@/modules/shop/lib/document-access'
+import { signDocumentPrintToken } from '@/modules/shop/lib/document-print-token'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
-import { signCreditNoteToken, verifyCreditNoteToken } from '@/modules/shop/lib/invoice-token'
+import { creditNotePath } from '@/modules/shop/lib/invoice-token'
 import { InvoicePdfUnavailableError, invoicePdfFilename, printPath, renderInvoicePdf } from '@/modules/shop/lib/invoice-pdf'
 import { documentPageSetup } from '@/modules/shop/lib/invoice-document'
 
@@ -23,16 +23,17 @@ export async function GET(request: NextRequest, context: { params: Promise<{ num
   const note = await getCreditNoteByNumber(creditNoteNumber)
   if (!note) return NextResponse.json({ error: 'We could not find that credit note.' }, { status: 404 })
 
-  let allowed = verifyCreditNoteToken(note.creditNoteNumber, request.nextUrl.searchParams.get('t'))
-  if (!allowed) {
-    const [member, user] = await Promise.all([getMemberFromCookie(), getSessionFromCookie()])
-    if (member) {
-      const order = await getOrderById(note.orderId)
-      allowed = Boolean(order?.memberId && order.memberId === member.id)
+  const token = request.nextUrl.searchParams.get('t')
+  const order = await getOrderById(note.orderId)
+  const access = await resolveDocumentAccess({
+    kind: 'credit-note', number: note.creditNoteNumber, token, order, allowReceiptCookie: true,
+  })
+  if (!access.allowed) {
+    if (access.challenge) {
+      return NextResponse.redirect(new URL(creditNotePath(note.creditNoteNumber), request.nextUrl))
     }
-    if (!allowed && user) allowed = true
+    return NextResponse.json({ error: 'We could not find that credit note.' }, { status: 404 })
   }
-  if (!allowed) return NextResponse.json({ error: 'We could not find that credit note.' }, { status: 404 })
 
   const config = await getShopConfigCached()
   if (!config.invoicePdfEnabled) {
@@ -40,7 +41,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ num
   }
 
   try {
-    const path = printPath(`/shop/credit-note/${encodeURIComponent(note.creditNoteNumber)}`, signCreditNoteToken(note.creditNoteNumber))
+    const path = printPath(
+      documentPagePath('credit-note', note.creditNoteNumber),
+      signDocumentPrintToken('credit-note', note.creditNoteNumber),
+    )
     // A credit note is drawn on the invoice's layout, so it is printed on the
     // invoice's sheet too.
     const pdf = await renderInvoicePdf(path, await documentPageSetup('shopInvoice'))

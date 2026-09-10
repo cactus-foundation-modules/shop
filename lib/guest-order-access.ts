@@ -21,11 +21,21 @@
 // same reason the basket cookie is: it exists only to keep the visitor on the
 // page they explicitly asked to be let into, it is read by nothing else, and
 // the alternative is asking them for their postcode on every click.
-import { createHmac, timingSafeEqual } from 'crypto'
 import { cookies } from 'next/headers'
 import type { NextRequest, NextResponse } from 'next/server'
+import {
+  mintSignedListCookie,
+  readSignedListCookie,
+  withNewestFirst,
+} from '@/modules/shop/lib/signed-list-cookie'
 
 export const GUEST_ORDER_ACCESS_COOKIE = 'cactus_shop_order_access'
+
+/** Namespaces the signature, so a value minted for the receipt cookie beside
+ *  this one cannot be pasted in here and verify. Unchanged from when this file
+ *  signed its own cookies, so grants already in customers' browsers keep
+ *  working. */
+const PURPOSE = 'order-access'
 
 /** How long a proved postcode counts for. Matched to the guest basket cookie
  *  beside it, and long enough to cover the life of a delivery and the argument
@@ -38,59 +48,10 @@ const MAX_AGE_DAYS = 30
  *  growing without limit. */
 const MAX_ORDERS = 10
 
-type AccessPayload = { o: string[]; e: number }
-
-function getKey(): string {
-  const key = process.env.ENCRYPTION_KEY
-  if (!key) throw new Error('ENCRYPTION_KEY is not set - required for guest order access.')
-  return key
-}
-
-function sign(payload: string): string {
-  return createHmac('sha256', getKey()).update(`order-access:${payload}`).digest('base64url')
-}
-
-/** Constant-time, and false for anything malformed rather than throwing - a
- *  mangled cookie is a visitor who has to type their postcode again, not a 500. */
-function signatureValid(payload: string, signature: string): boolean {
-  try {
-    const a = Buffer.from(sign(payload))
-    const b = Buffer.from(signature)
-    if (a.length !== b.length) return false
-    return timingSafeEqual(a, b)
-  } catch {
-    return false
-  }
-}
-
 /** The order ids in a cookie value, or none at all if it is unsigned, expired,
  *  tampered with or simply not ours. Never throws. */
 export function readGuestOrderAccessValue(value: string | null | undefined): string[] {
-  if (!value) return []
-  const dot = value.lastIndexOf('.')
-  if (dot <= 0) return []
-
-  const payload = value.slice(0, dot)
-  if (!signatureValid(payload, value.slice(dot + 1))) return []
-
-  try {
-    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as AccessPayload
-    if (!parsed || !Array.isArray(parsed.o) || typeof parsed.e !== 'number') return []
-    // The expiry is signed as well as being the cookie's own max-age, so a
-    // browser that keeps the cookie past its date does not keep the access.
-    if (parsed.e * 1000 <= Date.now()) return []
-    return parsed.o.filter((id): id is string => typeof id === 'string' && id.length > 0).slice(0, MAX_ORDERS)
-  } catch {
-    return []
-  }
-}
-
-/** The cookie value granting this browser these orders, newest first. */
-function mintGuestOrderAccessValue(orderIds: string[]): string {
-  const expires = Math.floor(Date.now() / 1000) + MAX_AGE_DAYS * 24 * 60 * 60
-  const body: AccessPayload = { o: orderIds.slice(0, MAX_ORDERS), e: expires }
-  const payload = Buffer.from(JSON.stringify(body), 'utf8').toString('base64url')
-  return `${payload}.${sign(payload)}`
+  return readSignedListCookie(PURPOSE, value, MAX_ORDERS)
 }
 
 // Two readers because there are two kinds of caller and neither can use the
@@ -123,8 +84,8 @@ export async function hasGuestOrderAccess(orderId: string): Promise<boolean> {
  * one again halfway through.
  */
 export function grantGuestOrderAccess(response: NextResponse, orderId: string, existing: string[]): void {
-  const ids = [orderId, ...existing.filter((id) => id !== orderId)].slice(0, MAX_ORDERS)
-  response.cookies.set(GUEST_ORDER_ACCESS_COOKIE, mintGuestOrderAccessValue(ids), {
+  const ids = withNewestFirst(orderId, existing, MAX_ORDERS)
+  response.cookies.set(GUEST_ORDER_ACCESS_COOKIE, mintSignedListCookie(PURPOSE, ids, MAX_AGE_DAYS, MAX_ORDERS), {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',

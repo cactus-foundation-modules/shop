@@ -1,6 +1,8 @@
 import type { Member } from '@prisma/client'
+import type { NextRequest } from 'next/server'
 import { getMemberFromCookie } from '@/lib/members/session'
-import { guestOrderAccessIds } from '@/modules/shop/lib/guest-order-access'
+import { guestOrderAccessIds, guestOrderAccessIdsFromRequest } from '@/modules/shop/lib/guest-order-access'
+import { hasReceiptAccess, receiptAccessNumbers } from '@/modules/shop/lib/receipt-access-cookie'
 import type { ShpOrder } from '@/modules/shop/lib/types'
 
 // Who is allowed to look at one order, and on what grounds.
@@ -47,4 +49,48 @@ export function orderViewerFor(
 export async function resolveOrderViewer(order: Pick<ShpOrder, 'id' | 'memberId'>): Promise<OrderViewer | null> {
   const [member, guestOrderIds] = await Promise.all([getMemberFromCookie(), guestOrderAccessIds()])
   return orderViewerFor(order, member, guestOrderIds)
+}
+
+/**
+ * From inside a route handler, which reads its cookies off the request it was
+ * given rather than through next/headers - the same two-readers split
+ * lib/guest-order-access.ts makes, and for the same reason.
+ */
+export async function resolveOrderViewerFromRequest(
+  request: NextRequest,
+  order: Pick<ShpOrder, 'id' | 'memberId'>,
+): Promise<OrderViewer | null> {
+  return orderViewerFor(order, await getMemberFromCookie(), guestOrderAccessIdsFromRequest(request))
+}
+
+/**
+ * Whether this browser may be shown this order's receipt without being asked
+ * anything, given that it already holds a valid confirmation link.
+ *
+ * A third ground on top of the two above, and only for the receipt: this
+ * browser is the one that checked out (lib/receipt-access-cookie.ts). Nobody
+ * proved anything to get it - buying the thing IS the proof - which is why it
+ * opens the receipt and not the order page, where the same customer is still
+ * asked for their postcode exactly as they always was.
+ *
+ * One function rather than the same three-way test written out in the status
+ * route and again in the notifications route beside it. They drift the moment
+ * there are two: somebody adds a ground to one and the other quietly keeps
+ * refusing a customer it should let in.
+ */
+export async function mayOpenReceipt(
+  request: NextRequest,
+  order: Pick<ShpOrder, 'id' | 'memberId' | 'orderNumber'>,
+): Promise<boolean> {
+  if (hasReceiptAccess(request, order.orderNumber)) return true
+  return (await resolveOrderViewerFromRequest(request, order)) !== null
+}
+
+/** The same question from inside a server component, which has no request to
+ *  read - the shop's document pages ask it this way. */
+export async function mayOpenOrderFromCookies(
+  order: Pick<ShpOrder, 'id' | 'memberId' | 'orderNumber'>,
+): Promise<boolean> {
+  const [viewer, receipts] = await Promise.all([resolveOrderViewer(order), receiptAccessNumbers()])
+  return viewer !== null || receipts.includes(order.orderNumber)
 }

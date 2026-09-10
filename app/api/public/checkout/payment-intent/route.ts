@@ -13,6 +13,7 @@ import { formatMoney } from '@/modules/shop/lib/money'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { applyOrderPaymentState, previewOrderPaymentNotes } from '@/modules/shop/lib/order-payment-state'
 import { signOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
+import { grantReceiptAccess } from '@/modules/shop/lib/receipt-access-cookie'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { fillBlankMemberContactDetails } from '@/lib/members/contact'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
@@ -331,9 +332,9 @@ export async function POST(request: NextRequest) {
       customerEmail: data.customerEmail, customerName: data.customerName,
     })
 
-    return NextResponse.json({
+    return withReceiptAccess(request, orderNumber, NextResponse.json({
       orderId: draft.id, orderNumber, receiptToken: signOrderReceiptToken(orderNumber), ...draftIntent, notes,
-    })
+    }))
   }
 
   const { id: orderId } = await createPendingOrder(orderInput)
@@ -353,5 +354,36 @@ export async function POST(request: NextRequest) {
   // The confirmation link's proof, issued here so the browser never has to put
   // the customer's email in a URL to get back to their own receipt. See
   // lib/order-receipt-token.
-  return NextResponse.json({ orderId, orderNumber, receiptToken: signOrderReceiptToken(orderNumber), ...intent, notes })
+  return withReceiptAccess(request, orderNumber, NextResponse.json({
+    orderId, orderNumber, receiptToken: signOrderReceiptToken(orderNumber), ...intent, notes,
+  }))
+}
+
+/**
+ * Grants THIS browser its own receipt, on the way out of the till.
+ *
+ * The token in the confirmation link says which order; this says who bought it.
+ * A receipt link travels - forwarded, pasted into a group chat, left in a shared
+ * browser's history - so the link alone stops short of opening the receipt, and
+ * every other device answers the delivery-postcode challenge instead. The one
+ * device that must never be asked is this one, and this is the only moment the
+ * shop can be certain which device that is.
+ *
+ * Issued against the order NUMBER, which is minted before either branch below
+ * and is what the receipt routes are addressed by - a method that settles
+ * off-site drafts the order rather than creating it, so the number is the only
+ * half of its identity that is settled at this point.
+ *
+ * Deliberately the receipt cookie and not the postcode-proved one: see
+ * lib/receipt-access-cookie.ts for what that distinction buys, and what
+ * granting the other one at every checkout would cost the page cache.
+ *
+ * A signed-in owner needs none of it - their session opens their own order - but
+ * they are granted it anyway, because the person who checks out signed in and
+ * reads the receipt after signing out is somebody who bought a desk, not
+ * somebody to interrogate.
+ */
+function withReceiptAccess(request: NextRequest, orderNumber: string, response: NextResponse): NextResponse {
+  grantReceiptAccess(response, orderNumber, request)
+  return response
 }

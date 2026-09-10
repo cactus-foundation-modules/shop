@@ -1,11 +1,11 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { getSessionFromCookie } from '@/lib/auth/session'
-import { getMemberFromCookie } from '@/lib/members/session'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getCreditNoteByNumber } from '@/modules/shop/lib/db/credit-notes'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
-import { verifyCreditNoteToken, creditNotePdfPath } from '@/modules/shop/lib/invoice-token'
+import { creditNotePdfPath } from '@/modules/shop/lib/invoice-token'
+import { resolveDocumentAccess } from '@/modules/shop/lib/document-access'
+import DocumentAccessGate from '@/modules/shop/components/public/DocumentAccessGate'
 import { creditNoteDocContext } from '@/modules/shop/lib/invoice-doc-context'
 import { renderInvoiceDocument, renderDocumentRunningFooter } from '@/modules/shop/lib/invoice-document'
 import { PdfFooterRegion } from '@/modules/shop/lib/doc-page-settings'
@@ -72,14 +72,25 @@ export default async function ShopCreditNotePage({
   // it. It is what says whether the customer has since given a reference for the
   // order - a credit note raised before their finance team produced a purchase
   // order number is one their finance team cannot match to anything.
+  // The same rule as the invoice it credits, asked through the same one place -
+  // see lib/document-access.ts. The permanent link token names the document and
+  // earns the reader the postcode question; it no longer opens it.
   const order = await getOrderById(note.orderId)
-  let allowed = verifyCreditNoteToken(note.creditNoteNumber, token)
-  if (!allowed) {
-    const [member, user] = await Promise.all([getMemberFromCookie(), getSessionFromCookie()])
-    if (member) allowed = Boolean(order?.memberId && order.memberId === member.id)
-    if (!allowed && user) allowed = true
+  const access = await resolveDocumentAccess({
+    kind: 'credit-note', number: note.creditNoteNumber, token, order,
+  })
+  if (!access.allowed) {
+    if (!access.challenge) notFound()
+    return (
+      <DocumentAccessGate
+        title={`Credit note ${note.creditNoteNumber}`}
+        challenge={access.challenge}
+        kind="credit-note"
+        number={note.creditNoteNumber}
+        token={token ?? ''}
+      />
+    )
   }
-  if (!allowed) notFound()
 
   const config = await getShopConfigCached()
   // Only ever fills a blank - see withOrderCustomerReference.

@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { MediaPickerModal } from '@/modules/shop/components/admin/MediaPickerModal'
 import { EmptyNote, Section } from '@/modules/shop/components/admin/product-editor/fields'
 import { GalleryExtrasProvider, useGalleryExtras, type GalleryExtraItem } from '@/modules/shop/components/admin/product-editor/gallery-extras'
+import { GALLERY_ADD_EVENT, type GalleryAddDetail, type GalleryAddImage } from '@/modules/shop/components/admin/product-editor/gallery-add-bus'
 import type { MediaItem, PanelProps } from '@/modules/shop/components/admin/product-editor/model'
 
 /** One tile in the grid: the product's own photograph, or a picture another
@@ -130,6 +131,44 @@ function MediaPanelInner({ state, patch, productId, sections = [] }: PanelProps 
       extras.reorder(next.flatMap((r, i) => (r.kind === 'extra' ? [{ id: r.item.id, position: i }] : [])))
     }
   }
+
+  // Pictures handed over from elsewhere on this tab - a module's own panel under
+  // the grid, which may have no dependency on shop and so cannot call into it.
+  // See gallery-add-bus.ts for the contract.
+  //
+  // The work is held in a ref rather than in the listener's own closure: it
+  // needs the CURRENT rows, which change on every render, and re-registering
+  // the listener that often is how an event arriving mid-render gets dropped.
+  const addImagesRef = useRef<(images: GalleryAddImage[]) => void>(() => {})
+  useEffect(() => {
+    addImagesRef.current = (images) => {
+      const fresh: Row[] = images
+        .filter((image) => !media.some((m) => m.url === image.url))
+        .map((image, k) => ({
+          kind: 'media',
+          item: { type: 'IMAGE', url: image.url, altText: image.altText ?? null },
+          index: media.length + k,
+        }))
+      if (fresh.length === 0) return
+      // At the end of the WHOLE gallery, contributed tiles included, which is
+      // what the Add images button does with a picked image and the only
+      // reading of "added" that does not make a liar of itself.
+      commit([...rows, ...fresh])
+    }
+  })
+
+  useEffect(() => {
+    function onAdd(event: Event) {
+      const detail = (event as CustomEvent<GalleryAddDetail>).detail
+      if (!detail || !Array.isArray(detail.images) || detail.images.length === 0) return
+      // Answers the sender: taken. Without this it has no way to tell a shop
+      // that listened from one too old to know the event at all.
+      event.preventDefault()
+      addImagesRef.current(detail.images)
+    }
+    window.addEventListener(GALLERY_ADD_EVENT, onAdd)
+    return () => window.removeEventListener(GALLERY_ADD_EVENT, onAdd)
+  }, [])
 
   function move(from: number, to: number) {
     if (to < 0 || to >= rows.length || from === to) return
