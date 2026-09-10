@@ -4,6 +4,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import {
   allShipmentsDelivered,
   getOrderDispatchSummary,
+  listOrdersAwaitingCompletion,
   listShipmentsForTrackingPoll,
   recordCarrierReading,
   recordReceipt,
@@ -50,6 +51,10 @@ import { captureSignature } from '@/modules/shop/lib/tracking/signature-capture'
  *  budget even when every request has to time out. */
 const PARCEL_LIMIT = 25
 
+/** Leftover orders looked at per run. Small on purpose: it is a tidy-up pass,
+ *  and on a healthy shop it returns nothing at all. */
+const COMPLETION_SWEEP_LIMIT = 10
+
 /** At a time. Politeness to the courier, mostly: their tracking page is not a
  *  service anyone is paying for. */
 const CONCURRENCY = 3
@@ -95,7 +100,7 @@ async function handle(request: NextRequest) {
 
       // Which courier this is, and therefore which shape of request, is the
       // reader's business. What comes back is the same either way.
-      const reading = courier ? await readParcelTracking(courier, parcel) : null
+      const reading = courier ? await readParcelTracking(courier, parcel, timezone) : null
       if (!reading?.stage) {
         // The request failed, or the page loaded and said nothing this reader
         // recognised - a login screen, a redesign, an order they no longer
@@ -194,6 +199,13 @@ async function handle(request: NextRequest) {
         }
       }
     }))
+  }
+
+  // Orders whose parcels all arrived at some point but which never got
+  // finished off - see listOrdersAwaitingCompletion for how that happens. They
+  // go through exactly the same checks as one delivered a minute ago.
+  for (const orderId of await listOrdersAwaitingCompletion(COMPLETION_SWEEP_LIMIT)) {
+    ordersToReview.add(orderId)
   }
 
   // Finishing an order off, once every parcel on it has arrived AND there is

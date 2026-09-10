@@ -100,21 +100,21 @@ describe('parseGfsEtaWindow', () => {
       at: '2026-09-10T09:41:00',
       location: 'PRESTON',
       text: 'OUT FOR DELIVERY, ETA: 11:41 - 12:41',
-    })
-    expect(window?.from.getHours()).toBe(11)
-    expect(window?.from.getMinutes()).toBe(41)
-    expect(window?.to.getHours()).toBe(12)
+    }, 'Europe/London')
+    // Their clock face, read as the site's timezone: 11:41 BST is 10:41 UTC.
+    expect(window?.from.toISOString()).toBe('2026-09-10T10:41:00.000Z')
+    expect(window?.to.toISOString()).toBe('2026-09-10T11:41:00.000Z')
   })
 
   it('is null on a scan with no window in it', () => {
-    expect(parseGfsEtaWindow({ at: '2026-09-10T02:31:00', location: 'HUB', text: 'ARRIVED AT HUB' }))
+    expect(parseGfsEtaWindow({ at: '2026-09-10T02:31:00', location: 'HUB', text: 'ARRIVED AT HUB' }, 'Europe/London'))
       .toBeNull()
   })
 })
 
 describe('readGfsPage', () => {
   it('reports the newest scan as the stage, in their words', () => {
-    const reading = readGfsPage(PAGE)
+    const reading = readGfsPage(PAGE, 'Europe/London')
     expect(reading.stage).toBe('OUT FOR DELIVERY, ETA: 11:41 - 12:41')
     expect(reading.events).toHaveLength(4)
     expect(reading.windowFrom).not.toBeNull()
@@ -123,6 +123,6 @@ describe('readGfsPage', () => {
   // Nothing learned is not the same as nothing happening, and the caller tells
   // them apart by the stage being null.
   it('learns nothing from a page it cannot read', () => {
-    expect(readGfsPage('<html><body>503</body></html>').stage).toBeNull()
+    expect(readGfsPage('<html><body>503</body></html>', 'Europe/London').stage).toBeNull()
   })
 })

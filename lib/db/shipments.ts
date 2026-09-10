@@ -787,6 +787,38 @@ export async function recordReceipt(shipmentId: string, input: {
   `
 }
 
+/**
+ * Orders every parcel of which has arrived, and which are still open.
+ *
+ * The poller finishes an order off in the run that FIRST sees its last parcel
+ * delivered. That is one run, and it is the only chance the order gets: a
+ * delivered parcel drops straight out of the polling queue, so nothing looks at
+ * it again. Anything that stopped completion happening in that one run - a line
+ * still owed at the time, an order somebody was editing, a parcel marked
+ * delivered by hand - left the order open for ever with every box on the
+ * doorstep.
+ *
+ * So each run also sweeps for the leftovers. Bounded, oldest first, and it
+ * settles itself: the order completes and stops matching. Cancelled and
+ * refunded orders are excluded, because a delivered parcel on a refunded order
+ * is a conversation, not a completion.
+ */
+export async function listOrdersAwaitingCompletion(limit: number): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT o."id"
+    FROM "shp_orders" o
+    WHERE o."status" NOT IN ('COMPLETED', 'CANCELLED', 'REFUNDED')
+      AND EXISTS (SELECT 1 FROM "shp_shipments" s WHERE s."order_id" = o."id")
+      AND NOT EXISTS (
+        SELECT 1 FROM "shp_shipments" s
+        WHERE s."order_id" = o."id" AND s."delivered_at" IS NULL
+      )
+    ORDER BY o."created_at" ASC
+    LIMIT ${limit}
+  `
+  return rows.map((row) => row.id)
+}
+
 /** One parcel, for the live position route. By id and order together, so a
  *  shipment id from one order can never be read through another order's
  *  access. */

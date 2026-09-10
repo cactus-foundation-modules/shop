@@ -19,6 +19,7 @@
 // dependency and a memory footprint for no gain. Anything it cannot make sense
 // of comes back as no events, which the caller treats as nothing learned.
 
+import { courierInstant } from '@/modules/shop/lib/tracking/courier-clock'
 import { textOf } from '@/modules/shop/lib/tracking/html-text'
 import { EMPTY_READING, type TrackingEvent, type TrackingReading } from '@/modules/shop/lib/tracking/reading'
 
@@ -113,14 +114,13 @@ export function parseGfsScans(html: string): TrackingEvent[] {
 /** The window out of a scan like 'OUT FOR DELIVERY, ETA: 11:41 - 12:41', as
  *  instants on that scan's own day. Their ETA has no date of its own, and the
  *  only day it can sensibly mean is the day it was scanned. */
-export function parseGfsEtaWindow(event: TrackingEvent): { from: Date; to: Date } | null {
+export function parseGfsEtaWindow(event: TrackingEvent, timezone: string): { from: Date; to: Date } | null {
   const m = /ETA:\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/i.exec(event.text)
   if (!m) return null
   const day = event.at.slice(0, 10)
-  const from = new Date(`${day}T${pad(m[1] as string)}:${m[2]}:00`)
-  const to = new Date(`${day}T${pad(m[3] as string)}:${m[4]}:00`)
-  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null
-  return { from, to }
+  const from = courierInstant(`${day}T${pad(m[1] as string)}:${m[2]}:00`, timezone)
+  const to = courierInstant(`${day}T${pad(m[3] as string)}:${m[4]}:00`, timezone)
+  return from && to ? { from, to } : null
 }
 
 /**
@@ -132,11 +132,11 @@ export function parseGfsEtaWindow(event: TrackingEvent): { from: Date; to: Date 
  * this file states none of that: which scans mean "out on a van" is a setting,
  * because it is the part an owner can correct in a minute and a release cannot.
  */
-export function readGfsPage(html: string): TrackingReading {
+export function readGfsPage(html: string, timezone: string): TrackingReading {
   const events = parseGfsScans(html)
   const newest = events[0]
   if (!newest) return { ...EMPTY_READING }
-  const window = parseGfsEtaWindow(newest)
+  const window = parseGfsEtaWindow(newest, timezone)
   return {
     ...EMPTY_READING,
     stage: newest.text,

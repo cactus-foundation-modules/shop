@@ -151,7 +151,7 @@ describe('dpdEvents', () => {
 
 describe('readDpd', () => {
   it('reads the anonymous payload without inventing what it cannot see', () => {
-    const reading = readDpd({ parcel: ANONYMOUS, events: EVENTS })
+    const reading = readDpd({ parcel: ANONYMOUS, events: EVENTS, timezone: 'Europe/London' })
     // The stage is the newest SCAN, not the status sentence: the sentence names
     // the shipper, the driver and the timeslot, so no two parcels would ever
     // produce a string a setting could match.
@@ -163,25 +163,28 @@ describe('readDpd', () => {
   })
 
   it('reads the round out of the session payload', () => {
-    const reading = readDpd({ parcel: SESSION, events: EVENTS, route: ROUTE })
+    const reading = readDpd({ parcel: SESSION, events: EVENTS, route: ROUTE, timezone: 'Europe/London' })
     expect(reading.stopNumber).toBe(34)
     expect(reading.stopsCompleted).toBe(9)
     expect(reading.stopsTotal).toBe(98)
     expect(reading.minutesToStop).toBe(90)
-    expect(reading.windowFrom?.getHours()).toBe(11)
-    expect(reading.windowTo?.getMinutes()).toBe(41)
+    // British Summer Time: 11:41 on their page is 10:41 UTC. Before this was
+    // fixed the instant was built on the server's clock and every delivery
+    // read an hour late.
+    expect(reading.windowFrom?.toISOString()).toBe('2026-09-10T10:41:00.000Z')
+    expect(reading.windowTo?.toISOString()).toBe('2026-09-10T11:41:00.000Z')
   })
 
   // Somebody else's feed: a field that is null today and an object tomorrow is
   // normal, and a reader that threw would stop tracking every parcel at once.
   it('survives a payload that has changed shape', () => {
-    const reading = readDpd({ parcel: { data: { deliveryDepot: 'unexpected' } }, events: EVENTS })
+    const reading = readDpd({ parcel: { data: { deliveryDepot: 'unexpected' } }, events: EVENTS, timezone: 'Europe/London' })
     expect(reading.stage).toBe('Your parcel will be with you today  between 11:41 and 12:41')
     expect(reading.stopNumber).toBeNull()
   })
 
   it('learns nothing when both feeds are empty', () => {
-    expect(readDpd({ parcel: null, events: null }).stage).toBeNull()
+    expect(readDpd({ parcel: null, events: null, timezone: 'Europe/London' }).stage).toBeNull()
   })
 })
 
@@ -226,10 +229,9 @@ const DELIVERED = {
 
 describe('proof of delivery', () => {
   it('reads who took it and when, in their spelling', () => {
-    const reading = readDpd({ parcel: DELIVERED, events: EVENTS })
+    const reading = readDpd({ parcel: DELIVERED, events: EVENTS, timezone: 'Europe/London' })
     expect(reading.receivedBy).toBe('Beckley')
-    expect(reading.receivedAt?.getHours()).toBe(12)
-    expect(reading.receivedAt?.getMinutes()).toBe(20)
+    expect(reading.receivedAt?.toISOString()).toBe('2026-09-10T11:20:00.000Z')
     expect(reading.delivered).toBe(true)
   })
 

@@ -784,7 +784,14 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                     {deliveryById.get(shipment.id) && (
                       <ParcelTracking delivery={deliveryById.get(shipment.id) as ParcelDelivery} />
                     )}
-                    {deliveryById.get(shipment.id)?.showTracking !== false && safeTrackingUrl(shipment.trackingUrl) && (
+                    {/* And only while it is still coming. Everything that
+                        button offers - a safe place, a neighbour, a different
+                        day - is a change to a delivery that has already
+                        happened, and the courier's own page will refuse all
+                        three. The same rule the delivery questions follow. */}
+                    {!deliveryById.get(shipment.id)?.arrived
+                      && deliveryById.get(shipment.id)?.showTracking !== false
+                      && safeTrackingUrl(shipment.trackingUrl) && (
                       <>
                         {/* The label is the courier's own setting where they
                             have one. On a courier the shop follows itself, the

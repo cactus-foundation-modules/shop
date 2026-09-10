@@ -109,7 +109,7 @@ async function readMultidrop(trackingUrl: string): Promise<ParcelReading | null>
   }
 }
 
-async function readGfs(parcel: ShpShipment, carrier: string): Promise<ParcelReading | null> {
+async function readGfs(parcel: ShpShipment, carrier: string, timezone: string): Promise<ParcelReading | null> {
   // The parcel number can come from either field, because both hold it on some
   // shop somewhere: the number was typed in long before tracking links were,
   // and a link carries it too.
@@ -117,11 +117,11 @@ async function readGfs(parcel: ShpShipment, carrier: string): Promise<ParcelRead
   if (!number) return null
   const html = await fetchText(gfsScanUrl(number, carrier))
   if (!html) return null
-  const reading = readGfsPage(html)
+  const reading = readGfsPage(html, timezone)
   return reading.stage ? { ...EMPTY_PARCEL_READING, ...reading } : null
 }
 
-async function readDpdParcel(parcel: ShpShipment): Promise<ParcelReading | null> {
+async function readDpdParcel(parcel: ShpShipment, timezone: string): Promise<ParcelReading | null> {
   const parcelCode = dpdParcelCodeFromUrl(parcel.trackingUrl)
   if (!parcelCode) return null
 
@@ -137,7 +137,7 @@ async function readDpdParcel(parcel: ShpShipment): Promise<ParcelReading | null>
   const routeCode = dpdRouteCode(payloads.parcel)
   const route = routeCode && cookie ? await fetchDpdRoute(routeCode, cookie) : null
 
-  const reading = readDpd({ parcel: payloads.parcel, events: payloads.events, route })
+  const reading = readDpd({ parcel: payloads.parcel, events: payloads.events, route, timezone })
   if (!reading.stage) return null
 
   // Their photograph of the delivered parcel, which replaced the signature they
@@ -170,14 +170,17 @@ async function readDpdParcel(parcel: ShpShipment): Promise<ParcelReading | null>
 export async function readParcelTracking(
   courier: Pick<ShpCourier, 'trackingSource' | 'gfsCarrier'>,
   parcel: ShpShipment,
+  /** The site's timezone. Couriers print wall-clock times with no offset, and
+   *  an instant built without this is an hour out for most of the year. */
+  timezone: string,
 ): Promise<ParcelReading | null> {
   switch (courier.trackingSource) {
     case 'multidrop':
       return isMultidropUrl(parcel.trackingUrl) ? readMultidrop(parcel.trackingUrl as string) : null
     case 'gfs':
-      return readGfs(parcel, courier.gfsCarrier)
+      return readGfs(parcel, courier.gfsCarrier, timezone)
     case 'dpd':
-      return readDpdParcel(parcel)
+      return readDpdParcel(parcel, timezone)
     default:
       return null
   }

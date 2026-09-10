@@ -19,6 +19,7 @@
 // tested against a captured payload and never over a network.
 
 import { z } from 'zod'
+import { courierInstant } from '@/modules/shop/lib/tracking/courier-clock'
 import { EMPTY_READING, type TrackingEvent, type TrackingReading } from '@/modules/shop/lib/tracking/reading'
 
 /**
@@ -60,14 +61,12 @@ function isoish(value: string | null | undefined): string | null {
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] ?? '00'}`
 }
 
-/** As an instant in the reader's own reckoning, for the columns that hold one.
- *  Their feed carries no offset; the site's timezone is what the page applies
- *  when it renders, and this is the same reckoning the booked slot uses. */
-function asDate(value: string | null | undefined): Date | null {
-  const iso = isoish(value)
-  if (!iso) return null
-  const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? null : date
+/** As an instant, reading their wall clock as the SITE's timezone - see
+ *  courier-clock.ts. Their feed carries no offset, and building the instant on
+ *  the server's own clock put a British delivery an hour into the future for
+ *  seven months of the year. */
+function asDate(value: string | null | undefined, timezone: string): Date | null {
+  return courierInstant(isoish(value), timezone)
 }
 
 // Schemas are deliberately loose. This is somebody else's feed: a field that
@@ -202,6 +201,8 @@ export function readDpd(input: {
   parcel: unknown
   events: unknown
   route?: unknown
+  /** The site's timezone. Their clock readings mean nothing without it. */
+  timezone: string
 }): TrackingReading {
   const parcel = dpdParcelSchema.safeParse(input.parcel)
   const events = dpdEvents(input.events)
@@ -214,8 +215,8 @@ export function readDpd(input: {
   return {
     stage: events[0]?.text ?? null,
     events,
-    windowFrom: asDate(stop?.deliveryWindowFrom),
-    windowTo: asDate(stop?.deliveryWindowTo),
+    windowFrom: asDate(stop?.deliveryWindowFrom, input.timezone),
+    windowTo: asDate(stop?.deliveryWindowTo, input.timezone),
     stopNumber: stop?.stopNumber ?? null,
     stopsCompleted: routeData?.completedDeliveryStops ?? null,
     stopsTotal: routeData?.totalDeliveryStops ?? null,
@@ -240,7 +241,7 @@ export function readDpd(input: {
     // settle most arguments about a delivery anyway; the picture settles the
     // rest, and for those there is the courier's own page.
     receivedBy: data?.deliveryDetails?.podDetails?.podName?.trim() || null,
-    receivedAt: asDate(data?.deliveryDetails?.podDetails?.podDate),
+    receivedAt: asDate(data?.deliveryDetails?.podDetails?.podDate, input.timezone),
   }
 }
 
