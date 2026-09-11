@@ -1,6 +1,7 @@
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
+import { orderTrackingUrl } from '@/modules/shop/lib/order-tracking'
 import { formatDeliveredDay } from '@/modules/shop/lib/order-display'
 import { getSiteTimezone } from '@/lib/config/timezone.server'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
@@ -19,18 +20,35 @@ import type { ShpOrder } from '@/modules/shop/lib/types'
 // characters of text message - is an email about somebody else's order.
 
 /**
- * The original order's number, for the templates that quote it.
+ * The original order's number and the address of its own order page, for the
+ * templates that quote them.
+ *
+ * The link matters as much as the number here, and for the same reason the
+ * number does: every one of these messages is about an order the customer
+ * placed weeks ago, and the page with the invoice, the delivery address and the
+ * damage report they sent us on it is the original's, not the replacement's.
+ * {{orderUrl}} - which notifyOrderCustomer puts on every message - points at
+ * the part's own page, which has one line on it and nothing else.
+ *
+ * The URL is empty on a shop with guest tracking switched off, exactly as
+ * orderTrackingUrl is everywhere else, which takes its whole sentence with it
+ * rather than printing a dead link.
  *
  * Empty strings rather than a missing key on an ordinary order: a merge tag
  * nothing fills collapses to nothing, so the same vars can be handed to every
  * trigger without the caller having to know which of them cares.
  */
 export async function parentOrderVars(order: ShpOrder): Promise<Record<string, string>> {
-  if (!order.parentOrderId) return { parentOrderNumber: '', hasParentOrder: 'false' }
-  const parent = await getOrderById(order.parentOrderId)
+  if (!order.parentOrderId) {
+    return { parentOrderNumber: '', hasParentOrder: 'false', parentOrderUrl: '', hasParentOrderUrl: 'false' }
+  }
+  const [parent, config] = await Promise.all([getOrderById(order.parentOrderId), getShopConfigCached()])
+  const parentUrl = parent ? orderTrackingUrl(parent.orderNumber, config) : ''
   return {
     parentOrderNumber: parent?.orderNumber ?? '',
     hasParentOrder: parent ? 'true' : 'false',
+    parentOrderUrl: parentUrl,
+    hasParentOrderUrl: parentUrl ? 'true' : 'false',
   }
 }
 

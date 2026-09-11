@@ -326,8 +326,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Replacement on its way',
     subject: 'A replacement for order {{parentOrderNumber}}',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>Sorry about the trouble with order <strong>{{parentOrderNumber}}</strong>. We are sending you a replacement.</p>{{orderItems}}<p>We will be in touch again the moment it leaves us{{#if hasOrderUrl}}, and you can follow it at <a href="{{orderUrl}}">{{orderUrl}}</a>{{/if}}.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'parentOrderNumber', 'orderItems', 'shopName', 'orderUrl', 'hasOrderUrl'],
+      '<p>Hi {{customerName}},</p><p>Sorry about the trouble with order <strong>{{parentOrderNumber}}</strong>. We are sending you a replacement.</p>{{orderItems}}<p>We will be in touch again the moment it leaves us{{#if hasOrderUrl}}, and you can follow it at <a href="{{orderUrl}}">{{orderUrl}}</a>{{/if}}.</p>{{#if hasParentOrderUrl}}<p>Everything about the original is on <a href="{{parentOrderUrl}}">order {{parentOrderNumber}}</a>.</p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'parentOrderNumber', 'parentOrderUrl', 'orderItems', 'shopName', 'orderUrl', 'hasOrderUrl', 'hasParentOrderUrl'],
     // Same self-built table as the confirmation, escaped on the way in.
     rawTags: ['orderItems'],
     // Somebody who reported a broken chair is owed this whatever they think of
@@ -339,8 +339,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Replacement dispatched',
     subject: 'Your replacement for order {{parentOrderNumber}} is on its way',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>The replacement for order <strong>{{parentOrderNumber}}</strong> has left us.</p>{{orderItems}}{{#if hasCarrier}}<p>Courier: {{carrier}}</p>{{/if}}{{#if hasTracking}}<p>Tracking: {{trackingNumber}}</p>{{/if}}{{#if hasOrderUrl}}<p>Follow it at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}<p>Sorry again for the bother.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'parentOrderNumber', 'orderItems', 'carrier', 'trackingNumber', 'shopName', 'hasCarrier', 'hasTracking', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
+      '<p>Hi {{customerName}},</p><p>The replacement for order <strong>{{parentOrderNumber}}</strong> has left us.</p>{{orderItems}}{{#if hasCarrier}}<p>Courier: {{carrier}}</p>{{/if}}{{#if hasTracking}}<p>Tracking: {{trackingNumber}}</p>{{/if}}{{#if hasOrderUrl}}<p>Follow it at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}{{#if hasParentOrderUrl}}<p>Everything about the original is on <a href="{{parentOrderUrl}}">order {{parentOrderNumber}}</a>.</p>{{/if}}<p>Sorry again for the bother.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'parentOrderNumber', 'parentOrderUrl', 'orderItems', 'carrier', 'trackingNumber', 'shopName', 'hasCarrier', 'hasTracking', 'orderUrl', 'hasOrderUrl', 'hasParentOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
     rawTags: ['orderItems'],
     transactional: true,
   },
@@ -362,8 +362,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Replacement - tracking added after dispatch',
     subject: 'Tracking for your replacement from order {{parentOrderNumber}}',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>The replacement for order <strong>{{parentOrderNumber}}</strong> is already on its way, and we now have the tracking for it.</p>{{#if hasCarrier}}<p>Courier: {{carrier}}</p>{{/if}}{{#if hasTrackingNumber}}<p>Tracking: <strong>{{trackingNumber}}</strong></p>{{/if}}{{#if hasTrackingUrl}}<p><a href="{{trackingUrl}}">Follow your parcel</a></p>{{/if}}{{orderItems}}{{#if hasOrderUrl}}<p>Or follow it at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['customerName', 'orderNumber', 'parentOrderNumber', 'orderItems', 'carrier', 'trackingNumber', 'trackingUrl', 'shopName', 'hasCarrier', 'hasTrackingNumber', 'hasTrackingUrl', 'orderUrl', 'hasOrderUrl'],
+      '<p>Hi {{customerName}},</p><p>The replacement for order <strong>{{parentOrderNumber}}</strong> is already on its way, and we now have the tracking for it.</p>{{#if hasCarrier}}<p>Courier: {{carrier}}</p>{{/if}}{{#if hasTrackingNumber}}<p>Tracking: <strong>{{trackingNumber}}</strong></p>{{/if}}{{#if hasTrackingUrl}}<p><a href="{{trackingUrl}}">Follow your parcel</a></p>{{/if}}{{orderItems}}{{#if hasOrderUrl}}<p>Or follow it at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}{{#if hasParentOrderUrl}}<p>Everything about the original is on <a href="{{parentOrderUrl}}">order {{parentOrderNumber}}</a>.</p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'parentOrderNumber', 'parentOrderUrl', 'orderItems', 'carrier', 'trackingNumber', 'trackingUrl', 'shopName', 'hasCarrier', 'hasTrackingNumber', 'hasTrackingUrl', 'orderUrl', 'hasOrderUrl', 'hasParentOrderUrl'],
     rawTags: ['orderItems'],
     transactional: true,
   },
@@ -376,8 +376,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Replacement delivered',
     subject: 'Your replacement for order {{parentOrderNumber}} has arrived',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>The replacement for order <strong>{{parentOrderNumber}}</strong> has been delivered{{#if hasDeliveredOn}} on {{deliveredOn}}{{/if}}{{#if hasSignedBy}}, signed for by {{signedBy}}{{/if}}.</p>{{orderItems}}<p>That should be the end of it - but if anything is still not right, reply to this email and we will sort it out.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'parentOrderNumber', 'orderItems', 'deliveredOn', 'signedBy', 'shopName', 'hasDeliveredOn', 'hasSignedBy', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
+      '<p>Hi {{customerName}},</p><p>The replacement for order <strong>{{parentOrderNumber}}</strong> has been delivered{{#if hasDeliveredOn}} on {{deliveredOn}}{{/if}}{{#if hasSignedBy}}, signed for by {{signedBy}}{{/if}}.</p>{{orderItems}}{{#if hasParentOrderUrl}}<p>Everything about the original is on <a href="{{parentOrderUrl}}">order {{parentOrderNumber}}</a>.</p>{{/if}}<p>That should be the end of it - but if anything is still not right, reply to this email and we will sort it out.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'parentOrderNumber', 'parentOrderUrl', 'orderItems', 'deliveredOn', 'signedBy', 'shopName', 'hasDeliveredOn', 'hasSignedBy', 'orderUrl', 'hasOrderUrl', 'hasParentOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
     rawTags: ['orderItems'],
     transactional: true,
   },
