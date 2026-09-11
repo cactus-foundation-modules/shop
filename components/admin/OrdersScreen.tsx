@@ -36,6 +36,9 @@ type OrderRow = {
   memberId: string | null
   total: string
   createdAt: string
+  /** 'SALE' or 'REPLACEMENT'. Optional so a response from an older deployment
+   *  still renders, and absent reads as a sale. */
+  kind?: string
 }
 type RowMetrics = {
   lineCount: number
@@ -556,6 +559,10 @@ export function OrdersScreen() {
                     </td>
                     <td>
                       <a className="sox-ordno" href={`/${adminPath}/m/shop/orders/${o.id}`}>{o.orderNumber}</a>
+                      {/* Without this a £0 row in the middle of the day's
+                          orders is a puzzle, and the number alone only answers
+                          it for somebody who already knows the convention. */}
+                      {o.kind === 'REPLACEMENT' && <span className="badge badge-info">Replacement</span>}
                       <p className="sox-sub">{relativeTime(o.createdAt)}</p>
                     </td>
                     <td>

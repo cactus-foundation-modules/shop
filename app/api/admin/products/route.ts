@@ -27,6 +27,13 @@ export async function GET(request: NextRequest) {
     perPage: params.get('perPage') ? Number(params.get('perPage')) : undefined,
     // Variant child products are managed under Product options, not here.
     excludeHidden: true,
+    // Three-valued on purpose (see ProductListFilter). Absent is the admin
+    // product list, which shows the catalogue as it really is, spare parts
+    // included - a part whose stock and cost nobody can open is no use.
+    // ?partsOnly=true is the replacement picker asking for nothing else.
+    partsOnly: params.get('partsOnly') === 'true' ? true
+      : params.get('partsOnly') === 'false' ? false
+      : undefined,
   })
   const ids = products.map((p) => p.id)
   const [subscriberCounts, images] = await Promise.all([
@@ -72,6 +79,10 @@ const Body = z.object({
   // at all - see lib/returnable.ts.
   returnsDiscretionary: z.boolean().nullable().optional(),
   nonReturnableNote: z.string().max(300).nullable().optional(),
+  // A spare part rather than something to sell: stocked, costed and pickable on
+  // a replacement, and off every storefront surface. Distinct from
+  // catalogueHidden, which also hides the row from the owner.
+  partsOnly: z.boolean().optional(),
   featuredHidden: z.boolean().optional(),
 })
 

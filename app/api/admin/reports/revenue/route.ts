@@ -7,7 +7,9 @@ export async function GET() {
   if (gate.error) return gate.error
 
   const rows = await prisma.$queryRaw<Array<{ day: Date; revenue: string; order_count: bigint }>>`
-    SELECT date_trunc('day', "created_at") AS day, SUM("total") AS revenue, COUNT(*)::bigint AS order_count
+    -- Counts follow kind, money follows payment_status (migration 052).
+    SELECT date_trunc('day', "created_at") AS day, SUM("total") AS revenue,
+           COUNT(*) FILTER (WHERE "kind" = 'SALE')::bigint AS order_count
     FROM "shp_orders" WHERE "payment_status" = 'PAID' AND "created_at" > NOW() - interval '90 days'
     GROUP BY day ORDER BY day ASC
   `

@@ -7,6 +7,7 @@ import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-
 import { formatMoney } from '@/modules/shop/lib/money'
 import { reasonLabel } from '@/modules/shop/lib/order-requests'
 import { REQUEST_DECISION_LABEL, REQUEST_STATUS_DISPLAY, REQUEST_TYPE_LABEL, badgeClass } from '@/modules/shop/lib/order-display'
+import { ReplacementModal, type ReplacementOrderLine } from '@/modules/shop/components/admin/ReplacementModal'
 import type { ShpOrderRequestStatus, ShpOrderRequestType } from '@/modules/shop/lib/types'
 
 // The queue: every cancellation, return and damage report a customer has
@@ -43,6 +44,10 @@ type RequestRow = {
   discretionary: boolean
   items: Array<{ id: string; orderItemId: string; quantity: number }>
   photos: Array<{ id: string; url: string }>
+  /** The replacement raised for this report, where one has been. Null on
+   *  everything else - and on a damage report nobody has acted on yet. */
+  replacementOrderId: string | null
+  replacementOrderNumber: string | null
 }
 
 const FILTERS: Array<{ key: 'PENDING' | 'ALL' | ShpOrderRequestStatus; label: string }> = [
@@ -69,6 +74,10 @@ export function RequestsScreen() {
   // fights the cursor the moment somebody types "12." on the way to 12.50.
   const [charge, setCharge] = useState('')
   const [busy, setBusy] = useState(false)
+  // The report a part is being sent for, with the order's own lines fetched so
+  // each part can say which one it is putting right. Held as one object because
+  // the modal is useless without both halves.
+  const [replacing, setReplacing] = useState<{ row: RequestRow; lines: ReplacementOrderLine[] } | null>(null)
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null)
 
   const loading = rows === null
@@ -92,6 +101,24 @@ export function RequestsScreen() {
   }, [filter, reloadToken])
 
   const reload = useCallback(() => setReloadToken((token) => token + 1), [])
+
+  // The order's lines, which the queue does not carry - it lists requests, and
+  // a request names line ids rather than what they are called. One read, only
+  // when somebody actually presses the button.
+  async function openReplacement(row: RequestRow) {
+    setMessage(null)
+    try {
+      const res = await fetch(`/api/m/shop/admin/orders/${row.orderId}`)
+      if (!res.ok) throw new Error('failed')
+      const data = await res.json() as { items?: Array<{ id: string; productName: string; quantity: number }> }
+      setReplacing({
+        row,
+        lines: (data.items ?? []).map((item) => ({ id: item.id, productName: item.productName, quantity: item.quantity })),
+      })
+    } catch {
+      setMessage({ tone: 'error', text: 'That order could not be loaded, so there is nothing to send a part against.' })
+    }
+  }
 
   function openPanel(row: RequestRow) {
     setOpenId(row.id)
@@ -265,6 +292,20 @@ export function RequestsScreen() {
                     Decide
                   </button>
                 )}
+                {/* Offered on a damage report whatever its state, and not on the
+                    other two. A part goes out when the shop decides it does -
+                    sometimes before anybody gets round to pressing the button on
+                    the report, and sometimes weeks after it was settled. */}
+                {row.type === 'DAMAGE' && !row.replacementOrderId && (
+                  <button type="button" className="btn btn-sm" onClick={() => void openReplacement(row)}>
+                    Send a replacement
+                  </button>
+                )}
+                {row.replacementOrderId && (
+                  <a className="btn btn-sm" href={`/${adminPath}/m/shop/orders/${row.replacementOrderId}`}>
+                    Replacement {row.replacementOrderNumber ?? ''}
+                  </a>
+                )}
               </div>
 
               {isOpen && (
@@ -331,6 +372,24 @@ export function RequestsScreen() {
           )
         })}
       </div>
+
+      {replacing && (
+        <ReplacementModal
+          orderId={replacing.row.orderId}
+          orderNumber={replacing.row.orderNumber}
+          items={replacing.lines}
+          requestId={replacing.row.id}
+          // The lines the customer actually complained about, so the "putting
+          // right" box starts on the right answer rather than on nothing.
+          defaultItemIds={replacing.row.items.map((item) => item.orderItemId)}
+          onClose={() => setReplacing(null)}
+          onDone={(orderNumber) => {
+            setReplacing(null)
+            setMessage({ tone: 'success', text: `Replacement ${orderNumber} raised. It is waiting in your orders to be dispatched.` })
+            reload()
+          }}
+        />
+      )}
     </div>
   )
 }

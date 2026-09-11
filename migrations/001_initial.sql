@@ -203,6 +203,12 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
     -- purchasable. Backs the shop-variations child rows; false for everything else.
     "catalogue_hidden" BOOLEAN NOT NULL DEFAULT false,
 
+    -- A spare part rather than something to sell (052_replacement_orders.sql).
+    -- Stocked, costed and pickable like any other product, kept off every
+    -- storefront surface, and still openable in the admin product list - which
+    -- is the whole difference between this and catalogue_hidden above.
+    "parts_only" BOOLEAN NOT NULL DEFAULT false,
+
     -- The owner's own "keep this one off the featured shelves" tick. Nothing to
     -- do with catalogue_hidden above: the product stays in its categories,
     -- collections, search and its own page, it just never appears on a
@@ -237,6 +243,7 @@ CREATE INDEX IF NOT EXISTS "shp_products_tax_class_id_idx" ON "shp_products" ("t
 CREATE INDEX IF NOT EXISTS "shp_products_digital_file_id_idx" ON "shp_products" ("digital_file_id");
 CREATE INDEX IF NOT EXISTS "shp_products_is_pre_order_idx" ON "shp_products" ("is_pre_order");
 CREATE INDEX IF NOT EXISTS "shp_products_catalogue_hidden_idx" ON "shp_products" ("catalogue_hidden");
+CREATE INDEX IF NOT EXISTS "shp_products_parts_only_idx" ON "shp_products" ("parts_only");
 CREATE INDEX IF NOT EXISTS "shp_products_featured_hidden_idx" ON "shp_products" ("featured_hidden");
 
 -- ---------------------------------------------------------------------------
@@ -527,11 +534,22 @@ CREATE TABLE IF NOT EXISTS "shp_orders" (
     "notify_sms" BOOLEAN NOT NULL DEFAULT false,
     "notify_phone" TEXT,
 
+    -- What this order IS (052_replacement_orders.sql). 'SALE' for anything
+    -- somebody bought; 'REPLACEMENT' for a part sent out to put an earlier
+    -- order right, which is an order only because every parcel and every scrap
+    -- of delivery tracking hangs off one. Money follows payment_status, counts
+    -- follow this.
+    "kind" TEXT NOT NULL DEFAULT 'SALE',
+    -- The order being put right, on a replacement. NULL on every sale.
+    "parent_order_id" TEXT,
+
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "shp_orders_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "shp_orders_order_number_key" UNIQUE ("order_number"),
+    CONSTRAINT "shp_orders_kind_check" CHECK ("kind" IN ('SALE', 'REPLACEMENT')),
+    CONSTRAINT "shp_orders_parent_order_id_fkey" FOREIGN KEY ("parent_order_id") REFERENCES "shp_orders"("id") ON DELETE SET NULL,
     CONSTRAINT "shp_orders_status_check" CHECK ("status" IN ('PENDING', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'ON_HOLD')),
     -- No closed CHECK on payment_method: module-contributed providers (via the
     -- shop.payment-providers extension point) use their own method codes, which
@@ -543,6 +561,10 @@ CREATE TABLE IF NOT EXISTS "shp_orders" (
 CREATE INDEX IF NOT EXISTS "shp_orders_status_created_at_idx" ON "shp_orders" ("status", "created_at");
 CREATE INDEX IF NOT EXISTS "shp_orders_payment_status_idx" ON "shp_orders" ("payment_status");
 CREATE INDEX IF NOT EXISTS "shp_orders_customer_email_idx" ON "shp_orders" ("customer_email");
+-- "What has been sent out to put this order right" - the customer's order page.
+-- Partial: NULL on every ordinary order, and there is no sense indexing those.
+CREATE INDEX IF NOT EXISTS "shp_orders_parent_order_id_idx" ON "shp_orders" ("parent_order_id") WHERE "parent_order_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "shp_orders_kind_idx" ON "shp_orders" ("kind");
 CREATE INDEX IF NOT EXISTS "shp_orders_member_id_idx" ON "shp_orders" ("member_id");
 CREATE INDEX IF NOT EXISTS "shp_orders_coupon_id_idx" ON "shp_orders" ("coupon_id");
 
@@ -587,11 +609,23 @@ CREATE TABLE IF NOT EXISTS "shp_order_items" (
     -- every line placed before the column existed, which is what they were sold
     -- under.
     "returns_discretionary" BOOLEAN NOT NULL DEFAULT false,
+    -- Which line of which earlier order this part is putting right
+    -- (052_replacement_orders.sql). NULL on every ordinary line. A replacement
+    -- is almost never the thing that was bought - nobody sends a second chair,
+    -- they send the gas lift out of it - so the part needs to name the line it
+    -- belongs to or the original order can never say where it went.
+    "replaces_order_item_id" TEXT,
 
     CONSTRAINT "shp_order_items_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "shp_order_items_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE,
-    CONSTRAINT "shp_order_items_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "shp_products"("id") ON DELETE SET NULL
+    CONSTRAINT "shp_order_items_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "shp_products"("id") ON DELETE SET NULL,
+    -- SET NULL, not RESTRICT: the line pointed at cannot be deleted while its
+    -- order exists, so RESTRICT would only ever block the parent order's own
+    -- deletion long after the part was delivered and forgotten about.
+    CONSTRAINT "shp_order_items_replaces_order_item_id_fkey" FOREIGN KEY ("replaces_order_item_id") REFERENCES "shp_order_items"("id") ON DELETE SET NULL
 );
+
+CREATE INDEX IF NOT EXISTS "shp_order_items_replaces_order_item_id_idx" ON "shp_order_items" ("replaces_order_item_id") WHERE "replaces_order_item_id" IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS "shp_order_items_order_id_idx" ON "shp_order_items" ("order_id");
 CREATE INDEX IF NOT EXISTS "shp_order_items_product_id_idx" ON "shp_order_items" ("product_id");
@@ -763,6 +797,10 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     -- Set the first time the slot email goes out, so correcting a typo on the
     -- parcel afterwards does not send it again.
     "slot_notified_at" TIMESTAMP(3),
+    -- Set once somebody has been told the tracking that was not known when the
+    -- parcel went (054_tracking_notified.sql). NULL is "nobody has been told",
+    -- and only a parcel that GAINS tracking it did not have ever sends one.
+    "tracking_notified_at" TIMESTAMP(3),
     -- Where the courier's own tracking says the parcel has got to, read on a
     -- schedule rather than while a customer waits. The stage is kept in the
     -- courier's own words and translated at READ time, so an owner correcting
@@ -898,13 +936,18 @@ CREATE TABLE IF NOT EXISTS "shp_order_requests" (
     "decided_at" TIMESTAMP(3),
     -- Core User id. Plain TEXT, no FK, as shp_refunds.created_by is.
     "decided_by" TEXT,
+    -- The replacement order sent out for this report, where one was
+    -- (052_replacement_orders.sql). Joins the asking to the doing, so the trail
+    -- reads end to end: photographs, decision, part, parcel, delivery.
+    "replacement_order_id" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "shp_order_requests_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "shp_order_requests_type_check" CHECK ("type" IN ('CANCEL', 'RETURN', 'DAMAGE')),
     CONSTRAINT "shp_order_requests_status_check" CHECK ("status" IN ('PENDING', 'APPROVED', 'DECLINED', 'WITHDRAWN')),
-    CONSTRAINT "shp_order_requests_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE
+    CONSTRAINT "shp_order_requests_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE,
+    CONSTRAINT "shp_order_requests_replacement_order_id_fkey" FOREIGN KEY ("replacement_order_id") REFERENCES "shp_orders"("id") ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS "shp_order_requests_order_id_idx" ON "shp_order_requests" ("order_id");

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { toCsvRow } from '@/modules/shop/lib/csv'
-import { getOrderRowMetrics, listOrders } from '@/modules/shop/lib/db/orders'
+import { getOrderById, getOrderRowMetrics, listOrders } from '@/modules/shop/lib/db/orders'
 import { parseOrderListFilter } from '@/modules/shop/lib/order-filters'
 import { orderCompanyName } from '@/modules/shop/lib/order-display'
 import type { ShpAddress } from '@/modules/shop/lib/types'
@@ -16,7 +16,10 @@ import type { ShpAddress } from '@/modules/shop/lib/types'
 // unsymbolled (7.99, not £7.99) so a spreadsheet reads them as numbers.
 
 const COLUMNS = [
-  'order_number', 'placed_at', 'status', 'payment_status', 'payment_method', 'payment_reference', 'paid_at',
+  // 'kind' and 'replacement_for' sit at the front rather than the back: a £0
+  // row in an accounts export is a question, and the answer has to be beside
+  // the order number rather than thirty columns to the right of it.
+  'order_number', 'kind', 'replacement_for', 'placed_at', 'status', 'payment_status', 'payment_method', 'payment_reference', 'paid_at',
   'customer_name', 'customer_organisation', 'customer_reference', 'customer_email', 'customer_phone', 'account_holder',
   'items', 'units', 'dispatched_units', 'refunded_units', 'outstanding_units',
   'subtotal', 'discount', 'coupon_code', 'shipping', 'shipping_method', 'tax', 'tax_mode', 'total', 'currency',
@@ -42,11 +45,26 @@ export async function GET(request: NextRequest) {
   const { orders } = await listOrders({ ...filter, page: 1, perPage: 5000 })
   const metrics = await getOrderRowMetrics(orders.map((o) => o.id))
 
+  // The parents named by any replacements in the export, so the file can print
+  // a number rather than an id. One query, and none at all on the export that
+  // holds no replacements - which is nearly all of them.
+  const parentIds = [...new Set(orders.map((o) => o.parentOrderId).filter((id): id is string => Boolean(id)))]
+  const parentNumbers = new Map(
+    (await Promise.all(parentIds.map((id) => getOrderById(id))))
+      .filter((o): o is NonNullable<typeof o> => o !== null)
+      .map((o) => [o.id, o.orderNumber]),
+  )
+
   const rows = orders.map((order) => {
     const m = metrics[order.id]
     const address = order.shippingAddress ?? null
     return toCsvRow([
       order.orderNumber,
+      order.kind,
+      // The parent's NUMBER, not its id: this is a spreadsheet somebody reads.
+      // Blank on a sale, and blank on the rare replacement whose parent has
+      // since been deleted - the foreign key clears rather than cascades.
+      order.parentOrderId ? parentNumbers.get(order.parentOrderId) ?? '' : '',
       iso(order.createdAt),
       order.status,
       order.paymentStatus,

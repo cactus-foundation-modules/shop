@@ -98,6 +98,10 @@ export const ORDER_DETAIL_CSS = `
 .sod-note-warn{background:var(--color-warning-subtle);border-color:var(--color-warning-border);color:var(--color-warning)}
 .sod-note-bad{background:var(--color-error-bg);border-color:var(--color-destructive-border);color:var(--color-danger)}
 .sod-note strong{color:inherit}
+/* The parts sent out to put an order right. Inside a note, so it inherits the
+   tint and needs only its own bullets and spacing. */
+.sod-replacements{margin:0;padding-left:1.125rem;display:grid;gap:0.25rem}
+.sod-replacements a{color:inherit;font-weight:600}
 /* Links keep the callout's colour but stay underlined, so they are findable
    for anyone who cannot pick the tint out. */
 .sod-note a{color:inherit;text-decoration:underline}

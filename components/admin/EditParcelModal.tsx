@@ -34,6 +34,9 @@ export type EditableParcel = {
   notes: string | null
   /** Set once the customer has been told the window. */
   slotNotifiedAt: string | null
+  /** Set once the customer has been told tracking the parcel went out without.
+   *  Optional so a response from an older deployment still renders. */
+  trackingNotifiedAt?: string | null
 }
 
 export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: {
@@ -55,6 +58,7 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
     notes: parcel.notes ?? '',
   })
   const [emailCustomer, setEmailCustomer] = useState(true)
+  const [emailTracking, setEmailTracking] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -64,13 +68,23 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   const alreadyTold = Boolean(parcel.slotNotifiedAt)
   const windowComplete = Boolean(details.deliveryDate && details.deliverySlotStart && details.deliverySlotEnd)
 
+  // The tracking half, which is a different question asked on a different day.
+  // Offered only on a parcel that went out WITHOUT anything to follow: one
+  // dispatched with its number already on it said so in its dispatch note, and
+  // a second email repeating it is noise. A courier name is not tracking - it
+  // is who has the box - so it does not count towards either side of this.
+  const hadTracking = Boolean(parcel.trackingNumber?.trim() || parcel.trackingUrl?.trim() || parcel.trackingShortCode?.trim())
+  const hasTrackingNow = Boolean(details.trackingNumber.trim() || details.trackingUrl.trim() || details.trackingShortCode.trim())
+  const trackingAlreadyTold = Boolean(parcel.trackingNotifiedAt)
+  const offerTrackingEmail = !hadTracking && !trackingAlreadyTold
+
   async function save() {
     setSaving(true)
     setError(null)
     const res = await fetch(`/api/m/shop/admin/orders/${orderId}/dispatch`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ shipmentId: parcel.id, ...parcelDetailsPayload(details), emailCustomer }),
+      body: JSON.stringify({ shipmentId: parcel.id, ...parcelDetailsPayload(details), emailCustomer, emailTracking }),
     })
     setSaving(false)
     if (!res.ok) {
@@ -93,12 +107,27 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
 
         <div style={{ padding: '1.25rem', overflowY: 'auto', display: 'grid', gap: '0.75rem' }}>
           <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
-            For a courier that confirms the delivery day and the time window separately. What is in
-            the parcel cannot be changed here - undo the dispatch and record it again for that.
+            For a courier that confirms the delivery day and the time window separately, or that
+            issues a tracking number after it has collected. What is in the parcel cannot be changed
+            here - undo the dispatch and record it again for that.
           </p>
           {error && <p style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}>{error}</p>}
 
           <ParcelDetailsFields couriers={couriers} value={details} onChange={setDetails} />
+
+          {offerTrackingEmail && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input type="checkbox" checked={emailTracking} onChange={(e) => setEmailTracking(e.target.checked)} />
+              Let the customer know the tracking{hasTrackingNow ? '' : ' (needs a number, a link or a code)'}
+            </label>
+          )}
+
+          {trackingAlreadyTold && (
+            <p style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
+              The customer has already been sent this parcel&rsquo;s tracking, so saving again will not
+              send it a second time.
+            </p>
+          )}
 
           {alreadyTold ? (
             <p style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>

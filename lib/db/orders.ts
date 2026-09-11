@@ -2,12 +2,17 @@ import { prisma, type PrismaTransactionClient } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import { decrementPreOrderCount, getProductById } from '@/modules/shop/lib/db/products'
 import { normaliseStoredPhone } from '@/modules/shop/lib/phone'
-import type { LineMeta, ShpAddress, ShpOrder, ShpOrderAgreement, ShpOrderItem, ShpOrderStatus, ShpPaymentMethod, ShpPaymentStatus } from '@/modules/shop/lib/types'
+import type { LineMeta, ShpAddress, ShpOrder, ShpOrderAgreement, ShpOrderItem, ShpOrderKind, ShpOrderStatus, ShpPaymentMethod, ShpPaymentStatus } from '@/modules/shop/lib/types'
 
 function mapOrder(r: Record<string, unknown>): ShpOrder {
   return {
     id: r.id as string,
     orderNumber: r.order_number as string,
+    // Migration 052. Defaulted here as well as in the DDL so a row read through
+    // a query shape cached before the column existed answers "a sale", which is
+    // what every order placed before replacements existed was.
+    kind: (r.kind as ShpOrderKind | null) ?? 'SALE',
+    parentOrderId: (r.parent_order_id as string | null) ?? null,
     status: r.status as ShpOrderStatus,
     memberId: (r.member_id as string | null) ?? null,
     customerEmail: r.customer_email as string,
@@ -79,6 +84,8 @@ function mapOrderItem(r: Record<string, unknown>): ShpOrderItem {
     // Same defaulting, the other way up: a line read through an older query
     // shape answers "an ordinary return", never "at our discretion".
     returnsDiscretionary: (r.returns_discretionary as boolean | null | undefined) ?? false,
+    // Migration 052. Null on every line but a replacement part's.
+    replacesOrderItemId: (r.replaces_order_item_id as string | null) ?? null,
   }
 }
 
@@ -148,6 +155,22 @@ export type CreateOrderInput = {
   // eventually becomes. See lib/checkout-draft.ts.
   id?: string | null
   orderNumber: string
+  /** Omitted on everything a shopper buys, which is what the default says. */
+  kind?: ShpOrderKind
+  /** The order being put right. Only ever set beside kind: 'REPLACEMENT'. */
+  parentOrderId?: string | null
+  /**
+   * Where the order starts life. Omitted means PENDING/PENDING - an order
+   * waiting on money, which is every order a checkout makes.
+   *
+   * A replacement part owes nothing and is a picking job from the moment it is
+   * raised, so it is born PROCESSING and settled. Left as explicit inputs
+   * rather than derived from `kind` here, because this function's whole job is
+   * to write down what it is told.
+   */
+  status?: ShpOrderStatus
+  paymentStatus?: ShpPaymentStatus
+  paidAt?: Date | null
   memberId?: string | null
   customerEmail: string
   customerName: string
@@ -167,6 +190,19 @@ export type CreateOrderInput = {
   couponId?: string | null
   couponCode?: string | null
   paymentMethod: ShpPaymentMethod
+  /**
+   * How the customer asked to be kept posted. Omitted is email only, which is
+   * what an order is born with and what the checkout overwrites a moment later
+   * through setOrderNotifyChannels.
+   *
+   * Supplied when an order INHERITS somebody's choice rather than asking for it:
+   * a replacement part carries the original order's, because a guest who ticked
+   * "text me" is owed a text about the part as much as about the chair, and a
+   * guest order has no account for the preference to live on.
+   */
+  notifyEmail?: boolean
+  notifySms?: boolean
+  notifyPhone?: string | null
   shippingRateId?: string | null
   shippingRateName?: string | null
   agreements?: ShpOrderAgreement[] | null
@@ -196,6 +232,8 @@ export type CreateOrderInput = {
     /** Resolved at checkout beside `returnable`. Omitted reads as an ordinary
      *  return, which is what every line on an untouched catalogue is. */
     returnsDiscretionary?: boolean
+    /** The line of an earlier order this part puts right. Replacements only. */
+    replacesOrderItemId?: string | null
   }>
 }
 
@@ -218,7 +256,9 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
       "order_number", "member_id", "customer_email", "customer_name", "customer_organisation", "customer_reference", "customer_phone",
       "shipping_address", "delivery_instructions", "billing_address", "subtotal", "discount_amount", "shipping_amount",
       "tax_amount", "total", "tax_mode", "currency", "coupon_id", "coupon_code",
-      "payment_method", "shipping_rate_id", "shipping_rate_name", "agreements"
+      "payment_method", "shipping_rate_id", "shipping_rate_name", "agreements",
+      "kind", "parent_order_id", "status", "payment_status", "paid_at",
+      "notify_email", "notify_sms", "notify_phone"
     ) VALUES (
       -- An id the caller decided earlier, or the one the column would have
       -- given it anyway. Written as a value rather than left to the default
@@ -232,7 +272,12 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
       ${data.subtotal}, ${data.discountAmount}, ${data.shippingAmount}, ${data.taxAmount}, ${data.total},
       ${data.taxMode}, ${data.currency}, ${data.couponId ?? null}, ${data.couponCode ?? null},
       ${data.paymentMethod}, ${data.shippingRateId ?? null}, ${data.shippingRateName ?? null},
-      ${data.agreements ? JSON.stringify(data.agreements) : null}::jsonb
+      ${data.agreements ? JSON.stringify(data.agreements) : null}::jsonb,
+      -- Written as values rather than left to the column defaults so a
+      -- replacement and a checkout both go through this one statement.
+      ${data.kind ?? 'SALE'}, ${data.parentOrderId ?? null},
+      ${data.status ?? 'PENDING'}, ${data.paymentStatus ?? 'PENDING'}, ${data.paidAt ?? null},
+      ${data.notifyEmail ?? true}, ${data.notifySms ?? false}, ${normaliseStoredPhone(data.notifyPhone)}
     )
     RETURNING "id"
   `
@@ -242,12 +287,14 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
       INSERT INTO "shp_order_items" (
         "order_id", "product_id", "product_name", "product_sku", "product_type",
         "quantity", "unit_price", "tax_rate", "tax_amount", "total", "is_pre_order", "pre_order_dispatch_date",
-        "line_meta", "order_size_deduction", "returnable", "non_returnable_note", "returns_discretionary"
+        "line_meta", "order_size_deduction", "returnable", "non_returnable_note", "returns_discretionary",
+        "replaces_order_item_id"
       ) VALUES (
         ${orderId}, ${item.productId}, ${item.productName}, ${item.productSku}, ${item.productType},
         ${item.quantity}, ${item.unitPrice}, ${item.taxRate}, ${item.taxAmount}, ${item.total},
         ${item.isPreOrder}, ${item.preOrderDispatchDate},
-        ${item.lineMeta ? JSON.stringify(item.lineMeta) : null}::jsonb, ${item.orderSizeDeduction ?? null}, ${item.returnable ?? true}, ${item.nonReturnableNote ?? null}, ${item.returnsDiscretionary ?? false}
+        ${item.lineMeta ? JSON.stringify(item.lineMeta) : null}::jsonb, ${item.orderSizeDeduction ?? null}, ${item.returnable ?? true}, ${item.nonReturnableNote ?? null}, ${item.returnsDiscretionary ?? false},
+        ${item.replacesOrderItemId ?? null}
       )
     `
   }
@@ -748,8 +795,12 @@ export async function getOrdersOverview(): Promise<OrdersOverview> {
             WHERE oi_p."order_id" = o."id" AND oi_p."is_pre_order" = true
           )
       )::int AS pre_orders_outstanding,
+      -- Money follows payment_status, counts follow kind (migration 052): a
+      -- part sent out free is settled the moment it is raised, and without this
+      -- every warranty job would read as another sale on the dashboard.
       COUNT(*) FILTER (
         WHERE o."payment_status" = 'PAID' AND o."paid_at" >= NOW() - INTERVAL '30 days'
+          AND o."kind" = 'SALE'
       )::int AS paid_orders_30d,
       COALESCE(SUM(o."total") FILTER (
         WHERE o."payment_status" = 'PAID' AND o."paid_at" >= NOW() - INTERVAL '30 days'
@@ -773,10 +824,13 @@ export type CustomerSummary = { orderCount: number; paidOrderCount: number; tota
 
 export async function getCustomerSummary(email: string): Promise<CustomerSummary> {
   const rows = await prisma.$queryRaw<Array<{ order_count: number; paid_order_count: number; total_spent: { toString(): string }; first_order_at: Date | null }>>`
-    SELECT COUNT(*)::int AS order_count,
-           COUNT(*) FILTER (WHERE "payment_status" = 'PAID')::int AS paid_order_count,
+    SELECT COUNT(*) FILTER (WHERE "kind" = 'SALE')::int AS order_count,
+           COUNT(*) FILTER (WHERE "payment_status" = 'PAID' AND "kind" = 'SALE')::int AS paid_order_count,
+           -- Not filtered on kind, and deliberately: a replacement the customer
+           -- was charged for is money they have spent with this shop. A free
+           -- one adds nothing to a sum, so it needs no exception here.
            COALESCE(SUM("total") FILTER (WHERE "payment_status" = 'PAID'), 0) AS total_spent,
-           MIN("created_at") AS first_order_at
+           MIN("created_at") FILTER (WHERE "kind" = 'SALE') AS first_order_at
     FROM "shp_orders" WHERE lower("customer_email") = lower(${email})
   `
   const r = rows[0]
@@ -908,4 +962,62 @@ export async function listOrderEmails(orderId: string): Promise<OrderEmailRow[]>
     trigger: r.trigger as string,
     sentAt: r.sent_at as Date,
   }))
+}
+
+// ---------------------------------------------------------------------------
+// Replacement parts (migration 052)
+// ---------------------------------------------------------------------------
+
+/** Every replacement raised against one order, oldest first - which is the
+ *  order they were numbered in, so -R1 comes before -R2. */
+export async function listReplacementOrdersForParent(parentOrderId: string): Promise<ShpOrder[]> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "shp_orders" WHERE "parent_order_id" = ${parentOrderId} ORDER BY "created_at" ASC
+  `
+  return rows.map(mapOrder)
+}
+
+/** The same, for several orders at once - the account's order list, which would
+ *  otherwise ask this question once per order on the page. */
+export async function listReplacementOrdersForParents(parentOrderIds: string[]): Promise<ShpOrder[]> {
+  if (parentOrderIds.length === 0) return []
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "shp_orders"
+    WHERE "parent_order_id" IN (${Prisma.join(parentOrderIds)})
+    ORDER BY "created_at" ASC
+  `
+  return rows.map(mapOrder)
+}
+
+/**
+ * The next free replacement number for an order: DW000182-R1, then -R2.
+ *
+ * Counted off the suffix already in use rather than off how many replacements
+ * exist, so a deleted one does not hand its number to the next part and leave
+ * two years of emails pointing at the wrong parcel.
+ *
+ * Racy by nature - two people pressing the button at once both read 1 - which
+ * is why the caller inserts inside a transaction and lets the UNIQUE index on
+ * order_number settle it. See lib/replacements.ts.
+ */
+export async function nextReplacementNumber(parentOrderNumber: string): Promise<string> {
+  const prefix = `${parentOrderNumber}-R`
+  // The order number prefix is an owner-typed setting, so it can hold a % or an
+  // underscore, and an unescaped one would match far more than this order's own
+  // replacements - handing -R2 to an order that already had three.
+  const pattern = `${prefix.replace(/([\\%_])/g, '\\$1')}%`
+  const rows = await prisma.$queryRaw<Array<{ suffix: string }>>`
+    -- ::int is not decoration. Prisma sends a JS number as int8, Postgres has
+    -- no substring(text, int8) overload, and the whole statement fails with
+    -- "function pg_catalog.substring(text, bigint) does not exist" - which
+    -- typechecks, lints and builds perfectly on the way to production.
+    SELECT substring("order_number" FROM ${prefix.length + 1}::int) AS suffix
+    FROM "shp_orders"
+    WHERE "order_number" LIKE ${pattern} ESCAPE '\\'
+  `
+  const highest = rows.reduce((best, row) => {
+    const n = Number.parseInt(row.suffix, 10)
+    return Number.isFinite(n) && n > best ? n : best
+  }, 0)
+  return `${prefix}${highest + 1}`
 }

@@ -5,6 +5,7 @@ import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/compone
 import { getOrderByNumber } from '@/modules/shop/lib/db/orders'
 import { resolveOrderViewer } from '@/modules/shop/lib/order-viewer'
 import { orderTrackingBasePath, verifyOrderTrackingToken } from '@/modules/shop/lib/order-tracking'
+import { orderLinkIntentQuery } from '@/modules/shop/lib/order-link-intent'
 import OrderAccessForm from '@/modules/shop/components/public/OrderAccessForm'
 import { TRACK_ORDER_CSS } from '@/modules/shop/components/public/track-order-css'
 import { TrackOrderPageView } from '@/modules/shop/app/public/shop/track-order/page'
@@ -55,9 +56,15 @@ export default async function ShopTrackOrderNumberPage({
   // would answer "does order DW000173 exist?" for anyone willing to count.
   const order = verifyOrderTrackingToken(orderNumber, token) ? await getOrderByNumber(orderNumber) : null
 
+  // What the link asked the order page to open, carried across this gate rather
+  // than dropped at it. See lib/order-link-intent.ts - both branches below used
+  // to lose it, which is why the delivery email's ?faq=1 link had never opened
+  // anything for anybody.
+  const intent = orderLinkIntentQuery(query)
+
   if (order) {
     const viewer = await resolveOrderViewer(order)
-    if (viewer) redirect(`/shop/account/orders/${order.id}`)
+    if (viewer) redirect(`/shop/account/orders/${order.id}${intent}`)
   }
 
   // No genuine order behind the link: hand them the ordinary form with what
@@ -79,7 +86,7 @@ export default async function ShopTrackOrderNumberPage({
         </header>
 
         <div className="sot-card">
-          <OrderAccessForm mode="confirm" orderNumber={order.orderNumber} orderId={order.id} />
+          <OrderAccessForm mode="confirm" orderNumber={order.orderNumber} orderId={order.id} intent={intent} />
         </div>
 
         <p className="sot-hint">

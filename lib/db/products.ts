@@ -60,6 +60,9 @@ function mapProduct(r: Record<string, unknown>): ShpProduct {
     relatedLimit: r.related_limit as number,
     upsellLimit: r.upsell_limit as number,
     catalogueHidden: (r.catalogue_hidden as boolean | null) ?? false,
+    // Migration 052. Defaulted here as well as in the DDL so a row read through
+    // an older query shape answers "an ordinary product", not undefined.
+    partsOnly: (r.parts_only as boolean | null) ?? false,
     featuredHidden: (r.featured_hidden as boolean | null) ?? false,
     popularitySeed: (r.popularity_seed as number | null) ?? null,
     popularity: (r.popularity as number | null) ?? null,
@@ -375,6 +378,16 @@ export type ListProductsFilter = {
   // search, the sitemap and the admin list all still show them, which is the
   // whole difference between this and excludeHidden above.
   excludeFeaturedHidden?: boolean
+  /**
+   * Which side of the parts line to return: `false` leaves the spare parts out,
+   * `true` returns ONLY them, omitted returns both.
+   *
+   * Three-valued because there are genuinely three questions. A storefront asks
+   * for no parts; the replacement picker asks for nothing but parts; the admin
+   * product list asks for the catalogue as it really is, parts included, since
+   * a part whose stock nobody can open is not worth keeping.
+   */
+  partsOnly?: boolean
   // The ceiling `perPage` is clamped to. Defaults to DEFAULT_MAX_PER_PAGE, which
   // is what every caller got before this existed, so nothing moves by adding it.
   //
@@ -417,8 +430,13 @@ export async function listProducts(filter: ListProductsFilter): Promise<{ produc
   if (filter.stock === 'low') conditions.push(Prisma.sql`(p."track_inventory" = true AND p."low_stock_threshold" IS NOT NULL AND p."stock_count" IS NOT NULL AND p."stock_count" > 0 AND p."stock_count" <= p."low_stock_threshold")`)
   if (filter.stock === 'in') conditions.push(Prisma.sql`(p."track_inventory" = true AND p."stock_count" IS NOT NULL AND p."stock_count" > 0 AND (p."low_stock_threshold" IS NULL OR p."stock_count" > p."low_stock_threshold"))`)
   if (filter.excludeHidden) conditions.push(Prisma.sql`p."catalogue_hidden" = false`)
+  if (filter.partsOnly !== undefined) conditions.push(Prisma.sql`p."parts_only" = ${filter.partsOnly}`)
   if (filter.excludeFeaturedHidden) conditions.push(Prisma.sql`p."featured_hidden" = false`)
   if (filter.storefront) {
+    // A spare part is never merchandise, wherever the caller came in from. Here
+    // rather than at each of the dozen storefront callers, for the reason every
+    // other condition is: one place to be wrong, rather than twelve.
+    conditions.push(Prisma.sql`p."parts_only" = false`)
     // In the WHERE rather than filtered out of the rows afterwards, so a page of
     // 24 is 24 products and the total underneath it counts the same ones.
     const { getStockGate, outOfStockSql } = await import('@/modules/shop/lib/stock-visibility')
@@ -555,6 +573,10 @@ export type CreateProductInput = {
   upsellLimit?: number | null
   // Create the row hidden from the catalogue (used for variation child products).
   catalogueHidden?: boolean
+  // Create the row as a spare part: stocked and pickable, never on the
+  // storefront. Nothing to do with catalogueHidden above - a part stays visible
+  // to the owner, which is the only way its stock and cost are any use.
+  partsOnly?: boolean
   featuredHidden?: boolean
 }
 
@@ -568,7 +590,7 @@ export async function createProduct(data: CreateProductInput): Promise<{ id: str
       "download_limit", "download_expiry", "meta_title", "meta_description",
       "is_pre_order", "pre_order_dispatch_date", "pre_order_note", "pre_order_max_quantity", "min_order_quantity", "order_size_deduction",
       "returnable", "non_returnable_note", "returns_discretionary",
-      "related_mode", "upsell_mode", "related_limit", "upsell_limit", "catalogue_hidden", "featured_hidden"
+      "related_mode", "upsell_mode", "related_limit", "upsell_limit", "catalogue_hidden", "parts_only", "featured_hidden"
     ) VALUES (
       ${data.name}, ${data.slug}, ${data.type}, ${data.status ?? 'DRAFT'}, ${data.description ?? null}, ${data.shortDescription ?? null}, ${data.sku ?? null}, ${data.saleSku ?? null}, ${data.supplierSku ?? null}, ${data.barcode ?? null}, ${data.supplier ?? null},
       ${data.price}, ${data.salePrice ?? null}, ${data.retailPrice ?? null}, ${data.tradePrice ?? null}, ${data.costPrice ?? null}, ${data.taxClassId ?? null},
@@ -577,7 +599,7 @@ export async function createProduct(data: CreateProductInput): Promise<{ id: str
       ${data.downloadLimit ?? null}, ${data.downloadExpiry ?? null}, ${data.metaTitle ?? null}, ${data.metaDescription ?? null},
       ${data.isPreOrder ?? false}, ${data.preOrderDispatchDate ?? null}, ${data.preOrderNote ?? null}, ${data.preOrderMaxQuantity ?? null}, ${data.minOrderQuantity ?? null}, ${data.orderSizeDeduction ?? null},
       ${data.returnable ?? null}, ${data.nonReturnableNote ?? null}, ${data.returnsDiscretionary ?? null},
-      ${data.relatedMode ?? 'AUTOMATIC'}, ${data.upsellMode ?? 'AUTOMATIC'}, ${data.relatedLimit ?? 4}, ${data.upsellLimit ?? 4}, ${data.catalogueHidden ?? false}, ${data.featuredHidden ?? false}
+      ${data.relatedMode ?? 'AUTOMATIC'}, ${data.upsellMode ?? 'AUTOMATIC'}, ${data.relatedLimit ?? 4}, ${data.upsellLimit ?? 4}, ${data.catalogueHidden ?? false}, ${data.partsOnly ?? false}, ${data.featuredHidden ?? false}
     )
     RETURNING "id"
   `
@@ -636,6 +658,7 @@ export type UpdateProductInput = Partial<{
   relatedLimit: number
   upsellLimit: number
   catalogueHidden: boolean
+  partsOnly: boolean
   featuredHidden: boolean
 }>
 
@@ -657,7 +680,7 @@ const COLUMN_MAP: Record<Exclude<keyof UpdateProductInput, 'descriptionPuck'>, s
   returnsDiscretionary: 'returns_discretionary',
   relatedMode: 'related_mode', upsellMode: 'upsell_mode',
   relatedLimit: 'related_limit', upsellLimit: 'upsell_limit', catalogueHidden: 'catalogue_hidden',
-  featuredHidden: 'featured_hidden',
+  partsOnly: 'parts_only', featuredHidden: 'featured_hidden',
 }
 
 export async function updateProduct(id: string, fields: UpdateProductInput): Promise<void> {

@@ -209,6 +209,11 @@ export type ShpProduct = {
   // Purchasable but hidden from the catalogue (grid/search/sitemap/own URL).
   // Backs shop-variations child rows; false for ordinary products.
   catalogueHidden: boolean
+  // A spare part rather than something to sell. Purchasable, stocked and costed
+  // like any other product, kept off every storefront surface, and still
+  // openable in the admin product list - which is the difference between this
+  // and catalogueHidden above, where a hidden row is hidden from the owner too.
+  partsOnly: boolean
   // The owner's tick for "keep this one off the featured shelves" - the
   // promotional blocks a page carries (Best sellers, Just in, Staff picks, On
   // offer). Everything else still lists it: categories, collections, tags,
@@ -498,9 +503,30 @@ export type ShpOrderAgreement = {
   acceptedAt: string | null
 }
 
+/**
+ * What an order IS, as opposed to what state it is in.
+ *
+ * A REPLACEMENT is a part sent out to put an earlier order right - a gas lift,
+ * a castor, a missing fixings pack. It is an order at all only because every
+ * parcel and every scrap of delivery tracking this module has hangs off one, so
+ * modelling it any other way would have meant writing dispatch and tracking a
+ * second time to reach the same place.
+ *
+ * The rule wherever it is read: MONEY FOLLOWS paymentStatus, COUNTS FOLLOW
+ * kind. A free replacement is worth nothing and disturbs no revenue figure on
+ * its own; what it would disturb is a COUNT of orders - "42 orders this month",
+ * "your fourth order with us" - and those are what filter on this. A
+ * replacement the customer is charged for is real money and is left alone,
+ * which is why the filter is never written as "total > 0".
+ */
+export type ShpOrderKind = 'SALE' | 'REPLACEMENT'
+
 export type ShpOrder = {
   id: string
   orderNumber: string
+  kind: ShpOrderKind
+  /** The order being put right, on a replacement. Null on every sale. */
+  parentOrderId: string | null
   status: ShpOrderStatus
   memberId: string | null
   customerEmail: string
@@ -612,6 +638,16 @@ export type ShpOrderItem = {
    * what those lines were sold under.
    */
   returnsDiscretionary: boolean
+  /**
+   * The line of an earlier order this part is putting right. Null on every
+   * ordinary line, and set only on the lines of a REPLACEMENT order.
+   *
+   * Needed beside the order's own parentOrderId because a replacement is almost
+   * never the thing that was bought: nobody sends a second chair, they send the
+   * gas lift out of it. Without this the part sits beside a five-line order
+   * with nothing to say which line it belongs to.
+   */
+  replacesOrderItemId: string | null
 }
 
 export type ShpRefundStatus = 'PENDING' | 'COMPLETED' | 'FAILED'
@@ -654,6 +690,9 @@ export type ShpShipment = {
   /** When the customer was told about the window, so a later correction to the
    *  parcel does not tell them all over again. */
   slotNotifiedAt: Date | null
+  /** Set once the customer has been told tracking that was not known when the
+   *  parcel went out. Null on every parcel that never gained any. */
+  trackingNotifiedAt: Date | null
   /** Where the courier's own tracking says the parcel has got to, in the
    *  courier's own words. What that MEANS is a per-courier setting, applied at
    *  read time so correcting it fixes parcels already recorded. */
@@ -1060,6 +1099,15 @@ export type ShpOrderRequest = {
    * a zero typed in deliberately is a different statement.
    */
   returnCharge: string | null
+  /**
+   * The replacement order sent out for this report, where one was. Null on
+   * everything else, and on a damage report nobody has acted on yet.
+   *
+   * Joins the asking to the doing, so the trail reads end to end - photographs,
+   * decision, part, parcel, delivery - on the queue and on the customer's own
+   * order page alike.
+   */
+  replacementOrderId: string | null
   decidedAt: Date | null
   decidedBy: string | null
   createdAt: Date
@@ -1165,6 +1213,17 @@ export type ShpEmailTemplateTrigger =
   // and an owner rewriting "we have your return request" must not find they
   // have reworded the apology as well. See lib/order-request-actions.ts.
   | 'DAMAGE_RECEIVED' | 'DAMAGE_RESOLVED' | 'DAMAGE_DECLINED' | 'ADMIN_NEW_DAMAGE'
+  // A replacement part, raised and then sent. Its own two rather than the order
+  // wording, for the reason damage has its own four: a customer who has been
+  // sent a gas lift did not place an order, is not paying for one, and being
+  // told "thanks for your order, total £0.00" reads as a mistake on top of the
+  // mistake they reported. See lib/replacements.ts and lib/shipment-email.ts.
+  | 'REPLACEMENT_SENT' | 'REPLACEMENT_DISPATCHED' | 'REPLACEMENT_DELIVERED'
+  // Tracking that did not exist when the parcel went out. A courier that
+  // collects in the morning and issues the number that afternoon has already
+  // had its dispatch note sent, saying the goods have left and carrying no way
+  // of following them. See lib/tracking-added-email.ts.
+  | 'TRACKING_ADDED' | 'REPLACEMENT_TRACKING_ADDED'
   // The credit note raised when a refund goes through. See lib/credit-notes.ts.
   | 'CREDIT_NOTE_ISSUED'
   // The pair of documents raised when the company an invoice is made out to

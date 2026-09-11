@@ -23,7 +23,9 @@ export async function getPublicSitemapEntries(siteUrl: string): Promise<Metadata
     : Prisma.empty
   const products = await prisma.$queryRaw<Array<{ slug: string; updated_at: Date }>>`
     SELECT p."slug", p."updated_at" FROM "shp_products" p
-    WHERE p."status" = 'ACTIVE' AND p."catalogue_hidden" = false ${inStockOnly}
+    -- parts_only: a spare gas lift is not a page anybody should arrive at from
+    -- a search engine, and offering one for indexing is worse than useless.
+    WHERE p."status" = 'ACTIVE' AND p."catalogue_hidden" = false AND p."parts_only" = false ${inStockOnly}
   `
   const categories = await prisma.$queryRaw<Array<{ slug: string; updated_at: Date }>>`
     SELECT c."slug", c."updated_at" FROM "shp_categories" c
@@ -45,7 +47,7 @@ export async function getPublicSitemapEntries(siteUrl: string): Promise<Metadata
           AND EXISTS (
             SELECT 1 FROM "shp_products" p
              WHERE LOWER(p."supplier") = LOWER(s."name")
-               AND p."status" = 'ACTIVE' AND p."catalogue_hidden" = false
+               AND p."status" = 'ACTIVE' AND p."catalogue_hidden" = false AND p."parts_only" = false
           )
       `
     : []

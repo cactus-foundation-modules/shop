@@ -63,6 +63,12 @@ export const ShpConfigSchema = z.object({
   // is often kept purely as a buying reference and putting it in front of
   // shoppers is a separate decision from recording it.
   showRetailPrice: z.boolean().default(false),
+  // Also hand the RRP to search engines, as the struck-through figure on the
+  // product's structured data. Off by default, and only read when the RRP is
+  // shown to shoppers at all: that slot means "what this cost before", and an
+  // RRP is a figure the shop never charged, so filling it with one is a
+  // decision an owner takes deliberately rather than a default they inherit.
+  retailPriceInStructuredData: z.boolean().default(false),
 
   // Tax
   taxMode: z.enum(['INCLUSIVE', 'EXCLUSIVE']).default('INCLUSIVE'),

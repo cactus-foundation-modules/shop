@@ -16,7 +16,10 @@ export async function GET(request: NextRequest) {
 
   const rows = await prisma.$queryRaw<Array<{ customer_email: string; customer_name: string; member_id: string | null; order_count: bigint; total_spent: string }>>`
     SELECT "customer_email", MAX("customer_name") AS customer_name, MAX("member_id") AS member_id,
-      COUNT(*)::bigint AS order_count, COALESCE(SUM("total") FILTER (WHERE "payment_status" = 'PAID'), 0) AS total_spent
+      -- Counts follow kind, money follows payment_status (migration 052): a
+      -- customer who has been sent two gas lifts has not placed two more orders.
+      COUNT(*) FILTER (WHERE "kind" = 'SALE')::bigint AS order_count,
+      COALESCE(SUM("total") FILTER (WHERE "payment_status" = 'PAID'), 0) AS total_spent
     FROM "shp_orders"
     ${where}
     GROUP BY "customer_email"

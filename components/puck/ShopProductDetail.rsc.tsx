@@ -151,6 +151,40 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     ? (displayAdjust ? displayAdjust(Number(variantPricing.price)) : Number(variantPricing.price)).toFixed(2)
     : null
 
+  // Google reads a second, higher price marked `StrikethroughPrice` as the "was"
+  // of an offer. Two figures can fill that slot and only one at a time. A genuine
+  // sale takes it, because the normal price is what the saving printed on the
+  // page is measured against. Failing that an RRP does, but only where the owner
+  // has switched it on: an RRP is a figure this shop never charged, so handing it
+  // to Google as a strikethrough is a decision rather than a default, and it is
+  // doubly gated on the RRP already being printed beside the price (Shop settings
+  // > Pricing) so the markup can never claim a saving the shopper cannot see.
+  const rrpInSearch = config.showRetailPrice && config.retailPriceInStructuredData
+  const adjusted = (amount: string) => (displayAdjust ? displayAdjust(Number(amount)) : Number(amount)).toFixed(2)
+
+  // The variations branch takes the cheapest choice's RRP - the same pairing the
+  // product cards print, "From £x" against the lowest RRP any choice carries -
+  // because the parent row's own figures price nothing a shopper can buy. It has
+  // no "was": the provider hands back a cheapest price, not a cheapest saving, so
+  // a reduced variations listing carries no strikethrough at all rather than the
+  // parent's unrelated one.
+  const strikethrough = fromPrice
+    ? rrpInSearch && variantPricing?.rrp
+      ? adjusted(variantPricing.rrp)
+      : null
+    : (prices.was ?? (rrpInSearch ? prices.rrp : null))
+
+  const strikethroughSpec = strikethrough
+    ? {
+        priceSpecification: {
+          '@type': 'UnitPriceSpecification',
+          priceType: 'https://schema.org/StrikethroughPrice',
+          price: strikethrough,
+          priceCurrency: config.currency,
+        },
+      }
+    : {}
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -164,12 +198,14 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
           lowPrice: fromPrice,
           priceCurrency: config.currency,
           availability: offerAvailability,
+          ...strikethroughSpec,
         }
       : {
           '@type': 'Offer',
           price: prices.now,
           priceCurrency: config.currency,
           availability: offerAvailability,
+          ...strikethroughSpec,
         },
   }
 
@@ -183,6 +219,9 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     delete (jsonLd.offers as Record<string, unknown>).price
     delete (jsonLd.offers as Record<string, unknown>).lowPrice
     delete (jsonLd.offers as Record<string, unknown>).priceCurrency
+    // The strikethrough goes with them: a shop that will not quote its price has
+    // certainly not agreed to publish what it says the thing is worth.
+    delete (jsonLd.offers as Record<string, unknown>).priceSpecification
   }
 
   const blockTypes = collectLayoutBlockTypes(template)

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db/prisma'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { deliveryInstructionsLabel } from '@/modules/shop/lib/delivery-instructions'
-import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, setOrderCustomerReference } from '@/modules/shop/lib/db/orders'
+import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, listReplacementOrdersForParent, setOrderCustomerReference } from '@/modules/shop/lib/db/orders'
 import { listRefundsForOrder, listRefundItemsForOrder } from '@/modules/shop/lib/db/refunds'
 import { listDownloadsForOrder } from '@/modules/shop/lib/db/digital'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
@@ -21,7 +21,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const order = await getOrderById(id)
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
-  const [items, notes, emails, refunds, refundItems, downloads, customer, config] = await Promise.all([
+  const [items, notes, emails, refunds, refundItems, downloads, customer, config, replacements] = await Promise.all([
     getOrderItems(id),
     listOrderNotes(id),
     listOrderEmails(id),
@@ -30,7 +30,34 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     listDownloadsForOrder(id),
     getCustomerSummary(order.customerEmail),
     getShopConfigCached(),
+    // The parts sent out to put this one right. Cheap on every order and empty
+    // on almost all of them - it is one indexed read on a partial index.
+    listReplacementOrdersForParent(id),
   ])
+
+  // The parts themselves, so the items table can say which LINE each went out
+  // for - which is the whole reason shp_order_items.replaces_order_item_id
+  // exists. Skipped entirely on the ordinary order that has no replacements,
+  // so it costs nothing on all but a handful.
+  const replacementLines = replacements.length === 0 ? [] : (
+    await Promise.all(replacements.map(async (replacement) => {
+      const lines = await getOrderItems(replacement.id)
+      return lines.map((line) => ({
+        orderId: replacement.id,
+        orderNumber: replacement.orderNumber,
+        status: replacement.status,
+        productName: line.productName,
+        quantity: line.quantity,
+        replacesOrderItemId: line.replacesOrderItemId,
+      }))
+    }))
+  ).flat()
+
+  // And, on a replacement, the order it is putting right. Only the two facts
+  // the screen needs to offer a way back: a whole second order payload here
+  // would be a second order screen nobody asked for.
+  const parent = order.parentOrderId ? await getOrderById(order.parentOrderId) : null
+  const parentOrder = parent ? { id: parent.id, orderNumber: parent.orderNumber } : null
 
   // Who wrote a note and who took a refund, resolved to names. A note signed
   // with a cuid tells the owner nothing about which of their staff wrote it,
@@ -65,7 +92,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     ? { mode: provider.refundMode ?? 'provider', label: provider.label }
     : null
 
-  return NextResponse.json({ order, items, notes, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, deliveryInstructionsLabel: deliveryInstructionsLabelText, refundNotice })
+  return NextResponse.json({ order, items, notes, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, deliveryInstructionsLabel: deliveryInstructionsLabelText, refundNotice, replacements, replacementLines, parentOrder })
 }
 
 const PatchBody = z.object({

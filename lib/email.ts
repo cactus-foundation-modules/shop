@@ -4,6 +4,7 @@ import { logOrderEmail } from '@/modules/shop/lib/db/orders'
 import { SHOP_TRIGGER_TO_TEMPLATE_KEY } from '@/modules/shop/lib/email-templates'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import { orderTrackingUrl } from '@/modules/shop/lib/order-tracking'
+import { reportIssueUrl } from '@/modules/shop/lib/order-requests'
 import type { ShpEmailTemplateTrigger, ShpOrder } from '@/modules/shop/lib/types'
 
 // The shop's emails are registered with core (see lib/email-templates.ts and
@@ -88,8 +89,30 @@ export function customerReferenceVars(
  */
 export function orderTrackingVars(
   order: Pick<ShpOrder, 'orderNumber'>,
-  config: Pick<ShpConfig, 'guestOrderTrackingEnabled' | 'orderTrackingRootSlug'>,
+  config: Pick<ShpConfig, 'guestOrderTrackingEnabled' | 'orderTrackingRootSlug' | 'damageReportsEnabled'>,
 ): Record<string, string> {
   const url = orderTrackingUrl(order.orderNumber, config)
-  return { orderUrl: url, hasOrderUrl: url ? 'true' : 'false' }
+  return { ...orderUrlVars(url, config) }
+}
+
+/**
+ * The order link and the issue-report link, as the four merge values every
+ * order email wants, from one url.
+ *
+ * The report link is the same address with ?report=1 on it, and it is offered
+ * only where the shop actually takes reports: a link that lands on an order page
+ * with no button on it is worse than no link, because the customer has already
+ * been told it is the way to tell us.
+ */
+export function orderUrlVars(
+  url: string,
+  config: Pick<ShpConfig, 'damageReportsEnabled'>,
+): Record<string, string> {
+  const report = config.damageReportsEnabled ? reportIssueUrl(url) : ''
+  return {
+    orderUrl: url,
+    hasOrderUrl: url ? 'true' : 'false',
+    reportIssueUrl: report,
+    hasReportIssueUrl: report ? 'true' : 'false',
+  }
 }

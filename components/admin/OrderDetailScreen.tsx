@@ -7,6 +7,7 @@ import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-n
 import { DispatchModal } from '@/modules/shop/components/admin/DispatchModal'
 import { EditParcelModal } from '@/modules/shop/components/admin/EditParcelModal'
 import { EmailCustomerModal } from '@/modules/shop/components/admin/EmailCustomerModal'
+import { ReplacementModal } from '@/modules/shop/components/admin/ReplacementModal'
 import { ordersScreenCss } from '@/modules/shop/components/admin/orders-screen-css'
 import {
   ORDER_STATUS_BADGE,
@@ -52,6 +53,11 @@ type OrderDetail = {
     // with nothing to say.
     deliveryInstructions?: string | null
     paidAt: string | null; createdAt: string; updatedAt: string
+    // 'SALE' or 'REPLACEMENT'. Optional so a response from an older deployment
+    // still renders, and absent reads as a sale - which is what every order
+    // placed before replacements existed was.
+    kind?: string
+    parentOrderId?: string | null
     // What the buyer was asked to tick at checkout, worded as they saw it.
     // Null on an order placed while the shop had no tickboxes switched on -
     // which is a different fact from "asked and ticked nothing", so it renders
@@ -76,6 +82,17 @@ type OrderDetail = {
   // server where the provider registry lives. Optional so a response from an
   // older deployment still renders.
   refundNotice?: ShpRefundNoticeSource
+  /** Parts sent out to put this order right. Empty on almost every order. */
+  replacements?: Array<{ id: string; orderNumber: string; status: string; total: string; createdAt: string }>
+  /** Those parts, line by line, each naming the line of THIS order it was sent
+   *  for. What lets the items table say "gas lift sent" against the chair
+   *  rather than leaving the owner to work it out. */
+  replacementLines?: Array<{
+    orderId: string; orderNumber: string; status: string
+    productName: string; quantity: number; replacesOrderItemId: string | null
+  }>
+  /** On a replacement, the order it is putting right. Null on a sale. */
+  parentOrder?: { id: string; orderNumber: string } | null
 }
 
 // Dispatch progress is worked out from the shipment lines every time it is
@@ -92,6 +109,9 @@ type ShipmentDetail = {
   // see modules/shop/lib/delivery-slot.ts.
   deliveryDate: string | null; deliverySlotStart: string | null; deliverySlotEnd: string | null
   slotNotifiedAt: string | null
+  /** Set once the customer has been sent tracking the parcel went out without.
+   *  Optional so a response from an older deployment still renders. */
+  trackingNotifiedAt?: string | null
   // What the courier's own tracking last said, and the proof of delivery taken
   // from it. `signatureUrl` is the shop's own copy of their image.
   trackingStage: string | null; deliveredAt: string | null
@@ -216,6 +236,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   const [editingParcelId, setEditingParcelId] = useState<string | null>(null)
   const editingParcel = dispatch?.shipments.find((s) => s.id === editingParcelId) ?? null
   const [emailOpen, setEmailOpen] = useState(false)
+  const [replacementOpen, setReplacementOpen] = useState(false)
   // The customer's reference, while it is being edited. Null means "not being
   // edited", which is a different state from an empty string - an empty string
   // is somebody deliberately clearing it.
@@ -265,6 +286,17 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   // Settled refunds with no credit note against them. Worked out here rather
   // than on the server so the panel does not need a second round trip after
   // every refund - both lists are already on the screen.
+  // Parts sent out, filed under the line each was for. A part filed under no
+  // line at all still shows in the Replacements card below; it simply has
+  // nothing to sit beside.
+  const replacementsByItem = new Map<string, NonNullable<OrderDetail['replacementLines']>>()
+  for (const line of data.replacementLines ?? []) {
+    if (!line.replacesOrderItemId) continue
+    const existing = replacementsByItem.get(line.replacesOrderItemId)
+    if (existing) existing.push(line)
+    else replacementsByItem.set(line.replacesOrderItemId, [line])
+  }
+
   const creditedRefundIds = new Set((crediting?.creditNotes ?? []).map((note) => note.refundId).filter(Boolean))
   // Money handed back before the order was ever invoiced. The invoice was raised
   // without it, so there is no credit note to raise and no button to press - the
@@ -557,11 +589,21 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
           <p className="sox-orderhead-meta">
             Placed {formatDateTime(order.createdAt)} ({relativeTime(order.createdAt)})
           </p>
+          {/* A replacement read on its own says almost nothing - a part, an
+              address, no money. The order it is putting right is the context,
+              so it is a link and it is the first thing under the title. */}
+          {order.kind === 'REPLACEMENT' && data.parentOrder && (
+            <p className="sox-orderhead-meta">
+              Replacement for{' '}
+              <a href={`/${adminPath}/m/shop/orders/${data.parentOrder.id}`}>{data.parentOrder.orderNumber}</a>
+            </p>
+          )}
           <div className="sox-badges" style={{ marginTop: '0.5rem' }}>
             <span className={`badge ${statusBadge.cls}`}>{statusBadge.label}</span>
             <span className={`badge ${paymentBadge.cls}`}>{paymentBadge.label}</span>
             <span className={`badge ${dispatchBadge.cls}`}>{dispatchBadge.label}</span>
             {data.items.some((i) => i.isPreOrder) && <span className="badge badge-info">Has a pre-order</span>}
+            {order.kind === 'REPLACEMENT' && <span className="badge badge-info">Replacement</span>}
           </div>
         </div>
         <div className="sox-orderhead-actions">
@@ -569,6 +611,9 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
             <button type="button" className="btn btn-primary btn-sm" onClick={() => setDispatchOpen(true)}>Dispatch items</button>
           )}
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEmailOpen(true)}>Email customer</button>
+          {order.kind !== 'REPLACEMENT' && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReplacementOpen(true)}>Send a replacement</button>
+          )}
           {hasRefundableItems && (
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRefundOpen(true)}>Refund</button>
           )}
@@ -639,6 +684,18 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                             {line && line.outstandingQty > 0 && line.dispatchedQty > 0 && <span className="badge badge-warning">{line.outstandingQty} to go</span>}
                             {item.refundedQty > 0 && <span className="badge badge-warning">{item.refundedQty} refunded</span>}
                           </div>
+                          {/* What was sent out to put THIS line right. Against
+                              the line rather than only in the card below,
+                              because "we sent a gas lift" is an answer about
+                              the chair and nothing else on the order. */}
+                          {(replacementsByItem.get(item.id) ?? []).map((sent, i) => (
+                            <p className="sox-sub" key={`${sent.orderId}-${i}`}>
+                              {sent.quantity} × {sent.productName} sent as{' '}
+                              <a href={`/${adminPath}/m/shop/orders/${sent.orderId}`}>{sent.orderNumber}</a>
+                              {' · '}
+                              {badgeFor(ORDER_STATUS_BADGE, sent.status).label.toLowerCase()}
+                            </p>
+                          ))}
                         </td>
                         <td className="sox-num">{formatMoney(item.unitPrice, currencySymbol)}</td>
                         <td className="sox-num">{item.quantity}</td>
@@ -663,6 +720,11 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                           {formatDate(shipment.shippedAt)}
                           {shipment.carrier ? ` · ${shipment.carrier}` : ''}
                           {shipment.trackingNumber ? ` · ${shipment.trackingNumber}` : ''}
+                          {/* Only ever set on a parcel that went out with
+                              nothing to follow and was given something later,
+                              so it says what happened rather than restating
+                              what the dispatch note already carried. */}
+                          {shipment.trackingNotifiedAt ? ' · tracking sent to the customer' : ''}
                         </p>
                         <p className="sox-list-sub">
                           {shipment.items.map((si) => `${si.quantity} × ${itemNames.get(si.orderItemId) ?? 'an item no longer on this order'}`).join(', ')}
@@ -704,6 +766,37 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                       </div>
                       <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => setEditingParcelId(shipment.id)}>Details</button>
                       <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => undoDispatch(shipment)}>Undo</button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+          )}
+
+          {/* What has been sent out to put this one right. Under the parcels
+              rather than beside the items, because it is about the aftermath
+              of the order and not about what was bought. */}
+          {(data.replacements ?? []).length > 0 && (
+            <section className="sox-card">
+              <div className="sox-card-head"><h2>Replacements sent</h2></div>
+              <div className="sox-card-body">
+                <ul className="sox-list">
+                  {(data.replacements ?? []).map((replacement) => (
+                    <li key={replacement.id} className="sox-list-row">
+                      <div>
+                        <a className="sox-item-name" href={`/${adminPath}/m/shop/orders/${replacement.id}`}>
+                          {replacement.orderNumber}
+                        </a>
+                        <p className="sox-list-sub">
+                          Raised {formatDate(replacement.createdAt)}
+                          {' · '}
+                          {badgeFor(ORDER_STATUS_BADGE, replacement.status).label}
+                          {' · '}
+                          {Number(replacement.total) > 0
+                            ? formatMoney(replacement.total, currencySymbol)
+                            : 'free of charge'}
+                        </p>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -1231,6 +1324,20 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
           customerName={order.customerName}
           onClose={() => setEmailOpen(false)}
           onDone={() => { setEmailOpen(false); refresh() }}
+        />
+      )}
+
+      {replacementOpen && (
+        <ReplacementModal
+          orderId={orderId}
+          orderNumber={order.orderNumber}
+          items={data.items.map((item) => ({ id: item.id, productName: item.productName, quantity: item.quantity }))}
+          onClose={() => setReplacementOpen(false)}
+          onDone={(number) => {
+            setReplacementOpen(false)
+            refresh()
+            void alert(`Replacement ${number} raised. It is waiting in your orders to be dispatched.`)
+          }}
         />
       )}
 

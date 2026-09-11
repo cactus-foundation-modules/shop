@@ -85,6 +85,9 @@ export type ProductForm = {
   /** Ticked, the product stays off the featured shelves (Best sellers, Just in,
    *  Staff picks, On offer). It still lists everywhere else. */
   featuredHidden: boolean
+  /** Ticked, this is a spare part: stocked, costed and pickable on a
+   *  replacement, and on no storefront surface at all. */
+  partsOnly: boolean
 }
 
 export type EditorState = {
@@ -204,6 +207,7 @@ export function toEditorState(payload: ProductPayload): EditorState {
       upsellMode: (str(p.upsellMode) || 'MANUAL') as RecommendationMode,
       upsellLimit: str(p.upsellLimit) || '4',
       featuredHidden: bool(p.featuredHidden),
+      partsOnly: bool(p.partsOnly),
     },
     descriptionPuck: (p.descriptionPuck as PuckData | null) ?? null,
     media: payload.media.map((m) => ({ type: m.type as MediaItem['type'], url: m.url, altText: m.altText, isPrimary: m.isPrimary })),
@@ -295,6 +299,7 @@ export function toProductBody(s: EditorState): Record<string, unknown> {
     tagIds: s.tagIds,
     collectionIds: s.collectionIds,
     featuredHidden: f.featuredHidden,
+    partsOnly: f.partsOnly,
   }
 }
 
@@ -325,7 +330,7 @@ const TAB_FIELDS: Record<ShopTabId, ReadonlyArray<keyof ProductForm>> = {
     'weight', 'weightUnit', 'dimensionL', 'dimensionW', 'dimensionH', 'dimensionUnit',
   ],
   digital: ['digitalFileId', 'downloadLimit', 'downloadExpiry'],
-  organisation: ['masterCategoryId', 'featuredHidden'],
+  organisation: ['masterCategoryId', 'featuredHidden', 'partsOnly'],
   recommendations: ['relatedMode', 'relatedLimit', 'upsellMode', 'upsellLimit'],
   seo: ['metaTitle', 'metaDescription', 'regenerateSlug'],
 }

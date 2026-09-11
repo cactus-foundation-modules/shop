@@ -142,6 +142,9 @@ function prospectiveOrder(paymentMethod: string): ShpOrder {
   const nowhere: ShpAddress = { firstName: '', lastName: '', line1: '', city: '', postcode: '', country: 'GB' }
   return {
     id: '', orderNumber: '', status: 'PENDING', memberId: null,
+    // A checkout is always a sale. A replacement never comes through here: it
+    // is raised in the admin, already settled, with nothing to preview.
+    kind: 'SALE', parentOrderId: null,
     customerEmail: '', customerName: '', customerOrganisation: null, customerReference: null, customerPhone: null,
     shippingAddress: nowhere, deliveryInstructions: null, billingAddress: null,
     subtotal: '0', discountAmount: '0', shippingAmount: '0', taxAmount: '0', total: '0',
@@ -188,6 +191,9 @@ function prospectiveItems(lines: ResolvedCartLine[]): ShpOrderItem[] {
     returnable: line.returnable,
     nonReturnableNote: line.nonReturnableNote,
     returnsDiscretionary: line.returnsDiscretionary,
+    // A basket line is never a replacement part: parts are picked in the admin,
+    // against an order that already exists.
+    replacesOrderItemId: null,
   }))
 }
 

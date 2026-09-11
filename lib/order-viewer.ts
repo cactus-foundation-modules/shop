@@ -17,6 +17,11 @@ import type { ShpOrder } from '@/modules/shop/lib/types'
 //   guest  - not signed in as the owner, but this browser has already proved it
 //            knows the delivery postcode. See lib/guest-order-access.ts.
 //
+// A replacement part is opened by whatever opened the order it is putting right
+// (see below). Without that, the customer who reported the broken chair is sent
+// back to a postcode form by the link we emailed them - and by the link on
+// their own order page.
+//
 // A guest gets exactly what a member gets on their own order, deliberately.
 // The two have proved the same thing by different means, and an order page that
 // showed a guest their parcel but refused to correct the company on the invoice
@@ -25,6 +30,16 @@ import type { ShpOrder } from '@/modules/shop/lib/types'
 export type OrderViewer =
   | { kind: 'member'; member: Member }
   | { kind: 'guest'; member: null }
+
+/**
+ * What the rule needs to know about an order.
+ *
+ * `parentOrderId` is optional rather than part of the Pick: several callers
+ * build a partial from a payload that predates the column, and an order with no
+ * parent is the overwhelming majority anyway. Absent reads as "not a
+ * replacement", which is the safe way round - it refuses rather than admits.
+ */
+export type OrderForViewer = Pick<ShpOrder, 'id' | 'memberId'> & { parentOrderId?: string | null }
 
 /**
  * The rule itself, with both cookies already read.
@@ -36,17 +51,26 @@ export type OrderViewer =
  * copy of the rule drift from this one.
  */
 export function orderViewerFor(
-  order: Pick<ShpOrder, 'id' | 'memberId'>,
+  order: OrderForViewer,
   member: Member | null,
   guestOrderIds: string[],
 ): OrderViewer | null {
   if (member && order.memberId === member.id) return { kind: 'member', member }
   if (guestOrderIds.includes(order.id)) return { kind: 'guest', member: null }
+  // A replacement is opened by whatever opened its parent. The proof is the
+  // same proof: a replacement goes to the delivery address copied off the order
+  // it is putting right, so somebody who has demonstrated they know that
+  // postcode has demonstrated it for both. Asking again would mean emailing a
+  // customer a link to a part we are sending them and then refusing to show it.
+  //
+  // One level, because that is all there is - lib/replacements.ts refuses a
+  // replacement of a replacement - so this cannot walk a chain.
+  if (order.parentOrderId && guestOrderIds.includes(order.parentOrderId)) return { kind: 'guest', member: null }
   return null
 }
 
 /** From inside a server component. Null means show them nothing. */
-export async function resolveOrderViewer(order: Pick<ShpOrder, 'id' | 'memberId'>): Promise<OrderViewer | null> {
+export async function resolveOrderViewer(order: OrderForViewer): Promise<OrderViewer | null> {
   const [member, guestOrderIds] = await Promise.all([getMemberFromCookie(), guestOrderAccessIds()])
   return orderViewerFor(order, member, guestOrderIds)
 }
@@ -58,7 +82,7 @@ export async function resolveOrderViewer(order: Pick<ShpOrder, 'id' | 'memberId'
  */
 export async function resolveOrderViewerFromRequest(
   request: NextRequest,
-  order: Pick<ShpOrder, 'id' | 'memberId'>,
+  order: OrderForViewer,
 ): Promise<OrderViewer | null> {
   return orderViewerFor(order, await getMemberFromCookie(), guestOrderAccessIdsFromRequest(request))
 }
@@ -80,7 +104,7 @@ export async function resolveOrderViewerFromRequest(
  */
 export async function mayOpenReceipt(
   request: NextRequest,
-  order: Pick<ShpOrder, 'id' | 'memberId' | 'orderNumber'>,
+  order: OrderForViewer & Pick<ShpOrder, 'orderNumber'>,
 ): Promise<boolean> {
   if (hasReceiptAccess(request, order.orderNumber)) return true
   return (await resolveOrderViewerFromRequest(request, order)) !== null
@@ -89,7 +113,7 @@ export async function mayOpenReceipt(
 /** The same question from inside a server component, which has no request to
  *  read - the shop's document pages ask it this way. */
 export async function mayOpenOrderFromCookies(
-  order: Pick<ShpOrder, 'id' | 'memberId' | 'orderNumber'>,
+  order: OrderForViewer & Pick<ShpOrder, 'orderNumber'>,
 ): Promise<boolean> {
   const [viewer, receipts] = await Promise.all([resolveOrderViewer(order), receiptAccessNumbers()])
   return viewer !== null || receipts.includes(order.orderNumber)

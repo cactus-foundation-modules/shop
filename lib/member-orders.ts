@@ -1,4 +1,4 @@
-import { claimGuestOrdersForMember, listOrdersByMemberId, getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
+import { claimGuestOrdersForMember, listOrdersByMemberId, getOrderById, getOrderItems, listReplacementOrdersForParent, listReplacementOrdersForParents } from '@/modules/shop/lib/db/orders'
 import { getProductsByIds, getProductMediaForProducts } from '@/modules/shop/lib/db/products'
 import { getShipmentsForOrder, getOrderDispatchSummary } from '@/modules/shop/lib/db/shipments'
 import { listRefundsForOrder, listRefundItemsForOrder } from '@/modules/shop/lib/db/refunds'
@@ -110,6 +110,14 @@ export type MemberOrderSummary = {
   /** Nothing out, some out, or all out - the state a shopper actually asks about. */
   fulfilment: MemberOrderFulfilment
   hasOpenRequest: boolean
+  /** On a replacement, the number of the order it is putting right. Null on a
+   *  sale, and null on the rare replacement whose parent this member cannot
+   *  see - in which case the row simply reads as a replacement and says no more
+   *  than it can back up. */
+  parentOrderNumber: string | null
+  /** How many parts have been sent out to put this order right. 0 on almost
+   *  every order, which is the whole reason it is a count and not a list. */
+  replacementCount: number
 }
 
 /** The list page: every order with enough on it to be recognised at a glance,
@@ -120,11 +128,24 @@ export async function listOrderSummariesForMember(
   const orders = await listOrdersForMember(member)
   if (orders.length === 0) return []
 
-  const [itemsByOrder, dispatchByOrder, requestsByOrder] = await Promise.all([
+  const [itemsByOrder, dispatchByOrder, requestsByOrder, allReplacements] = await Promise.all([
     Promise.all(orders.map((o) => getOrderItems(o.id))),
     Promise.all(orders.map((o) => getOrderDispatchSummary(o.id))),
     Promise.all(orders.map((o) => listRequestsForOrder(o.id))),
+    // One query for the whole page rather than one per order. Nearly always
+    // returns nothing at all.
+    listReplacementOrdersForParents(orders.filter((o) => o.kind !== 'REPLACEMENT').map((o) => o.id)),
   ])
+
+  // Both directions of the same link, resolved off the orders already in hand:
+  // a replacement wants its parent's number to introduce itself with, and a
+  // parent wants to know how many went out.
+  const numberById = new Map(orders.map((o) => [o.id, o.orderNumber]))
+  const replacementCounts = new Map<string, number>()
+  for (const replacement of allReplacements) {
+    if (!replacement.parentOrderId) continue
+    replacementCounts.set(replacement.parentOrderId, (replacementCounts.get(replacement.parentOrderId) ?? 0) + 1)
+  }
 
   const productIds = itemsByOrder.flat().map((i) => i.productId).filter((id): id is string => !!id)
   const [products, mediaByProduct] = await Promise.all([
@@ -146,6 +167,8 @@ export async function listOrderSummariesForMember(
           ? 'PARTIAL'
           : 'UNDISPATCHED',
       hasOpenRequest: requests.some((r) => r.status === 'PENDING'),
+      parentOrderNumber: order.parentOrderId ? numberById.get(order.parentOrderId) ?? null : null,
+      replacementCount: replacementCounts.get(order.id) ?? 0,
     }
   })
 }
@@ -218,6 +241,21 @@ function buildLines(
   })
 }
 
+/**
+ * A part sent out to put this order right, as the customer needs to see it:
+ * enough to recognise what it is and a way through to follow the parcel.
+ *
+ * Deliberately not the whole order. The replacement has its own page with the
+ * whole tracking rail on it - this is the signpost, and a second set of parcel
+ * details here would be two answers to the same question.
+ */
+export type MemberOrderReplacement = {
+  order: ShpOrder
+  /** What is actually in the box, in the customer's words rather than SKUs. */
+  itemNames: string[]
+  fulfilment: MemberOrderFulfilment
+}
+
 export type MemberOrderDetail = {
   order: ShpOrder
   lines: MemberOrderLine[]
@@ -228,14 +266,22 @@ export type MemberOrderDetail = {
   requests: ShpOrderRequestWithItems[]
   /** The open cancel or return, if there is one. */
   openRequest: ShpOrderRequestWithItems | null
-  /** The open damage report, counted separately - a broken leg and a change of
-   *  mind are two different conversations. */
-  openDamageRequest: ShpOrderRequestWithItems | null
+  /** The open issue reports, counted separately from the cancel/return slot - a
+   *  broken leg and a change of mind are two different conversations - and
+   *  counted as a LIST, because more than one can be open at a time. An order of
+   *  eight desks is opened one carton at a time, and the second fault must not
+   *  have to wait for the first to be decided. */
+  openDamageRequests: ShpOrderRequestWithItems[]
   cancel: RequestEligibility
   return: RequestEligibility
   damage: RequestEligibility
   /** When the return window shuts, if one is running. */
   returnBy: Date | null
+  /** Parts sent out to put this order right. Empty on almost every order, and
+   *  always empty on a replacement - one level only. */
+  replacements: MemberOrderReplacement[]
+  /** On a replacement, the order it is putting right. Null on a sale. */
+  parentOrder: ShpOrder | null
 }
 
 /**
@@ -253,7 +299,7 @@ export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetai
   const order = await getOrderById(orderId)
   if (!order) return null
 
-  const [items, dispatch, shipments, refunds, refundItems, downloads, requests, config] = await Promise.all([
+  const [items, dispatch, shipments, refunds, refundItems, downloads, requests, config, replacementOrders] = await Promise.all([
     getOrderItems(order.id),
     getOrderDispatchSummary(order.id),
     getShipmentsForOrder(order.id),
@@ -262,6 +308,18 @@ export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetai
     listDownloadsForOrder(order.id),
     listRequestsForOrder(order.id),
     getShopConfigCached(),
+    // Always asked, never expensive: it is one read on a partial index that has
+    // no row at all for the overwhelming majority of orders. A replacement of a
+    // replacement is not a thing, so this returns nothing on one.
+    order.kind === 'REPLACEMENT' ? Promise.resolve([]) : listReplacementOrdersForParent(order.id),
+  ])
+
+  // The parts sent out to put this order right, and - the other way up - the
+  // order a replacement is putting right. Both are what turns two orders the
+  // customer cannot connect into one story they can follow.
+  const [replacements, parentOrder] = await Promise.all([
+    buildReplacements(replacementOrders),
+    order.parentOrderId ? getOrderById(order.parentOrderId) : Promise.resolve(null),
   ])
 
   const productIds = items.map((i) => i.productId).filter((id): id is string => !!id)
@@ -271,7 +329,9 @@ export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetai
   ])
 
   const openRequest = requests.find((r) => r.status === 'PENDING' && r.type !== 'DAMAGE') ?? null
-  const openDamageRequest = requests.find((r) => r.status === 'PENDING' && r.type === 'DAMAGE') ?? null
+  // Oldest first, which is the order they were told about them in. listRequests
+  // hands them back newest first.
+  const openDamageRequests = requests.filter((r) => r.status === 'PENDING' && r.type === 'DAMAGE').reverse()
   // Latest parcel out, which is what a return window is counted from.
   const lastShippedAt = shipments.reduce<Date | null>(
     (latest, shipment) => (!latest || shipment.shippedAt > latest ? shipment.shippedAt : latest),
@@ -299,7 +359,6 @@ export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetai
     lastShippedAt,
     config,
     openRequest,
-    openDamageRequest,
     anyReturnable,
     nonCancellable,
     // Per line, so one dispatched parcel or one bespoke desk no longer refuses
@@ -321,7 +380,7 @@ export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetai
     downloads,
     requests,
     openRequest,
-    openDamageRequest,
+    openDamageRequests,
     cancel: canRequestCancel(eligibilityInput),
     return: canRequestReturn(eligibilityInput),
     damage: canReportDamage(eligibilityInput),
@@ -329,5 +388,29 @@ export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetai
       lastShippedAt && config.returnRequestsEnabled && config.returnWindowDays > 0
         ? returnDeadline(lastShippedAt, config.returnWindowDays)
         : null,
+    replacements,
+    parentOrder,
   }
+}
+
+/** What is in each replacement and how far along it is, in as few queries as
+ *  there are replacements - which is nearly always none, and never many. */
+async function buildReplacements(orders: ShpOrder[]): Promise<MemberOrderReplacement[]> {
+  if (orders.length === 0) return []
+  const [itemsByOrder, dispatchByOrder] = await Promise.all([
+    Promise.all(orders.map((o) => getOrderItems(o.id))),
+    Promise.all(orders.map((o) => getOrderDispatchSummary(o.id))),
+  ])
+  return orders.map((order, index) => {
+    const dispatch = dispatchByOrder[index]
+    return {
+      order,
+      itemNames: (itemsByOrder[index] ?? []).map((item) => item.productName),
+      fulfilment: dispatch?.fullyDispatched
+        ? 'DISPATCHED'
+        : dispatch?.partiallyDispatched
+          ? 'PARTIAL'
+          : 'UNDISPATCHED',
+    }
+  })
 }

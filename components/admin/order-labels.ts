@@ -34,6 +34,10 @@ const PAYMENT_METHOD_LABEL: Record<string, string> = {
   PAYPAL: 'PayPal',
   BANK_TRANSFER: 'Bank transfer',
   CASH: 'Cash',
+  // Not a payment method and not a provider: what a replacement part carries so
+  // that every screen asking "how was this paid" gets an honest answer rather
+  // than an empty one. See lib/replacements.ts.
+  NONE: 'No charge',
 }
 
 // Modules can contribute their own payment methods (the shop.payment-providers

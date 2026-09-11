@@ -332,6 +332,21 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
                 Prints it as &quot;RRP&quot; beside the price, on product pages and cards, whenever it is higher than what you are charging. Leave this off to keep the RRP as your own reference.
               </p>
+              {config.showRetailPrice && (
+                <>
+                  <label style={checkboxRow}>
+                    <input
+                      type="checkbox"
+                      checked={config.retailPriceInStructuredData}
+                      onChange={(e) => set('retailPriceInStructuredData', e.target.checked)}
+                    />
+                    Send the retail price to search engines too
+                  </label>
+                  <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
+                    Adds the RRP to the hidden product details Google and the rest read off your pages, in the slot they print as a crossed-out price. Worth knowing before you tick it: that slot means &quot;what this used to cost here&quot;, so only switch it on if you are content for your RRP to be read that way. Products actually on offer send their own previous price instead.
+                  </p>
+                </>
+              )}
             </>
           )}
           <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>

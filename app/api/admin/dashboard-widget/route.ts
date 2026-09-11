@@ -10,7 +10,11 @@ export async function GET() {
 
   const [summaryRows, lowStockRows, pendingManualRows, preOrderRows] = await Promise.all([
     prisma.$queryRaw<Array<{ revenue: string | null; order_count: bigint }>>`
-      SELECT SUM("total") AS revenue, COUNT(*)::bigint AS order_count FROM "shp_orders"
+      -- Counts follow kind, money follows payment_status (migration 052). A
+      -- replacement part is settled the moment it is raised and adds nothing to
+      -- the revenue; without the filter it would still read as another sale.
+      SELECT SUM("total") AS revenue, COUNT(*) FILTER (WHERE "kind" = 'SALE')::bigint AS order_count
+      FROM "shp_orders"
       WHERE "payment_status" = 'PAID' AND "created_at" > NOW() - interval '30 days'
     `,
     prisma.$queryRaw<{ count: bigint }[]>`

@@ -196,7 +196,11 @@ suite('cancel, return and damage requests, against a real database', () => {
     expect(all.find((r) => r.type === 'RETURN')?.photos).toEqual([])
   })
 
-  it('refuses a second damage report while the first is open', async () => {
+  // And a second one on top of that. A report spends nothing - it names lines
+  // without taking them off the order - so nothing double-counts when two are
+  // open together, and the order of eight desks is opened one carton at a time.
+  // Migration 053 dropped the index that used to refuse this.
+  it('takes a second issue report while the first is still open', async () => {
     const outcome = await requests.createOrderRequest({
       orderId: 'ord-1',
       memberId: null,
@@ -204,8 +208,11 @@ suite('cancel, return and damage requests, against a real database', () => {
       reason: 'FAULTY',
       items: [{ orderItemId: 'item-ok', quantity: 1 }],
     })
-    expect(outcome.ok).toBe(false)
-    expect(!outcome.ok && outcome.status).toBe(409)
+    expect(outcome.ok).toBe(true)
+    const open = (await requests.listRequestsForOrder('ord-1')).filter(
+      (r) => r.type === 'DAMAGE' && r.status === 'PENDING',
+    )
+    expect(open).toHaveLength(2)
   })
 
   it('does not count the open cancel/return as the damage report, or the other way about', async () => {
@@ -231,7 +238,12 @@ suite('cancel, return and damage requests, against a real database', () => {
   })
 
   it('will not hang a return charge on a damage report - we do not charge for our own mistakes', async () => {
-    const damage = (await requests.listRequestsForOrder('ord-1')).find((r) => r.type === 'DAMAGE')
+    // Named by its reason rather than taken as "the damage one": there are two
+    // open on this order by now, and which of them this decides has to be the
+    // one the assertion is about.
+    const damage = (await requests.listRequestsForOrder('ord-1')).find(
+      (r) => r.type === 'DAMAGE' && r.reason === 'ARRIVED_DAMAGED',
+    )
     const decided = await requests.decideRequest({
       requestId: damage!.id,
       status: 'APPROVED',

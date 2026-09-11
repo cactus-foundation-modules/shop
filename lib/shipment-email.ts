@@ -3,6 +3,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { getOrderDispatchSummary, getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
+import { parentOrderVars } from '@/modules/shop/lib/replacement-emails'
 import { dispatchDetails, orderStatusEmailVars } from '@/modules/shop/lib/order-status'
 import { getOrderItems } from '@/modules/shop/lib/db/orders'
 import { absoluteImageUrl, productEmailUrl, renderOrderItemsTable, type OrderEmailLine } from '@/modules/shop/lib/order-items-email'
@@ -63,6 +64,23 @@ export async function sendShipmentDispatchedEmail(params: { orderId: string; shi
   const lineByOrderItemId = new Map(summary.lines.map((l) => [l.orderItemId, l]))
 
   const config = await getShopConfigCached()
+
+  // A replacement part has its own wording, and only the one message: the part
+  // has gone. It is always the whole of its own order, so the part-dispatch
+  // branches below have nothing to say about it - "the last part of your order
+  // is on its way" is about parcels the customer is not waiting for.
+  if (order.kind === 'REPLACEMENT') {
+    await notifyOrderCustomer(
+      'REPLACEMENT_DISPATCHED',
+      order,
+      {
+        ...await orderStatusEmailVars(order, config, dispatchDetails(shipments)),
+        ...await parentOrderVars(order),
+      },
+    )
+    return
+  }
+
   const siteUrl = getSiteUrl()
 
   // Read off the summary the customer is about to be shown rather than off

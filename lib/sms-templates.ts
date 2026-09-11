@@ -158,6 +158,49 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     requiredTags: ['orderNumber'],
     transactional: false,
   },
+  // Replacements. Both name the ORIGINAL order, because that is the number the
+  // customer knows - the replacement's own is one they have never seen, and
+  // leading with it in 160 characters is a text nobody can make sense of.
+  {
+    key: 'shop.replacement-sent',
+    label: 'Replacement on its way',
+    body: '{{shopName}}: sorry about order {{parentOrderNumber}}. A replacement is being prepared and we will text you again when it leaves us.',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'parentOrderNumber', 'orderUrl', 'hasOrderUrl'],
+    requiredTags: ['parentOrderNumber'],
+    transactional: false,
+  },
+  {
+    key: 'shop.replacement-dispatched',
+    label: 'Replacement dispatched',
+    body: '{{shopName}}: your replacement for order {{parentOrderNumber}} has left us.{{#if hasTracking}} Tracking: {{trackingNumber}}.{{/if}}{{#if hasOrderUrl}} Follow it: {{orderUrl}}{{/if}}',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'parentOrderNumber', 'trackingNumber', 'hasTracking', 'orderUrl', 'hasOrderUrl'],
+    requiredTags: ['parentOrderNumber'],
+    transactional: false,
+  },
+  {
+    key: 'shop.tracking-added',
+    label: 'Tracking added after dispatch',
+    body: '{{shopName}}: tracking for order {{orderNumber}}{{#if hasCarrier}} with {{carrier}}{{/if}}{{#if hasTrackingNumber}}: {{trackingNumber}}{{/if}}.{{#if hasTrackingUrl}} {{trackingUrl}}{{/if}}',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'carrier', 'trackingNumber', 'trackingUrl', 'hasCarrier', 'hasTrackingNumber', 'hasTrackingUrl', 'orderUrl', 'hasOrderUrl'],
+    requiredTags: ['orderNumber'],
+    transactional: false,
+  },
+  {
+    key: 'shop.replacement-tracking-added',
+    label: 'Replacement - tracking added after dispatch',
+    body: '{{shopName}}: tracking for your replacement from order {{parentOrderNumber}}{{#if hasTrackingNumber}}: {{trackingNumber}}{{/if}}.{{#if hasTrackingUrl}} {{trackingUrl}}{{/if}}',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'parentOrderNumber', 'carrier', 'trackingNumber', 'trackingUrl', 'hasCarrier', 'hasTrackingNumber', 'hasTrackingUrl', 'orderUrl', 'hasOrderUrl'],
+    requiredTags: ['parentOrderNumber'],
+    transactional: false,
+  },
+  {
+    key: 'shop.replacement-delivered',
+    label: 'Replacement delivered',
+    body: '{{shopName}}: your replacement for order {{parentOrderNumber}} has been delivered{{#if hasSignedBy}}, signed for by {{signedBy}}{{/if}}. If anything is still not right, get in touch.',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'parentOrderNumber', 'signedBy', 'hasSignedBy', 'orderUrl', 'hasOrderUrl'],
+    requiredTags: ['parentOrderNumber'],
+    transactional: false,
+  },
 ]
 
 // Same trigger vocabulary as the emails, so a call site that sends both names
@@ -178,6 +221,11 @@ export const SHOP_TRIGGER_TO_SMS_KEY: Record<string, string> = {
   DAMAGE_RECEIVED: 'shop.damage-received',
   DAMAGE_RESOLVED: 'shop.damage-resolved',
   DAMAGE_DECLINED: 'shop.damage-declined',
+  REPLACEMENT_SENT: 'shop.replacement-sent',
+  REPLACEMENT_DISPATCHED: 'shop.replacement-dispatched',
+  REPLACEMENT_DELIVERED: 'shop.replacement-delivered',
+  TRACKING_ADDED: 'shop.tracking-added',
+  REPLACEMENT_TRACKING_ADDED: 'shop.replacement-tracking-added',
 }
 
 /** The category a member's own notification preferences are kept under (see the

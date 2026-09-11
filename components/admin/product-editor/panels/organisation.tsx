@@ -155,6 +155,15 @@ export function OrganisationPanel({ state, setField, patch, categories, tags, co
         <CheckList items={collections} selected={state.collectionIds} onToggle={setIds('collectionIds')} empty="No collections yet. Add some under Shop, then Collections." />
       </Section>
 
+      <Section title="Spare parts" blurb="For the bits you send out to put an order right, rather than the things you sell.">
+        <Switch
+          checked={f.partsOnly}
+          onChange={(v) => setField('partsOnly', v)}
+          label="This is a spare part"
+          hint="It stays out of the shop entirely - no grids, no search, nothing for Google to find - while keeping its stock, its cost and its supplier code. You pick it when you send a replacement."
+        />
+      </Section>
+
       <Section title="Featured shelves" blurb="The showcase rows a page puts up front - Best sellers, Just in, Staff picks, On offer and the like.">
         <Switch
           checked={f.featuredHidden}

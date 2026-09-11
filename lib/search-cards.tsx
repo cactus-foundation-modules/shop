@@ -39,7 +39,7 @@ export const shopSearchCardProvider = {
     const products = await filterHiddenOutOfStock(
       productIds
         .map((id) => productById.get(id))
-        .filter((p): p is NonNullable<typeof p> => Boolean(p && p.status === 'ACTIVE' && !p.catalogueHidden)),
+        .filter((p): p is NonNullable<typeof p> => Boolean(p && p.status === 'ACTIVE' && !p.catalogueHidden && !p.partsOnly)),
     )
     if (products.length === 0) return null
 

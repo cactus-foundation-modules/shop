@@ -24,7 +24,8 @@ export function OrderSummaryCard({
    *  noise on every order they have ever placed. */
   referenceLabel?: string
 }) {
-  const { order, lines, itemCount, fulfilment, hasOpenRequest } = summary
+  const { order, lines, itemCount, fulfilment, hasOpenRequest, parentOrderNumber, replacementCount } = summary
+  const isReplacement = order.kind === 'REPLACEMENT'
   const status = ORDER_STATUS_DISPLAY[order.status]
   const dispatch = FULFILMENT_DISPLAY[fulfilment]
   // Dispatch progress is worth saying only while it is still in play:
@@ -45,6 +46,18 @@ export function OrderSummaryCard({
           <span className={badgeClass(status.tone)}>{status.label}</span>
           {showDispatch && <span className={badgeClass(dispatch.tone)}>{dispatch.label}</span>}
           {hasOpenRequest && <span className="badge badge-warning">Request open</span>}
+          {/* A £0 order in somebody's history is a puzzle unless it says what
+              it is. This is the whole label: what it is, and what it is for. */}
+          {isReplacement && (
+            <span className="badge badge-info">
+              {parentOrderNumber ? `Replacement for ${parentOrderNumber}` : 'Replacement'}
+            </span>
+          )}
+          {replacementCount > 0 && (
+            <span className="badge badge-info">
+              {replacementCount === 1 ? '1 replacement sent' : `${replacementCount} replacements sent`}
+            </span>
+          )}
         </div>
         <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
           {formatOrderDate(order.createdAt, timezone)}
@@ -91,7 +104,9 @@ export function OrderSummaryCard({
         </div>
         <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
           <div style={{ fontWeight: 'var(--font-semibold)', color: 'var(--color-text)' }}>
-            {formatMoney(order.total, currencySymbol)}
+            {isReplacement && Number(order.total) === 0
+              ? 'No charge'
+              : formatMoney(order.total, currencySymbol)}
           </div>
           <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
             {itemCount} {itemCount === 1 ? 'item' : 'items'}

@@ -70,4 +70,27 @@ describe('orderNumberCandidates', () => {
   it('leaves a number with letters in the body alone rather than padding it', () => {
     expect(orderNumberCandidates('DWABC', 'DW')).toEqual(['DWABC'])
   })
+
+  // A replacement part is numbered off the order it puts right - DW000182-R1 -
+  // and stripping punctuation turns what the customer types into 'DW000182R1',
+  // which is nobody's order number. The shape has to be put back or the link we
+  // emailed them leads to "we cannot find that order".
+  it('finds a replacement from every way a customer types its number', () => {
+    for (const typed of ['DW000182-R1', 'dw000182r1', 'DW000182 R1', '182-R1', '182r1']) {
+      expect(orderNumberCandidates(typed, 'DW')).toContain('DW000182-R1')
+    }
+  })
+
+  it('does not offer the punctuation-stripped form, which is nobody\'s order', () => {
+    expect(orderNumberCandidates('DW000182-R1', 'DW')).not.toContain('DW000182R1')
+  })
+
+  it('keeps a second replacement apart from the first', () => {
+    expect(orderNumberCandidates('182-R2', 'DW')).toContain('DW000182-R2')
+    expect(orderNumberCandidates('182-R2', 'DW')).not.toContain('DW000182-R1')
+  })
+
+  it('does not read an ordinary number as a replacement', () => {
+    expect(orderNumberCandidates('DW000172', 'DW')).toEqual(['DW000172'])
+  })
 })

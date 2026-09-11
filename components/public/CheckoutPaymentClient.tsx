@@ -86,7 +86,7 @@ type PreparedPayment = {
 // Preferred display names for the built-in methods (kept here so the wording
 // stays exact); any other method falls back to the provider label from config,
 // then the raw code.
-const BUILT_IN_METHOD_LABELS: Record<string, string> = { STRIPE: 'Card (Stripe)', PAYPAL: 'PayPal', BANK_TRANSFER: 'Bank transfer', CASH: 'Cash' }
+const BUILT_IN_METHOD_LABELS: Record<string, string> = { STRIPE: 'Card (Stripe)', PAYPAL: 'PayPal', BANK_TRANSFER: 'Bank transfer', CASH: 'Cash', NONE: 'No charge' }
 
 declare global {
   interface Window {

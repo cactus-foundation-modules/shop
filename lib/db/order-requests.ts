@@ -42,6 +42,9 @@ function mapRequest(r: Record<string, unknown>): ShpOrderRequest {
     // which reads the same as "no charge was recorded" - the right answer for
     // every request decided before the field existed.
     returnCharge: r.return_charge != null ? (r.return_charge as { toString(): string }).toString() : null,
+    // Migration 052. Null on everything but a damage report somebody has sent a
+    // part out for, and on an install that has not taken the migration yet.
+    replacementOrderId: (r.replacement_order_id as string | null) ?? null,
     decidedAt: (r.decided_at as Date | null) ?? null,
     decidedBy: (r.decided_by as string | null) ?? null,
     createdAt: r.created_at as Date,
@@ -294,9 +297,9 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
       `
       if (!orderRows[0]) return { ok: false, status: 404, error: 'Order not found' }
 
-      // One open request of this KIND per order, checked here rather than left
-      // to the partial unique indexes alone. Two reasons, and the second is the
-      // one that bites:
+      // One open cancel-or-return per order, checked here rather than left to
+      // the partial unique index alone. Two reasons, and the second is the one
+      // that bites:
       //
       //   - under the advisory lock taken above this check IS authoritative, so
       //     two requests racing on the same order are settled in order rather
@@ -307,23 +310,18 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
       //     was matching on that name, so a clash surfaced as a 500 rather than
       //     as the sentence a customer can act on.
       //
-      // Damage is counted separately, which is the whole point of the split: a
-      // second parcel arriving broken must not wait for a return to be decided.
-      const kind = input.type === 'DAMAGE'
-        ? Prisma.sql`"type" = 'DAMAGE'`
-        : Prisma.sql`"type" <> 'DAMAGE'`
-      const openRows = await tx.$queryRaw<{ id: string }[]>`
-        SELECT "id" FROM "shp_order_requests"
-        WHERE "order_id" = ${input.orderId} AND "status" = 'PENDING' AND ${kind}
-        LIMIT 1
-      `
-      if (openRows[0]) {
-        return {
-          ok: false,
-          status: 409,
-          error: input.type === 'DAMAGE'
-            ? 'You have already reported damage on this order. We will come back to you on it.'
-            : 'You already have a request open on this order.',
+      // Issue reports are not counted at all. The guard exists so two approvals
+      // cannot refund the same lines twice, and a report refunds nothing - it
+      // names lines without spending them. Refusing a second one only meant the
+      // customer who opened the next carton emailed instead. See migration 053.
+      if (input.type !== 'DAMAGE') {
+        const openRows = await tx.$queryRaw<{ id: string }[]>`
+          SELECT "id" FROM "shp_order_requests"
+          WHERE "order_id" = ${input.orderId} AND "status" = 'PENDING' AND "type" <> 'DAMAGE'
+          LIMIT 1
+        `
+        if (openRows[0]) {
+          return { ok: false, status: 409, error: 'You already have a request open on this order.' }
         }
       }
 
@@ -472,13 +470,7 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
     const clash = message.includes('shp_order_requests_one_open')
       || (message.includes('23505') && message.includes('(order_id)'))
     if (clash) {
-      return {
-        ok: false,
-        status: 409,
-        error: input.type === 'DAMAGE'
-          ? 'You have already reported damage on this order. We will come back to you on it.'
-          : 'You already have a request open on this order.',
-      }
+      return { ok: false, status: 409, error: 'You already have a request open on this order.' }
     }
     throw error
   }
@@ -562,6 +554,9 @@ export type AdminRequestRow = ShpOrderRequestWithItems & {
    * and check the lines to find out whether they are allowed to say no.
    */
   discretionary: boolean
+  /** The replacement's own order number, where a part has been sent. Null
+   *  otherwise, and on every request that is not a damage report. */
+  replacementOrderNumber: string | null
 }
 
 export type ListRequestsFilter = {
@@ -588,6 +583,7 @@ export async function listRequestsForAdmin(
 
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
     SELECT req.*, o."order_number", o."customer_name", o."customer_email", o."total",
+      rep."order_number" AS replacement_order_number,
       -- The lines this request covers: the ones it names, or - on a request
       -- that names none, which is what a whole-order cancellation is - every
       -- line on the order.
@@ -612,6 +608,9 @@ export async function listRequestsForAdmin(
       ) AS discretionary
     FROM "shp_order_requests" req
     JOIN "shp_orders" o ON o."id" = req."order_id"
+    -- LEFT: almost no request has one, and an INNER join here would empty the
+    -- queue of everything that has not had a part sent out.
+    LEFT JOIN "shp_orders" rep ON rep."id" = req."replacement_order_id"
     ${where}
     ORDER BY (req."status" = 'PENDING') DESC, req."created_at" ASC
     LIMIT ${limit} OFFSET ${offset}
@@ -632,7 +631,25 @@ export async function listRequestsForAdmin(
     customerEmail: rows[i]!.customer_email as string,
     orderTotal: String(rows[i]!.total),
     discretionary: rows[i]!.discretionary === true,
+    replacementOrderNumber: (rows[i]!.replacement_order_number as string | null) ?? null,
   }))
 
   return { requests, total: Number(totals?.total ?? 0), pendingCount: Number(totals?.pending ?? 0) }
+}
+
+/**
+ * Hangs a replacement order off the damage report it was sent for.
+ *
+ * Guarded on the column still being null so a second part raised against the
+ * same report cannot quietly rewrite which order the customer is pointed at -
+ * the first one is what they were emailed about. Returns false when it was
+ * already set, which the caller reports rather than swallows.
+ */
+export async function setRequestReplacementOrder(requestId: string, orderId: string): Promise<boolean> {
+  const updated = await prisma.$executeRaw`
+    UPDATE "shp_order_requests"
+    SET "replacement_order_id" = ${orderId}, "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${requestId} AND "replacement_order_id" IS NULL
+  `
+  return updated > 0
 }

@@ -38,6 +38,11 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     deliverySlotStart: (r.delivery_slot_start as string | null) ?? null,
     deliverySlotEnd: (r.delivery_slot_end as string | null) ?? null,
     slotNotifiedAt: (r.slot_notified_at as Date | null) ?? null,
+    // Migration 053. Defaulted here as well as in the DDL so a row read through
+    // a query shape cached before the column existed answers "nobody has been
+    // told" rather than undefined - which would read as truthy and silence the
+    // message for good.
+    trackingNotifiedAt: (r.tracking_notified_at as Date | null) ?? null,
     trackingStage: (r.tracking_stage as string | null) ?? null,
     trackingStageAt: (r.tracking_stage_at as Date | null) ?? null,
     trackingCheckedAt: (r.tracking_checked_at as Date | null) ?? null,
@@ -552,6 +557,24 @@ export async function claimSlotNotification(shipmentId: string, orderId: string)
     UPDATE "shp_shipments"
     SET "slot_notified_at" = CURRENT_TIMESTAMP, "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${shipmentId} AND "order_id" = ${orderId} AND "slot_notified_at" IS NULL
+  `
+  return claimed > 0
+}
+
+/**
+ * Claim the right to tell somebody the tracking that was not known when the
+ * parcel went out.
+ *
+ * True exactly once per parcel, for the reason claimSlotNotification above is:
+ * the stamp is set by the statement that reads it, so two admins saving the
+ * same parcel together cannot both come away believing they are the one
+ * sending it.
+ */
+export async function claimTrackingNotification(shipmentId: string, orderId: string): Promise<boolean> {
+  const claimed = await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "tracking_notified_at" = CURRENT_TIMESTAMP, "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId} AND "order_id" = ${orderId} AND "tracking_notified_at" IS NULL
   `
   return claimed > 0
 }

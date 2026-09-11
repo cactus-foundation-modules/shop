@@ -46,6 +46,10 @@ type Props =
       orderNumber: string
       /** What the request is made against, so nothing has to be typed. */
       orderId: string
+      /** What the link asked the order page to open, as a query string ready to
+       *  append - see lib/order-link-intent.ts. Empty on a link that only asked
+       *  to be let in, which is nearly all of them. */
+      intent?: string
     }
   | {
       mode: 'receipt'
@@ -150,7 +154,11 @@ export default function OrderAccessForm(props: Props) {
       // the very page being navigated to: without it Next serves the cached
       // render of that route - the gate again - and the customer clicks a button
       // that appears to do nothing. Left busy on purpose; the page is going.
-      router.push(body.path)
+      //
+      // The intent rides along so somebody who had to prove a postcode first
+      // still lands on the thing their email offered them, rather than on the
+      // order page with the form they clicked for closed.
+      router.push(`${body.path}${props.mode === 'confirm' ? props.intent ?? '' : ''}`)
       router.refresh()
     } catch {
       setError('We could not reach the shop just then. Please try again.')

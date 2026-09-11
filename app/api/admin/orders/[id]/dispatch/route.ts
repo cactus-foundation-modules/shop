@@ -6,6 +6,7 @@ import { getOrderById, getOrderItems, outstandingPreOrderItems } from '@/modules
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import {
   claimSlotNotification,
+  claimTrackingNotification,
   createShipment,
   deleteShipment,
   getOrderDispatchSummary,
@@ -13,6 +14,7 @@ import {
   updateShipmentDetails,
 } from '@/modules/shop/lib/db/shipments'
 import { sendShipmentDispatchedEmail } from '@/modules/shop/lib/shipment-email'
+import { hasFollowableTracking, sendTrackingAddedEmail } from '@/modules/shop/lib/tracking-added-email'
 import { sendDeliverySlotEmail } from '@/modules/shop/lib/delivery-slot-email'
 import { isDeliveryDate, isSlotTime, slotMinutes } from '@/modules/shop/lib/delivery-slot'
 import type { ShpConfig } from '@/modules/shop/lib/config'
@@ -246,6 +248,11 @@ const PatchBody = z.object({
    *  Defaults to on: a window nobody was told about is a window nobody can
    *  plan around. Sent at most once per parcel - see claimSlotNotification. */
   emailCustomer: z.boolean().optional(),
+  /** Whether saving tracking the parcel did not have emails the customer about
+   *  THAT. A separate answer from the one above, because they are two different
+   *  messages sent on two different days, and an owner filling in a window on a
+   *  parcel whose number has already gone out must not be made to choose. */
+  emailTracking: z.boolean().optional(),
 })
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -261,7 +268,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid parcel details' }, { status: 400 })
   }
 
-  const { shipmentId, emailCustomer, courierId, carrier, ...rest } = parsed.data
+  const { shipmentId, emailCustomer, emailTracking, courierId, carrier, ...rest } = parsed.data
 
   // Read the window as it will be AFTER the save, not as it was sent: an edit
   // that only clears the end time would otherwise pass a check that never saw
@@ -287,7 +294,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!shipment) return NextResponse.json({ error: 'That parcel is no longer on this order.' }, { status: 404 })
 
   const notified = await maybeSendSlotEmail(id, shipment, emailCustomer !== false)
-  return NextResponse.json({ shipment, slotEmailSent: notified })
+  // `existing` is the row as it was BEFORE this save - read above for the window
+  // check - which is the only way to tell "tracking has just been added" from
+  // "tracking has been here since it went out".
+  const trackingTold = await maybeSendTrackingEmail(id, existing, shipment, emailTracking !== false)
+  return NextResponse.json({ shipment, slotEmailSent: notified, trackingEmailSent: trackingTold })
 }
 
 /**
@@ -317,6 +328,43 @@ async function maybeSendSlotEmail(
     await sendDeliverySlotEmail({ orderId, shipmentId: shipment.id })
   } catch (error) {
     console.error('[shop] delivery slot email failed', error)
+  }
+  return true
+}
+
+/**
+ * Tell the customer the tracking, if this save is the moment it appeared.
+ *
+ * The test is that the parcel GAINED something followable. A parcel dispatched
+ * with its number already on it carried that number in its dispatch note, and a
+ * second email repeating it is noise; a parcel that went out with nothing had a
+ * dispatch note saying the goods had left and giving no way of following them,
+ * which is the gap this closes.
+ *
+ * A courier name alone is not tracking - it is who has the box - so changing
+ * "DPD" to "DPD Local" sends nothing. See hasFollowableTracking.
+ *
+ * The claim is taken BEFORE the send and never given back, exactly as the
+ * window email's is: a mail server refusing the message has not un-tracked the
+ * parcel, and retrying on the owner's next save - usually a typo correction -
+ * would land a second copy in front of somebody who already had the first.
+ */
+async function maybeSendTrackingEmail(
+  orderId: string,
+  before: ShpShipmentWithItems,
+  after: ShpShipmentWithItems,
+  wanted: boolean,
+): Promise<boolean> {
+  if (!wanted) return false
+  if (hasFollowableTracking(before)) return false
+  if (!hasFollowableTracking(after)) return false
+  if (after.trackingNotifiedAt) return false
+  if (!(await claimTrackingNotification(after.id, orderId))) return false
+
+  try {
+    await sendTrackingAddedEmail({ orderId, shipmentId: after.id })
+  } catch (error) {
+    console.error('[shop] tracking email failed', error)
   }
   return true
 }

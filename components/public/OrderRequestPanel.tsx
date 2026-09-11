@@ -13,11 +13,16 @@ import type { ShpOrderRequestType } from '@/modules/shop/lib/types'
 // re-derived here - lib/order-requests.ts is the one copy of those rules, so a
 // button that appears and an endpoint that accepts can never disagree.
 //
-// Damage is deliberately its own door rather than a reason in the return list.
-// A return is a change of mind and ends in a collection; damage is our mistake
-// and ends in a replacement, and the two want different questions asked. Put in
-// one dropdown, "it arrived damaged" is the line people pick, and every
-// breakage then has to be unpicked by email.
+// Reporting an issue is deliberately its own door rather than a reason in the
+// return list. A return is a change of mind and ends in a collection; a fault is
+// our mistake and ends in a replacement, and the two want different questions
+// asked. Put in one dropdown, "it arrived damaged" is the line people pick, and
+// every breakage then has to be unpicked by email.
+//
+// It is also the one door that stays open after it has been used. A report
+// spends nothing, so a second one is allowed while the first is still being
+// looked at - the button says "Report another issue" and the form is the same
+// form. An order of eight desks is opened one carton at a time.
 
 export type RequestLine = {
   orderItemId: string
@@ -49,6 +54,14 @@ type Props = {
   damageReasons: ReadonlyArray<{ code: string; label: string }>
   lines: RequestLine[]
   returnBy: string | null
+  /** How many issue reports are already open on this order. Changes the wording
+   *  of the button and nothing else - a second report is as allowed as the
+   *  first. */
+  openReports: number
+  /** True when the customer arrived from a "something not right?" link in an
+   *  email, which opens the form rather than the card. See
+   *  lib/order-requests.ts - reportIssueUrl. */
+  openReportInitially?: boolean
 }
 
 type Photo = { mediaId: string; url: string; name: string }
@@ -95,7 +108,14 @@ const label: React.CSSProperties = { fontWeight: 'var(--font-medium)' }
 
 export default function OrderRequestPanel(props: Props) {
   const router = useRouter()
-  const [open, setOpen] = useState<ShpOrderRequestType | null>(null)
+  // Whether the email link's request to open the form can actually be honoured.
+  // Checked rather than trusted: a link followed before anything was dispatched
+  // would otherwise open a form with nothing on it to report and a button that
+  // 400s. The page behind it still says why, which is the answer they needed.
+  const canOpenReport = props.damage.allowed && props.lines.some((line) => line.dispatchedQty > 0)
+  const [open, setOpen] = useState<ShpOrderRequestType | null>(
+    props.openReportInitially && canOpenReport ? 'DAMAGE' : null,
+  )
   const [reason, setReason] = useState('')
   const [note, setNote] = useState('')
   const [quantities, setQuantities] = useState<Record<string, number>>({})
@@ -249,7 +269,7 @@ export default function OrderRequestPanel(props: Props) {
             {open === 'CANCEL'
               ? 'Cancel this order'
               : open === 'DAMAGE'
-                ? 'Report damage'
+                ? 'Report an issue'
                 : 'Send something back'}
           </h2>
         </div>
@@ -268,7 +288,7 @@ export default function OrderRequestPanel(props: Props) {
                 onClick={() => start('DAMAGE')}
                 style={{ marginLeft: '0.25rem' }}
               >
-                Report damage instead
+                Report an issue instead
               </button>
             )}
           </p>
@@ -424,18 +444,32 @@ export default function OrderRequestPanel(props: Props) {
 
         {error && <p style={{ color: 'var(--color-error)', margin: 0 }}>{error}</p>}
 
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button type="button" className="btn btn-primary" onClick={submit} disabled={busy || uploading}>
-            {busy ? 'Sending…' : open === 'DAMAGE' ? 'Send report' : 'Send request'}
-          </button>
+        {/* Sent on the right, backing out to the left of it. The pair reads in
+            the order the page is finished in, and the button that does the thing
+            sits where every other form on the site puts it. */}
+        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
           <button type="button" className="btn" onClick={() => setOpen(null)} disabled={busy}>
             Never mind
+          </button>
+          <button type="button" className="btn btn-primary" onClick={submit} disabled={busy || uploading}>
+            {busy ? 'Sending…' : open === 'DAMAGE' ? 'Send report' : 'Send request'}
           </button>
         </div>
         </div>
       </section>
     )
   }
+
+  // Nothing on offer and nothing worth saying about why. An order placed twenty
+  // minutes ago refuses all three for reasons marked silent, and a card headed
+  // "Something not right?" with nothing under it is a worse answer than no card:
+  // it reads as a thing that has failed to load.
+  const offers = [props.cancel, props.return, props.damage]
+  const anythingOffered =
+    (props.cancel.allowed && cancellable.length > 0) ||
+    (props.return.allowed && returnable.length > 0) ||
+    (props.damage.allowed && arrived.length > 0)
+  if (!anythingOffered && !offers.some((one) => !one.allowed && one.reason)) return null
 
   return (
     <section className="sod-card">
@@ -476,13 +510,17 @@ export default function OrderRequestPanel(props: Props) {
 
       {props.damage.allowed && arrived.length > 0 ? (
         <div>
-          <button type="button" className="btn" onClick={() => start('DAMAGE')}>Report damage</button>
+          <button type="button" className="btn" onClick={() => start('DAMAGE')}>
+            {props.openReports > 0 ? 'Report another issue' : 'Report an issue'}
+          </button>
           {/* Offered on its own terms rather than as a footnote to returns: it
               applies to goods we do not take back, and it does not stop when the
-              return window does. */}
+              return window does - nor when one report is already in, which is
+              what the second wording is for. */}
           <p style={{ margin: '0.375rem 0 0', ...muted }}>
-            Arrived damaged or faulty? Send us photographs and we will arrange a replacement - there is no window on
-            this and it applies to everything, including anything we cannot normally take back.
+            {props.openReports > 0
+              ? 'Found something else? Tell us about that one too - a report already with us does not stop you sending another.'
+              : 'Arrived damaged or faulty? Send us photographs and we will arrange a replacement - there is no window on this and it applies to everything, including anything we cannot normally take back.'}
           </p>
         </div>
       ) : (

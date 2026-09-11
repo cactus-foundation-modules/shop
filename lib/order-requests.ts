@@ -129,6 +129,34 @@ export const SHP_DAMAGE_REASONS = [
  */
 export const MAX_DAMAGE_PHOTOS = 6
 
+/** The query the order page opens its issue-report form on. */
+export const REPORT_ISSUE_QUERY_KEY = 'report'
+
+/**
+ * The order page, asked to open the issue-report form as it arrives.
+ *
+ * The whole point of the merge tag this fills: "something not right with your
+ * order?" in an email is one click from a filled-in form rather than from an
+ * order page the customer then has to read for the right button. It survives
+ * the postcode gate on the way - see lib/order-link-intent.ts.
+ *
+ * Built by parsing rather than by appending a string, because the order link
+ * already carries a token on it for guests and a second "?" makes an address
+ * that opens nothing and proves nothing. Empty in, empty out: a shop with guest
+ * tracking switched off has no order link to send anybody to, and the {{#if}}
+ * in the email takes the whole line with it.
+ */
+export function reportIssueUrl(orderUrl: string): string {
+  if (!orderUrl) return ''
+  try {
+    const url = new URL(orderUrl)
+    url.searchParams.set(REPORT_ISSUE_QUERY_KEY, '1')
+    return url.toString()
+  } catch {
+    return ''
+  }
+}
+
 /**
  * Whether a cancellation covers everything the customer is still owed.
  *
@@ -238,13 +266,6 @@ export type EligibilityInput = {
   }
   /** Any cancel or return already open on this order. */
   openRequest?: ShpOrderRequestWithItems | null
-  /**
-   * Any damage report already open on this order, counted separately. A broken
-   * table leg is not the same conversation as a return, and being told to wait
-   * for one before reporting the other is how a shop hears about it by email
-   * instead.
-   */
-  openDamageRequest?: ShpOrderRequestWithItems | null
   now?: Date
 }
 
@@ -342,7 +363,7 @@ export function canRequestReturn(input: EligibilityInput): RequestEligibility {
 }
 
 /**
- * Reporting damage. The loosest of the three rules on purpose.
+ * Reporting an issue. The loosest of the three rules on purpose.
  *
  * No return window, because a fault does not read a calendar and the shop's
  * obligations over faulty goods outlive any window it chooses to offer. No
@@ -350,13 +371,17 @@ export function canRequestReturn(input: EligibilityInput): RequestEligibility {
  * smashed, and it is exactly the customer who cannot send it back who most
  * needs a way to say so. All that is required is that something has actually
  * turned up to be damaged.
+ *
+ * And no "you have already told us" either, which was the last thing in the way.
+ * A report spends nothing - it names lines without taking them off the order -
+ * so a second one costs the shop nothing but the reading. What refusing it cost
+ * was the order of eight desks whose second carton is opened the next morning:
+ * the button was gone, and the second fault arrived as an email attached to
+ * nothing. See migration 053.
  */
 export function canReportDamage(input: EligibilityInput): RequestEligibility {
   if (!input.config.damageReportsEnabled) {
     return { allowed: false, reason: 'Get in touch about anything damaged or faulty and we will put it right.' }
-  }
-  if (input.openDamageRequest) {
-    return { allowed: false, reason: 'You have already reported damage on this order. We will come back to you on it.' }
   }
   if (input.order.status === 'CANCELLED') {
     return { allowed: false, reason: 'This order has been cancelled.' }

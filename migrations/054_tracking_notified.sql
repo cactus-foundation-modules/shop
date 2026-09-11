@@ -1,0 +1,32 @@
+-- ---------------------------------------------------------------------------
+-- 054 - Telling somebody the tracking that was not known when the parcel went.
+--
+-- A parcel is routinely dispatched before its tracking number exists. The
+-- courier collects in the morning and the number lands that afternoon, or a
+-- pallet network issues one only once the consignment is on a trunk. Until now
+-- the number could be typed onto the parcel afterwards - the parcel edit has
+-- always allowed it - and the customer was told nothing at all. Their dispatch
+-- email said the goods had gone and carried no way of following them, and
+-- nothing ever followed it up.
+--
+--   shp_shipments.tracking_notified_at
+--       Set the moment somebody is told the tracking, and never cleared. The
+--       twin of slot_notified_at from migration 039, and there for the same
+--       reason: the claim is taken by the statement that reads it, so two
+--       people saving the same parcel at the same moment cannot both come away
+--       believing they are the one sending the message - which the customer
+--       sees as two identical emails.
+--
+--       NULL means "nobody has been told", which is the honest answer for every
+--       parcel that existed before this column did, including ones dispatched
+--       with their tracking already on them. Nothing back-fills it, because the
+--       notification only ever fires on a parcel that GAINS tracking it did not
+--       have - see app/api/admin/orders/[id]/dispatch/route.ts. A parcel that
+--       went out with its number already printed on the dispatch note has
+--       nothing to add, and nothing here will make it send one.
+--
+-- Idempotent, and the same column sits in 001_initial.sql in place, so a fresh
+-- install and an existing one land in the same place.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE "shp_shipments" ADD COLUMN IF NOT EXISTS "tracking_notified_at" TIMESTAMP(3);

@@ -260,8 +260,11 @@ describe('canReportDamage', () => {
     expect(canReportDamage({ ...base, openRequest: { id: 'r1' } as never }).allowed).toBe(true)
   })
 
-  it('refuses a second report while the first is open', () => {
-    expect(canReportDamage({ ...base, openDamageRequest: { id: 'r1' } as never }).allowed).toBe(false)
+  // The rule that used to say the opposite. A report spends nothing, so a second
+  // one costs the shop the reading and nothing else - and refusing it only meant
+  // the customer who opened the next carton sent an email instead.
+  it('allows a second report while the first is still open', () => {
+    expect(canReportDamage(base).allowed).toBe(true)
   })
 
   it('refuses before anything has arrived to be damaged', () => {

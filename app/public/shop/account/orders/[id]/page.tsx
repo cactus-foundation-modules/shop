@@ -21,9 +21,11 @@ import {
   SHP_CANCEL_REASONS,
   SHP_DAMAGE_REASONS,
   SHP_RETURN_REASONS,
+  REPORT_ISSUE_QUERY_KEY,
   reasonLabel,
   type RequestEligibility,
 } from '@/modules/shop/lib/order-requests'
+import { orderLinkIntentSet } from '@/modules/shop/lib/order-link-intent'
 import {
   ORDER_STATUS_DISPLAY,
   REQUEST_STATUS_DISPLAY,
@@ -204,7 +206,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
 
   // `order` is already in hand from the access check above, so it is not taken
   // from the detail a second time.
-  const { lines, shipments, refunds, refundItems, downloads, requests, openRequest, openDamageRequest } = detail
+  const { lines, shipments, refunds, refundItems, downloads, requests, openRequest, openDamageRequests, replacements, parentOrder } = detail
   const symbol = config.currencySymbol
   // Only looked up on a shop that invoices AND is willing to show it, so an
   // ordinary shop's order page costs exactly what it always did.
@@ -430,7 +432,11 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
     !deliveredOn.has(shipmentId) && (deliveryById.get(shipmentId)?.faqs.length ?? 0) > 0
 
   const query = searchParams ? await searchParams : {}
-  const faqRequested = (Array.isArray(query[FAQ_QUERY_KEY]) ? query[FAQ_QUERY_KEY][0] : query[FAQ_QUERY_KEY]) === '1'
+  const faqRequested = orderLinkIntentSet(query, FAQ_QUERY_KEY)
+  // "Something not right with your order?" in an email, one click from the form
+  // rather than from a page they then have to read for the right button. The
+  // panel checks for itself whether it can honour it.
+  const reportRequested = orderLinkIntentSet(query, REPORT_ISSUE_QUERY_KEY)
   const faqShipmentId = deliveries.find((d) => questionsFor(d.shipmentId))?.shipmentId ?? null
 
   // How this order was settled, in a sentence rather than a status code.
@@ -537,6 +543,20 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
             <h1 className="sod-title">Order {order.orderNumber}</h1>
             <span className={badgeClass(status.tone)}>{status.label}</span>
           </div>
+          {/* A replacement lands here looking like a mystery: a £0 order for one
+              part nobody remembers buying. The order it is putting right is the
+              answer, and it is the first thing under the title. */}
+          {order.kind === 'REPLACEMENT' && parentOrder && (
+            <p className="sod-facts">
+              <span>
+                Sent to put order{' '}
+                <Link href={`/shop/account/orders/${parentOrder.id}`} prefetch={false}>
+                  {parentOrder.orderNumber}
+                </Link>
+                {' '}right
+              </span>
+            </p>
+          )}
           {/* The three facts that identify an order, and nothing to click. The
               links that used to live on this line have a card of their own. */}
           <p className="sod-facts">
@@ -570,6 +590,40 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
               <strong>This order is on hold.</strong> We have paused it while something is sorted
               out, and we will be in touch as soon as it is moving again.
             </p>
+          </OrderNote>
+        )}
+
+        {/* The parts sent out to put this order right. Up here with the other
+            notes rather than in a card further down: somebody who reported a
+            broken leg opens this page to find out where the new one is, and
+            making them scroll past the delivery address to find out is exactly
+            the phone call this is meant to save. */}
+        {replacements.length > 0 && (
+          <OrderNote tone="ok">
+            <p>
+              <strong>
+                {replacements.length === 1
+                  ? 'We have sent a replacement.'
+                  : `We have sent ${replacements.length} replacements.`}
+              </strong>
+            </p>
+            <ul className="sod-replacements">
+              {replacements.map(({ order: replacement, itemNames, fulfilment }) => (
+                <li key={replacement.id}>
+                  <Link href={`/shop/account/orders/${replacement.id}`} prefetch={false}>
+                    {replacement.orderNumber}
+                  </Link>
+                  {itemNames.length > 0 && ` - ${itemNames.join(', ')}`}
+                  {' · '}
+                  {fulfilment === 'DISPATCHED'
+                    ? 'on its way to you'
+                    : fulfilment === 'PARTIAL'
+                      ? 'partly on its way'
+                      : 'being prepared'}
+                </li>
+              ))}
+            </ul>
+            <p>Follow the parcel on its own page, the same as any other order.</p>
           </OrderNote>
         )}
 
@@ -627,21 +681,24 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           </OrderNote>
         )}
 
-        {/* Its own note rather than a second branch of the one above: a damage
+        {/* Its own note rather than a second branch of the one above: an issue
             report runs alongside a cancellation or a return rather than instead
-            of one, and both can be open at once. */}
-        {openDamageRequest && (
-          <OrderNote tone="info">
+            of one, and both can be open at once. One note each, because more
+            than one report can be open too - and a customer who has told us
+            about two faults needs to see two acknowledgements, each with its own
+            way of taking it back. */}
+        {openDamageRequests.map((report) => (
+          <OrderNote key={report.id} tone="info">
             <p>
-              <strong>Damage reported.</strong>{' '}
-              You told us on {formatOrderDate(openDamageRequest.createdAt, timezone)} -{' '}
-              {reasonLabel(openDamageRequest.type, openDamageRequest.reason)}
-              {openDamageRequest.photos.length > 0 && `, with ${openDamageRequest.photos.length} photograph${openDamageRequest.photos.length === 1 ? '' : 's'}`}
+              <strong>Issue reported.</strong>{' '}
+              You told us on {formatOrderDate(report.createdAt, timezone)} -{' '}
+              {reasonLabel(report.type, report.reason)}
+              {report.photos.length > 0 && `, with ${report.photos.length} photograph${report.photos.length === 1 ? '' : 's'}`}
               . We will email you as soon as somebody has looked at it.
             </p>
-            <div><WithdrawRequestButton requestId={openDamageRequest.id} /></div>
+            <div><WithdrawRequestButton requestId={report.id} /></div>
           </OrderNote>
-        )}
+        ))}
 
         {/* Whatever a companion module has to say about this order, each in a
             card of shop's own so a contributed panel cannot arrive dressed
@@ -1009,28 +1066,31 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
               pairs off with whatever card is beside it, and takes the whole row
               on its own when the count is odd - see .sod-grid. Opening it swaps
               the card for a form, which asks for the full width itself. */}
-          {(!openRequest || !openDamageRequest) && (
-            <OrderRequestPanel
-              orderId={order.id}
-              cancel={offer(detail.cancel)}
-              return={offer(detail.return)}
-              damage={offer(detail.damage)}
-              cancelReasons={SHP_CANCEL_REASONS}
-              returnReasons={SHP_RETURN_REASONS}
-              damageReasons={SHP_DAMAGE_REASONS}
-              lines={lines.map((line) => ({
-                orderItemId: line.item.id,
-                productName: line.item.productName,
-                returnableQty: line.returnableQty,
-                cancellableQty: line.cancellableQty,
-                outstandingQty: line.outstandingQty,
-                dispatchedQty: line.dispatchedQty,
-                returnsPolicy: line.returnsPolicy,
-                returnsNote: line.returnsNote,
-              }))}
-              returnBy={detail.returnBy ? formatOrderDate(detail.returnBy, timezone) : null}
-            />
-          )}
+          {/* Always rendered, and it decides for itself whether it has anything
+              to say - there is no longer a state where every door is shut, since
+              an issue can be reported however many are already open. */}
+          <OrderRequestPanel
+            orderId={order.id}
+            cancel={offer(detail.cancel)}
+            return={offer(detail.return)}
+            damage={offer(detail.damage)}
+            cancelReasons={SHP_CANCEL_REASONS}
+            returnReasons={SHP_RETURN_REASONS}
+            damageReasons={SHP_DAMAGE_REASONS}
+            lines={lines.map((line) => ({
+              orderItemId: line.item.id,
+              productName: line.item.productName,
+              returnableQty: line.returnableQty,
+              cancellableQty: line.cancellableQty,
+              outstandingQty: line.outstandingQty,
+              dispatchedQty: line.dispatchedQty,
+              returnsPolicy: line.returnsPolicy,
+              returnsNote: line.returnsNote,
+            }))}
+            returnBy={detail.returnBy ? formatOrderDate(detail.returnBy, timezone) : null}
+            openReports={openDamageRequests.length}
+            openReportInitially={reportRequested}
+          />
         </div>
 
         {/* The offer of an account, to a guest who has just proved a postcode to

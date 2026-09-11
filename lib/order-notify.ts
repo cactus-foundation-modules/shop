@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db/prisma'
 import { isSmsAvailable, sendSmsTemplate } from '@/lib/sms/send'
 import { getMemberChannelPreference } from '@/lib/members/notification-prefs'
-import { sendShopEmail } from '@/modules/shop/lib/email'
+import { orderUrlVars, sendShopEmail } from '@/modules/shop/lib/email'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { orderTrackingUrl } from '@/modules/shop/lib/order-tracking'
 import type { EmailAttachment } from '@/lib/email/index'
@@ -126,8 +126,7 @@ export async function notifyOrderCustomer(
   // line with it. See lib/order-tracking.ts.
   const trackingUrl = orderTrackingUrl(order.orderNumber, config)
   const withTracking = {
-    orderUrl: trackingUrl,
-    hasOrderUrl: trackingUrl ? 'true' : 'false',
+    ...orderUrlVars(trackingUrl, config),
     ...vars,
   }
 

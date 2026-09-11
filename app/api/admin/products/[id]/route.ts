@@ -94,6 +94,10 @@ const Body = z.object({
   // "Keep this one off the featured shelves." Nothing to do with
   // catalogueHidden, which is shop-variations' own state and is not editable
   // from here at all.
+  // A spare part rather than something to sell: stocked, costed and pickable on
+  // a replacement, and off every storefront surface. Distinct from
+  // catalogueHidden, which also hides the row from the owner.
+  partsOnly: z.boolean().optional(),
   featuredHidden: z.boolean().optional(),
   regenerateSlug: z.boolean().optional(),
   media: z.array(MediaItem).optional(),

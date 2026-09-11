@@ -8,6 +8,7 @@ import {
 import { createShipment, getOrderDispatchSummary, getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
 import { getShopConfigCached, type ShpConfig } from '@/modules/shop/lib/config'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
+import { parentOrderVars, replacementDeliveryVars } from '@/modules/shop/lib/replacement-emails'
 import { issueInvoiceForOrder, shouldIssueOn, type InvoiceTrigger } from '@/modules/shop/lib/invoices'
 import { invoiceEmailAttachment } from '@/modules/shop/lib/invoice-attachment'
 import { renderOrderItemsEmailTable } from '@/modules/shop/lib/order-items-email'
@@ -33,6 +34,21 @@ const STATUS_EMAIL_TRIGGER: Partial<Record<ShpOrderStatus, ShpEmailTemplateTrigg
   SHIPPED: 'STATUS_SHIPPED',
   COMPLETED: 'STATUS_COMPLETED',
   CANCELLED: 'STATUS_CANCELLED',
+}
+
+// What a replacement says instead. Two of the four transitions are worth a
+// word - the part has gone, and the part has arrived - and the other two are
+// not: "we are getting your order ready" is about something the customer
+// bought, and "thanks for shopping with us" is the wrong sentence to end a
+// complaint on.
+//
+// COMPLETED is the one the courier reaches on its own. The delivery poller
+// finishes an order off through this same function once every parcel has
+// arrived (app/api/cron/delivery-tracking), so a replacement closes itself and
+// this is the message that goes with it.
+const REPLACEMENT_STATUS_EMAIL_TRIGGER: Partial<Record<ShpOrderStatus, ShpEmailTemplateTrigger>> = {
+  SHIPPED: 'REPLACEMENT_DISPATCHED',
+  COMPLETED: 'REPLACEMENT_DELIVERED',
 }
 
 function holdAllMessage(outstanding: ShpOrderItem[]): string {
@@ -239,14 +255,22 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail }: {
     // would not raise would be a worse outcome than an invoice raised by hand.
     const invoiceTrigger: InvoiceTrigger | null =
       status === 'SHIPPED' ? 'DISPATCHED' : status === 'COMPLETED' ? 'COMPLETED' : null
-    if (invoiceTrigger && shouldIssueOn(config, invoiceTrigger)) {
+    // A free replacement raises no invoice. There is no money in it, and a shop
+    // set to invoice on dispatch would otherwise send a customer a £0 invoice
+    // for a part it sent to put its own mistake right - which reads as a bill.
+    // A replacement somebody was CHARGED for is an ordinary sale of a spare and
+    // is invoiced like one, which is why this tests the money and not the kind.
+    const worthInvoicing = order.kind !== 'REPLACEMENT' || Number(order.total) > 0
+    if (invoiceTrigger && worthInvoicing && shouldIssueOn(config, invoiceTrigger)) {
       const invoiced = await issueInvoiceForOrder(orderId, { trigger: invoiceTrigger, issuedBy: 'AUTO' })
       if (!invoiced.ok) console.error('[shop] could not invoice order', orderId, invoiced.error)
     }
   }
 
   if (sendEmail) {
-    const trigger = STATUS_EMAIL_TRIGGER[status]
+    const trigger = order.kind === 'REPLACEMENT'
+      ? REPLACEMENT_STATUS_EMAIL_TRIGGER[status]
+      : STATUS_EMAIL_TRIGGER[status]
     if (trigger) {
       // The invoice travels with the completion email, which is the one message
       // in the order's life a customer files rather than reads. It is looked up
@@ -271,7 +295,16 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail }: {
       await notifyOrderCustomer(
         trigger,
         order,
-        await orderStatusEmailVars(order, config, dispatch),
+        {
+          ...await orderStatusEmailVars(order, config, dispatch),
+          // Only the replacement wording asks for these, and the parent's number
+          // is the one the customer actually recognises - the replacement's own
+          // is one they have never seen.
+          ...await parentOrderVars(order),
+          // When the courier says it landed, and who took it in. Only worth the
+          // read on the message that is about the delivery.
+          ...(trigger === 'REPLACEMENT_DELIVERED' ? await replacementDeliveryVars(order) : {}),
+        },
         invoice ? { attachments: [invoice] } : undefined,
       )
     }
