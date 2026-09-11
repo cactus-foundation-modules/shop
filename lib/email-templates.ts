@@ -399,6 +399,37 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'requestReason', 'requestItems', 'customerNote', 'photoCount', 'shopName', 'hasCustomerNote', 'hasItems', 'hasPhotos'],
     transactional: false,
   },
+  {
+    // Tells the shop somebody has asked something on a product page. Goes only to
+    // the address typed into Shop settings, and only on a shop that typed one.
+    // Not transactional - it is an internal alert, not a message to a customer.
+    key: 'shop.product-question-received',
+    label: 'Product question asked (admin alert)',
+    subject: 'A question about {{productName}}',
+    bodyHtml:
+      '<p>{{askerName}} ({{askerEmail}}) has asked a question about <strong>{{productName}}</strong>.</p><p>{{questionBody}}</p>{{#if hasAdminUrl}}<p>Answer it under Shop &rarr; Catalogue &rarr; Questions: <a href="{{adminUrl}}">{{adminUrl}}</a></p>{{/if}}',
+    mergeTags: ['productName', 'productUrl', 'askerName', 'askerEmail', 'questionBody', 'adminUrl', 'shopName', 'hasAdminUrl'],
+    // The question is typed by a stranger. It is escaped where it is built (see
+    // lib/product-question-emails.ts) and handed over raw only so the line breaks
+    // they typed survive as <br />.
+    rawTags: ['questionBody'],
+    transactional: false,
+  },
+  {
+    // The answer itself, going back to whoever asked. Transactional without
+    // argument: they asked us a question and gave us an address to reply to, and
+    // this is nothing but the reply.
+    key: 'shop.product-question-answered',
+    label: 'Product question answered',
+    subject: 'Your question about {{productName}}',
+    bodyHtml:
+      '<p>Hi {{askerName}},</p><p>You asked us about <strong>{{productName}}</strong>:</p><blockquote style="margin:0 0 16px;padding:8px 16px;border-left:3px solid #ddd;color:#555">{{questionBody}}</blockquote><p>{{answerBody}}</p>{{#if hasProductUrl}}<p><a href="{{productUrl}}">{{productName}}</a></p>{{/if}}<p>If that has not covered it, just reply to this email.</p>',
+    mergeTags: ['productName', 'productUrl', 'askerName', 'questionBody', 'answerBody', 'shopName', 'hasProductUrl'],
+    // Both carry line breaks somebody typed and both are escaped before they get
+    // here - the question by a stranger, the answer by whoever wrote it.
+    rawTags: ['questionBody', 'answerBody'],
+    transactional: true,
+  },
 ]
 
 /** shp_email_templates.trigger to the key core knows it by. The trigger names

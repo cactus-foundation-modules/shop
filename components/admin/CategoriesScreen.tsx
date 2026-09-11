@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, type CSSProperties, type DragEvent as Rea
 import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { useConfirm, usePrompt, useAlert } from '@/modules/shop/components/admin/dialogs'
 import { MediaPickerModal } from '@/modules/shop/components/admin/MediaPickerModal'
+import { FaqListEditor } from '@/modules/shop/components/admin/FaqListEditor'
+import { EMPTY_FAQ_SET, normaliseFaqSet, type ShpFaqItem, type ShpFaqSet } from '@/modules/shop/lib/faq'
 
 type Category = {
   id: string
@@ -69,6 +71,11 @@ export function CategoriesScreen() {
   const [editShortDescription, setEditShortDescription] = useState('')
   const [editDescription, setEditDescription] = useState('')
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null)
+  // Questions written against each category, keyed by category id - only the
+  // categories that carry any appear. Kept beside the rows rather than on them
+  // because listCategories feeds public pages too; see the categories API.
+  const [categoryFaqs, setCategoryFaqs] = useState<Record<string, ShpFaqSet>>({})
+  const [editFaqs, setEditFaqs] = useState<ShpFaqSet>(EMPTY_FAQ_SET)
   const [pickingImage, setPickingImage] = useState(false)
   const [confirm, confirmNode] = useConfirm()
   const [promptText, promptNode] = usePrompt()
@@ -85,6 +92,7 @@ export function CategoriesScreen() {
       const data = await r.json()
       setCategories(data.categories)
       setCounts(data.productCounts ?? {})
+      setCategoryFaqs(data.categoryFaqs ?? {})
     })
   }
   useEffect(refresh, [])
@@ -176,6 +184,7 @@ export function CategoriesScreen() {
     setEditShortDescription(cat.shortDescription ?? '')
     setEditDescription(cat.description ?? '')
     setEditImageUrl(cat.imageUrl)
+    setEditFaqs(normaliseFaqSet(categoryFaqs[cat.id]))
   }
 
   // One save covers rename, re-parent, display mode and the card content - the
@@ -195,6 +204,7 @@ export function CategoriesScreen() {
         shortDescription: editShortDescription.trim() || null,
         description: editDescription.trim() || null,
         imageUrl: editImageUrl,
+        faqs: editFaqs,
       }),
     })
     if (!res.ok) { await showAlert((await res.json()).error ?? 'Could not save this category.', 'Save failed'); return }
@@ -559,6 +569,15 @@ export function CategoriesScreen() {
                       Designed
                     </span>
                   )}
+                  {(categoryFaqs[cat.id]?.items.length ?? 0) > 0 && (
+                    <span
+                      className="badge badge-default"
+                      style={{ fontSize: '0.6875rem' }}
+                      title="Questions written here, shown on every product in this category and its sub-categories"
+                    >
+                      {categoryFaqs[cat.id]?.items.length} FAQ{categoryFaqs[cat.id]?.items.length === 1 ? '' : 's'}
+                    </span>
+                  )}
                 </span>
                 <span style={{ display: 'flex', gap: '0.125rem', alignItems: 'center', flexShrink: 0 }}>
                   <button onClick={() => move(cat, -1)} disabled={index <= 0} className="btn btn-ghost btn-sm" style={{ padding: '0 0.375rem', opacity: index <= 0 ? 0.35 : 1 }} title="Move up" aria-label={`Move ${cat.name} up`}>↑</button>
@@ -668,6 +687,31 @@ export function CategoriesScreen() {
                           : 'Opens the page builder in a new tab. Anything you build there replaces the plain text above.'}
                       </span>
                     </div>
+                  </div>
+
+                  {/* Questions for the whole range. Every product filed under
+                      this category - and under its sub-categories - shows them,
+                      which is what makes FAQs usable on a catalogue of
+                      thousands: write the office-chair answers once. A product
+                      that asks the same question answers it in its own words
+                      instead. */}
+                  <div style={{ display: 'grid', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
+                      Frequently asked questions (shown on every product in this category and its sub-categories)
+                    </span>
+                    <FaqListEditor
+                      items={editFaqs.items}
+                      onChange={(items: ShpFaqItem[]) => setEditFaqs((f) => ({ ...f, items }))}
+                      emptyNote="No questions written for this range yet. Its products still show the shop-wide ones."
+                    />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={editFaqs.inherit}
+                        onChange={(e) => setEditFaqs((f) => ({ ...f, inherit: e.target.checked }))}
+                      />
+                      Also show the parent category&apos;s and the shop&apos;s questions
+                    </label>
                   </div>
 
                   <div style={{ display: 'flex', gap: '0.5rem' }}>

@@ -221,6 +221,13 @@ CREATE TABLE IF NOT EXISTS "shp_products" (
     "popularity_seed" INTEGER,
     "popularity" INTEGER,
 
+    -- This product's own frequently asked questions (055_product_faqs.sql), as
+    -- { "items": [{ "question", "answer" }], "inherit": bool }. `inherit` false
+    -- means the category's questions and the shop-wide ones are not shown with
+    -- them. NULL is "none written", which is what every product starts as.
+    -- Parsed in exactly one place - lib/faq.ts.
+    "faqs" JSONB,
+
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -299,6 +306,11 @@ CREATE TABLE IF NOT EXISTS "shp_categories" (
     "meta_title" TEXT,
     "meta_description" TEXT,
     "og_image_id" TEXT,
+    -- The whole range's frequently asked questions (055_product_faqs.sql), in
+    -- the same shape as shp_products.faqs. Inherited by every product filed
+    -- under this category and under its sub-categories, unless a nearer level
+    -- says it does not inherit. NULL is "none written".
+    "faqs" JSONB,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

@@ -2,14 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { listCategories, createCategory, getCategoryProductCounts } from '@/modules/shop/lib/db'
+import { getCategoryFaqSets } from '@/modules/shop/lib/db/catalogue'
 import { fileCategoryImage } from '@/modules/shop/lib/media/category-media'
 import { slugify, ensureUniqueCategorySlug } from '@/modules/shop/lib/slug'
 
 export async function GET() {
   const gate = await requireShopUser('shop.products', { allowAccess: true })
   if (gate.error) return gate.error
-  const [categories, productCounts] = await Promise.all([listCategories(), getCategoryProductCounts()])
-  return NextResponse.json({ categories, productCounts })
+  // FAQ sets come alongside rather than on each row: listCategories feeds public
+  // pages too, and none of those print a question (see getCategoryFaqSets).
+  // Only categories that actually carry questions appear in the map.
+  const [categories, productCounts, categoryFaqs] = await Promise.all([
+    listCategories(), getCategoryProductCounts(), getCategoryFaqSets(),
+  ])
+  return NextResponse.json({ categories, productCounts, categoryFaqs })
 }
 
 const Body = z.object({

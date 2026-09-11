@@ -3,6 +3,7 @@
 // source of truth; these types describe the camelCase shape callers see.
 
 import type { TrackingEvent } from '@/modules/shop/lib/tracking/reading'
+import type { ShpFaqSet } from '@/modules/shop/lib/faq'
 
 export type PuckData = { root: { props?: Record<string, unknown> }; content: unknown[]; zones?: Record<string, unknown> }
 
@@ -224,6 +225,12 @@ export type ShpProduct = {
   // better; null means nothing has ranked this product either way.
   popularitySeed: number | null
   popularity: number | null
+  // This product's own frequently asked questions, already parsed out of the
+  // jsonb column (lib/faq.ts). Never null: a product with nothing written reads
+  // as an empty set that inherits its category's questions and the shop-wide
+  // ones. What the product page actually prints is the three levels merged -
+  // see resolveProductFaqs.
+  faqs: ShpFaqSet
   createdAt: Date
   updatedAt: Date
 }
@@ -1245,6 +1252,37 @@ export type ShpBackInStockSubscription = {
   memberId: string | null
   notifiedAt: Date | null
   createdAt: Date
+}
+
+// One question a shopper asked about one product, and the answer they were sent
+// (migration 056). PENDING until somebody reads it; ANSWERED once the email has
+// actually gone; REJECTED for the ones deliberately left unanswered.
+export type ShpProductQuestionStatus = 'PENDING' | 'ANSWERED' | 'REJECTED'
+export type ShpProductQuestion = {
+  id: string
+  productId: string
+  memberId: string | null
+  askerName: string | null
+  askerEmail: string
+  question: string
+  status: ShpProductQuestionStatus
+  /** The answer exactly as it was emailed. Not kept in step with the FAQ entry
+   *  it seeded - that one is the shop's to edit, this one is the record. */
+  answer: string | null
+  answeredAt: Date | null
+  answeredById: string | null
+  answeredByName: string | null
+  /** When the answer went into the product's own FAQs. Null means it did not. */
+  publishedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+// A question with the product it is about, which is the only way the admin queue
+// ever wants one - a list of questions with no product names is unreadable.
+export type ShpProductQuestionWithProduct = ShpProductQuestion & {
+  productName: string
+  productSlug: string
 }
 
 export type ShpImportStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'

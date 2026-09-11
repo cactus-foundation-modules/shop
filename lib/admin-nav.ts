@@ -66,9 +66,31 @@ async function build(
   return tabs
 }
 
-/** Products, Categories, Collections, Tags, plus whatever fills `shop.products-tabs`. */
-export function resolveCatalogueNavTabs(user: SessionUser | null): Promise<ShopNavTab[]> {
-  return build(user, CATALOGUE_BUILT_INS, 'shop.products-tabs', '/m/shop/products')
+/**
+ * Products, Categories, Collections, Tags, plus whatever fills
+ * `shop.products-tabs`.
+ *
+ * Questions is the one tab whose presence turns on a setting rather than a
+ * permission, the way Suppliers does on the Trading strip: a shop that has not
+ * switched "Ask a question" on has no queue to look at, and a tab that is always
+ * empty is a tab that teaches people not to click it. Switching the feature off
+ * takes the tab with it - the questions already asked are still in the table, and
+ * come back with it.
+ */
+export async function resolveCatalogueNavTabs(user: SessionUser | null): Promise<ShopNavTab[]> {
+  const tabs = await build(user, CATALOGUE_BUILT_INS, 'shop.products-tabs', '/m/shop/products')
+  if (!user) return tabs
+
+  const config = await getShopConfigCached()
+  if (!config.productQuestionsEnabled) return tabs
+  if (!(await hasShopPermission(user, 'shop.products', { allowAccess: true }))) return tabs
+
+  // Last of the built-ins, ahead of any contributed tab, so the built-ins stay
+  // together - same placement rule Suppliers follows below.
+  const entry = { key: 'questions', label: 'Questions', path: '/m/shop/questions' }
+  const at = tabs.findIndex((t) => t.key === 'tags')
+  if (at === -1) return [...tabs, entry]
+  return [...tabs.slice(0, at + 1), entry, ...tabs.slice(at + 1)]
 }
 
 /**

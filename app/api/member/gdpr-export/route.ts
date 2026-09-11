@@ -18,7 +18,12 @@ export async function GET(request: NextRequest) {
   const ordersWithItems = await Promise.all(orders.map(async (order) => ({ order, items: await getOrderItems(order.id) })))
   const addresses = await listSavedAddresses(memberId)
   const subscriptions = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_back_in_stock_subscriptions" WHERE "member_id" = ${memberId}`
+  // Questions this member asked on a product page, answers and all. Matched on
+  // member_id only: a question asked while signed out carries an email address
+  // and no account, and guessing that two addresses are the same person is not
+  // this route's call to make.
+  const questions = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_product_questions" WHERE "member_id" = ${memberId}`
   const cart = await getMemberCart(memberId)
 
-  return NextResponse.json({ orders: ordersWithItems, addresses, backInStockSubscriptions: subscriptions, cart })
+  return NextResponse.json({ orders: ordersWithItems, addresses, backInStockSubscriptions: subscriptions, productQuestions: questions, cart })
 }

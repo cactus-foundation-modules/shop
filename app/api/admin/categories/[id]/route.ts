@@ -5,6 +5,7 @@ import { getCategoryById, updateCategory, deleteCategory, categoryReparentWouldC
 import { findMediaDrift } from '@/modules/shop/lib/media/refile'
 import { fileCategoryImage } from '@/modules/shop/lib/media/category-media'
 import { slugify, ensureUniqueCategorySlug } from '@/modules/shop/lib/slug'
+import { FaqSetBodySchema } from '@/modules/shop/lib/faq'
 
 const Body = z.object({
   name: z.string().min(1).optional(),
@@ -20,6 +21,10 @@ const Body = z.object({
   metaTitle: z.string().nullable().optional(),
   metaDescription: z.string().nullable().optional(),
   ogImageId: z.string().nullable().optional(),
+  // The whole range's frequently asked questions, inherited by every product
+  // filed under this category and under its sub-categories. `inherit` false
+  // stops the walk here, so the shop-wide questions are left off the range.
+  faqs: FaqSetBodySchema.nullable().optional(),
   regenerateSlug: z.boolean().optional(),
 })
 

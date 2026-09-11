@@ -1,0 +1,38 @@
+-- ---------------------------------------------------------------------------
+-- 055 - Frequently asked questions, on the product page.
+--
+-- A shop answers the same handful of questions over and over - how long is the
+-- lead time, does it come assembled, can I have it in another fabric - and the
+-- answers were living in nobody's product page and everybody's inbox.
+--
+-- Questions can be written in three places, and a product page shows the lot:
+--
+--   shp_products.faqs
+--       This one product's own questions. Nearest to the shopper, so it wins.
+--
+--   shp_categories.faqs
+--       A whole range's questions, inherited by every product filed under the
+--       category and under its sub-categories. This is the one that makes the
+--       feature usable on a catalogue of thousands: write the office-chair
+--       questions once and every chair carries them.
+--
+--   (and the shop-wide set, which lives in the shop config JSON rather than in
+--    a column of its own - it belongs with the rest of the shop's settings, and
+--    goes into a backup with them.)
+--
+-- Both columns hold the same shape, and it is an object rather than a bare
+-- array so a level can say more than just "here are my questions":
+--
+--   { "items": [ { "question": "...", "answer": "..." } ], "inherit": true }
+--
+-- `inherit` false means "these are the only questions this product/range asks" -
+-- the walk up to the parent category and on to the shop-wide list stops there.
+-- NULL in the column means nothing written, which is what every existing row
+-- has and reads exactly as an empty set that inherits. See lib/faq.ts, which is
+-- the one place the shape is parsed.
+--
+-- No index: these are only ever read by id, alongside the row they hang off.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE "shp_products" ADD COLUMN IF NOT EXISTS "faqs" JSONB;
+ALTER TABLE "shp_categories" ADD COLUMN IF NOT EXISTS "faqs" JSONB;

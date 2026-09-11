@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import type { PuckData, ShpCategory, ShpTag, ShpTagAutoRule, ShpCollection } from '@/modules/shop/lib/types'
+import { normaliseFaqSet, type ShpFaqSet } from '@/modules/shop/lib/faq'
 
 // ---------------------------------------------------------------------------
 // Categories
@@ -83,6 +84,7 @@ export async function updateCategory(id: string, fields: Partial<{
   shortDescription: string | null; descriptionPuck: PuckData | null; imageUrl: string | null
   productDisplayMode: 'rollup' | 'exact' | null
   metaTitle: string | null; metaDescription: string | null; ogImageId: string | null
+  faqs: ShpFaqSet | null
 }>): Promise<void> {
   const sets: Prisma.Sql[] = []
   if (fields.name !== undefined) sets.push(Prisma.sql`"name" = ${fields.name}`)
@@ -102,6 +104,13 @@ export async function updateCategory(id: string, fields: Partial<{
   if (fields.metaTitle !== undefined) sets.push(Prisma.sql`"meta_title" = ${fields.metaTitle}`)
   if (fields.metaDescription !== undefined) sets.push(Prisma.sql`"meta_description" = ${fields.metaDescription}`)
   if (fields.ogImageId !== undefined) sets.push(Prisma.sql`"og_image_id" = ${fields.ogImageId}`)
+  // jsonb again (migration 055), stored on the same terms as a product's: an
+  // empty set that still inherits is NULL, an empty set that does not is a real
+  // answer - "products in this range show no questions at all".
+  if (fields.faqs !== undefined) {
+    const worthKeeping = fields.faqs != null && (fields.faqs.items.length > 0 || !fields.faqs.inherit)
+    sets.push(Prisma.sql`"faqs" = ${worthKeeping ? JSON.stringify(fields.faqs) : null}::jsonb`)
+  }
   if (sets.length === 0) return
   sets.push(Prisma.sql`"updated_at" = CURRENT_TIMESTAMP`)
   await prisma.$executeRaw`UPDATE "shp_categories" SET ${Prisma.join(sets, ', ')} WHERE "id" = ${id}`
@@ -188,6 +197,110 @@ export async function getCategoryAncestorPath(
     SELECT "id", "name", "slug", depth FROM trail ORDER BY depth DESC
   `
   return rows.map((r) => ({ id: r.id, name: r.name, slug: r.slug }))
+}
+
+// Every category that has FAQs written against it, keyed by category id. One
+// small query for the whole admin Categories screen, so the row editor can open
+// on the questions already saved without a fetch of its own - and so the tree
+// can mark which categories carry any.
+//
+// Deliberately NOT folded into listCategories: that projection feeds public
+// category pages and the storefront's category browser, none of which print a
+// question, and every one of which would then be dragging this text across the
+// wire. Same reasoning as description_puck - see CATEGORY_LIST_COLUMNS.
+export async function getCategoryFaqSets(): Promise<Record<string, ShpFaqSet>> {
+  const rows = await prisma.$queryRaw<Array<{ id: string; faqs: unknown }>>`
+    SELECT "id", "faqs" FROM "shp_categories" WHERE "faqs" IS NOT NULL
+  `
+  const sets: Record<string, ShpFaqSet> = {}
+  for (const row of rows) sets[row.id] = normaliseFaqSet(row.faqs)
+  return sets
+}
+
+/**
+ * The FAQ sets a product inherits from its categories, NEAREST FIRST: its own
+ * category, then that category's parent, and on up to the root.
+ *
+ * Which category is "its own": the master category, because that is the one the
+ * owner nominated as where the product really belongs. A product with no master
+ * falls back to the lowest-positioned category it is filed under, so a shop that
+ * has never bothered with masters still gets the range's questions rather than
+ * nothing at all.
+ *
+ * One recursive walk, not one query per ancestor. Returns [] for a product filed
+ * nowhere, and for a category chain with nothing written anywhere along it.
+ *
+ * `client` exists so the live SQL probe can point this at its own throwaway
+ * database - raw SQL is a string to typecheck, eslint and the build alike, so
+ * Postgres running it is the only proof this query parses. See
+ * lib/backup/shop-sql.test.ts, and lib/db/suppliers.ts for the same seam.
+ */
+export async function getProductFaqCategoryChain(
+  productId: string,
+  opts: { client?: { $queryRaw: typeof prisma.$queryRaw } } = {},
+): Promise<ShpFaqSet[]> {
+  const db = opts.client ?? prisma
+  const rows = await db.$queryRaw<Array<{ faqs: unknown; depth: number }>>`
+    WITH RECURSIVE start AS (
+      SELECT COALESCE(
+        p."master_category_id",
+        (
+          SELECT pc."category_id"
+          FROM "shp_product_categories" pc
+          JOIN "shp_categories" c ON c."id" = pc."category_id"
+          WHERE pc."product_id" = p."id"
+          ORDER BY c."position" ASC, c."name" ASC
+          LIMIT 1
+        )
+      ) AS id
+      FROM "shp_products" p
+      WHERE p."id" = ${productId}
+    ),
+    trail AS (
+      SELECT c."id", c."parent_id", c."faqs", 0 AS depth
+      FROM "shp_categories" c
+      JOIN start s ON c."id" = s."id"
+      UNION
+      SELECT c."id", c."parent_id", c."faqs", t.depth + 1
+      FROM "shp_categories" c
+      JOIN trail t ON c."id" = t."parent_id"
+    )
+    SELECT "faqs", depth FROM trail ORDER BY depth ASC
+  `
+  return rows.map((row) => normaliseFaqSet(row.faqs))
+}
+
+/**
+ * The FAQ sets ONE category carries, nearest first: its own, then its parent's,
+ * and on up to the root. The category-page twin of the walk above, rooted at a
+ * slug rather than at a product.
+ *
+ * Kept as a second query rather than folded into the first: the product page
+ * starts from a product id and has to work out which category that means, and
+ * paying for that resolution on a page that already knows its own category would
+ * be a join for nothing.
+ *
+ * Returns [] for a slug that matches nothing. `client` is the live-probe seam,
+ * for the same reason as above - Postgres is the only thing that runs this.
+ */
+export async function getCategoryFaqChainBySlug(
+  slug: string,
+  opts: { client?: { $queryRaw: typeof prisma.$queryRaw } } = {},
+): Promise<ShpFaqSet[]> {
+  const db = opts.client ?? prisma
+  const rows = await db.$queryRaw<Array<{ faqs: unknown; depth: number }>>`
+    WITH RECURSIVE trail AS (
+      SELECT c."id", c."parent_id", c."faqs", 0 AS depth
+      FROM "shp_categories" c
+      WHERE c."slug" = ${slug}
+      UNION
+      SELECT c."id", c."parent_id", c."faqs", t.depth + 1
+      FROM "shp_categories" c
+      JOIN trail t ON c."id" = t."parent_id"
+    )
+    SELECT "faqs", depth FROM trail ORDER BY depth ASC
+  `
+  return rows.map((row) => normaliseFaqSet(row.faqs))
 }
 
 // Would setting newParentId as category id's parent create a cycle? True if the

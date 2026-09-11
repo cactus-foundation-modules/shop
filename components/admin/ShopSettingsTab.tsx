@@ -10,6 +10,7 @@ import { PaymentsSettings, PAYMENT_METHODS_TAB, isHostedPaymentPanelTab } from '
 import { PRICE_TYPES, PRICE_TYPE_META } from '@/modules/shop/lib/pricing'
 import { setTabParams, readTabParam } from '@/modules/shop/lib/admin/tab-url'
 import { DEFAULT_EXCLUDED_POSTCODE_MESSAGE } from '@/modules/shop/lib/excluded-postcode'
+import { FaqListEditor } from '@/modules/shop/components/admin/FaqListEditor'
 
 type SubTab = 'general' | 'checkout' | 'payments' | 'invoices' | 'notifications'
 
@@ -264,6 +265,65 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             </select>
             <span className="field-hint">The default for every category. Any individual category can override this on the Categories screen.</span>
           </div>
+
+          <hr style={hr} />
+          <h3 style={sectionHeading}>Product FAQs</h3>
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.productFaqsEnabled} onChange={(e) => set('productFaqsEnabled', e.target.checked)} />
+            Show frequently asked questions on your shop pages
+          </label>
+          {config.productFaqsEnabled && (
+            <>
+              <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
+                These appear on every product, in their own section on the page with a link in the product&apos;s section
+                strip. A category can add questions of its own for a whole range (Categories screen), and a single
+                product can add or overrule any of them (the product&apos;s FAQs tab). Nearest wins: ask the same question
+                on a product and its answer replaces the one below. Category, collection and tag pages can show questions
+                too, by dropping the <strong>Shop: FAQs</strong> piece into their layout under Editing pages. Unticking
+                the box above takes the lot off every page at once.
+              </p>
+              <FaqListEditor
+                items={config.productFaqs}
+                onChange={(items) => set('productFaqs', items)}
+                emptyNote="No shop-wide questions yet. Nothing appears on a product page until a question here, on its category, or on the product itself has both a question and an answer."
+              />
+              <div style={{ marginBottom: 'var(--form-gap)' }} />
+
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={config.productQuestionsEnabled} onChange={(e) => set('productQuestionsEnabled', e.target.checked)} />
+                Let shoppers ask a question of their own
+              </label>
+              {config.productQuestionsEnabled && (
+                <>
+                  <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
+                    Puts a button under the questions on every product page. The shopper leaves an email address, the
+                    question lands under Catalogue &rarr; Questions, and answering it emails them back <em>and</em> adds
+                    the question and your answer to that product&apos;s own FAQs - so the next shopper never has to ask.
+                    An answer you would rather not keep on the page comes off again on the product&apos;s FAQs tab.
+                  </p>
+                  <div className="field">
+                    <label>What the button says</label>
+                    <input value={config.productQuestionsButtonLabel} onChange={(e) => set('productQuestionsButtonLabel', e.target.value)} />
+                  </div>
+                  <div className="field">
+                    <label>The line above the form</label>
+                    <input value={config.productQuestionsIntro} onChange={(e) => set('productQuestionsIntro', e.target.value)} />
+                    <span className="field-hint">This is the place to say how long an answer usually takes.</span>
+                  </div>
+                  <div className="field">
+                    <label>What they are told once it is sent</label>
+                    <input value={config.productQuestionsThanks} onChange={(e) => set('productQuestionsThanks', e.target.value)} />
+                  </div>
+                  <div className="field">
+                    <label>Email a question to</label>
+                    <input type="email" value={config.productQuestionsNotifyEmail} onChange={(e) => set('productQuestionsNotifyEmail', e.target.value)} placeholder="sales@example.com" />
+                    <span className="field-hint">Left empty, nothing is sent and the questions wait on the Questions screen.</span>
+                  </div>
+                  <div style={{ marginBottom: 'var(--form-gap)' }} />
+                </>
+              )}
+            </>
+          )}
 
           <hr style={hr} />
           <h3 style={sectionHeading}>Out of stock products</h3>

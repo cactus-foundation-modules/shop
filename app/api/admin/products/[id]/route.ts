@@ -10,6 +10,7 @@ import {
 import { slugify, ensureUniqueProductSlug } from '@/modules/shop/lib/slug'
 import { maybeTriggerBackInStock } from '@/modules/shop/lib/back-in-stock-trigger'
 import { reorganiseProductMedia } from '@/modules/shop/lib/media/product-media'
+import { FaqSetBodySchema } from '@/modules/shop/lib/faq'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireShopUser('shop.products', { allowAccess: true })
@@ -70,6 +71,10 @@ const Body = z.object({
   metaTitle: z.string().nullable().optional(),
   metaDescription: z.string().nullable().optional(),
   ogImageId: z.string().nullable().optional(),
+  // This product's own frequently asked questions, and whether the category's
+  // and the shop-wide ones are shown with them. Blank rows are dropped and an
+  // emptied set is stored as nothing at all - see lib/faq.ts and updateProduct.
+  faqs: FaqSetBodySchema.nullable().optional(),
   isPreOrder: z.boolean().optional(),
   preOrderDispatchDate: z.coerce.date().nullable().optional(),
   preOrderNote: z.string().nullable().optional(),

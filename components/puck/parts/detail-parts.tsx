@@ -12,6 +12,8 @@ import { formatMoney } from '@/modules/shop/lib/money'
 // commerce-mode-shared, not commerce-mode: these parts land in the page
 // builder's client bundle, and the resolver reaches prisma.
 import { commerceModeButtonLabel } from '@/modules/shop/lib/commerce-mode-shared'
+import { FaqAccordion } from '@/modules/shop/components/public/FaqAccordion'
+import { AskProductQuestion } from '@/modules/shop/components/public/AskProductQuestion'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 import type { CardBadge, DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { SiteColourField } from '@/lib/puck/SiteColourField'
@@ -1306,10 +1308,13 @@ export const tabsCss = ({ mobileBp }: Breakpoints) => `
 .spd-section{padding:20px 0 8px;border-top:1px solid var(--color-border);scroll-margin-top:calc(var(--spd-header-h,72px) + var(--spd-tabnav-h,0px) + 16px)}
 .spd-section:first-child{border-top:none}
 .spd-acc{border-top:1px solid var(--color-border);scroll-margin-top:calc(var(--spd-header-h,72px) + var(--spd-tabnav-h,0px) + 16px)}
-.spd-acc summary{cursor:pointer;list-style:none;padding:16px 0;font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:20px;color:var(--color-fg);display:flex;align-items:center;justify-content:space-between;gap:12px}
-.spd-acc summary::-webkit-details-marker{display:none}
-.spd-acc summary::after{content:'+';font-size:22px;line-height:1;color:var(--color-text-muted);flex:none}
-.spd-acc[open] summary::after{content:'\\2212'}
+/* Direct child only: a section body can itself hold a <details> (the FAQs
+   section does), and a descendant selector here dressed every question in the
+   section heading's serif and gave it a second +/- marker. */
+.spd-acc > summary{cursor:pointer;list-style:none;padding:16px 0;font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:20px;color:var(--color-fg);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.spd-acc > summary::-webkit-details-marker{display:none}
+.spd-acc > summary::after{content:'+';font-size:22px;line-height:1;color:var(--color-text-muted);flex:none}
+.spd-acc[open] > summary::after{content:'\\2212'}
 .spd-acc-body{padding:0 0 16px}
 .spd-tabs h3{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:24px;margin:0 0 14px;color:var(--color-fg)}
 .spd-tabs p{color:var(--color-text-muted);margin:0 0 14px;white-space:pre-wrap}
@@ -1320,6 +1325,13 @@ export const tabsCss = ({ mobileBp }: Breakpoints) => `
    turned bullet text a shade lighter than the paragraphs beside it. Hand the
    rich text its own values back wherever it lands in a tab body. */
 .spd-tabs .puck-richtext p{color:var(--color-fg-secondary);margin:0 0 1em;white-space:normal}
+/* FAQs section: a plain <details> list, no client JS, dressed to match the FAQ
+   (SEO) block so a page carrying both reads as one design. The paragraph rule
+   needs the extra class to outrank the muted .spd-tabs p rule above it - an answer
+   is body copy, not a caption. */
+.spd-faq{border-bottom:1px solid var(--color-border);padding:12px 0}
+.spd-faq > summary{cursor:pointer;font-weight:600;color:var(--color-fg)}
+.spd-tabs .spd-faq p{margin:8px 0 0;color:var(--color-text)}
 /* Standalone "Section links" block: the same nav strip, on its own, so it can
    sit above the image while the sections stay below. Links jump to the section
    anchors the Sections block renders in stacked/accordion mode. */
@@ -1377,7 +1389,7 @@ const TYPE_LABEL: Record<ShpProduct['type'], string> = {
 // `shop.product-detail-tabs` can be dropped among them rather than only after
 // them. Spaced by tens for the obvious reason. See lib/detail-tabs.ts - a
 // provider that names no order lands after this lot.
-const TAB_ORDER = { desc: 10, spec: 20, dims: 30, downloads: 40 } as const
+const TAB_ORDER = { desc: 10, spec: 20, dims: 30, faq: 35, downloads: 40 } as const
 
 type OrderedTab = ProductTab & { order: number }
 
@@ -1466,6 +1478,41 @@ function buildDetailSections(ctx: DetailPartContext, opts?: { specAutoSort?: boo
   // every page built before the option is untouched.
   if (dimRows.length > 0 && !opts?.hideDims) {
     own.push({ id: 'dims', order: TAB_ORDER.dims, label: 'Dimensions', content: <FactsTable rows={dimRows} /> })
+  }
+  // The questions this product answers, already merged from the product, its
+  // categories and the shop-wide list by the RSC block (lib/faq.ts), and the
+  // form for asking one it does not answer.
+  //
+  // No questions AND no way to ask one means no section at all - and no link in
+  // the nav strip either, since the strip is built from this same list. A shop
+  // that has switched asking on gets the section on every product, empty list
+  // and all: the product with nothing written about it is the one a shopper most
+  // needs to be able to ask about.
+  if (ctx.faqs.length > 0 || ctx.askQuestion) {
+    own.push({
+      id: 'faq',
+      order: TAB_ORDER.faq,
+      label: 'FAQs',
+      content: (
+        <>
+          {/* Markup shared with the category-page block; the styling is this
+              page's own (.spd-faq in tabsCss), because it is dressed inside
+              .spd-tabs. Skipped entirely when there is nothing to list, so an
+              empty section carries no stray FAQPage structured data. */}
+          {ctx.faqs.length > 0 && (
+            <FaqAccordion items={ctx.faqs} wrapperClassName="spd-faqs" itemClassName="spd-faq" />
+          )}
+          {ctx.askQuestion && (
+            <AskProductQuestion
+              productId={product.id}
+              buttonLabel={ctx.askQuestion.buttonLabel}
+              intro={ctx.askQuestion.intro}
+              thanks={ctx.askQuestion.thanks}
+            />
+          )}
+        </>
+      ),
+    })
   }
   if (digitalFile) {
     const ext = (digitalFile.filename.split('.').pop() ?? 'FILE').toUpperCase().slice(0, 4)
@@ -1570,7 +1617,7 @@ function navBgVars(bgColour: unknown, bgOpacity: unknown): CSSProperties | undef
 // match (span here, <a> there, as the standalone Section links block also does).
 export function ShopDetailTabs(props: TabsProps) {
   const divider = props.divider !== 'no'
-  const labels = ['Description', 'Specification', ...(props.dimsTab === 'no' ? [] : ['Dimensions'])]
+  const labels = ['Description', 'Specification', ...(props.dimsTab === 'no' ? [] : ['Dimensions']), 'FAQs']
   // Mirror the storefront island's markup: the nav sits inside a .spd-tab-shell
   // (which carries sticky and, live, the fade/arrow overlay). The editor preview
   // is static, so no overlay renders - the wrapper only keeps the DOM in parity.
@@ -1686,7 +1733,7 @@ type SectionsProps = { _ctx?: DetailPartContext; display?: string; divider?: str
 
 export function ShopDetailSections(props: SectionsProps) {
   const divider = props.divider !== 'no'
-  const labels = ['Description', 'Specification', ...(props.dimsTab === 'no' ? [] : ['Dimensions'])]
+  const labels = ['Description', 'Specification', ...(props.dimsTab === 'no' ? [] : ['Dimensions']), 'FAQs']
   return (
     <>
       <Style css={tabsCss(DEFAULT_BREAKPOINTS)} />
@@ -1782,7 +1829,7 @@ export const shopDetailSectionsPuckRscComponent = { ...shopDetailSectionsPuckCom
 type SectionNavProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; dimsTab?: string }
 
 export function ShopDetailSectionNav(props: SectionNavProps) {
-  const labels = ['Description', 'Specification', ...(props.dimsTab === 'no' ? [] : ['Dimensions'])]
+  const labels = ['Description', 'Specification', ...(props.dimsTab === 'no' ? [] : ['Dimensions']), 'FAQs']
   return (
     <>
       <Style css={tabsCss(DEFAULT_BREAKPOINTS)} />

@@ -16,6 +16,8 @@ import { injectShopProductDetailEmbed } from '@/modules/shop/lib/inject-part-con
 import { resolveShopDetailProvider, narrowShopDetailSlot, coveredByLayoutBlocks, collectLayoutBlockTypes } from '@/modules/shop/lib/detail-slot'
 import { resolveShopDetailTabs } from '@/modules/shop/lib/detail-tabs'
 import { resolveShopDetailSpec } from '@/modules/shop/lib/detail-spec'
+import { getProductFaqCategoryChain } from '@/modules/shop/lib/db/catalogue'
+import { normaliseFaqItems, resolveProductFaqs } from '@/modules/shop/lib/faq'
 import { resolveShopGalleryExtras } from '@/modules/shop/lib/gallery-media'
 import { stripHtmlToPlainText } from '@/modules/shop/lib/strip-html'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
@@ -104,6 +106,33 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
 
   const digitalFile =
     product.type === 'DIGITAL' && product.digitalFileId ? await getDigitalFileById(product.digitalFileId) : null
+
+  // The product's FAQs section: its own questions, its category's (and its
+  // category's parents'), and the shop-wide ones, merged nearest-first by
+  // lib/faq.ts. The walk up the category tree is the only query this costs, and
+  // it is skipped entirely on a shop with the feature off and on any product
+  // that has said it inherits nothing - so a shop that never writes a question
+  // pays for none of it.
+  const faqs = config.productFaqsEnabled
+    ? resolveProductFaqs({
+        product: product.faqs,
+        categories: product.faqs.inherit ? await getProductFaqCategoryChain(product.id) : [],
+        shopWide: normaliseFaqItems(config.productFaqs),
+      })
+    : []
+
+  // The "Ask a question" form that sits under them. Independent of whether this
+  // product has any questions yet - a product nobody has written a FAQ for is
+  // exactly the one a shopper needs to ask about - but it does ride on the FAQs
+  // feature being on at all, since the section it appears in is that feature's.
+  const askQuestion =
+    config.productFaqsEnabled && config.productQuestionsEnabled
+      ? {
+          buttonLabel: config.productQuestionsButtonLabel,
+          intro: config.productQuestionsIntro,
+          thanks: config.productQuestionsThanks,
+        }
+      : null
 
   // ONE supplier read, serving both the badge above the title and the order-size
   // deduction line under the price. Skipped entirely unless something on the page
@@ -303,6 +332,8 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     galleryExtras,
     detailTabs,
     specOverride,
+    faqs,
+    askQuestion,
     descriptionBody,
     adminEditHref,
     showAdminStock,

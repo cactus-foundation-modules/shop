@@ -7,6 +7,7 @@
 
 import { returnsPolicy, type ReturnsPolicy } from '@/modules/shop/lib/returnable'
 import type { ShpPriceType } from '@/modules/shop/lib/pricing'
+import { normaliseFaqSet, type ShpFaqSet } from '@/modules/shop/lib/faq'
 import type { PuckData } from '@/modules/shop/lib/types'
 
 export type ProductStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
@@ -97,6 +98,11 @@ export type EditorState = {
   // box is in charge; a Puck doc (even empty) switches the Details tab to the
   // page builder and, when it has content, wins on the storefront.
   descriptionPuck: PuckData | null
+  // The product's own frequently asked questions, and whether the category's and
+  // the shop-wide ones are shown with them. Held here rather than on ProductForm
+  // for the same reason descriptionPuck is: every ProductForm value is a string
+  // or a boolean, and this is neither.
+  faqs: ShpFaqSet
   media: MediaItem[]
   categoryIds: string[]
   tagIds: string[]
@@ -210,6 +216,7 @@ export function toEditorState(payload: ProductPayload): EditorState {
       partsOnly: bool(p.partsOnly),
     },
     descriptionPuck: (p.descriptionPuck as PuckData | null) ?? null,
+    faqs: normaliseFaqSet(p.faqs),
     media: payload.media.map((m) => ({ type: m.type as MediaItem['type'], url: m.url, altText: m.altText, isPrimary: m.isPrimary })),
     categoryIds: payload.categoryIds,
     tagIds: payload.tagIds,
@@ -243,6 +250,10 @@ export function toProductBody(s: EditorState): Record<string, unknown> {
     description: nullable(f.description),
     // Send the Puck doc verbatim, or null to clear the design back to plain text.
     descriptionPuck: s.descriptionPuck,
+    // Sent every save so a question deleted in the editor is actually deleted.
+    // Blank rows are dropped and an emptied, still-inheriting set is stored as
+    // nothing at all - both in the data layer, so every writer agrees.
+    faqs: s.faqs,
     shortDescription: nullable(f.shortDescription),
     sku: nullable(f.sku),
     saleSku: nullable(f.saleSku),
@@ -311,6 +322,7 @@ export const SHOP_TAB_ORDER = {
   pricing: 30,
   stock: 40,
   digital: 45,
+  faq: 50,
   organisation: 60,
   recommendations: 70,
   seo: 80,
@@ -333,6 +345,8 @@ const TAB_FIELDS: Record<ShopTabId, ReadonlyArray<keyof ProductForm>> = {
   organisation: ['masterCategoryId', 'featuredHidden', 'partsOnly'],
   recommendations: ['relatedMode', 'relatedLimit', 'upsellMode', 'upsellLimit'],
   seo: ['metaTitle', 'metaDescription', 'regenerateSlug'],
+  // Its whole slice is non-form - see TAB_EXTRAS below.
+  faq: [],
 }
 
 /** The non-form slices each tab owns. */
@@ -341,6 +355,7 @@ const TAB_EXTRAS: Partial<Record<ShopTabId, (s: EditorState) => unknown>> = {
   media: (s) => s.media,
   organisation: (s) => [s.categoryIds, s.tagIds, s.collectionIds],
   recommendations: (s) => [s.related, s.upsells, s.excluded],
+  faq: (s) => s.faqs,
 }
 
 export function isTabDirty(tab: ShopTabId, current: EditorState, baseline: EditorState): boolean {

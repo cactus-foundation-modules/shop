@@ -2,6 +2,7 @@ import { cache } from 'react'
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import { notifyProductSaved } from '@/modules/shop/lib/product-saved'
+import { normaliseFaqSet, type ShpFaqSet } from '@/modules/shop/lib/faq'
 import type { PuckData, ShpProduct, ShpProductMedia, ShpProductStatus, ShpProductType } from '@/modules/shop/lib/types'
 
 function mapProduct(r: Record<string, unknown>): ShpProduct {
@@ -66,6 +67,11 @@ function mapProduct(r: Record<string, unknown>): ShpProduct {
     featuredHidden: (r.featured_hidden as boolean | null) ?? false,
     popularitySeed: (r.popularity_seed as number | null) ?? null,
     popularity: (r.popularity as number | null) ?? null,
+    // Migration 055. Parsed rather than cast: the column is free-form jsonb, and
+    // a set written by an older editor (or by hand) must read as "no questions"
+    // rather than take the product page down. Absent from a query shape cached
+    // before the column existed, which normaliseFaqSet also reads as empty.
+    faqs: normaliseFaqSet(r.faqs),
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
   }
@@ -660,11 +666,15 @@ export type UpdateProductInput = Partial<{
   catalogueHidden: boolean
   partsOnly: boolean
   featuredHidden: boolean
+  // jsonb, like descriptionPuck - written by its own fragment in updateProduct,
+  // not through COLUMN_MAP. Null clears the product's questions entirely.
+  faqs: ShpFaqSet | null
 }>
 
-// descriptionPuck is jsonb and needs an explicit ::jsonb cast, so it is set by a
-// dedicated fragment in updateProduct rather than the generic assignment below.
-const COLUMN_MAP: Record<Exclude<keyof UpdateProductInput, 'descriptionPuck'>, string> = {
+// descriptionPuck and faqs are jsonb and need an explicit ::jsonb cast, so they
+// are set by dedicated fragments in updateProduct rather than the generic
+// assignment below.
+const COLUMN_MAP: Record<Exclude<keyof UpdateProductInput, 'descriptionPuck' | 'faqs'>, string> = {
   name: 'name', slug: 'slug', status: 'status', description: 'description', shortDescription: 'short_description',
   sku: 'sku', saleSku: 'sale_sku', supplierSku: 'supplier_sku', barcode: 'barcode', supplier: 'supplier', price: 'price', salePrice: 'sale_price', retailPrice: 'retail_price', tradePrice: 'trade_price', costPrice: 'cost_price',
   taxClassId: 'tax_class_id', trackInventory: 'track_inventory', stockCount: 'stock_count',
@@ -692,8 +702,18 @@ export async function updateProduct(id: string, fields: UpdateProductInput): Pro
     sets.push(Prisma.sql`"description_puck" = ${fields.descriptionPuck ? JSON.stringify(fields.descriptionPuck) : null}::jsonb`)
     written.push('descriptionPuck')
   }
+  // Same treatment, same reason. An empty set that still inherits is stored as
+  // NULL rather than as an empty object - "nothing written" and "written, then
+  // emptied" behave identically, so only one of them is worth keeping. An empty
+  // set that does NOT inherit is a real answer, though ("this product shows no
+  // questions at all, whatever its category says"), so that one is kept.
+  if (fields.faqs !== undefined) {
+    const worthKeeping = fields.faqs != null && (fields.faqs.items.length > 0 || !fields.faqs.inherit)
+    sets.push(Prisma.sql`"faqs" = ${worthKeeping ? JSON.stringify(fields.faqs) : null}::jsonb`)
+    written.push('faqs')
+  }
   for (const key of Object.keys(fields) as (keyof UpdateProductInput)[]) {
-    if (key === 'descriptionPuck') continue
+    if (key === 'descriptionPuck' || key === 'faqs') continue
     const value = fields[key]
     if (value === undefined) continue
     const column = COLUMN_MAP[key]

@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.417",
+  "version": "0.1.419",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1565",
@@ -93,6 +93,7 @@
     "shp_member_carts",
     "shp_email_templates",
     "shp_back_in_stock_subscriptions",
+    "shp_product_questions",
     "shp_import_jobs",
     "shp_related_products",
     "shp_upsell_products",
@@ -365,6 +366,18 @@
       "rscImport": "./components/puck/ShopCategoryDescription.rsc",
       "layoutTypes": [
         "shopCategory"
+      ]
+    },
+    {
+      "type": "ShopCategoryFaqs",
+      "import": "./components/puck/ShopCategoryFaqs",
+      "component": "shopCategoryFaqsPuckComponent",
+      "rscComponent": "shopCategoryFaqsPuckRscComponent",
+      "rscImport": "./components/puck/ShopCategoryFaqs.rsc",
+      "layoutTypes": [
+        "shopCategory",
+        "shopCollection",
+        "shopTag"
       ]
     },
     {

@@ -326,6 +326,52 @@ export const ShpConfigSchema = z.object({
   // can override this via its own product_display_mode.
   categoryProductDisplayMode: z.enum(['rollup', 'exact']).default('rollup'),
 
+  // Frequently asked questions on the product page (migration 055, lib/faq.ts).
+  //
+  // The switch gates the whole feature, the lookup included: with it off a
+  // product page asks the database nothing about questions and renders no
+  // section, and the Shop: FAQs block on a category/collection/tag layout renders
+  // nothing either - exactly what every shop did before this existed. On is the
+  // default because nothing appears until somebody has actually written a
+  // question, so switching it on costs a shop with none precisely nothing on
+  // screen.
+  productFaqsEnabled: z.boolean().default(true),
+  // The shop-wide questions, shown on every product that has not said otherwise.
+  // Furthest from the shopper, so a category's or a product's answer to the same
+  // question replaces this one - see resolveProductFaqs.
+  // `.catch` rather than a bare default: this column is parsed on every read of
+  // the shop config, and a malformed list must cost the shop its FAQs, not its
+  // whole configuration.
+  productFaqs: z.array(z.object({ question: z.string(), answer: z.string() })).catch([]).default([]),
+
+  // "Ask a question" on the product page (migration 056). The other half of the
+  // FAQs above: the questions nobody at the shop thought to write down.
+  //
+  // Off by default, and deliberately so. Every setting above changes how
+  // something already on the page looks; this one puts a new button on every
+  // product in the catalogue and opens a route that strangers can post to. A
+  // shop updating to this version must choose that, not discover it.
+  productQuestionsEnabled: z.boolean().default(false),
+  // What the button says. Short, because it sits under the questions in the
+  // FAQs section and is not the page's main action.
+  productQuestionsButtonLabel: z.string().default('Ask a question'),
+  // The line above the form, once the button is pressed. This is where a shop
+  // sets expectations about how long an answer takes - the one thing the form
+  // itself cannot say.
+  productQuestionsIntro: z
+    .string()
+    .default('Ask us anything about this product and we will email you the answer.'),
+  // What the shopper is told once it is in. No "we will reply within X" in the
+  // default: nobody here knows what X is for a given shop.
+  productQuestionsThanks: z
+    .string()
+    .default('Thank you - your question is with us and we will email you the answer.'),
+  // Where to send the "a question has arrived" note. Empty sends none, which is
+  // also what happens on a site with no email provider configured. Nothing here
+  // gates the question being SAVED: a notification that could not go out must
+  // never turn a shopper's question into an error they are asked to retry.
+  productQuestionsNotifyEmail: z.string().default(''),
+
   // What the storefront does with a product that has sold out. One decision at
   // three depths, and 'SHOW' is what the shop has always done: the product stays
   // in the grid wearing its "Out of stock" badge, which suits a shop whose stock

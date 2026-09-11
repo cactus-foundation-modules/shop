@@ -8,6 +8,7 @@ import type { CardFact, CardOverlay } from '@/modules/shop/lib/card-media'
 import type { PriceView } from '@/modules/shop/lib/pricing'
 import type { ResolvedShopCommerceMode } from '@/modules/shop/lib/commerce-mode-shared'
 import type { OrderSizeDeductionLineView } from '@/modules/shop/lib/order-size-deduction'
+import type { ShpFaqItem } from '@/modules/shop/lib/faq'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 
 // Shared context passed to the shop's part-blocks (the small draggable pieces
@@ -157,6 +158,22 @@ export type DetailPartContext = {
   // renders shop's own facts table unchanged. Resolved once here for the same
   // reason as the rest: buildDetailSections runs synchronously.
   specOverride: ShopDetailSpecExtra | null
+  // The questions this product's FAQs section prints, in order: its own, then
+  // its category's (and its category's parents'), then the shop-wide ones, with
+  // the nearer answer winning wherever the same question is asked twice. Merged
+  // once here by lib/faq.ts because buildDetailSections runs synchronously and
+  // the walk up the category tree is a query. Empty on a shop with the feature
+  // switched off and on every product nobody has written a question for, where
+  // no FAQs section and no nav link appear at all.
+  faqs: ShpFaqItem[]
+  // The "Ask a question" form under those questions, or null on a shop that has
+  // not switched it on. Carries its own wording because the strings are shop
+  // settings and buildDetailSections runs nowhere near the config.
+  //
+  // Not gated on `faqs` being empty, and that is the point: the FAQs section
+  // appears whenever asking is on, so a product nobody has written a question
+  // for can still be asked about.
+  askQuestion: { buttonLabel: string; intro: string; thanks: string } | null
   // The product's opt-in designed description, already rendered from its Puck
   // doc (shp_products.description_puck) by the RSC block. Null when the product
   // has no designed body, where the Description tab falls back to the plain-text

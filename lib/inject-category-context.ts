@@ -1,6 +1,6 @@
 import type { PuckData } from '@/modules/shop/lib/types'
 
-const CATEGORY_CONTEXT_BLOCKS = new Set(['ShopCategoryHeader', 'ShopCategoryDescription', 'ShopProductGrid'])
+const CATEGORY_CONTEXT_BLOCKS = new Set(['ShopCategoryHeader', 'ShopCategoryDescription', 'ShopCategoryFaqs', 'ShopProductGrid'])
 
 type CategoryContext = {
   /** Which page of a paged grid to render, from `?page=` (1 unless asked). */

@@ -20,6 +20,7 @@ import {
 } from '@/modules/shop/components/admin/product-editor/model'
 import { DetailsPanel } from '@/modules/shop/components/admin/product-editor/panels/details'
 import { DigitalPanel } from '@/modules/shop/components/admin/product-editor/panels/digital'
+import { FaqPanel } from '@/modules/shop/components/admin/product-editor/panels/faq'
 import { MediaPanel } from '@/modules/shop/components/admin/product-editor/panels/media'
 import { OrganisationPanel } from '@/modules/shop/components/admin/product-editor/panels/organisation'
 import { PricingPanel } from '@/modules/shop/components/admin/product-editor/panels/pricing'
@@ -428,6 +429,7 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
       { id: 'pricing', label: 'Pricing', order: SHOP_TAB_ORDER.pricing, render: () => <PricingPanel {...panelProps} taxClasses={taxClasses} /> },
       { id: 'stock', label: 'Stock & delivery', order: SHOP_TAB_ORDER.stock, render: () => <StockPanel {...panelProps} /> },
       { id: 'organisation', label: 'Organisation', order: SHOP_TAB_ORDER.organisation, render: () => <OrganisationPanel {...panelProps} categories={categories} tags={tags} collections={collections} createTag={createTag} /> },
+      { id: 'faq', label: 'FAQs', order: SHOP_TAB_ORDER.faq, render: () => <FaqPanel {...panelProps} /> },
       { id: 'recommendations', label: 'Recommendations', order: SHOP_TAB_ORDER.recommendations, render: () => <RecommendationsPanel {...panelProps} productId={productId} /> },
       { id: 'seo', label: 'Search', order: SHOP_TAB_ORDER.seo, render: () => <SeoPanel {...panelProps} siteUrl={siteUrl} productUrlStyle={productUrlStyle} /> },
     ]
