@@ -191,11 +191,13 @@ export async function GET(request: NextRequest) {
 
   // How this order's updates are being sent, so the confirmation page can offer
   // the choice with the current answer already in it. `smsAvailable` is false on
-  // any site with no SMS provider set up, which is what hides the whole thing.
-  const [notifyChannels, smsAvailable] = await Promise.all([
+  // any site with no SMS provider set up, or where the owner has switched texts
+  // off in Shop settings - either one hides the whole thing.
+  const [notifyChannels, smsProviderReady] = await Promise.all([
     getOrderNotifyChannels(order),
     isSmsAvailable(),
   ])
+  const smsAvailable = smsProviderReady && config.smsUpdatesEnabled
 
   // Deliberately NOT the whole order row. This used to spread `SELECT *` out to
   // anyone holding an order number and an email address, which handed over the

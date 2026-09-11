@@ -107,6 +107,13 @@ export const ShpConfigSchema = z.object({
   // a sentence rather than an empty refusal.
   excludedPostcodeMessage: z.string().default(''),
   requirePhone: z.boolean().default(false),
+  // Whether the confirmation page offers text updates at all. Independent of
+  // whether the site can actually send one (a module-contributed SMS provider
+  // still has to be configured - see lib/sms/send.ts) - this is the owner's own
+  // "no, don't bother" on top of that, without having to disconnect Twilio and
+  // lose SMS login codes elsewhere on the site. Defaults on: a shop already
+  // getting texts before this setting existed keeps getting them after.
+  smsUpdatesEnabled: z.boolean().default(true),
   checkoutSteps: z.array(CheckoutStepSchema).default(DEFAULT_CHECKOUT_STEPS),
 
   // Organisation name at checkout. Off by default: a shop selling to the public

@@ -136,6 +136,7 @@ export async function notifyOrderCustomer(
 
   const smsKey = SHOP_TRIGGER_TO_SMS_KEY[trigger]
   if (!channels.sms || !smsKey || !channels.phone) return
+  if (!config.smsUpdatesEnabled) return
   if (!(await isSmsAvailable())) return
 
   await sendSmsTemplate(channels.phone, smsKey, withTracking)

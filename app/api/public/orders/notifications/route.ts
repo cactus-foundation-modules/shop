@@ -7,6 +7,7 @@ import { mayOpenReceipt } from '@/modules/shop/lib/order-viewer'
 import { isValidUkPhone, normaliseStoredPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
 import { setOrderNotifyChannels, smsCapableNumber } from '@/modules/shop/lib/order-notify'
 import { isSmsAvailable } from '@/lib/sms/send'
+import { getShopConfigCached } from '@/modules/shop/lib/config'
 
 // "How would you like updates about this order?" on the confirmation page.
 //
@@ -65,7 +66,8 @@ export async function POST(request: NextRequest) {
   const storedPhone = typed ? normaliseStoredPhone(typed) : order.notifyPhone ?? order.customerPhone
 
   if (channels.sms) {
-    if (!(await isSmsAvailable())) {
+    const [smsProviderReady, config] = await Promise.all([isSmsAvailable(), getShopConfigCached()])
+    if (!smsProviderReady || !config.smsUpdatesEnabled) {
       return NextResponse.json({ error: 'Text updates are not available on this shop.' }, { status: 503 })
     }
     if (!smsCapableNumber(storedPhone)) {

@@ -486,6 +486,15 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             <input type="checkbox" checked={config.requirePhone} onChange={(e) => set('requirePhone', e.target.checked)} />
             Require a phone number at checkout
           </label>
+          <label style={checkboxRow}>
+            <input type="checkbox" checked={config.smsUpdatesEnabled} onChange={(e) => set('smsUpdatesEnabled', e.target.checked)} />
+            Offer text message updates on the confirmation page
+          </label>
+          <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
+            Switch off and every customer gets order updates by email only - the choice itself disappears from the
+            confirmation page, and nothing already sent a text carries on doing so. This only hides the choice; it
+            has no bearing on whether the shop can send a text at all, which is set up separately under Twilio.
+          </p>
 
           <hr style={hr} />
           <h3 style={sectionHeading}>Order history</h3>
