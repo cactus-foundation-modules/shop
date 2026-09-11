@@ -11,6 +11,7 @@ import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { shopRelatedProductsPuckComponent, type ShopRelatedProductsProps } from './ShopRelatedProducts'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
+import { SharedStyle } from '@/components/SharedStyle'
 
 // Server (RSC) half of Shop: Related Products. Kept out of the client editor
 // bundle - see ShopRelatedProducts.tsx.
@@ -56,7 +57,7 @@ export async function ShopRelatedProductsRsc(props: ShopRelatedProductsProps) {
 
   return (
     <section>
-      <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
+      <SharedStyle id="shop-cards" css={shopCardCss(bp)} />
       <div className="shop-sec-head">
         <h2>{props.heading || 'Completes the setup'}</h2>
         {props.subheading && <span>{props.subheading}</span>}

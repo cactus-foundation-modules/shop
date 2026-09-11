@@ -15,6 +15,12 @@ export async function shopMediaUsageProvider(): Promise<string[]> {
   const rows = await prisma.$queryRaw<{ ref: string | null }[]>`
     SELECT "url" AS ref FROM "shp_product_media"
     UNION ALL
+    -- The small copy a card and the thumbnail strip are drawn from. Nothing else
+    -- in the shop points at it, so without this every one of them reads as spare
+    -- and the library offers the lot up for deletion - which would take the
+    -- catalogue's card pictures with it.
+    SELECT "thumb_url" AS ref FROM "shp_product_media" WHERE "thumb_url" IS NOT NULL
+    UNION ALL
     SELECT "url" AS ref FROM "shp_digital_files"
     UNION ALL
     SELECT "og_image_id" AS ref FROM "shp_products" WHERE "og_image_id" IS NOT NULL
@@ -49,6 +55,18 @@ export async function shopMediaUsageProvider(): Promise<string[]> {
     SELECT "url" AS ref FROM "shp_order_request_photos"
     UNION ALL
     SELECT "media_id" AS ref FROM "shp_order_request_photos" WHERE "media_id" IS NOT NULL
+    UNION ALL
+    -- The shop's own copy of a courier's proof of delivery. It is a library item
+    -- like any other (see lib/tracking/signature-capture.ts), so it would show in
+    -- the "Unused" tile the moment it was filed - nothing in core can see the
+    -- shipment row that points at it. Worse, before it was a library item at all
+    -- the storage check read the object as an orphan and it was deleted: the one
+    -- picture whose whole job is to exist on the day there is an argument.
+    -- Both columns, because the url is what renders and the key is what storage
+    -- is reconciled against.
+    SELECT "signature_url" AS ref FROM "shp_shipments" WHERE "signature_url" IS NOT NULL
+    UNION ALL
+    SELECT "signature_key" AS ref FROM "shp_shipments" WHERE "signature_key" IS NOT NULL
   `
   return rows.map((r) => r.ref).filter((r): r is string => !!r)
 }

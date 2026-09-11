@@ -23,6 +23,13 @@ export async function shopMediaReferenceRewriter(change: MediaReferenceChange): 
   await prisma.$executeRaw`
     UPDATE "shp_product_media" SET "url" = ${newUrl} WHERE "url" = ${oldUrl}
   `
+  // The small copy is a library item in its own right and moves for the same
+  // reasons the original does - it can be optimised, renamed or refiled on its
+  // own. Miss this and a card's picture 404s while the product page's is fine,
+  // which is a confusing way to find out.
+  await prisma.$executeRaw`
+    UPDATE "shp_product_media" SET "thumb_url" = ${newUrl} WHERE "thumb_url" = ${oldUrl}
+  `
   await prisma.$executeRaw`
     UPDATE "shp_digital_files" SET "url" = ${newUrl} WHERE "url" = ${oldUrl}
   `

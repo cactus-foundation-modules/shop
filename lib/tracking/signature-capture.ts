@@ -1,5 +1,6 @@
 import { getActiveMediaProvider, isMediaProviderConfigured } from '@/lib/config/env'
-import { uploadMedia } from '@/lib/media/upload'
+import { buildLibraryUploadKey, saveMediaRecord, uploadMedia } from '@/lib/media/upload'
+import { getOrCreateFolderByPath, resolveFolderPath } from '@/lib/media/organise'
 
 // Taking our own copy of a proof of delivery.
 //
@@ -17,6 +18,20 @@ import { uploadMedia } from '@/lib/media/upload'
 // was a JPEG. Storing it by its extension writes an object labelled PNG holding
 // JPEG bytes, which some browsers refuse outright and every image pipeline
 // downstream then gets wrong. The magic number is the only honest source.
+//
+// WHY IT IS A LIBRARY ITEM AND NOT JUST AN OBJECT
+//
+// Writing the bytes to the bucket is not keeping them. An object with no Media
+// row behind it is, to every part of core that counts anything, a leftover: the
+// storage check lists it under "orphaned" - an object nothing owns - and offers
+// it up for deletion in a batch. That is exactly what happened to the first one
+// taken (order DW000172, binned within the week), because the shop never minted
+// a row for it and never told the usage index it existed. So the picture is
+// filed properly - a real library item, in Orders / <order number> / Proof of
+// delivery, beside the issue photographs for the same order - AND the shop's
+// media usage provider returns the column it lives in, which is the belt to
+// that braces: even an item somebody moves out of the folder still reads as in
+// use rather than as spare.
 //
 // Failure here is never allowed to matter: a signature that cannot be fetched,
 // is not an image, or arrives while media storage is unconfigured returns null,
@@ -70,11 +85,15 @@ const EXTENSION: Record<string, string> = {
  * `options.label` names the file. A signature and a photograph of a parcel on a
  * doorstep are both proof of delivery and are stored the same way, but a bucket
  * full of things called "signature" that are photographs helps nobody.
+ *
+ * `options.orderNumber` decides the folder. Given one, the item is filed under
+ * Orders / <order number> / Proof of delivery; without one there is no order
+ * folder to file into and it lands in the library root, still as a real item.
  */
 export async function captureSignature(
   imageUrl: string,
   reference: string,
-  options: { headers?: Record<string, string>; label?: string } = {},
+  options: { headers?: Record<string, string>; label?: string; orderNumber?: string | null } = {},
 ): Promise<CapturedSignature | null> {
   const provider = await getActiveMediaProvider()
   if (!provider || !isMediaProviderConfigured(provider)) return null
@@ -105,8 +124,36 @@ export async function captureSignature(
     if (!mimeType) return null
 
     const filename = `${options.label ?? 'delivery-signature'}-${reference}.${EXTENSION[mimeType]}`
-    const stored = await uploadMedia(buffer, mimeType, provider, filename)
-    return stored.key && stored.url ? { url: stored.url, key: stored.key } : null
+
+    // The folder is walked into existence rather than looked up, so the first
+    // proof of delivery on an order creates the tree and the second reuses it.
+    const folderId = options.orderNumber
+      ? await getOrCreateFolderByPath(['Orders', options.orderNumber, 'Proof of delivery'])
+      : null
+    const folderPath = folderId ? await resolveFolderPath(folderId) : undefined
+    // Keeps the readable filename, suffixing "-2" only if that exact name is
+    // already taken in this order's folder - a parcel re-delivered, or an order
+    // that went out in two.
+    const presetKey = await buildLibraryUploadKey(provider, mimeType, filename, folderPath)
+    const stored = await uploadMedia(buffer, mimeType, provider, filename, folderPath, false, presetKey)
+    if (!stored.key || !stored.url) return null
+
+    const record = await saveMediaRecord({
+      key: stored.key,
+      url: stored.url,
+      provider,
+      mimeType: stored.mimeType,
+      sizeBytes: stored.sizeBytes,
+      originalName: filename,
+      // Never rendered on a public page under its own description, so there is
+      // no alt text to chase: the library's audit should not spend its life
+      // asking the owner to describe a courier's scrawl.
+      isDecorative: true,
+      folderId,
+    })
+    // The row's url, not the upload's - a proxied provider serves through the
+    // worker, and the row is the only thing that knows the canonical address.
+    return { url: record.url, key: record.key }
   } catch {
     return null
   } finally {

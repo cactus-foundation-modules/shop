@@ -83,6 +83,7 @@ function mapMedia(r: Record<string, unknown>): ShpProductMedia {
     productId: r.product_id as string,
     type: r.type as ShpProductMedia['type'],
     url: r.url as string,
+    thumbUrl: (r.thumb_url as string | null) ?? null,
     altText: (r.alt_text as string | null) ?? null,
     position: r.position as number,
     isPrimary: r.is_primary as boolean,
@@ -898,8 +899,8 @@ export async function duplicateProduct(sourceId: string, next: { name: string; s
 
   await prisma.$transaction([
     prisma.$executeRaw`
-      INSERT INTO "shp_product_media" ("product_id", "type", "url", "alt_text", "position", "is_primary")
-      SELECT ${newId}, "type", "url", "alt_text", "position", "is_primary" FROM "shp_product_media" WHERE "product_id" = ${sourceId}
+      INSERT INTO "shp_product_media" ("product_id", "type", "url", "thumb_url", "alt_text", "position", "is_primary")
+      SELECT ${newId}, "type", "url", "thumb_url", "alt_text", "position", "is_primary" FROM "shp_product_media" WHERE "product_id" = ${sourceId}
     `,
     prisma.$executeRaw`
       INSERT INTO "shp_product_categories" ("product_id", "category_id")
@@ -933,14 +934,47 @@ export async function setProductMedia(
   productId: string,
   media: Array<{ type: ShpProductMedia['type']; url: string; altText?: string | null; isPrimary?: boolean }>
 ): Promise<void> {
+  // The urls arriving here were captured when the editor screen was opened, and a
+  // library item can have moved since: optimising a .png to a .webp, resizing it,
+  // renaming it, refiling it. Core rewrites this table when the move happens (see
+  // media-reference-rewriter.ts), but it cannot rewrite a url that is only being
+  // written now - which is a picture saved onto a product that 404s immediately,
+  // and a library item that reads as unreferenced and gets offered up as spare.
+  // Ask core where each url points before storing it.
+  const { repointToCurrentMediaUrls } = await import('@/lib/media/former-addresses')
+  const urls = await repointToCurrentMediaUrls(media.map((m) => m.url))
+
+  // The 300px copy each picture is drawn from on a card and in the thumbnail
+  // strip. Resolved against the repointed urls, since that is what gets stored.
+  //
+  // Every row is deleted and rewritten here, so a copy already on file has to be
+  // looked up again or it would be dropped on every save. Making the missing ones
+  // is the same call, which is what "add a photo and its small copy appears" comes
+  // down to - bounded, so a bulk import writing thousands of pictures leaves the
+  // remainder to the sweep instead of timing out the route. Videos are skipped:
+  // there is nothing to shrink, and the lookup would only ever come back empty.
+  //
+  // Deliberately outside the transaction and deliberately forgiving: a thumbnail
+  // is not worth losing an owner's edit over, and a failure here leaves nulls that
+  // render from the original and are picked up next sweep.
+  const imageUrls = media.map((m, i) => (m.type === 'IMAGE' ? urls[i] ?? m.url : null)).filter((u): u is string => !!u)
+  let thumbs = new Map<string, string>()
+  try {
+    const { ensureThumbUrls } = await import('@/modules/shop/lib/thumb-renditions')
+    thumbs = await ensureThumbUrls(imageUrls)
+  } catch (err) {
+    console.warn('[shop] could not resolve small copies for product media:', err)
+  }
+
   await prisma.$transaction([
     prisma.$executeRaw`DELETE FROM "shp_product_media" WHERE "product_id" = ${productId}`,
-    ...media.map((m, i) =>
-      prisma.$executeRaw`
-        INSERT INTO "shp_product_media" ("product_id", "type", "url", "alt_text", "position", "is_primary")
-        VALUES (${productId}, ${m.type}, ${m.url}, ${m.altText ?? null}, ${i}, ${m.isPrimary ?? i === 0})
+    ...media.map((m, i) => {
+      const url = urls[i] ?? m.url
+      return prisma.$executeRaw`
+        INSERT INTO "shp_product_media" ("product_id", "type", "url", "thumb_url", "alt_text", "position", "is_primary")
+        VALUES (${productId}, ${m.type}, ${url}, ${thumbs.get(url) ?? null}, ${m.altText ?? null}, ${i}, ${m.isPrimary ?? i === 0})
       `
-    ),
+    }),
   ])
 }
 

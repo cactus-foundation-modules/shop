@@ -10,6 +10,7 @@ import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { shopProductCardPuckComponent, type ShopProductCardProps } from './ShopProductCard'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
+import { SharedStyle } from '@/components/SharedStyle'
 
 // Server (RSC) half of Shop: Single Product. Kept out of the client editor
 // bundle - see ShopProductCard.tsx.
@@ -45,7 +46,7 @@ export async function ShopProductCardRsc(props: ShopProductCardProps) {
 
   return (
     <div style={{ maxWidth: 280 }}>
-      <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
+      <SharedStyle id="shop-cards" css={shopCardCss(bp)} />
       {cards}
     </div>
   )

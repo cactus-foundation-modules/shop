@@ -41,7 +41,31 @@ import type { ShpProduct } from '@/modules/shop/lib/types'
 // contribution did before this existed. It is read forgivingly (see
 // buildCardContext): one asking for slot 7 of a four-picture card lands at the
 // end rather than being stranded past it.
-export type PartImage = { url: string; alt: string; sourceId?: string; promoted?: boolean; position?: number | null }
+//
+// `url` is the picture this surface DRAWS, already chosen for the size it draws
+// it at: a card context carries the 300px copy here, a product-page context
+// carries the original. The choice is made once in the context builder rather
+// than at each <img>, so every renderer in every module - shop's own cards, the
+// discovery tool's, the attribute filter grid's - draws the right size without
+// being rebuilt, and none of them can put a 646 KB studio photograph in a 300px
+// tile by accident.
+//
+// `fullUrl` and `thumbUrl` are the two sizes themselves, both filled in from the
+// media row wherever they exist, so a surface that wants the size it did NOT pick
+// can have it: the product page draws `url` (the original) on the stage and
+// `thumbUrl` in the strip of thumbnails beneath it. Either may be absent - an
+// external host, a format not worth shrinking, a picture already small enough, a
+// contributed picture from a module not rebuilt since this existed - and absent
+// means "fall back to `url`", which is heavier but never wrong.
+export type PartImage = {
+  url: string
+  fullUrl?: string
+  thumbUrl?: string
+  alt: string
+  sourceId?: string
+  promoted?: boolean
+  position?: number | null
+}
 
 // The four original variants each map to a `.shop-card-badge-*` class of fixed
 // token colours. 'tag' is the owner-defined one: a tag row switched its badge on

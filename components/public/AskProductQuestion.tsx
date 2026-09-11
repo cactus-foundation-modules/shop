@@ -12,10 +12,10 @@ import { useId, useState } from 'react'
 // (.sbis, .spd-*): the section it sits in is dressed by the product page's own
 // <style>, and this has to look at home there without reaching into it.
 const SPQ_CSS = `
-.spq{margin-top:16px}
-.spq-open{border:1px solid var(--color-border);border-radius:8px;background:transparent;color:var(--color-fg);padding:9px 16px;font:inherit;font-weight:600;font-size:14px;cursor:pointer;transition:background .12s ease}
+.spq{margin-top:14px}
+.spq-open{display:block;margin:0 auto;border:1px solid var(--color-border);border-radius:8px;background:transparent;color:var(--color-fg);padding:9px 16px;font:inherit;font-weight:600;font-size:14px;cursor:pointer;transition:background .12s ease}
 .spq-open:hover{background:var(--color-surface)}
-.spq-form{border:1px solid var(--color-border);border-radius:12px;background:var(--color-surface);padding:16px;max-width:560px;display:grid;gap:10px}
+.spq-form{border:1px solid var(--color-border);border-radius:12px;background:var(--color-surface);padding:16px;display:grid;gap:10px}
 .spq-intro{margin:0;font-size:13px;color:var(--color-text-muted)}
 .spq-row{display:grid;gap:10px;grid-template-columns:1fr 1fr}
 @media (max-width:560px){.spq-row{grid-template-columns:1fr}}

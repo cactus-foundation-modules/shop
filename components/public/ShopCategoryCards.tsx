@@ -1,5 +1,6 @@
 import type { Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
+import { SharedStyle } from '@/components/SharedStyle'
 
 // The category card grid: the tiles a category page prints across the top so a
 // shopper can drop straight into a sub-category rather than wading through the
@@ -47,7 +48,7 @@ export function ShopCategoryCards({ categories, columns, breakpoints, ctaLabel =
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: shopCardCss(breakpoints) }} />
+      <SharedStyle id="shop-cards" css={shopCardCss(breakpoints)} />
       <div className="shop-grid" style={{ ['--shop-cols' as string]: String(columns) } as React.CSSProperties}>
         {categories.map((c) => {
           // The short one if there is one, else the opening of the long one -

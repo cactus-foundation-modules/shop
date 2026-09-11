@@ -20,6 +20,7 @@ import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { injectSupplierContext } from '@/modules/shop/lib/inject-supplier-context'
 import type { PuckData } from '@/modules/shop/lib/types'
+import { SharedStyle } from '@/components/SharedStyle'
 
 // A supplier's own page: everything the shop buys from one supplier, under their
 // name and their write-up. Categories are the shelves, collections are the
@@ -120,7 +121,7 @@ export default async function ShopSupplierPage({ params, searchParams }: { param
       {supplier.shortDescription && <p style={{ color: 'var(--color-text-muted)' }}>{supplier.shortDescription}</p>}
       <ShopSupplierDescriptionBody supplier={supplier} />
 
-      <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
+      <SharedStyle id="shop-cards" css={shopCardCss(bp)} />
       <div className="shop-grid" style={{ ['--shop-cols' as string]: '3', marginTop: '1.5rem' } as React.CSSProperties}>
         {cards}
       </div>

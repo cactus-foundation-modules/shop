@@ -117,6 +117,20 @@ describe('what a shopper gets', () => {
     expect(details).toHaveLength(ITEMS.length)
   })
 
+  it('suggests again after a question has been picked', async () => {
+    // Picking a suggestion closes the popup but leaves the input focused, so the
+    // box only reopens if typing itself counts as focus. It did not, and the
+    // second question a shopper looked for got no suggestions at all.
+    const { host, type, click } = await mount()
+    await type('fabric')
+    await click(host.querySelector('[role="option"]')!)
+    expect(host.querySelector('.sfs-pop')).toBeNull()
+
+    await type('deliv')
+    const options = [...host.querySelectorAll('[role="option"]')].map((o) => o.textContent)
+    expect(options).toEqual(['How long does delivery take?'])
+  })
+
   it('offers to take a new question above the suggestions, and opens the form on it', async () => {
     const { host, type, click } = await mount()
     await type('warranty')

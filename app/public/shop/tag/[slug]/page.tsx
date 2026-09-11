@@ -18,6 +18,7 @@ import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { injectTagContext } from '@/modules/shop/lib/inject-tag-context'
 import type { PuckData } from '@/modules/shop/lib/types'
+import { SharedStyle } from '@/components/SharedStyle'
 
 // A tag's own page. Categories are the shelves and collections are the hand-
 // picked groupings; a tag is the loose label that cuts across both, and until
@@ -109,7 +110,7 @@ export default async function ShopTagPage({ params, searchParams }: { params: Pr
       <h1 style={{ fontSize: '1.75rem' }}>{tag.name}</h1>
       {tag.description && <p style={{ color: 'var(--color-text-muted)' }}>{tag.description}</p>}
 
-      <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
+      <SharedStyle id="shop-cards" css={shopCardCss(bp)} />
       <div className="shop-grid" style={{ ['--shop-cols' as string]: '3', marginTop: '1.5rem' } as React.CSSProperties}>
         {cards}
       </div>

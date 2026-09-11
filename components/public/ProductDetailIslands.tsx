@@ -13,7 +13,10 @@ import { GalleryThumbStrip } from '@/modules/shop/components/public/GalleryThumb
 import { StickyStripHeight } from '@/modules/shop/components/public/StickyStripHeight'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 
-export type GalleryImage = { url: string; alt: string }
+// `url` is the picture the stage shows. `thumbUrl` is its 300px copy, drawn in
+// the 64px button in the strip below - absent where the library has no copy, in
+// which case the strip falls back to the full picture.
+export type GalleryImage = { url: string; alt: string; thumbUrl?: string }
 
 // How far the magnifier goes in. Scaling the stage image itself (rather than
 // floating a second lens over it) keeps the magnified view inside the stage's
@@ -161,8 +164,18 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
                 setPicked(null)
               }}
             >
+              {/* The 300px copy where the library has one. A thumbnail is drawn in
+                  a 64px square, and handing it the original meant a product with
+                  twenty photographs pulled twenty full-size studio shots down to
+                  fill a strip the size of a postage stamp. Falls back to the
+                  original, which is heavier but never wrong. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={img.url} alt={img.alt || `${productName} thumbnail ${i + 1}`} />
+              <img
+                src={img.thumbUrl ?? img.url}
+                alt={img.alt || `${productName} thumbnail ${i + 1}`}
+                loading="lazy"
+                decoding="async"
+              />
             </button>
           ))}
         </GalleryThumbStrip>

@@ -1,5 +1,6 @@
 import type { Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
+import { SharedStyle } from '@/components/SharedStyle'
 
 // The collection card grid, as printed by the Collection Browser block.
 //
@@ -50,7 +51,7 @@ export function ShopCollectionCards({ collections, columns, breakpoints, ctaLabe
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: shopCardCss(breakpoints) }} />
+      <SharedStyle id="shop-cards" css={shopCardCss(breakpoints)} />
       <div className="shop-grid" style={{ ['--shop-cols' as string]: String(columns) } as React.CSSProperties}>
         {collections.map((c) => (
           <a key={c.id} className="shop-card" href={c.href ?? `/shop/collections/${c.slug}`}>

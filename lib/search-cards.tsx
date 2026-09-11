@@ -10,6 +10,7 @@ import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { filterHiddenOutOfStock } from '@/modules/shop/lib/stock-visibility'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
+import { SharedStyle } from '@/components/SharedStyle'
 
 // Provider for the search module's `search.shop-cards` extension point.
 // Stamps the site's designed Product Card template for a list of product ids -
@@ -65,7 +66,7 @@ export const shopSearchCardProvider = {
     const columns = Math.max(2, Math.min(4, opts?.columns ?? 3))
     return (
       <>
-        <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
+        <SharedStyle id="shop-cards" css={shopCardCss(bp)} />
         <div className="shop-grid" style={{ ['--shop-cols' as string]: String(columns) } as React.CSSProperties}>
           {cards}
         </div>

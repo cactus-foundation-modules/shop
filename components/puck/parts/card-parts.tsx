@@ -7,6 +7,7 @@ import { packCardImages } from '@/modules/shop/lib/card-media-pack'
 import { ShopCardFillBlurb } from '@/modules/shop/components/public/ShopCardFillBlurb'
 import type { CardBadge, CardPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { SHOP_SECTION_HEAD_CSS } from '@/modules/shop/components/puck/parts/section-head-css'
+import { SharedStyle } from '@/components/SharedStyle'
 
 // Product Card part-blocks. These make up a Product Card layout (admin >
 // Layouts > Shop > Product Card), which is then stamped once per product by
@@ -193,14 +194,16 @@ function dragRefOf(props: PuckPart) {
   return props.puck?.dragRef ?? undefined
 }
 
-function Style({ css }: { css: string }) {
-  return <style dangerouslySetInnerHTML={{ __html: css }} />
-}
-
 // Card parts only emit the stylesheet themselves in the editor (no _ctx); on
 // the live page the surface has already emitted it once for the whole grid.
+//
+// Shared rather than a plain <style>, and under the same id the live surfaces
+// use: in the editor every part of every card is a separate component, so a
+// four-card preview of a six-part card asked for the same 13 KB twenty-four
+// times. Now they agree on one copy, and the editor and the site emit the same
+// tag for the same bytes - which is the parity rule these blocks live under.
 function EditorStyle({ ctx }: { ctx?: CardPartContext }) {
-  return ctx ? null : <Style css={shopCardCss(DEFAULT_BREAKPOINTS)} />
+  return ctx ? null : <SharedStyle id="shop-cards" css={shopCardCss(DEFAULT_BREAKPOINTS)} />
 }
 
 const yesNo = [

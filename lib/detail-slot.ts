@@ -51,7 +51,10 @@ export type ShopDetailPurchaseClassNames = {
 
 // Structurally the same as the parts' own PartImage; declared here so the slot
 // contract stands on its own rather than importing back from part-context.ts.
-export type ShopDetailSlotImage = { url: string; alt: string }
+// `url` is the full picture, which is what the stage shows and what the strip
+// keys a click on. `thumbUrl` is its 300px copy, which is all the thumbnail
+// button needs to draw - absent where the library has no copy of it.
+export type ShopDetailSlotImage = { url: string; alt: string; thumbUrl?: string }
 
 type SlotBase = {
   slug: string

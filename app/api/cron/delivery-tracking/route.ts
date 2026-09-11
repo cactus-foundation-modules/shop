@@ -177,11 +177,12 @@ async function handle(request: NextRequest) {
         const signature = reading.multidropHtml ? parseSignature(reading.multidropHtml, timezone) : null
 
         const stored = signature?.imageUrl
-          ? await captureSignature(signature.imageUrl, reference)
+          ? await captureSignature(signature.imageUrl, reference, { orderNumber: order?.orderNumber })
           : reading.proofImage
             ? await captureSignature(reading.proofImage.url, reference, {
                 headers: reading.proofImage.headers,
                 label: 'delivery-photo',
+                orderNumber: order?.orderNumber,
               })
             : null
 

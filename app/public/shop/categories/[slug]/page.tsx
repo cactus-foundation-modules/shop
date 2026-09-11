@@ -29,6 +29,7 @@ import type { PuckData } from '@/modules/shop/lib/types'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { getSiteUrlOrNull } from '@/lib/config/env'
 import { absoluteSocialImageUrl, resolveCategorySocialImage } from '@/modules/shop/lib/catalogue-social-image'
+import { SharedStyle } from '@/components/SharedStyle'
 
 export async function generateMetadata({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }): Promise<Metadata> {
   const { slug } = await params
@@ -171,7 +172,7 @@ export default async function ShopCategoryPage({ params, searchParams }: { param
         style={{ marginTop: '1.5rem' }}
       />
 
-      <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
+      <SharedStyle id="shop-cards" css={shopCardCss(bp)} />
       <ShopGridPager
         cards={cards}
         perPage={CATEGORY_PAGE_SIZE}

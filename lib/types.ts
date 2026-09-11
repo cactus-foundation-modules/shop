@@ -240,6 +240,12 @@ export type ShpProductMedia = {
   productId: string
   type: 'IMAGE' | 'VIDEO_FILE' | 'VIDEO_URL'
   url: string
+  // The 300px copy of `url`, for the surfaces that draw this picture small - a
+  // card in a category grid, the thumbnail strip under the product photo. Null
+  // where there is no copy to have (an external host, a format not worth
+  // shrinking, a picture already small enough) or none yet; every renderer falls
+  // back to `url`, which is heavier but never wrong. See lib/thumb-renditions.ts.
+  thumbUrl: string | null
   altText: string | null
   position: number
   isPrimary: boolean

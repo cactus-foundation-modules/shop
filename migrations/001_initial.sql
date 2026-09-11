@@ -264,6 +264,12 @@ CREATE TABLE IF NOT EXISTS "shp_product_media" (
     -- Cloudflare Workers URL for images/video files, or embed URL for VIDEO_URL
     "url" TEXT NOT NULL,
     "alt_text" TEXT,
+    -- The 300px copy of this picture, for the surfaces that draw it small: a card
+    -- in a category grid, the thumbnail strip under a product photo. Made and
+    -- filed by core (lib/media/renditions.ts). Null is a fine answer - an external
+    -- host, a format not worth shrinking, a picture already small enough - and
+    -- every renderer falls back to "url". See migration 058.
+    "thumb_url" TEXT,
     "position" INTEGER NOT NULL DEFAULT 0,
     "is_primary" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

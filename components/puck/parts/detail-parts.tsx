@@ -19,6 +19,7 @@ import { SiteColourField } from '@/lib/puck/SiteColourField'
 import { ClearableNumberField } from '@/lib/puck/ClearableNumberField'
 import { splitLightDark, composeLightDark } from '@/lib/puck/lightDark'
 import type { CSSProperties, ReactNode } from 'react'
+import { SharedStyle } from '@/components/SharedStyle'
 
 // Product Detail part-blocks. Each is a small draggable piece of a Product
 // Detail layout (admin > Layouts > Shop > Product Detail). The markup and class
@@ -33,8 +34,13 @@ const yesNo = [
   { value: 'no', label: 'No' },
 ]
 
+// Every detail part emits its stylesheet, because a part has no way of knowing
+// which of its siblings is on the page. Several of them share one sheet, so a
+// product page was carrying two 12 KB copies of the same rules; the parts that
+// emit something of their own get their own copy, keyed on its content. One id
+// for the lot: SharedStyle tells them apart by what they contain, not by name.
 function Style({ css }: { css: string }) {
-  return <style dangerouslySetInnerHTML={{ __html: css }} />
+  return <SharedStyle id="shop-detail" css={css} />
 }
 
 // ---------------------------------------------------------------------------

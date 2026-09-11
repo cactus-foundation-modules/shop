@@ -10,6 +10,7 @@ import { resolveShopCardExtras } from '@/modules/shop/lib/card-media'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { shopFeaturedCollectionPuckComponent, type ShopFeaturedCollectionProps } from './ShopFeaturedCollection'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
+import { SharedStyle } from '@/components/SharedStyle'
 
 // Server (RSC) half of Shop: Featured Collection. Kept out of the client editor
 // bundle - see ShopFeaturedCollection.tsx.
@@ -56,7 +57,7 @@ export async function ShopFeaturedCollectionRsc(props: ShopFeaturedCollectionPro
 
   return (
     <section>
-      <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
+      <SharedStyle id="shop-cards" css={shopCardCss(bp)} />
       <div className="shop-sec-head">
         <h2>{props.heading || collection.name}</h2>
         {props.subheading && <span>{props.subheading}</span>}

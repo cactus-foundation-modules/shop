@@ -26,6 +26,13 @@ import { canSeeStockLevels } from '@/modules/shop/lib/admin-stock'
 import { canSeeProductCodes } from '@/modules/shop/lib/admin-codes'
 import { canSeeReturnsPolicy } from '@/modules/shop/lib/admin-returns'
 import { getSupplierByName } from '@/modules/shop/lib/db/suppliers'
+import { buildProductJsonLd, type ShopShippingOption } from '@/modules/shop/lib/product-jsonld'
+import { resolveMerchantFacts } from '@/modules/shop/lib/merchant-facts'
+import { resolveProductDeliveryOptions } from '@/modules/shop/lib/detail-delivery'
+import { resolveProductRating } from '@/modules/shop/lib/detail-rating'
+import { productUrl } from '@/modules/shop/lib/product-url'
+import { nonReturnableNote, returnsPolicy } from '@/modules/shop/lib/returnable'
+import { getSiteUrl } from '@/lib/config/env'
 import { supplierHref } from '@/modules/shop/lib/supplier-url'
 import { orderSizeDeductionView } from '@/modules/shop/lib/order-size-deduction-view'
 import type { PuckData } from '@/modules/shop/lib/types'
@@ -62,7 +69,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   // Extra gallery media and contributed tabs are additive and need only the
   // product, so they resolve alongside everything else rather than behind the
   // template.
-  const [media, config, taxDisplay, bp, tags, tagIds, template, provider, galleryExtras, detailTabs, specOverride, adminEditHref, showAdminStock, showAdminCodes, showAdminReturns] = await Promise.all([
+  const [media, config, taxDisplay, bp, tags, tagIds, template, provider, galleryExtras, detailTabs, specOverride, adminEditHref, showAdminStock, showAdminCodes, showAdminReturns, merchantFacts, deliveryOptions, rating] = await Promise.all([
     getProductMedia(product.id),
     getShopConfigCached(),
     resolveTaxDisplay(),
@@ -83,6 +90,13 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     canSeeProductCodes(),
     // And for what the returns policy says about this one.
     canSeeReturnsPolicy(),
+    // The three seams the Product structured data below reads. All optional -
+    // each returns nothing on a shop without the companion module that fills it -
+    // and all resolved here rather than beside the markup so a page render costs
+    // one round of queries rather than three sequential ones.
+    resolveMerchantFacts([product.id]),
+    resolveProductDeliveryOptions(product.id),
+    resolveProductRating(product.id),
   ])
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
   const tagSlugs = tagIds.map((id) => tagById.get(id)).filter((s): s is string => Boolean(s))
@@ -142,9 +156,18 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     (config.supplierFieldEnabled && config.supplierShowOnFrontend) || config.orderSizeDeductionEnabled
   const supplier = wantsSupplier && product.supplier ? await getSupplierByName(product.supplier) : null
 
+  // The stage draws the original - this is the page where a shopper looks closely
+  // and the magnifier zooms in - and the strip of thumbnails beneath it draws the
+  // 300px copy, which is what a 64px square actually wants. Both travel; the
+  // gallery picks per surface.
   const images = media
     .filter((m) => m.type !== 'VIDEO_URL')
-    .map((m) => ({ url: m.url, alt: m.altText ?? product.name }))
+    .map((m) => ({
+      url: m.url,
+      fullUrl: m.url,
+      ...(m.thumbUrl ? { thumbUrl: m.thumbUrl } : {}),
+      alt: m.altText ?? product.name,
+    }))
 
   const outOfStock =
     product.trackInventory && (product.stockCount ?? 0) <= 0 && product.outOfStockBehaviour === 'BLOCK' && !product.isPreOrder
@@ -203,55 +226,57 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
       : null
     : (prices.was ?? (rrpInSearch ? prices.rrp : null))
 
-  const strikethroughSpec = strikethrough
-    ? {
-        priceSpecification: {
-          '@type': 'UnitPriceSpecification',
-          priceType: 'https://schema.org/StrikethroughPrice',
-          price: strikethrough,
-          priceCurrency: config.currency,
-        },
-      }
-    : {}
+  // The delivery services this product can be bought with, priced on the side of
+  // tax the page prints. The charge rides on the product line and is taxed at
+  // the product's own rate, so it converts with the product's own adjuster -
+  // anything else would quote a gross price against a net delivery.
+  const shippingOptions: ShopShippingOption[] = deliveryOptions.map((option) => ({
+    label: option.label,
+    description: option.description,
+    price: (displayAdjust ? displayAdjust(option.price) : option.price).toFixed(2),
+    handlingDays: option.handlingDays,
+    transitDays: option.transitDays,
+  }))
 
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: product.name,
-    description: stripHtmlToPlainText(product.shortDescription ?? product.description ?? '') || undefined,
-    image: media.map((m) => m.url),
-    sku: product.sku ?? undefined,
-    offers: fromPrice
-      ? {
-          '@type': 'AggregateOffer',
-          lowPrice: fromPrice,
-          priceCurrency: config.currency,
-          availability: offerAvailability,
-          ...strikethroughSpec,
-        }
-      : {
-          '@type': 'Offer',
-          price: prices.now,
-          priceCurrency: config.currency,
-          availability: offerAvailability,
-          ...strikethroughSpec,
-        },
-  }
-
-  if (!template) return null
+  // Only the definite refusal travels. A product the shop will take back is
+  // covered by the organisation's own policy, and a "we might" is not a
+  // schema.org category at all - guessing one would publish a promise the shop
+  // has deliberately not made.
+  const returns = returnsPolicy(product.returnable, product.returnsDiscretionary) === 'NONE'
+    ? nonReturnableNote(product.nonReturnableNote)
+    : null
 
   // A shop withholding its prices must withhold them here too: structured data
   // is read by shopping tabs and rich results, so leaving the figure in would
-  // publish the very number the shop has decided not to quote.
+  // publish the very number the shop has decided not to quote. Asked before the
+  // markup is built rather than deleted out of it afterwards.
   const commerce = await resolveShopCommerceMode()
-  if (commerce.hidePrices) {
-    delete (jsonLd.offers as Record<string, unknown>).price
-    delete (jsonLd.offers as Record<string, unknown>).lowPrice
-    delete (jsonLd.offers as Record<string, unknown>).priceCurrency
-    // The strikethrough goes with them: a shop that will not quote its price has
-    // certainly not agreed to publish what it says the thing is worth.
-    delete (jsonLd.offers as Record<string, unknown>).priceSpecification
-  }
+
+  const jsonLd = buildProductJsonLd({
+    name: product.name,
+    description: stripHtmlToPlainText(product.shortDescription ?? product.description ?? '') || undefined,
+    images: media.map((m) => m.url),
+    url: productUrl(getSiteUrl(), product.slug, config.productUrlStyle),
+    sku: product.sku,
+    currency: config.currency,
+    availability: offerAvailability,
+    ...(fromPrice
+      ? {
+          lowPrice: fromPrice,
+          highPrice: variantPricing?.highPrice ? adjusted(variantPricing.highPrice) : null,
+          offerCount: variantPricing?.offerCount ?? null,
+        }
+      : { price: prices.now }),
+    strikethrough,
+    hidePrices: commerce.hidePrices,
+    identifiers: merchantFacts.identifiers.get(product.id) ?? { gtin: product.barcode },
+    shipping: shippingOptions,
+    shippingCountry: merchantFacts.shippingCountry,
+    rating,
+    nonReturnableNote: returns,
+  })
+
+  if (!template) return null
 
   const blockTypes = collectLayoutBlockTypes(template)
   const slot = narrowShopDetailSlot(provider, blockTypes)
@@ -349,7 +374,9 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
           say) cannot terminate this script element early - unescaped, the spilled
           remainder parses as garbage JavaScript and breaks React's hydration of
           the whole product page. Same treatment as ultimate-seo's jsonLdEscape. */}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }} />
+      {jsonLd && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }} />
+      )}
       <Render config={getModuleLayoutPuckRscConfig('shopProductDetail') as any} data={data as Data} />
     </div>
   )

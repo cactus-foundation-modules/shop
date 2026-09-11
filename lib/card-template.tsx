@@ -139,7 +139,17 @@ export function buildCardContext(
   const usable = media.filter((m) => m.type !== 'VIDEO_URL')
   const primary = usable.find((m) => m.isPrimary) ?? usable[0]
   const ordered = primary ? [primary, ...usable.filter((m) => m !== primary)] : usable
-  const ownImages: PartImage[] = ordered.map((m) => ({ url: m.url, alt: m.altText ?? product.name }))
+  // The card draws the 300px copy where the library has one, and the original
+  // where it does not. Decided here rather than at each <img>, so every card
+  // renderer in every module - shop's own, the discovery tool's, the attribute
+  // filter grid's - gets the small picture without being rebuilt, and none of
+  // them can put a full-size studio photograph in a 300px tile by accident. The
+  // original travels alongside as `fullUrl` for anything that wants the big one.
+  const ownImages: PartImage[] = ordered.map((m) => ({
+    url: m.thumbUrl ?? m.url,
+    fullUrl: m.url,
+    alt: m.altText ?? product.name,
+  }))
   // The product's own pictures with any a companion module folded in at the slot
   // it asked for. This is how a card ends up in the same order as the product
   // page's gallery: the owner arranges both in one grid on the Images tab, so the

@@ -21,6 +21,7 @@ import type { PuckData } from '@/modules/shop/lib/types'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { getSiteUrlOrNull } from '@/lib/config/env'
 import { absoluteSocialImageUrl, resolveCollectionSocialImage } from '@/modules/shop/lib/catalogue-social-image'
+import { SharedStyle } from '@/components/SharedStyle'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
@@ -123,7 +124,7 @@ export default async function ShopCollectionPage({ params, searchParams }: { par
         style={{ marginTop: '1.5rem' }}
       />
 
-      <style dangerouslySetInnerHTML={{ __html: shopCardCss(bp) }} />
+      <SharedStyle id="shop-cards" css={shopCardCss(bp)} />
       <div className="shop-grid" style={{ ['--shop-cols' as string]: '3', marginTop: '1.5rem' } as React.CSSProperties}>
         {cards}
       </div>

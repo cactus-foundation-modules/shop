@@ -32,6 +32,15 @@ export type ShopCardFromPrice = {
   // for the same reason as `onSale`: a provider built before this simply says
   // nothing and the card carries on printing the "from" price on its own.
   rrp?: string | null
+  // The dearest of the choices, as a decimal-pound string, and how many choices
+  // there are. Not for the card, which prints a "from" figure and nothing else:
+  // these fill the highPrice and offerCount of the product page's AggregateOffer,
+  // which without them says a listing starts at ninety-two pounds and refuses to
+  // say where it stops. Optional for the same reason as `onSale` and `rrp` - a
+  // provider written before this simply says nothing and the markup carries the
+  // low figure alone, exactly as it did.
+  highPrice?: string | null
+  offerCount?: number | null
 }
 
 export type ShopCardPriceProvider = {

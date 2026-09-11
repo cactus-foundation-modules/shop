@@ -28,8 +28,8 @@ import { matchFaqQuestions, type ShpFaqItem } from '@/modules/shop/lib/faq'
 // FAQ chain can never collide on one key.
 
 const SFS_CSS = `
-.sfs{display:grid;gap:12px}
-.sfs-box{position:relative;max-width:560px}
+.sfs{display:grid}
+.sfs-box{position:relative}
 .sfs-input{width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--color-border);background:var(--color-bg,var(--color-surface));color:var(--color-fg);font:inherit;font-size:15px}
 .sfs-input:focus{outline:2px solid var(--color-primary);outline-offset:0;border-color:var(--color-primary)}
 .sfs-pop{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:30;border:1px solid var(--color-border);border-radius:10px;background:var(--color-surface);box-shadow:0 10px 30px rgba(0,0,0,.12);overflow:hidden;max-height:340px;overflow-y:auto}
@@ -38,7 +38,7 @@ const SFS_CSS = `
 .sfs-opt{display:block;width:100%;text-align:left;border:none;background:transparent;color:var(--color-fg);font:inherit;font-size:14px;padding:11px 14px;cursor:pointer}
 .sfs-opt:hover,.sfs-opt[aria-selected="true"]{background:var(--color-bg-subtle)}
 .sfs-none{margin:0;padding:11px 14px;font-size:13px;color:var(--color-text-muted)}
-.sfs-hint{margin:0;font-size:13px;color:var(--color-text-muted)}
+.sfs-hint{margin:10px 0 0;font-size:13px;color:var(--color-text-muted)}
 `
 
 // Shown only when scripting is off, where the box does nothing and the questions
@@ -69,6 +69,12 @@ export function ProductFaqSearch({ items, ask, placeholder }: {
   // The popup is open while the box has focus and something has been typed. A
   // blur closes it on a timer rather than immediately, or the mousedown that
   // picks a suggestion would unmount the suggestion first.
+  //
+  // Typing also sets `focused`, and it has to: picking a suggestion closes the
+  // popup by dropping that flag while the input KEEPS the browser's focus (the
+  // mousedown was prevented, precisely so the list survives the click). No
+  // second focus event is ever coming, so without that the box went dead for
+  // every question after the first.
   const popOpen = focused && query.trim().length > 0
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -127,7 +133,7 @@ export function ProductFaqSearch({ items, ask, placeholder }: {
               aria-label="Search the questions about this product"
               placeholder={placeholder}
               value={query}
-              onChange={(e) => { setQuery(e.target.value); setActive(-1) }}
+              onChange={(e) => { setQuery(e.target.value); setActive(-1); setFocused(true) }}
               onFocus={() => { if (blurTimer.current) clearTimeout(blurTimer.current); setFocused(true) }}
               onBlur={() => { blurTimer.current = setTimeout(() => setFocused(false), 150) }}
               onKeyDown={onKeyDown}
