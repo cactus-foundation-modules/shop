@@ -34,13 +34,24 @@ const SPQ_CSS = `
 .spq-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 `
 
-export function AskProductQuestion({ productId, buttonLabel, intro, thanks }: {
+export function AskProductQuestion({ productId, buttonLabel, intro, thanks, open: openProp, onOpenChange }: {
   productId: string
   buttonLabel: string
   intro: string
   thanks: string
+  /** Controlled mode. Left out, the button below opens the form and closes it
+   *  again, exactly as it always has. Supplied, the caller owns that state -
+   *  which is how the FAQ search box's "Ask a new question" link opens this form
+   *  without the shopper having to find and press the button as well. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
-  const [open, setOpen] = useState(false)
+  const [openSelf, setOpenSelf] = useState(false)
+  const open = openProp ?? openSelf
+  const setOpen = (next: boolean) => {
+    if (openProp === undefined) setOpenSelf(next)
+    onOpenChange?.(next)
+  }
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [question, setQuestion] = useState('')

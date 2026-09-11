@@ -12,8 +12,7 @@ import { formatMoney } from '@/modules/shop/lib/money'
 // commerce-mode-shared, not commerce-mode: these parts land in the page
 // builder's client bundle, and the resolver reaches prisma.
 import { commerceModeButtonLabel } from '@/modules/shop/lib/commerce-mode-shared'
-import { FaqAccordion } from '@/modules/shop/components/public/FaqAccordion'
-import { AskProductQuestion } from '@/modules/shop/components/public/AskProductQuestion'
+import { ProductFaqSearch } from '@/modules/shop/components/public/ProductFaqSearch'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 import type { CardBadge, DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { SiteColourField } from '@/lib/puck/SiteColourField'
@@ -1493,24 +1492,21 @@ function buildDetailSections(ctx: DetailPartContext, opts?: { specAutoSort?: boo
       id: 'faq',
       order: TAB_ORDER.faq,
       label: 'FAQs',
+      // A search box, not a wall of headings: a product can inherit thirty
+      // questions from its range and the shop, and thirty collapsed headings is
+      // a second page to read rather than an answer. Every question is still
+      // rendered into the HTML and into the FAQPage structured data - only what
+      // is SHOWN is filtered, and only in the browser. See ProductFaqSearch.
+      //
+      // The markup is the same shared accordion the category-page block uses, so
+      // the styling below (.spd-faq in tabsCss, dressed inside .spd-tabs) still
+      // applies to it.
       content: (
-        <>
-          {/* Markup shared with the category-page block; the styling is this
-              page's own (.spd-faq in tabsCss), because it is dressed inside
-              .spd-tabs. Skipped entirely when there is nothing to list, so an
-              empty section carries no stray FAQPage structured data. */}
-          {ctx.faqs.length > 0 && (
-            <FaqAccordion items={ctx.faqs} wrapperClassName="spd-faqs" itemClassName="spd-faq" />
-          )}
-          {ctx.askQuestion && (
-            <AskProductQuestion
-              productId={product.id}
-              buttonLabel={ctx.askQuestion.buttonLabel}
-              intro={ctx.askQuestion.intro}
-              thanks={ctx.askQuestion.thanks}
-            />
-          )}
-        </>
+        <ProductFaqSearch
+          items={ctx.faqs}
+          placeholder={ctx.faqSearchPlaceholder}
+          ask={ctx.askQuestion ? { productId: product.id, ...ctx.askQuestion } : null}
+        />
       ),
     })
   }

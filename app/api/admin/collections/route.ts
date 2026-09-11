@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { listCollections, createCollection, getCollectionProductCounts, getCollectionPreviewImages } from '@/modules/shop/lib/db'
+import { getCollectionFaqSets } from '@/modules/shop/lib/db/catalogue'
 import { slugify, ensureUniqueCollectionSlug } from '@/modules/shop/lib/slug'
 
 export async function GET() {
@@ -10,10 +11,13 @@ export async function GET() {
   // The counts ride along with the list so the admin screen can print how many
   // products each collection holds without a query per row - same shape the
   // categories list route returns.
-  const [collections, productCounts, previewImages] = await Promise.all([
-    listCollections(), getCollectionProductCounts(), getCollectionPreviewImages(),
+  // FAQ sets come alongside rather than on each row, for the same reason the
+  // categories route keeps them apart: listCollections feeds public surfaces too
+  // and none of those prints a question. Only collections carrying any appear.
+  const [collections, productCounts, previewImages, collectionFaqs] = await Promise.all([
+    listCollections(), getCollectionProductCounts(), getCollectionPreviewImages(), getCollectionFaqSets(),
   ])
-  return NextResponse.json({ collections, productCounts, previewImages })
+  return NextResponse.json({ collections, productCounts, previewImages, collectionFaqs })
 }
 
 const Body = z.object({

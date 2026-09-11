@@ -3,6 +3,7 @@ import {
   EMPTY_FAQ_SET,
   buildProductFaqJsonLd,
   faqJsonLdScript,
+  matchFaqQuestions,
   normaliseFaqItems,
   normaliseFaqSet,
   resolveCategoryFaqs,
@@ -127,6 +128,49 @@ describe('resolveCategoryFaqs', () => {
   it('obeys a category that inherits nothing, exactly as a product page would', () => {
     const out = resolveCategoryFaqs([set([q('Range?')], false), set([q('Parent?')])], [q('Shop?')])
     expect(out.map((i) => i.question)).toEqual(['Range?'])
+  })
+})
+
+describe('matchFaqQuestions', () => {
+  const items = [
+    q('Delivery to Scotland?', 'Three days, mainland only.'),
+    q('How long does delivery take?', 'Three working days.'),
+    q('Is it assembled?', 'Castors go on at your end.'),
+  ]
+
+  it('matches nothing at all on an empty search', () => {
+    // The box exists to narrow thirty questions to one. Opening it on all
+    // thirty would be the wall of headings this replaced.
+    expect(matchFaqQuestions(items, '')).toEqual([])
+    expect(matchFaqQuestions(items, '   ')).toEqual([])
+  })
+
+  it('puts a question that STARTS with what was typed above one that merely contains it', () => {
+    const out = matchFaqQuestions(items, 'delivery')
+    expect(out.map((i) => i.question)).toEqual(['Delivery to Scotland?', 'How long does delivery take?'])
+  })
+
+  it('finds a question by its answer when the question itself says nothing', () => {
+    expect(matchFaqQuestions(items, 'castors').map((i) => i.question)).toEqual(['Is it assembled?'])
+  })
+
+  it('ranks a question-text match above an answer-only one', () => {
+    const out = matchFaqQuestions([q('Assembly?', 'No tools needed.'), q('Tools?', 'None.')], 'tools')
+    expect(out.map((i) => i.question)).toEqual(['Tools?', 'Assembly?'])
+  })
+
+  it('ignores case, and caps the list so a shortlist stays short', () => {
+    expect(matchFaqQuestions(items, 'DELIVERY')).toHaveLength(2)
+    const many = Array.from({ length: 20 }, (_, i) => q(`Delivery question ${i}?`))
+    expect(matchFaqQuestions(many, 'delivery')).toHaveLength(8)
+    expect(matchFaqQuestions(many, 'delivery', 3)).toHaveLength(3)
+  })
+
+  it('breaks a tie on the order the levels resolved in, so the nearest answer leads', () => {
+    // resolveProductFaqs hands over product questions first, then the
+    // category's, then the shop's. An equally good match must not reshuffle that.
+    const out = matchFaqQuestions([q('Delivery?', 'This product.'), q('Delivery?x', 'The shop.')], 'delivery')
+    expect(out[0]!.answer).toBe('This product.')
   })
 })
 

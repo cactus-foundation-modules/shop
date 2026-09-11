@@ -334,6 +334,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     specOverride,
     faqs,
     askQuestion,
+    faqSearchPlaceholder: config.productFaqSearchPlaceholder,
     descriptionBody,
     adminEditHref,
     showAdminStock,

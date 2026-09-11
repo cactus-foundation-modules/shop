@@ -1,22 +1,28 @@
-// [ANCHOR] - categorySlug is injected by the category page (lib/inject-category-context.ts)
+// [ANCHOR] - categorySlug / collectionSlug are injected by the page being
+// rendered (lib/inject-category-context.ts, lib/inject-collection-context.ts)
 //
 // EDITOR half only: placeholder + Puck field config. The server render lives in
 // ShopCategoryFaqs.rsc.tsx (wired by `rscImport` in the manifest) so next/server
 // and the db imports never land in the client editor bundle.
 //
-// The block is offered on three layouts, and only one of them has a category:
+// The block is offered on four layouts, and what it can print depends on which:
 //
-//   Category    - prints the category's own questions, or the whole inherited
-//                 chain if the author asks for it.
-//   Collection  - neither carries a set of its own, so both print the shop-wide
-//   Tag           questions regardless of the "Questions to show" setting. Said
-//                 plainly in the field hint, because a setting that does nothing
-//                 on the page you are editing is worse than no setting.
+//   Category    - the category's own questions, or the whole inherited chain
+//                 (category, its parents, then the shop) if asked.
+//   Collection  - the collection's own questions, plus the shop-wide ones unless
+//                 the collection says it does not inherit. A collection has no
+//                 parent, so there is no chain: one rung, then the shop.
+//   Shop Home   - neither carries a set of its own, so both print the shop-wide
+//   Tag           questions whatever "Questions to show" says. Said plainly in
+//                 the field hint, because a setting that does nothing on the page
+//                 you are editing is worse than none.
 
 export type ShopCategoryFaqsProps = {
   categorySlug?: string
+  collectionSlug?: string
   scope?: string
   title?: string
+  columns?: string
 }
 
 export function ShopCategoryFaqs() {
@@ -40,14 +46,24 @@ export const shopCategoryFaqsPuckComponent = {
       type: 'select' as const,
       label: 'Questions to show',
       options: [
-        { value: 'own', label: "This category's own questions" },
+        { value: 'own', label: "This category's or collection's own questions" },
         { value: 'inherited', label: 'Those, plus the parent categories and the shop' },
+      ],
+    },
+    // Two columns on a wide screen, one on a tablet or a phone whatever this
+    // says - a two-column accordion on a 375px screen is two columns of nothing.
+    columns: {
+      type: 'select' as const,
+      label: 'Columns on desktop',
+      options: [
+        { value: '2', label: 'Two' },
+        { value: '1', label: 'One' },
       ],
     },
   },
   // 'own' by default: the shop-wide answers are already on every product page
   // underneath this one, and repeating them here puts the same FAQPage markup on
   // the category and on all four hundred things in it.
-  defaultProps: { title: 'Frequently asked questions', scope: 'own' },
+  defaultProps: { title: 'Frequently asked questions', scope: 'own', columns: '2' },
   render: ShopCategoryFaqs,
 }

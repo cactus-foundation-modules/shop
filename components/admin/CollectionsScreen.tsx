@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { useConfirm, usePrompt, useAlert } from '@/modules/shop/components/admin/dialogs'
+import { FaqListEditor } from '@/modules/shop/components/admin/FaqListEditor'
+import { EMPTY_FAQ_SET, normaliseFaqSet, type ShpFaqItem, type ShpFaqSet } from '@/modules/shop/lib/faq'
 import { CollectionProductsPanel } from '@/modules/shop/components/admin/CollectionProductsPanel'
 
 // The collections screen. A collection is a hand-curated shelf - "Sit-stand
@@ -28,7 +30,7 @@ type Collection = {
   hasDesignedDescription: boolean
 }
 
-type Tab = 'details' | 'products'
+type Tab = 'details' | 'faqs' | 'products'
 
 // Collections never move off /shop, whatever the shop's product URL style is -
 // see lib/product-url.ts. So the public address is a plain concatenation and
@@ -96,6 +98,11 @@ export function CollectionsScreen() {
   const [editShortDescription, setEditShortDescription] = useState('')
   const [editMetaTitle, setEditMetaTitle] = useState('')
   const [editMetaDescription, setEditMetaDescription] = useState('')
+  // Questions written against each collection, keyed by id - only the ones that
+  // carry any. Kept beside the rows rather than on them because listCollections
+  // feeds public surfaces too; see the collections API.
+  const [collectionFaqs, setCollectionFaqs] = useState<Record<string, ShpFaqSet>>({})
+  const [editFaqs, setEditFaqs] = useState<ShpFaqSet>(EMPTY_FAQ_SET)
 
   // The counts update themselves as the products panel writes, but the picture
   // stack beside each name comes from the list route - so a row whose membership
@@ -115,6 +122,7 @@ export function CollectionsScreen() {
         setCollections(data.collections)
         setCounts(data.productCounts ?? {})
         setPreviews(data.previewImages ?? {})
+        setCollectionFaqs(data.collectionFaqs ?? {})
       })
       .finally(() => setLoaded(true))
   }, [])
@@ -144,6 +152,7 @@ export function CollectionsScreen() {
     setEditShortDescription(collection.shortDescription ?? '')
     setEditMetaTitle(collection.metaTitle ?? '')
     setEditMetaDescription(collection.metaDescription ?? '')
+    setEditFaqs(normaliseFaqSet(collectionFaqs[collection.id]))
   }
 
   async function createCollection() {
@@ -166,6 +175,7 @@ export function CollectionsScreen() {
       setEditShortDescription('')
       setEditMetaTitle('')
       setEditMetaDescription('')
+      setEditFaqs(EMPTY_FAQ_SET)
     }
   }
 
@@ -186,6 +196,10 @@ export function CollectionsScreen() {
         shortDescription: editShortDescription.trim() || null,
         metaTitle: editMetaTitle.trim() || null,
         metaDescription: editMetaDescription.trim() || null,
+        // The questions ride with the rest of the form: it is one row and one
+        // Save, and a questions tab with a Save of its own would be the only
+        // thing on this screen that had one.
+        faqs: editFaqs,
       }),
     })
     setSaving(false)
@@ -446,7 +460,7 @@ export function CollectionsScreen() {
               {isOpen && (
                 <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-border)', display: 'grid', gap: '0.75rem' }}>
                   <div style={{ display: 'flex', gap: '0.25rem' }} role="tablist" aria-label={`${collection.name} settings`}>
-                    {(['details', 'products'] as Tab[]).map((key) => (
+                    {(['details', 'faqs', 'products'] as Tab[]).map((key) => (
                       <button
                         key={key}
                         type="button"
@@ -455,7 +469,7 @@ export function CollectionsScreen() {
                         onClick={() => setTab(key)}
                         className={tab === key ? 'btn btn-secondary btn-sm' : 'btn btn-ghost btn-sm'}
                       >
-                        {key === 'details' ? 'Details' : `Products (${count})`}
+                        {key === 'details' ? 'Details' : key === 'faqs' ? `FAQs${editFaqs.items.length ? ` (${editFaqs.items.length})` : ''}` : `Products (${count})`}
                       </button>
                     ))}
                   </div>
@@ -562,6 +576,36 @@ export function CollectionsScreen() {
                         </div>
                       </div>
 
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button onClick={() => void saveDetails(collection)} className="btn btn-primary btn-sm" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+                        <button onClick={() => closeRow()} className="btn btn-secondary btn-sm" disabled={saving}>Cancel</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {tab === 'faqs' && (
+                    <div style={{ display: 'grid', gap: '0.75rem' }}>
+                      <p style={{ ...labelStyle, margin: 0 }}>
+                        Questions answered on this collection&apos;s own page. They need the <strong>Shop: FAQs</strong>
+                        {' '}piece in your Collection layout to appear - Editing pages → Shop → Collection.
+                      </p>
+                      <FaqListEditor
+                        items={editFaqs.items}
+                        onChange={(items: ShpFaqItem[]) => setEditFaqs((f) => ({ ...f, items }))}
+                        emptyNote="No questions written for this collection yet. Its page still shows the shop-wide ones."
+                      />
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={editFaqs.inherit}
+                          onChange={(e) => setEditFaqs((f) => ({ ...f, inherit: e.target.checked }))}
+                        />
+                        Also show the shop&apos;s own questions
+                      </label>
+                      <p style={{ ...labelStyle, margin: 0 }}>
+                        These are for the collection page only. A product in several collections would otherwise be
+                        answering the same question three different ways, so they are never inherited by its products.
+                      </p>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button onClick={() => void saveDetails(collection)} className="btn btn-primary btn-sm" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
                         <button onClick={() => closeRow()} className="btn btn-secondary btn-sm" disabled={saving}>Cancel</button>

@@ -343,6 +343,15 @@ export const ShpConfigSchema = z.object({
   // the shop config, and a malformed list must cost the shop its FAQs, not its
   // whole configuration.
   productFaqs: z.array(z.object({ question: z.string(), answer: z.string() })).catch([]).default([]),
+  // What the product page's FAQ search box says before anything is typed. The
+  // questions themselves start hidden behind it: a product that inherits thirty
+  // of them from its range and the shop would otherwise open its FAQs section on
+  // thirty collapsed headings, which is a second page to read rather than an
+  // answer. Owner-editable because it is the only wording on that box, and a
+  // shop selling one thing phrases it differently from a shop selling a
+  // catalogue. Every question stays in the page's HTML and in its structured
+  // data regardless - the box hides, it does not withhold.
+  productFaqSearchPlaceholder: z.string().default('Search our answers, or ask your own question'),
 
   // "Ask a question" on the product page (migration 056). The other half of the
   // FAQs above: the questions nobody at the shop thought to write down.

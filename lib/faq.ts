@@ -173,6 +173,46 @@ export function resolveCategoryFaqs(categories: ShpFaqSet[], shopWide: ShpFaqIte
   return resolveProductFaqs({ product: EMPTY_FAQ_SET, categories, shopWide })
 }
 
+// How many suggestions the product page's search box offers at once. Enough to
+// cover the near-misses, few enough that the list is still a shortlist.
+export const FAQ_SUGGESTION_LIMIT = 8
+
+/**
+ * The questions a shopper's search matches, best first.
+ *
+ * Answers are searched as well as questions, because somebody typing "delivery"
+ * should find "How long until it arrives?" when the answer is about delivery -
+ * but a question-text match always outranks an answer-only one, and a question
+ * that STARTS with what was typed outranks one that merely contains it.
+ *
+ * An empty search matches nothing rather than everything. The box exists to
+ * narrow thirty questions down to one; opening it on all thirty would be the
+ * wall of headings this replaced.
+ */
+export function matchFaqQuestions(
+  items: readonly ShpFaqItem[],
+  query: string,
+  limit = FAQ_SUGGESTION_LIMIT,
+): ShpFaqItem[] {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return []
+  const scored: Array<{ item: ShpFaqItem; score: number; index: number }> = []
+  items.forEach((item, index) => {
+    const question = item.question.toLowerCase()
+    const answer = item.answer.toLowerCase()
+    let score = -1
+    if (question.startsWith(needle)) score = 0
+    else if (question.includes(needle)) score = 1
+    else if (answer.includes(needle)) score = 2
+    if (score >= 0) scored.push({ item, score, index })
+  })
+  // Ties keep the order the levels resolved in - the product's own questions
+  // first, then its category's, then the shop's - so the nearest answer to an
+  // equally good match is the one offered first.
+  scored.sort((a, b) => a.score - b.score || a.index - b.index)
+  return scored.slice(0, limit).map((s) => s.item)
+}
+
 /**
  * FAQPage structured data for the questions actually on the page.
  *

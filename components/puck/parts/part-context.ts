@@ -174,6 +174,10 @@ export type DetailPartContext = {
   // appears whenever asking is on, so a product nobody has written a question
   // for can still be asked about.
   askQuestion: { buttonLabel: string; intro: string; thanks: string } | null
+  // What the FAQ search box says before anything is typed. A shop setting, for
+  // the same reason the ask-a-question wording is one, and carried here for the
+  // same reason: buildDetailSections runs nowhere near the config.
+  faqSearchPlaceholder: string
   // The product's opt-in designed description, already rendered from its Puck
   // doc (shp_products.description_puck) by the RSC block. Null when the product
   // has no designed body, where the Description tab falls back to the plain-text

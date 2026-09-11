@@ -15,19 +15,45 @@ import { buildProductFaqJsonLd, faqJsonLdScript, type ShpFaqItem } from '@/modul
 // category-page block brings its own. Only the markup and the JSON-LD are shared
 // - which is the part that must never drift, since a search engine reading two
 // different shapes off one site is nobody's idea of a feature.
+//
+// EVERY question is always rendered, whatever the state props say. `hidden` is a
+// display decision taken in the browser; the text stays in the HTML either way,
+// which is what a crawler that does not run JavaScript reads, and it is why the
+// product page can hide the lot behind a search box without hiding anything from
+// a search engine. The structured data below carries the same full set.
 
-export function FaqAccordion({ items, wrapperClassName, itemClassName }: {
+export function FaqAccordion({
+  items, wrapperClassName, itemClassName, visibleQuestions, openQuestions, onToggleQuestion,
+}: {
   items: ShpFaqItem[]
   wrapperClassName: string
   itemClassName: string
+  /** Questions to SHOW. Undefined - the ordinary case, and every server-rendered
+   *  list - shows the lot. An array shows only what it names and renders the
+   *  rest with `hidden`. */
+  visibleQuestions?: readonly string[]
+  /** Questions whose answer is open. Undefined leaves every one closed, which is
+   *  what a plain <details> does anyway. */
+  openQuestions?: readonly string[]
+  /** Told when a shopper opens or closes one themselves, so a caller holding
+   *  `openQuestions` in state does not fight the browser over it. */
+  onToggleQuestion?: (question: string, open: boolean) => void
 }) {
   const jsonLd = buildProductFaqJsonLd(items)
+  const shown = visibleQuestions ? new Set(visibleQuestions) : null
+  const opened = openQuestions ? new Set(openQuestions) : null
   return (
     <div className={wrapperClassName}>
       {items.map((item) => (
         // Questions are de-duplicated before they get here (resolveProductFaqs),
         // so no two carry the same text and the key is stable across a re-render.
-        <details key={item.question} className={itemClassName}>
+        <details
+          key={item.question}
+          className={itemClassName}
+          hidden={shown ? !shown.has(item.question) : undefined}
+          open={opened ? opened.has(item.question) : undefined}
+          onToggle={onToggleQuestion ? (e) => onToggleQuestion(item.question, e.currentTarget.open) : undefined}
+        >
           <summary>{item.question}</summary>
           <p>{item.answer}</p>
         </details>

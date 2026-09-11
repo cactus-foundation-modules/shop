@@ -303,6 +303,39 @@ export async function getCategoryFaqChainBySlug(
   return rows.map((row) => normaliseFaqSet(row.faqs))
 }
 
+/**
+ * One collection's own FAQ set, by slug, for the Shop: FAQs block on a
+ * collection page. A collection has no parent, so there is no chain to walk -
+ * one row, or an empty set for a slug that matches nothing.
+ *
+ * `client` is the live-probe seam, as above.
+ */
+export async function getCollectionFaqSetBySlug(
+  slug: string,
+  opts: { client?: { $queryRaw: typeof prisma.$queryRaw } } = {},
+): Promise<ShpFaqSet> {
+  const db = opts.client ?? prisma
+  const rows = await db.$queryRaw<Array<{ faqs: unknown }>>`
+    SELECT "faqs" FROM "shp_collections" WHERE "slug" = ${slug} LIMIT 1
+  `
+  return normaliseFaqSet(rows[0]?.faqs)
+}
+
+/**
+ * Every collection that has FAQs written against it, keyed by id - the
+ * Collections screen's twin of getCategoryFaqSets, and kept out of
+ * listCollections for the same reason: that projection feeds public surfaces
+ * which print no questions.
+ */
+export async function getCollectionFaqSets(): Promise<Record<string, ShpFaqSet>> {
+  const rows = await prisma.$queryRaw<Array<{ id: string; faqs: unknown }>>`
+    SELECT "id", "faqs" FROM "shp_collections" WHERE "faqs" IS NOT NULL
+  `
+  const sets: Record<string, ShpFaqSet> = {}
+  for (const row of rows) sets[row.id] = normaliseFaqSet(row.faqs)
+  return sets
+}
+
 // Would setting newParentId as category id's parent create a cycle? True if the
 // proposed parent is the category itself or any of its own descendants.
 export async function categoryReparentWouldCycle(id: string, newParentId: string): Promise<boolean> {
@@ -562,6 +595,7 @@ export async function updateCollection(id: string, fields: Partial<{
   name: string; slug: string; description: string | null; imageId: string | null; position: number
   shortDescription: string | null; descriptionPuck: PuckData | null
   metaTitle: string | null; metaDescription: string | null; ogImageId: string | null
+  faqs: ShpFaqSet | null
 }>): Promise<void> {
   const sets: Prisma.Sql[] = []
   if (fields.name !== undefined) sets.push(Prisma.sql`"name" = ${fields.name}`)
@@ -579,6 +613,13 @@ export async function updateCollection(id: string, fields: Partial<{
   if (fields.metaTitle !== undefined) sets.push(Prisma.sql`"meta_title" = ${fields.metaTitle}`)
   if (fields.metaDescription !== undefined) sets.push(Prisma.sql`"meta_description" = ${fields.metaDescription}`)
   if (fields.ogImageId !== undefined) sets.push(Prisma.sql`"og_image_id" = ${fields.ogImageId}`)
+  // jsonb (migration 057), stored on the same terms as a product's and a
+  // category's: an empty set that still inherits is NULL, an empty set that does
+  // not is a real answer - "this collection's page shows no questions at all".
+  if (fields.faqs !== undefined) {
+    const worthKeeping = fields.faqs != null && (fields.faqs.items.length > 0 || !fields.faqs.inherit)
+    sets.push(Prisma.sql`"faqs" = ${worthKeeping ? JSON.stringify(fields.faqs) : null}::jsonb`)
+  }
   if (sets.length === 0) return
   sets.push(Prisma.sql`"updated_at" = CURRENT_TIMESTAMP`)
   await prisma.$executeRaw`UPDATE "shp_collections" SET ${Prisma.join(sets, ', ')} WHERE "id" = ${id}`

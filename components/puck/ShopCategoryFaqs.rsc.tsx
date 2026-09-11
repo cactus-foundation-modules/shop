@@ -1,6 +1,7 @@
 import { connection } from 'next/server'
+import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { getCategoryFaqChainBySlug } from '@/modules/shop/lib/db/catalogue'
+import { getCategoryFaqChainBySlug, getCollectionFaqSetBySlug } from '@/modules/shop/lib/db/catalogue'
 import { normaliseFaqItems, resolveCategoryFaqs, type ShpFaqItem } from '@/modules/shop/lib/faq'
 import { FaqAccordion } from '@/modules/shop/components/public/FaqAccordion'
 import { shopCategoryFaqsPuckComponent, type ShopCategoryFaqsProps } from './ShopCategoryFaqs'
@@ -16,8 +17,20 @@ import { shopCategoryFaqsPuckComponent, type ShopCategoryFaqsProps } from './Sho
 // The headline matches .spd-tabs h3 on the product page, so the same questions
 // look the same wherever a shopper meets them. The list itself matches the FAQ
 // (SEO) block - see FaqAccordion.
-const faqsCss = `
+//
+// Two columns is a GRID, not CSS columns: a multi-column list reflows its items
+// between columns every time one is opened, so the question a shopper just
+// clicked jumps somewhere else on the page as its answer appears. A grid leaves
+// each question where it is and lets the row grow. The JSON-LD <script> the
+// accordion emits is display:none by UA rule, so it never takes a cell.
+//
+// The breakpoint is the shop's own tablet one, not a literal: below it there is
+// no room for two columns of anything, whatever the block says.
+const faqsCss = ({ tabletBp }: { tabletBp: string }) => `
 .shop-faqs-title{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:24px;margin:0 0 14px;color:var(--color-fg)}
+.shop-faqs{display:grid;grid-template-columns:1fr;column-gap:40px}
+.shop-faqs-2{grid-template-columns:1fr 1fr}
+@media (max-width:${tabletBp}){.shop-faqs-2{grid-template-columns:1fr}}
 .shop-faq{border-bottom:1px solid var(--color-border);padding:12px 0}
 .shop-faq > summary{cursor:pointer;font-weight:600;color:var(--color-fg)}
 .shop-faq p{margin:8px 0 0;color:var(--color-text);white-space:pre-wrap}
@@ -25,7 +38,7 @@ const faqsCss = `
 
 export async function ShopCategoryFaqsRsc(props: ShopCategoryFaqsProps) {
   await connection()
-  const config = await getShopConfigCached()
+  const [config, bp] = await Promise.all([getShopConfigCached(), getShopBreakpoints()])
   // One switch for the feature, wherever it appears. An owner who has turned
   // FAQs off should not find them still being answered on a category page.
   if (!config.productFaqsEnabled) return null
@@ -33,8 +46,15 @@ export async function ShopCategoryFaqsRsc(props: ShopCategoryFaqsProps) {
   const shopWide = normaliseFaqItems(config.productFaqs)
 
   let items: ShpFaqItem[]
-  if (!props.categorySlug) {
-    // A Collection or Tag layout: neither carries questions of its own, so the
+  if (props.collectionSlug) {
+    // A collection page. One rung and no chain - a collection has no parent -
+    // so `scope` chooses between its own questions alone and its own followed by
+    // the shop-wide ones, and a collection that says it does not inherit keeps
+    // the shop's off its page whichever is picked.
+    const set = await getCollectionFaqSetBySlug(props.collectionSlug)
+    items = props.scope === 'inherited' ? resolveCategoryFaqs([set], shopWide) : set.items
+  } else if (!props.categorySlug) {
+    // A Shop Home or Tag layout: neither carries questions of its own, so the
     // shop-wide list is the only thing there is to show. Said in the field hint
     // too, since the "Questions to show" setting has nothing to choose between
     // here.
@@ -54,11 +74,16 @@ export async function ShopCategoryFaqsRsc(props: ShopCategoryFaqsProps) {
   if (items.length === 0) return null
   const title = props.title?.trim()
 
+  // One column is the only other answer, so anything that is not '1' is two -
+  // including a layout saved before this field existed, which is what makes the
+  // block look the same on a page nobody has re-opened since.
+  const wrapper = props.columns === '1' ? 'shop-faqs' : 'shop-faqs shop-faqs-2'
+
   return (
     <section className="shop-faqs-block">
-      <style dangerouslySetInnerHTML={{ __html: faqsCss }} />
+      <style dangerouslySetInnerHTML={{ __html: faqsCss(bp) }} />
       {title ? <h2 className="shop-faqs-title">{title}</h2> : null}
-      <FaqAccordion items={items} wrapperClassName="shop-faqs" itemClassName="shop-faq" />
+      <FaqAccordion items={items} wrapperClassName={wrapper} itemClassName="shop-faq" />
     </section>
   )
 }

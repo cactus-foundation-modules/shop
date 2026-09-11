@@ -410,6 +410,13 @@ CREATE TABLE IF NOT EXISTS "shp_collections" (
     "meta_title" TEXT,
     "meta_description" TEXT,
     "og_image_id" TEXT,
+    -- This collection's own frequently asked questions (057_collection_faqs.sql),
+    -- in the same shape as shp_products.faqs. Printed on the collection's page by
+    -- the Shop: FAQs block; a collection has no parent, so `inherit` chooses
+    -- between "with the shop-wide questions" and "without them". NULL is "none
+    -- written". They are NOT inherited by the products in the collection - see
+    -- the migration for why.
+    "faqs" JSONB,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

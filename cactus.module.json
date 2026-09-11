@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.419",
+  "version": "0.1.420",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1565",
@@ -375,6 +375,7 @@
       "rscComponent": "shopCategoryFaqsPuckRscComponent",
       "rscImport": "./components/puck/ShopCategoryFaqs.rsc",
       "layoutTypes": [
+        "shopIndex",
         "shopCategory",
         "shopCollection",
         "shopTag"

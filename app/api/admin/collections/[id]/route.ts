@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { updateCollection, deleteCollection, setCollectionProducts } from '@/modules/shop/lib/db'
 import { slugify, ensureUniqueCollectionSlug } from '@/modules/shop/lib/slug'
+import { FaqSetBodySchema } from '@/modules/shop/lib/faq'
 
 const Body = z.object({
   name: z.string().min(1).optional(),
@@ -18,6 +19,9 @@ const Body = z.object({
   metaTitle: z.string().nullable().optional(),
   metaDescription: z.string().nullable().optional(),
   ogImageId: z.string().nullable().optional(),
+  // This collection's own frequently asked questions, printed on its page by the
+  // Shop: FAQs block. `inherit` false leaves the shop-wide ones off it.
+  faqs: FaqSetBodySchema.nullable().optional(),
   regenerateSlug: z.boolean().optional(),
   productIds: z.array(z.string()).optional(),
 })

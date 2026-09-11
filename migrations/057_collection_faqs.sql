@@ -1,0 +1,32 @@
+-- ---------------------------------------------------------------------------
+-- 057 - Frequently asked questions on a collection, too.
+--
+-- Migration 055 gave the questions three homes: the product, its category (and
+-- that category's ancestors), and the shop. A collection had none, so the
+-- Shop: FAQs block on a collection page could only ever print the shop-wide
+-- list - which is fine for "do you deliver to Scotland" and no use at all for a
+-- curated group with a story of its own ("Everything in the Impulse range").
+--
+--   shp_collections.faqs
+--       Same shape as shp_products.faqs and shp_categories.faqs, parsed by the
+--       same lib/faq.ts:
+--
+--         { "items": [ { "question": "...", "answer": "..." } ], "inherit": true }
+--
+--       `inherit` false means "this collection answers for itself" and the
+--       shop-wide questions are left off its page.
+--
+-- A collection is NOT a tree and has no parent, so unlike a category there is
+-- nothing between it and the shop - the walk is one rung, then the shop-wide
+-- list, and that is all.
+--
+-- Nor do a collection's questions reach the products in it. A product belongs to
+-- as many collections as somebody has filed it under, and a page that inherited
+-- from all of them would answer the same question three different ways with no
+-- rule for which wins. Categories carry a master; collections deliberately do
+-- not. So these questions are for the collection PAGE and nowhere else.
+--
+-- No index: read by id or slug, alongside the row it hangs off.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE "shp_collections" ADD COLUMN IF NOT EXISTS "faqs" JSONB;

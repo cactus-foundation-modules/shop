@@ -282,6 +282,20 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 too, by dropping the <strong>Shop: FAQs</strong> piece into their layout under Editing pages. Unticking
                 the box above takes the lot off every page at once.
               </p>
+              <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
+                On a product page the questions start hidden behind a search box - a product inheriting thirty of them
+                would otherwise open on thirty headings. The shopper types a word or two, picks their question off the
+                suggestions and gets that answer. Search engines are unaffected: every question and answer is still in
+                the page, and still in the details they read.
+              </p>
+              <div className="field">
+                <label>What the product page&apos;s search box says</label>
+                <input
+                  value={config.productFaqSearchPlaceholder}
+                  onChange={(e) => set('productFaqSearchPlaceholder', e.target.value)}
+                  placeholder="Search our answers, or ask your own question"
+                />
+              </div>
               <FaqListEditor
                 items={config.productFaqs}
                 onChange={(items) => set('productFaqs', items)}

@@ -41,6 +41,14 @@ export async function shopMediaUsageProvider(): Promise<string[]> {
     SELECT "description_puck"::text AS ref FROM "shp_categories" WHERE "description_puck" IS NOT NULL
     UNION ALL
     SELECT "description_puck"::text AS ref FROM "shp_collections" WHERE "description_puck" IS NOT NULL
+    UNION ALL
+    -- A customer's "Report an issue" photograph. Snapshotted as a url beside the
+    -- library id (see the migration comment on the table), so both are checked -
+    -- the id in case the url has since drifted, the url because it is what
+    -- actually renders in the admin queue.
+    SELECT "url" AS ref FROM "shp_order_request_photos"
+    UNION ALL
+    SELECT "media_id" AS ref FROM "shp_order_request_photos" WHERE "media_id" IS NOT NULL
   `
   return rows.map((r) => r.ref).filter((r): r is string => !!r)
 }
