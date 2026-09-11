@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { errorResponse } from '@/lib/utils'
-import { validateUpload, uploadMedia, saveMediaRecord } from '@/lib/media/upload'
+import { validateUpload, uploadMedia, buildLibraryUploadKey, saveMediaRecord } from '@/lib/media/upload'
+import { getOrCreateFolderByPath, resolveFolderPath } from '@/lib/media/organise'
 import { getActiveMediaProvider, isMediaProviderConfigured } from '@/lib/config/env'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { requireOrderAccess } from '@/modules/shop/lib/order-route-access'
@@ -59,7 +60,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!validation.valid) return errorResponse(validation.reason)
 
   try {
-    const result = await uploadMedia(validation.buffer, file.type, provider, file.name, 'shop/damage-reports')
+    // Filed under Orders / <order number> / issues, so what a customer sent in
+    // is browsable in Media beside the order it belongs to rather than a heap
+    // only this route can see - the same reasoning the purchase-order portal
+    // upload follows (modules/purchase-orders/lib/portal-upload.ts). buildLibraryUploadKey keeps
+    // the name the customer's photograph already had, suffixing "-2" and so on
+    // only if that exact name is already taken in this order's folder.
+    const folderId = await getOrCreateFolderByPath(['Orders', access.order.orderNumber, 'issues'])
+    const folderPath = folderId ? await resolveFolderPath(folderId) : undefined
+    const presetKey = await buildLibraryUploadKey(provider, file.type, file.name, folderPath)
+    const result = await uploadMedia(validation.buffer, file.type, provider, file.name, folderPath, false, presetKey)
     const record = await saveMediaRecord({
       key: result.key,
       url: result.url,
@@ -71,6 +81,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       // to chase - the library's own audit should not spend the rest of its life
       // asking the owner to describe somebody else's broken table.
       isDecorative: true,
+      folderId,
     })
     // The id is what the report quotes; the url is only so the customer can see
     // the thumbnail they just added. The report resolves the url server-side
