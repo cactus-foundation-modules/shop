@@ -10,6 +10,7 @@ import {
 } from '@/modules/shop/lib/db/product-questions'
 import { FAQ_ANSWER_MAX } from '@/modules/shop/lib/faq'
 import { sendProductQuestionAnswer } from '@/modules/shop/lib/product-question-emails'
+import { syncProductQuestionsNotification } from '@/modules/shop/lib/product-question-notify'
 
 // The same ceiling a written FAQ answer has, and for the reason: this one is
 // going to become one.
@@ -83,6 +84,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     published,
   })
 
+  syncProductQuestionsNotification().catch((err) =>
+    console.error('[shop] product questions notification sync failed', err),
+  )
+
   return NextResponse.json({ answered: true, published })
 }
 
@@ -100,6 +105,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!question) return NextResponse.json({ error: 'That question is not here any more.' }, { status: 404 })
 
   await setProductQuestionStatus(id, parsed.data.status)
+
+  syncProductQuestionsNotification().catch((err) =>
+    console.error('[shop] product questions notification sync failed', err),
+  )
+
   return NextResponse.json({ status: parsed.data.status })
 }
 
@@ -114,5 +124,10 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
 
   const { id } = await params
   await deleteProductQuestion(id)
+
+  syncProductQuestionsNotification().catch((err) =>
+    console.error('[shop] product questions notification sync failed', err),
+  )
+
   return NextResponse.json({ deleted: true })
 }

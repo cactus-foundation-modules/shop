@@ -5,6 +5,7 @@ import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { createProductQuestion } from '@/modules/shop/lib/db/product-questions'
 import { getProductById } from '@/modules/shop/lib/db/products'
+import { syncProductQuestionsNotification } from '@/modules/shop/lib/product-question-notify'
 import { sendProductQuestionNotice } from '@/modules/shop/lib/product-question-emails'
 import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
 
@@ -65,6 +66,10 @@ export async function POST(request: NextRequest) {
     memberId: member?.id ?? null,
     submittedIp: ip,
   })
+
+  syncProductQuestionsNotification().catch((err) =>
+    console.error('[shop] product questions notification sync failed', err),
+  )
 
   // The question is saved. Everything past this point is a courtesy to the shop,
   // and none of it is allowed to turn a saved question into an error the shopper
