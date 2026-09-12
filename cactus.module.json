@@ -1,9 +1,9 @@
 {
   "name": "shop",
-  "version": "0.1.427",
+  "version": "0.1.428",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
-  "requiresCoreVersion": "0.5.1597",
+  "requiresCoreVersion": "0.5.1601",
   "migrationCatchups": {
     "043_returnable": "047_order_item_return_note_catchup"
   },
@@ -889,6 +889,12 @@
       "id": "shop",
       "import": "./lib/media-reference-rewriter",
       "component": "shopMediaReferenceRewriter"
+    },
+    {
+      "point": "core.media-reference-detachers",
+      "id": "shop",
+      "import": "./lib/media-reference-detacher",
+      "component": "shopMediaReferenceDetacher"
     },
     {
       "point": "members.account-section",
