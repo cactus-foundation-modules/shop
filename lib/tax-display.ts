@@ -38,7 +38,15 @@ export async function resolveTaxDisplay(): Promise<TaxDisplay> {
   }
   // Nothing to convert: skip the zone and rate queries entirely rather than
   // loading a rate table every grid render for a multiply by one.
-  if (display.mode === 'AS_ENTERED') return { display, rates: new Map() }
+  //
+  // Two jobs need the rates, not one. The storefront needs them to PRINT a
+  // converted figure, which is the `mode` question. Structured data needs them
+  // to publish a TAX-INCLUSIVE figure (makeGrossAdjuster below) whatever the
+  // storefront prints - and a shop keeping its prices net needs that even on
+  // 'AS_ENTERED', where it prints exactly what is stored and converts nothing.
+  // So the skip is "stored gross and printing what is stored", which is the
+  // default shop and still costs it no queries at all.
+  if (display.mode === 'AS_ENTERED' && display.storedIncludesTax) return { display, rates: new Map() }
 
   const zoneId = await getDefaultTaxZoneId()
   if (!zoneId) return { display, rates: new Map() }
@@ -70,6 +78,33 @@ export function makeDisplayAdjuster(
   const rate = taxDisplayRate(taxDisplay, taxClassId)
   if (displayPriceFactor(taxDisplay.display, rate) === 1) return null
   return (amount: number) => displayAmount(amount, taxDisplay.display, rate)
+}
+
+/**
+ * A one-product converter to the TAX-INCLUSIVE figure, whatever the storefront
+ * happens to print. Returns null when the stored figure already carries tax, or
+ * the line is zero-rated, so callers can skip the mapping altogether.
+ *
+ * Separate from makeDisplayAdjuster above because the two answer different
+ * questions and a shop selling to businesses answers them differently. The page
+ * prints what the owner chose - net, with "ex. VAT" beside it, on a trade
+ * catalogue. Structured data has no such latitude: a shopping channel compares
+ * it against the feed, and a feed quoting UK shoppers has to quote them gross.
+ * Publishing the printed figure there is how a correct feed still gets an item
+ * pulled for a price mismatch.
+ */
+export function makeGrossAdjuster(
+  taxDisplay: TaxDisplay,
+  taxClassId: string | null | undefined,
+): ((amount: number) => number) | null {
+  const rate = taxDisplayRate(taxDisplay, taxClassId)
+  // The same arithmetic the storefront runs, asked with the mode pinned to
+  // INCLUSIVE. Reused rather than rewritten as `amount * (1 + rate)` so the
+  // rounding is identical to every other price the shop prints - a penny of
+  // drift between the feed and the markup is the very mismatch this fixes.
+  const gross: PriceDisplay = { ...taxDisplay.display, mode: 'INCLUSIVE' }
+  if (displayPriceFactor(gross, rate) === 1) return null
+  return (amount: number) => displayAmount(amount, gross, rate)
 }
 
 export { displayAmount, displayPriceFactor }

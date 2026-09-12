@@ -20,6 +20,7 @@ import { ClearableNumberField } from '@/lib/puck/ClearableNumberField'
 import { splitLightDark, composeLightDark } from '@/lib/puck/lightDark'
 import type { CSSProperties, ReactNode } from 'react'
 import { SharedStyle } from '@/components/SharedStyle'
+import type { ImageResizing } from '@/lib/media/resize-url'
 
 // Product Detail part-blocks. Each is a small draggable piece of a Product
 // Detail layout (admin > Layouts > Shop > Product Detail). The markup and class
@@ -222,7 +223,16 @@ export const galleryCss = ({ tabletBp, mobileBp }: Breakpoints, maxPct: number) 
 @media (max-width:${mobileBp}){.spd-stage-col{width:100%}}
 `
 
-type GalleryProps = { _ctx?: DetailPartContext; thumbPosition?: string; maxWidthPct?: number; zoomOnHover?: boolean }
+type GalleryProps = {
+  _ctx?: DetailPartContext
+  thumbPosition?: string
+  maxWidthPct?: number
+  zoomOnHover?: boolean
+  // Puck's channel for site-wide values a block cannot fetch itself. Read for
+  // `imageResizing`, so the stage can ask for its picture at the size of the stage
+  // rather than the size of the original - see lib/media/resize-url.ts.
+  puck?: { metadata?: { imageResizing?: ImageResizing } }
+}
 
 // The cap is a percentage of the Split row, so anything outside 10-90 is either
 // no cap at all or no buy column - clamp rather than trust the field, and fall
@@ -304,7 +314,7 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
           }}
         />
       ) : (
-        <ProductGallery images={ctx.images} productName={ctx.product.name} thumbPosition={props.thumbPosition} zoom={props.zoomOnHover} extras={extras} />
+        <ProductGallery images={ctx.images} productName={ctx.product.name} thumbPosition={props.thumbPosition} zoom={props.zoomOnHover} extras={extras} resizing={props.puck?.metadata?.imageResizing} />
       )}
     </>
   )

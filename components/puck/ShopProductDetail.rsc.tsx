@@ -11,7 +11,7 @@ import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { isOnSale, priceView } from '@/modules/shop/lib/pricing'
 import { resolveTagBadges } from '@/modules/shop/lib/tag-badges'
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
-import { makeDisplayAdjuster, resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
+import { makeDisplayAdjuster, makeGrossAdjuster, resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { injectShopProductDetailEmbed } from '@/modules/shop/lib/inject-part-context'
 import { resolveShopDetailProvider, narrowShopDetailSlot, coveredByLayoutBlocks, collectLayoutBlockTypes } from '@/modules/shop/lib/detail-slot'
 import { resolveShopDetailTabs } from '@/modules/shop/lib/detail-tabs'
@@ -28,6 +28,7 @@ import { canSeeReturnsPolicy } from '@/modules/shop/lib/admin-returns'
 import { getSupplierByName } from '@/modules/shop/lib/db/suppliers'
 import { buildProductJsonLd, type ShopShippingOption } from '@/modules/shop/lib/product-jsonld'
 import { resolveMerchantFacts } from '@/modules/shop/lib/merchant-facts'
+import { resolveSelectedVariation } from '@/modules/shop/lib/product-selected-variation'
 import { resolveProductDeliveryOptions } from '@/modules/shop/lib/detail-delivery'
 import { resolveProductRating } from '@/modules/shop/lib/detail-rating'
 import { productUrl } from '@/modules/shop/lib/product-url'
@@ -69,7 +70,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   // Extra gallery media and contributed tabs are additive and need only the
   // product, so they resolve alongside everything else rather than behind the
   // template.
-  const [media, config, taxDisplay, bp, tags, tagIds, template, provider, galleryExtras, detailTabs, specOverride, adminEditHref, showAdminStock, showAdminCodes, showAdminReturns, merchantFacts, deliveryOptions, rating] = await Promise.all([
+  const [media, config, taxDisplay, bp, tags, tagIds, template, provider, galleryExtras, detailTabs, specOverride, adminEditHref, showAdminStock, showAdminCodes, showAdminReturns, merchantFacts, deliveryOptions, rating, selectedVariation] = await Promise.all([
     getProductMedia(product.id),
     getShopConfigCached(),
     resolveTaxDisplay(),
@@ -97,6 +98,10 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     resolveMerchantFacts([product.id]),
     resolveProductDeliveryOptions(product.id),
     resolveProductRating(product.id),
+    // And the fourth: which single combination, if any, the option parameters on
+    // this URL name. Independent of everything above, so it rides along rather
+    // than costing the page a round trip of its own.
+    resolveSelectedVariation(product),
   ])
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
   const tagSlugs = tagIds.map((id) => tagById.get(id)).filter((s): s is string => Boolean(s))
@@ -178,30 +183,72 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     product.lowStockThreshold != null &&
     product.stockCount <= product.lowStockThreshold
 
-  // One resolution of the product's price types for the whole page: the parts
-  // read it, and the structured data below quotes the same figure, so a search
-  // result can never advertise a price the page does not charge. Converted to
-  // whichever side of tax the shop prints on (lib/tax-display.ts) here rather
-  // than per part, so the JSON-LD below quotes the figure on screen - a search
-  // result showing the net price of a shop that quotes gross is a mis-price.
+  // One resolution of the product's price types for the whole page: every part
+  // reads it, converted to whichever side of tax the shop PRINTS on
+  // (lib/tax-display.ts) here rather than per part, so two parts can never
+  // disagree about the figure on screen.
   const displayAdjust = makeDisplayAdjuster(taxDisplay, product.taxClassId)
   const prices = priceView(product, config.enabledPriceTypes, displayAdjust)
 
+  // And a second resolution for the structured data, on the tax-INCLUSIVE side
+  // whatever the storefront prints.
+  //
+  // These two used to be one, on the reasoning that markup should quote the
+  // figure on screen. That is right until a shop keeps its prices net - a trade
+  // catalogue printing "£126.00 ex. VAT" - and sends a product feed, which for
+  // UK shoppers has to quote gross. The channel then compares its row against
+  // this markup, finds £126.00 against £151.20, and pulls a perfectly correct
+  // item for a price mismatch. The storefront is free to print either side; the
+  // markup is not, so it publishes the one a shopper actually pays. On the
+  // ordinary shop that stores its prices gross this is a multiply by one and
+  // nothing below moves at all.
+  const grossAdjust = makeGrossAdjuster(taxDisplay, product.taxClassId)
+  const gross = (amount: number) => (grossAdjust ? grossAdjust(amount) : amount)
+  const grossPrices = priceView(product, config.enabledPriceTypes, grossAdjust)
+
+  // Money, on the side of tax the markup publishes rather than the side the page
+  // prints. Both spellings kept because the figures arrive as both: the card
+  // price seam hands back strings, a selected combination hands back numbers.
+  const money = (amount: number) => gross(amount).toFixed(2)
+  const adjusted = (amount: string) => money(Number(amount))
+
+  // Everything the combination named by this URL identifies itself with: its
+  // brand, its barcode and its part number, read back through the same seam and
+  // the same rule the listing's own come through, keyed on the child row rather
+  // than its parent. One small query, and only on a URL that names a combination
+  // outright - which is a feed's landing page and a shared configured link, and
+  // is nothing at all on an ordinary browse.
+  const selectedFacts = selectedVariation
+    ? (await resolveMerchantFacts([selectedVariation.productId])).identifiers.get(selectedVariation.productId) ?? null
+    : null
+
   const offerAvailability = product.isPreOrder
     ? 'https://schema.org/PreOrder'
-    : outOfStock
-      ? 'https://schema.org/OutOfStock'
-      : 'https://schema.org/InStock'
+    : selectedVariation
+      // The combination's own answer, where the URL names one. Pre-order stays
+      // the listing's to declare: it is set on the row a shopper lands on, and
+      // the selector payload carries stock rather than a per-combination
+      // pre-order flag, so the honest order is "the listing says pre-order, or
+      // else this combination's own shelf".
+      ? (selectedVariation.inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock')
+      : outOfStock
+        ? 'https://schema.org/OutOfStock'
+        : 'https://schema.org/InStock'
 
-  // A variations product has no one price: the shopper picks a combination and
+  // A variations listing has no one price: the shopper picks a combination and
   // the figure moves. Structured data says so with an AggregateOffer quoting the
-  // cheapest choice - the same "from" figure the product cards print, converted
-  // to the displayed side of tax like every figure on the page. A single Offer
-  // claiming the parent's own price invites a Merchant Center mismatch the
-  // moment Google compares this page against a variation's feed price.
-  const fromPrice = variantPricing
-    ? (displayAdjust ? displayAdjust(Number(variantPricing.price)) : Number(variantPricing.price)).toFixed(2)
-    : null
+  // cheapest choice - the same "from" figure the product cards print. A single
+  // Offer claiming the parent row's own price would be worse than a range, since
+  // that row prices nothing a shopper can actually buy.
+  //
+  // Unless the URL names a combination outright, and then there is exactly one
+  // price, one barcode and one photograph, and a range is the wrong answer: it
+  // is the address the sitemap lists, the address the canonical tag agrees with,
+  // and the address a product feed sends a shopping channel to carrying that
+  // combination's own figures. A crawler arriving with one chair's barcode in
+  // hand and finding "somewhere between £48 and £132, no barcode" is the whole
+  // reason the item never joins the product it belongs to.
+  const fromPrice = !selectedVariation && variantPricing ? adjusted(variantPricing.price) : null
 
   // Google reads a second, higher price marked `StrikethroughPrice` as the "was"
   // of an offer. Two figures can fill that slot and only one at a time. A genuine
@@ -212,7 +259,6 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   // doubly gated on the RRP already being printed beside the price (Shop settings
   // > Pricing) so the markup can never claim a saving the shopper cannot see.
   const rrpInSearch = config.showRetailPrice && config.retailPriceInStructuredData
-  const adjusted = (amount: string) => (displayAdjust ? displayAdjust(Number(amount)) : Number(amount)).toFixed(2)
 
   // The variations branch takes the cheapest choice's RRP - the same pairing the
   // product cards print, "From £x" against the lowest RRP any choice carries -
@@ -220,20 +266,34 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   // no "was": the provider hands back a cheapest price, not a cheapest saving, so
   // a reduced variations listing carries no strikethrough at all rather than the
   // parent's unrelated one.
-  const strikethrough = fromPrice
-    ? rrpInSearch && variantPricing?.rrp
-      ? adjusted(variantPricing.rrp)
-      : null
-    : (prices.was ?? (rrpInSearch ? prices.rrp : null))
+  //
+  // A named combination, by contrast, has both and takes them in the documented
+  // order: its own normal price when it is genuinely reduced, else its own RRP
+  // where the owner has switched that on and it really is the higher figure.
+  const selectedStrikethrough = selectedVariation
+    ? selectedVariation.compareAtPrice != null
+      ? money(selectedVariation.compareAtPrice)
+      : rrpInSearch && selectedVariation.retailPrice != null && selectedVariation.retailPrice > selectedVariation.price
+        ? money(selectedVariation.retailPrice)
+        : null
+    : null
+  const strikethrough = selectedVariation
+    ? selectedStrikethrough
+    : fromPrice
+      ? rrpInSearch && variantPricing?.rrp
+        ? adjusted(variantPricing.rrp)
+        : null
+      : (grossPrices.was ?? (rrpInSearch ? grossPrices.rrp : null))
 
-  // The delivery services this product can be bought with, priced on the side of
-  // tax the page prints. The charge rides on the product line and is taxed at
-  // the product's own rate, so it converts with the product's own adjuster -
-  // anything else would quote a gross price against a net delivery.
+  // The delivery services this product can be bought with, on the same side of
+  // tax as every other figure in this markup. The charge rides on the product
+  // line and is taxed at the product's own rate, so it converts with the
+  // product's own adjuster - anything else would quote a gross price against a
+  // net delivery.
   const shippingOptions: ShopShippingOption[] = deliveryOptions.map((option) => ({
     label: option.label,
     description: option.description,
-    price: (displayAdjust ? displayAdjust(option.price) : option.price).toFixed(2),
+    price: money(option.price),
     handlingDays: option.handlingDays,
     transitDays: option.transitDays,
   }))
@@ -252,24 +312,61 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   // markup is built rather than deleted out of it afterwards.
   const commerce = await resolveShopCommerceMode()
 
+  // The address this markup is about. The listing's own, unless the URL names a
+  // combination - and then the very string the canonical tag carries, because
+  // both come from the one function (lib/product-selected-variation.ts). A
+  // Product node claiming one address while the canonical claims another is how
+  // a page ends up filed as a duplicate of itself.
+  const siteUrl = getSiteUrl()
+  const listingUrl = productUrl(siteUrl, product.slug, config.productUrlStyle)
+  const markupUrl = selectedVariation?.canonicalQuery
+    ? `${listingUrl}?${selectedVariation.canonicalQuery}`
+    : listingUrl
+
+  // A relative media path is a path this shop can resolve and a scraper cannot,
+  // so the pictures leave absolute. A named combination leads with its own,
+  // which is what the gallery opens on and what a product feed sent - the
+  // listing's follow, deduplicated, because they are still pictures of it.
+  const absolute = (url: string) => (url.startsWith('/') ? `${siteUrl}${url}` : url)
+  const listingImages = media.map((m) => m.url)
+  const markupImages = [
+    ...new Set(
+      (selectedVariation?.imageUrls.length ? [...selectedVariation.imageUrls, ...listingImages] : listingImages).map(absolute),
+    ),
+  ]
+
   const jsonLd = buildProductJsonLd({
     name: product.name,
     description: stripHtmlToPlainText(product.shortDescription ?? product.description ?? '') || undefined,
-    images: media.map((m) => m.url),
-    url: productUrl(getSiteUrl(), product.slug, config.productUrlStyle),
-    sku: product.sku,
+    images: markupImages,
+    url: markupUrl,
+    // The listing's own code, and only on the listing. A combination is a
+    // different row with a different code, and this payload does not carry it -
+    // it is a staff reference and never reaches a shopper's render - so rather
+    // than label one chair with its range's code, a named combination publishes
+    // no `sku` at all. Its manufacturer part number still travels, in the
+    // identifiers below, and that is what a shopping channel matches on.
+    sku: selectedVariation ? null : product.sku,
     currency: config.currency,
     availability: offerAvailability,
-    ...(fromPrice
-      ? {
-          lowPrice: fromPrice,
-          highPrice: variantPricing?.highPrice ? adjusted(variantPricing.highPrice) : null,
-          offerCount: variantPricing?.offerCount ?? null,
-        }
-      : { price: prices.now }),
+    ...(selectedVariation
+      ? { price: money(selectedVariation.price) }
+      : fromPrice
+        ? {
+            lowPrice: fromPrice,
+            highPrice: variantPricing?.highPrice ? adjusted(variantPricing.highPrice) : null,
+            offerCount: variantPricing?.offerCount ?? null,
+          }
+        : { price: grossPrices.now }),
     strikethrough,
     hidePrices: commerce.hidePrices,
-    identifiers: merchantFacts.identifiers.get(product.id) ?? { gtin: product.barcode },
+    // The combination's own facts where the URL names one, and the listing's
+    // otherwise. No falling back from one to the other: a listing's barcode on a
+    // combination would claim forty colourways are the same part, which is the
+    // claim that gets a whole feed distrusted.
+    identifiers: selectedVariation
+      ? selectedFacts
+      : merchantFacts.identifiers.get(product.id) ?? { gtin: product.barcode },
     shipping: shippingOptions,
     shippingCountry: merchantFacts.shippingCountry,
     rating,

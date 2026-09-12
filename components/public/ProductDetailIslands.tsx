@@ -12,6 +12,7 @@ import { addToCart } from '@/modules/shop/components/public/cart'
 import { GalleryThumbStrip } from '@/modules/shop/components/public/GalleryThumbStrip'
 import { StickyStripHeight } from '@/modules/shop/components/public/StickyStripHeight'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
+import { responsiveImg, HALF_WIDTH_LADDER, type ImageResizing } from '@/lib/media/resize-url'
 
 // `url` is the picture the stage shows. `thumbUrl` is its 300px copy, drawn in
 // the 64px button in the strip below - absent where the library has no copy, in
@@ -44,7 +45,7 @@ function pct(offset: number, size: number): string {
 // in this strip, and picking one hands the stage to the contributing module. Shop
 // owns the strip, the stage box and the class names; it never learns what the
 // item is. Empty on a shop-only site, where everything below behaves as before.
-export function ProductGallery({ images, productName, thumbPosition, zoom, extras = [] }: { images: GalleryImage[]; productName: string; thumbPosition?: string; zoom?: boolean; extras?: ShopGalleryExtra[] }) {
+export function ProductGallery({ images, productName, thumbPosition, zoom, extras = [], resizing }: { images: GalleryImage[]; productName: string; thumbPosition?: string; zoom?: boolean; extras?: ShopGalleryExtra[]; resizing?: ImageResizing }) {
   const [active, setActive] = useState(0)
   const [hovering, setHovering] = useState(false)
   const [tapped, setTapped] = useState(false)
@@ -116,10 +117,23 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
         {activeExtra && picked ? (
           <activeExtra.Stage payload={activeExtra.payload} itemKey={picked.key} activeProductId={null} />
         ) : current ? (
+          /* The stage draws the picture at the size of the stage - about 630px on a
+             desktop - rather than the 1,920px original, which was 81 KB to fill a
+             box a third of that.
+             THE MAGNIFIER IS THE CATCH, and it is why this is not a plain srcset.
+             Zooming scales this very element by 2.5, so a source chosen for the
+             unzoomed box would be visibly soft the moment somebody leans in - and
+             `srcset` cannot know about a CSS transform that has not happened yet. So
+             the original is what is served WHILE magnified, and the responsive set
+             the rest of the time. The swap costs the shopper who zooms one fetch,
+             which is already what they were paying for on arrival, and saves it for
+             everyone who does not. */
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
             className="spd-stage-img"
-            src={current.url}
+            {...(magnified
+              ? { src: current.url }
+              : responsiveImg(current.url, '(max-width: 900px) 100vw, 640px', HALF_WIDTH_LADDER, resizing))}
             alt={current.alt || productName}
             draggable={false}
             // Origin stays put while zoomed out, so releasing settles back into
