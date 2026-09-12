@@ -1,3 +1,5 @@
+import { Suspense } from 'react'
+import { CardGridSkeleton } from '@/components/CardGridSkeleton'
 import { connection } from 'next/server'
 import { getProductBySlugCached, getProductMedia, getProductTagIds } from '@/modules/shop/lib/db'
 import { listTags } from '@/modules/shop/lib/db/catalogue'
@@ -15,7 +17,26 @@ import { SharedStyle } from '@/components/SharedStyle'
 // Server (RSC) half of Shop: Single Product. Kept out of the client editor
 // bundle - see ShopProductCard.tsx.
 
-export async function ShopProductCardRsc(props: ShopProductCardProps) {
+// The Suspense boundary has to be OUTSIDE the async work, which is why this is a
+// plain function wrapping an async one: a Suspense declared inside the async
+// component would already have awaited everything before React saw it. Same
+// shape, and the same hard-won reason, as ProductDiscoveryRsc.
+//
+// WHAT IT BUYS: one hand-placed card is a cheaper query than a grid, but it is
+// still a product lookup that the header, the hero and every other block on the
+// page would otherwise wait behind. One tile reserved, because that is what this
+// block is. There is no notFound() or redirect() in the body, so committing the
+// response early costs no status code - the route settles that before any block
+// renders.
+export function ShopProductCardRsc(props: ShopProductCardProps) {
+  return (
+    <Suspense fallback={<CardGridSkeleton columns={1} count={1} />}>
+      <ShopProductCardRscBody {...props} />
+    </Suspense>
+  )
+}
+
+async function ShopProductCardRscBody(props: ShopProductCardProps) {
   await connection()
   if (!props.productSlug) return null
   const product = await getProductBySlugCached(props.productSlug)

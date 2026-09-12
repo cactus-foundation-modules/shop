@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { connection } from 'next/server'
 import { HARD_MAX_PER_PAGE } from '@/modules/shop/lib/db'
 import { ShopGridPager } from '@/modules/shop/components/public/ShopGridPager'
@@ -9,13 +10,33 @@ import type { ShopGridScope } from '@/modules/shop/lib/grid-page-types'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { shopProductGridPuckComponent, GridSectionHead, gridViewAll, type ShopProductGridProps } from './ShopProductGrid'
 import { SharedStyle } from '@/components/SharedStyle'
+import { CardGridSkeleton } from '@/components/CardGridSkeleton'
 
 // Server (RSC) half of Shop: Product Grid. Kept out of the client editor bundle
 // - lib/card-template dynamically imports lib/puck/config.rsc, which depends on
 // next/headers via other modules' RSC blocks. See ShopProductGrid.tsx.
 
 // RSC: real products, per-request via connection() (stock/pricing must never be stale-cached).
-export async function ShopProductGridRsc(props: ShopProductGridProps) {
+// The Suspense boundary has to be OUTSIDE the async work, which is why this is a
+// plain function wrapping an async one: a Suspense declared inside the async
+// component would already have awaited everything before React saw it. Same
+// shape, and the same hard-won reason, as ProductDiscoveryRsc.
+//
+// WHAT IT BUYS. An async server component with no boundary above it blocks the
+// entire first flush, so every other block on the page waits for this one's
+// product query. The live homepage carried five grid blocks and took 2.9s to
+// its first byte; the guided finder's own page, which does far more work but was
+// already behind a boundary, took 0.70s. Nothing about the work changes - the
+// page simply starts arriving straight away and the grid fills in.
+export function ShopProductGridRsc(props: ShopProductGridProps) {
+  return (
+    <Suspense fallback={<CardGridSkeleton columns={props.columns ?? 3} count={Math.floor(Number(props.pageSize)) || props.limit || 12} />}>
+      <ShopProductGridRscBody {...props} />
+    </Suspense>
+  )
+}
+
+async function ShopProductGridRscBody(props: ShopProductGridProps) {
   await connection()
   const columns = props.columns ?? 3
   // Paging off is the old grid exactly: fetch `limit`, render `limit`, no pager
