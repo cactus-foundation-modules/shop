@@ -113,8 +113,19 @@ export async function resolveShopCardExtras(productIds: string[]): Promise<Map<s
   // Dynamic on purpose: search-cards imports this file and the registry
   // imports search-cards, so a static edge here closes an import cycle. See
   // lib/product-saved.ts and scripts/check-import-cycles.mjs.
-  const { modulePublicExtensionPointComponents: moduleExtensionPointComponents } =
-    await import('@/lib/modules/extension-points.public')
+  // The SERVER map, not the public one, and that is a 214 KB decision.
+  //
+  // This point's providers are server things - each has an async `load` that
+  // reaches the database - but they also carry CLIENT components as fields (a
+  // thumbnail strip, a stage). The public map is statically imported by the
+  // public layout, so every provider in it becomes a client entry on EVERY
+  // route: measured on the live site, the 3D provider put three.js chunks into
+  // the script list of the contact page, the login page and the members list,
+  // 214 KB brotli that Lighthouse reported as ~100% unused. Reading them here
+  // instead - lazily, from a map the public layout does not import - keeps them
+  // on the pages that actually resolve a gallery.
+  const { moduleServerExtensionPointComponents: moduleExtensionPointComponents } =
+    await import('@/lib/modules/extension-points.server')
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return out
 
