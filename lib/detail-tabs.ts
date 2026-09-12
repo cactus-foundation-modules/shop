@@ -12,6 +12,7 @@
 // means several more tabs, and every provider is resolved rather than only the
 // first.
 import type { ComponentType } from 'react'
+import type { ImageResizing } from '@/lib/media/resize-url'
 import { getInstalledManifests } from '@/lib/modules/live-status'
 
 // What the strip hands the provider's panel. Rendered inside shop's own
@@ -22,6 +23,13 @@ export type ShopDetailTabPanelProps = {
   // it as opaque: it crosses the RSC boundary, so it must be JSON-serialisable,
   // and that is the only thing shop asks of it.
   payload: unknown
+  // The owner's "send pictures at the size they are shown" setting, and the host
+  // it applies to. A contributed panel showing pictures (the add-ons showcase,
+  // say) is on the far side of the RSC boundary with no way to read the site
+  // config for itself, so shop passes it down the same way it passes the
+  // payload. Undefined, or a null origin, means serve urls as given. See
+  // lib/media/resize-url.ts.
+  resizing?: ImageResizing
 }
 
 // The shape a module registers at this point.

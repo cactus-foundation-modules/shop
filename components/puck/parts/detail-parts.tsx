@@ -298,6 +298,11 @@ export function ShopDetailGalleryRsc(props: GalleryProps) {
           slug={ctx.product.slug}
           productId={ctx.product.id}
           currencySymbol={ctx.currencySymbol}
+          // A replacing gallery draws the same full-size stage ours does, so it
+          // needs the same setting. Without it the picture-resizing switch did
+          // nothing on every product a provider claimed - which, on a shop with
+          // options, is most of the catalogue.
+          resizing={props.puck?.metadata?.imageResizing}
           layoutBlockTypes={ctx.layoutBlockTypes}
           productName={ctx.product.name}
           images={ctx.images}
@@ -1433,7 +1438,7 @@ const sectionAnchorId = (id: string) => `${SECTION_ID_PREFIX}${id}`
 // what labels. The Tabs block, the Sections block, and the standalone Section
 // links block all build from this, so a link can never point at a section that
 // isn't there. Carved out of the old ShopDetailTabsRsc body unchanged.
-function buildDetailSections(ctx: DetailPartContext, opts?: { specAutoSort?: boolean; hideDims?: boolean }): OrderedTab[] {
+function buildDetailSections(ctx: DetailPartContext, opts?: { specAutoSort?: boolean; hideDims?: boolean; resizing?: ImageResizing }): OrderedTab[] {
   const { product, digitalFile, detailTabs, supplierLabel, slot, currencySymbol, layoutBlockTypes, descriptionBody, specOverride } = ctx
 
   const weightStr = product.weight ? `${product.weight}${product.weightUnit ? ` ${product.weightUnit}` : ''}` : null
@@ -1553,7 +1558,9 @@ function buildDetailSections(ctx: DetailPartContext, opts?: { specAutoSort?: boo
     id: tab.id,
     order: tab.order,
     label: tab.label,
-    content: <tab.Panel payload={tab.payload} />,
+    // Panels live across the RSC boundary and cannot read the site config, so
+    // the picture-resizing setting goes down with the payload.
+    content: <tab.Panel payload={tab.payload} resizing={opts?.resizing} />,
   }))
 
   // Shop's own first on a tie: sort is stable, and a contributed tab landing on
@@ -1566,7 +1573,7 @@ function buildDetailSections(ctx: DetailPartContext, opts?: { specAutoSort?: boo
 const navClassFor = (align?: string, sticky?: string, divider?: boolean) =>
   `spd-tab-nav${align === 'center' ? ' align-center' : align === 'right' ? ' align-right' : ''}${sticky === 'yes' ? ' sticky' : ''}${divider ? ' divider' : ''}`
 
-type TabsProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; divider?: string; dimsTab?: string; padTop?: number; padBottom?: number; bgColour?: string; bgOpacity?: number }
+type TabsProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; divider?: string; dimsTab?: string; padTop?: number; padBottom?: number; bgColour?: string; bgOpacity?: number; puck?: { metadata?: { imageResizing?: ImageResizing } } }
 
 // The strip's own vertical padding, adjustable per block. Blank or non-numeric
 // (the clearable field stores undefined for an emptied box) falls back to the
@@ -1660,7 +1667,7 @@ export function ShopDetailTabsRsc(props: TabsProps) {
   const ctx = props._ctx
   if (!ctx) return null
   const divider = props.divider !== 'no'
-  const sections = buildDetailSections(ctx, { hideDims: props.dimsTab === 'no' })
+  const sections = buildDetailSections(ctx, { hideDims: props.dimsTab === 'no', resizing: props.puck?.metadata?.imageResizing })
   if (sections.length === 0) return null
 
   // The nav points at the anchors the Product: Sections block renders; content
@@ -1741,7 +1748,7 @@ export const shopDetailTabsPuckRscComponent = { ...shopDetailTabsPuckComponent, 
 // Sections (stacked / accordion - no tab bar, own "Section display" setting)
 // ---------------------------------------------------------------------------
 
-type SectionsProps = { _ctx?: DetailPartContext; display?: string; divider?: string; dimsTab?: string; specSort?: string }
+type SectionsProps = { _ctx?: DetailPartContext; display?: string; divider?: string; dimsTab?: string; specSort?: string; puck?: { metadata?: { imageResizing?: ImageResizing } } }
 
 export function ShopDetailSections(props: SectionsProps) {
   const divider = props.divider !== 'no'
@@ -1765,7 +1772,7 @@ export function ShopDetailSectionsRsc(props: SectionsProps) {
   if (!ctx) return null
   const display = props.display === 'accordion' ? 'accordion' : 'stacked'
   const divider = props.divider !== 'no'
-  const sections = buildDetailSections(ctx, { specAutoSort: props.specSort === 'yes', hideDims: props.dimsTab === 'no' })
+  const sections = buildDetailSections(ctx, { specAutoSort: props.specSort === 'yes', hideDims: props.dimsTab === 'no', resizing: props.puck?.metadata?.imageResizing })
   if (sections.length === 0) return null
 
   // Stacked and accordion are pure server markup - no tab state to hold, so no
@@ -1838,7 +1845,7 @@ export const shopDetailSectionsPuckRscComponent = { ...shopDetailSectionsPuckCom
 // stay below. It jumps to the anchors the Sections block renders in stacked or
 // accordion mode; pair it with that block (the Tabs block keeps its own nav).
 
-type SectionNavProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; dimsTab?: string }
+type SectionNavProps = { _ctx?: DetailPartContext; align?: string; sticky?: string; dimsTab?: string; puck?: { metadata?: { imageResizing?: ImageResizing } } }
 
 export function ShopDetailSectionNav(props: SectionNavProps) {
   const labels = ['Description', 'Specification', ...(props.dimsTab === 'no' ? [] : ['Dimensions']), 'FAQs']
@@ -1864,7 +1871,7 @@ export function ShopDetailSectionNav(props: SectionNavProps) {
 export function ShopDetailSectionNavRsc(props: SectionNavProps) {
   const ctx = props._ctx
   if (!ctx) return null
-  const sections = buildDetailSections(ctx, { hideDims: props.dimsTab === 'no' })
+  const sections = buildDetailSections(ctx, { hideDims: props.dimsTab === 'no', resizing: props.puck?.metadata?.imageResizing })
   if (sections.length === 0) return null
   return (
     <>

@@ -16,6 +16,7 @@
 import type { ComponentType } from 'react'
 import { getInstalledManifests } from '@/lib/modules/live-status'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
+import type { ImageResizing } from '@/lib/media/resize-url'
 import type { PuckData, ShpProduct } from '@/modules/shop/lib/types'
 
 // Handed to every slot component so a replaced part is styled by the layout it
@@ -96,6 +97,15 @@ export type ShopDetailGallerySlotProps = SlotBase & {
   // product id - which is the provider's own knowledge, not shop's, and the whole
   // reason this is handed over rather than rendered by shop around the outside.
   extras?: ShopGalleryExtra[]
+  // Whether pictures may be asked for at the size they are drawn, and from which
+  // host - the owner's "send pictures at the size they are shown" setting, which
+  // only shop can read (it lives in the site config, and a slot provider is
+  // handed props rather than a database). A replacing gallery draws the same
+  // full-size stage shop's own does, so without this it quietly serves a 1,920px
+  // original into a 630px box on exactly the products a provider claimed - which
+  // is most of the catalogue on a shop with options. Undefined, or a null origin
+  // inside it, means serve the url as given. See lib/media/resize-url.ts.
+  resizing?: ImageResizing
 }
 
 export type ShopDetailPriceSlotProps = SlotBase & {
