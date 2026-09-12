@@ -25,10 +25,14 @@ import { getCategoryAncestorPath } from '@/modules/shop/lib/db/catalogue'
 // once renumbered to "<product-slug><n>" on every save, which is exactly the
 // renaming this deliberately no longer does.)
 //
-// The per-product folder is what lets a product's variation images sit beside
-// its own: a dependent module (shop-variations) files a variant's image by
-// passing the parent as `folderProductId`, so a variant's image lands in the
-// parent's folder under its own uploaded name.
+// The per-product folder is what lets a product's variation images sit with its
+// own: a dependent module (shop-variations) files a variant's image by passing
+// the parent as `folderProductId`, so a variant's image lands under the parent
+// rather than under "Uncategorised" - and passes `subfolder` so it lands one
+// level down rather than in among the parent's own photographs. A big range puts
+// a hundred variant pictures against three of the product's, and mixed together
+// the folder is unreadable; a named subfolder is the same arrangement the 3D
+// models, downloads and colour swatches already use.
 //
 // The exact-name flag on the core relocate keeps the stored key free of the
 // usual nanoid, so the url reads shop/<category>/<product>/<uploaded-name>.<ext>
@@ -46,6 +50,17 @@ import { getCategoryAncestorPath } from '@/modules/shop/lib/db/catalogue'
 const UNCATEGORISED_FOLDER = 'Uncategorised'
 
 /**
+ * Where a product's pictures are filed.
+ *
+ * `subfolder` is a plain folder name, sanitised into a path segment here - a
+ * module filing its own kind of picture under the product asks for its own
+ * (shop-variations asks for "variations"). It never applies to the product folder
+ * ITSELF, only to what is filed inside it, which is why the folder relocation
+ * below deliberately resolves its path without one.
+ */
+type ProductFolderOptions = { folderProductId?: string; masterCategoryId?: string | null; subfolder?: string }
+
+/**
  * The library folder a product's images belong in, created if it does not exist
  * yet: shop / <master category trail> / <product> (names lower-cased to match the
  * storage path, so 3D models and downloads file alongside the images). The master
@@ -55,11 +70,11 @@ const UNCATEGORISED_FOLDER = 'Uncategorised'
  * `masterCategoryId` overrides the product's saved master, which is what lets
  * the editor file an upload under the category currently picked on screen
  * rather than the one last saved. `folderProductId` files under another
- * product's folder (see the header note).
+ * product's folder, and `subfolder` one level below that (see the header note).
  */
 async function productFolderSegments(
   productId: string,
-  options: { folderProductId?: string; masterCategoryId?: string | null } = {},
+  options: ProductFolderOptions = {},
 ): Promise<string[] | null> {
   const folderProductId = options.folderProductId ?? productId
   const folderProduct = await getProductById(folderProductId)
@@ -88,12 +103,15 @@ async function productFolderSegments(
     sanitizeFolderSegment('Shop'),
     ...categorySegments.map((name) => sanitizeFolderSegment(name)),
     sanitizeFolderSegment(folderProduct.name),
+    // Blank unless a caller asked for one, and a blank segment is skipped by both
+    // the create and the find walks - so the ordinary product path is untouched.
+    ...(options.subfolder ? [sanitizeFolderSegment(options.subfolder)] : []),
   ]
 }
 
 export async function getProductMediaFolderId(
   productId: string,
-  options: { folderProductId?: string; masterCategoryId?: string | null } = {},
+  options: ProductFolderOptions = {},
 ): Promise<string | null> {
   const segments = await productFolderSegments(productId, options)
   if (segments === null) return null
@@ -110,7 +128,7 @@ export async function getProductMediaFolderId(
  */
 export async function findProductMediaFolderId(
   productId: string,
-  options: { folderProductId?: string; masterCategoryId?: string | null; segments?: string[] } = {},
+  options: ProductFolderOptions & { segments?: string[] } = {},
 ): Promise<string | null> {
   const base = await productFolderSegments(productId, options)
   if (base === null) return null
@@ -167,13 +185,16 @@ async function currentProductFolderId(productId: string): Promise<string | null>
  */
 async function relocateProductFolderIfMoved(
   productId: string,
-  options: { folderProductId?: string; masterCategoryId?: string | null } = {},
+  options: ProductFolderOptions = {},
 ): Promise<void> {
   const folderProductId = options.folderProductId ?? productId
   const folderProduct = await getProductById(folderProductId)
   if (!folderProduct) return
 
-  const segments = await productFolderSegments(productId, options)
+  // Without the subfolder: what moves is the PRODUCT's folder, and a caller filing
+  // into a subfolder of it still wants the whole thing carried to the category's
+  // new home - the subfolder rides along as a descendant, like the 3D models do.
+  const segments = await productFolderSegments(productId, { ...options, subfolder: undefined })
   if (segments === null) return
   const targetParentId = await getOrCreateFolderByPath(segments.slice(0, -1))
   if (targetParentId === null) return
@@ -201,7 +222,7 @@ async function relocateProductFolderIfMoved(
 
 export async function reorganiseProductMedia(
   productId: string,
-  options: { folderProductId?: string } = {},
+  options: { folderProductId?: string; subfolder?: string } = {},
 ): Promise<void> {
   const product = await getProductById(productId)
   if (!product) return
@@ -215,7 +236,8 @@ export async function reorganiseProductMedia(
   await relocateProductFolderIfMoved(productId, options)
 
   // Images are normally filed under their own product; `folderProductId` files
-  // them under another product's folder instead (see the header note).
+  // them under another product's folder instead, and `subfolder` one level below
+  // that (see the header note).
   const folderId = await getProductMediaFolderId(productId, options)
   if (folderId === null) return
 
@@ -225,6 +247,21 @@ export async function reorganiseProductMedia(
     ORDER BY "position" ASC
   `
 
+  // A picture the FOLDER-OWNER listing also uses stays in the owner's own folder.
+  // Dragging it into a subfolder sets two saves fighting over one blob - the
+  // variant's save pulls it down into `variations`, the owner's next save pulls it
+  // back up, and each tug is a real copy and delete at the storage provider. Not
+  // hypothetical: 510 pictures on the catalogue this was written for sit on a
+  // listing and on one of its own variants at the same time.
+  const ownerUrls = new Set<string>()
+  if (options.subfolder && options.folderProductId && options.folderProductId !== productId) {
+    const owned = await prisma.$queryRaw<{ url: string }[]>`
+      SELECT "url" FROM "shp_product_media"
+      WHERE "product_id" = ${options.folderProductId} AND "type" = 'IMAGE'
+    `
+    for (const { url } of owned) ownerUrls.add(url)
+  }
+
   // File each managed image into the product folder under the name it already
   // has - no rename, no renumber. An image the editor uploaded straight into the
   // folder is already on its exact-name key here, so moveOrRenameMedia sees no
@@ -233,6 +270,7 @@ export async function reorganiseProductMedia(
   // clash: two images that happen to share an uploaded name in one folder are
   // kept apart, never overwritten.
   for (const { url } of images) {
+    if (ownerUrls.has(url)) continue // shared with the listing itself - see above
     const media = await prisma.media.findFirst({ where: { url }, select: { id: true } })
     if (!media) continue // externally-hosted or otherwise unmanaged - leave as-is
     try {
