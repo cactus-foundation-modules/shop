@@ -1,7 +1,7 @@
-import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
 import { ShopCategoryDescriptionFold } from '@/modules/shop/components/public/ShopCategoryDescriptionFold'
 import type { PuckData } from '@/modules/shop/lib/types'
+import { CactusRender } from '@/lib/puck/CactusRender'
 
 // A category's or collection's long description, in whichever form the owner has
 // given it: the designed document when there is one, else the plain-text box,
@@ -49,7 +49,7 @@ export async function ShopDesignedDescriptionBody({ subject, layoutType, classNa
         {/* `as any`: Puck's RSC Render is typed against a concrete config, and the
             module config is assembled at runtime - same cast every other shop
             surface that stamps a document makes. */}
-        <Render config={getModuleLayoutPuckRscConfig(layoutType) as any} data={subject.descriptionPuck as Data} />
+        <CactusRender config={getModuleLayoutPuckRscConfig(layoutType) as any} data={subject.descriptionPuck as Data} />
       </div>
     )
   }

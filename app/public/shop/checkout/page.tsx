@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation'
-import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
@@ -15,6 +14,7 @@ import { CheckoutPaymentClient } from '@/modules/shop/components/public/Checkout
 import { resolveCheckoutPaymentFields } from '@/modules/shop/lib/checkout-payment-fields'
 import { CheckoutReviewClient } from '@/modules/shop/components/public/CheckoutReviewClient'
 import { resolveCheckoutWalletButtons } from '@/modules/shop/lib/checkout-wallet-buttons'
+import { CactusRender } from '@/lib/puck/CactusRender'
 
 export const metadata = { title: 'Checkout' }
 
@@ -41,7 +41,7 @@ export default async function ShopCheckoutPage() {
       {gate.staffPreview && <ShopStaffPreviewBanner />}
       <h1 style={{ fontSize: '1.75rem', margin: 0 }}>Checkout</h1>
       {layout?.builderData ? (
-        <Render config={getModuleLayoutPuckRscConfig('shopCheckout') as any} data={layout.builderData as Data} />
+        <CactusRender config={getModuleLayoutPuckRscConfig('shopCheckout') as any} data={layout.builderData as Data} />
       ) : (
         // No published shopCheckout layout: render the full default flow rather
         // than a bare heading over nothing. Same shape as the classic starter,

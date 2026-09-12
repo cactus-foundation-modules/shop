@@ -39,6 +39,7 @@ import { orderSizeDeductionView } from '@/modules/shop/lib/order-size-deduction-
 import type { PuckData } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { shopProductDetailPuckComponent, type ShopProductDetailProps } from './ShopProductDetail'
+import { getPuckRenderMetadata } from '@/lib/puck/renderMetadata'
 
 // Server (RSC) half of the ShopProductDetail block. Kept in its own file so the
 // server-only imports below - prisma, next/server, and the dynamic import of
@@ -103,6 +104,17 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     // than costing the page a round trip of its own.
     resolveSelectedVariation(product),
   ])
+  // The site-wide values every Puck block reads off `puck.metadata` - whether
+  // pictures load lazily, which webfonts the page already has, and whether a
+  // picture may be asked for at the size it is drawn.
+  //
+  // This layout has its own <Render>, and a Render with no `metadata` hands every
+  // block inside it NOTHING - so none of those three ever reached a block on a
+  // product page. It is not a new omission; it is why the responsive-images switch
+  // appeared to do nothing here while working on the homepage, whose blocks come
+  // through core's renderInfoPage (which has always passed it). cache()d, so this
+  // shares the query the page has already made.
+  const puckMetadata = await getPuckRenderMetadata()
   const tagById = new Map(tags.map((t) => [t.id, t.slug]))
   const tagSlugs = tagIds.map((id) => tagById.get(id)).filter((s): s is string => Boolean(s))
 
@@ -394,7 +406,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   // so the Description tab falls back to the plain-text `description`.
   const descriptionBody =
     product.descriptionPuck && Array.isArray(product.descriptionPuck.content) && product.descriptionPuck.content.length > 0
-      ? <Render config={getModuleLayoutPuckRscConfig('shopProductDescription') as any} data={product.descriptionPuck as Data} />
+      ? <Render config={getModuleLayoutPuckRscConfig('shopProductDescription') as any} data={product.descriptionPuck as Data} metadata={puckMetadata} />
       : undefined
 
   // The badge's name comes off the product, not the directory row, so a product
@@ -474,7 +486,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
       {jsonLd && (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }} />
       )}
-      <Render config={getModuleLayoutPuckRscConfig('shopProductDetail') as any} data={data as Data} />
+      <Render config={getModuleLayoutPuckRscConfig('shopProductDetail') as any} data={data as Data} metadata={puckMetadata} />
     </div>
   )
 }

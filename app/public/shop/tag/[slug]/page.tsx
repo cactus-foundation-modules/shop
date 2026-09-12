@@ -1,6 +1,5 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { Render } from '@puckeditor/core/rsc'
 import { getTagBySlug, listTags } from '@/modules/shop/lib/db/catalogue'
 import { listProducts, getProductMediaForProducts, getProductTagIdsForProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
@@ -19,6 +18,7 @@ import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { injectTagContext } from '@/modules/shop/lib/inject-tag-context'
 import type { PuckData } from '@/modules/shop/lib/types'
 import { SharedStyle } from '@/components/SharedStyle'
+import { CactusRender } from '@/lib/puck/CactusRender'
 
 // A tag's own page. Categories are the shelves and collections are the hand-
 // picked groupings; a tag is the loose label that cuts across both, and until
@@ -65,7 +65,7 @@ export default async function ShopTagPage({ params, searchParams }: { params: Pr
     return (
       <>
         {gate.staffPreview && <ShopStaffPreviewBanner />}
-        <Render config={getModuleLayoutPuckRscConfig('shopTag') as any} data={data as any} />
+        <CactusRender config={getModuleLayoutPuckRscConfig('shopTag') as any} data={data as any} />
       </>
     )
   }

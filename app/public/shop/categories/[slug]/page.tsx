@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { Render } from '@puckeditor/core/rsc'
 import { getCategoryBySlug, getCategoryAncestorPath, listCategories, resolveCategoryProductFilter, listTags } from '@/modules/shop/lib/db/catalogue'
 import { listProducts, getProductMediaForProducts, getProductTagIdsForProducts, HARD_MAX_PER_PAGE } from '@/modules/shop/lib/db/products'
 import { ShopGridPager } from '@/modules/shop/components/public/ShopGridPager'
@@ -30,6 +29,7 @@ import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { getSiteUrlOrNull } from '@/lib/config/env'
 import { absoluteSocialImageUrl, resolveCategorySocialImage } from '@/modules/shop/lib/catalogue-social-image'
 import { SharedStyle } from '@/components/SharedStyle'
+import { CactusRender } from '@/lib/puck/CactusRender'
 
 export async function generateMetadata({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }): Promise<Metadata> {
   const { slug } = await params
@@ -78,7 +78,7 @@ export default async function ShopCategoryPage({ params, searchParams }: { param
     return (
       <>
         {gate.staffPreview && <ShopStaffPreviewBanner />}
-        <Render config={getModuleLayoutPuckRscConfig('shopCategory') as any} data={data as any} />
+        <CactusRender config={getModuleLayoutPuckRscConfig('shopCategory') as any} data={data as any} />
       </>
     )
   }

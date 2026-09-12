@@ -1,6 +1,5 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { Render } from '@puckeditor/core/rsc'
 import { getSupplierBySlug } from '@/modules/shop/lib/db/suppliers'
 import { listProducts, getProductMediaForProducts, getProductTagIdsForProducts } from '@/modules/shop/lib/db/products'
 import { listTags } from '@/modules/shop/lib/db/catalogue'
@@ -21,6 +20,7 @@ import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { injectSupplierContext } from '@/modules/shop/lib/inject-supplier-context'
 import type { PuckData } from '@/modules/shop/lib/types'
 import { SharedStyle } from '@/components/SharedStyle'
+import { CactusRender } from '@/lib/puck/CactusRender'
 
 // A supplier's own page: everything the shop buys from one supplier, under their
 // name and their write-up. Categories are the shelves, collections are the
@@ -74,7 +74,7 @@ export default async function ShopSupplierPage({ params, searchParams }: { param
     return (
       <>
         {gate.staffPreview && <ShopStaffPreviewBanner />}
-        <Render config={getModuleLayoutPuckRscConfig('shopSupplier') as any} data={data as any} />
+        <CactusRender config={getModuleLayoutPuckRscConfig('shopSupplier') as any} data={data as any} />
       </>
     )
   }

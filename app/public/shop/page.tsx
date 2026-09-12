@@ -1,10 +1,10 @@
-import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
+import { CactusRender } from '@/lib/puck/CactusRender'
 
 export async function generateMetadata() {
   const config = await getShopConfigCached()
@@ -21,7 +21,7 @@ export default async function ShopIndexPage() {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
       {gate.staffPreview && <ShopStaffPreviewBanner />}
-      <Render config={getModuleLayoutPuckRscConfig('shopIndex') as any} data={layout.builderData as Data} />
+      <CactusRender config={getModuleLayoutPuckRscConfig('shopIndex') as any} data={layout.builderData as Data} />
     </div>
   )
 }

@@ -1,6 +1,5 @@
 import { cache } from 'react'
 import { notFound } from 'next/navigation'
-import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
 import { getProductBySlugCached, getProductMediaForProducts } from '@/modules/shop/lib/db/products'
 import { resolveAliasedProduct } from '@/modules/shop/lib/product-page-resolver'
@@ -9,6 +8,7 @@ import { getProductPageStockGate } from '@/modules/shop/lib/stock-visibility'
 import { resolveShopDetailSpec } from '@/modules/shop/lib/detail-spec'
 import { resolveShopDetailImages } from '@/modules/shop/lib/detail-images'
 import type { PuckData } from '@/modules/shop/lib/types'
+import { CactusRender } from '@/lib/puck/CactusRender'
 
 // A product's description on its own: name, pictures (its own and any a
 // companion module folds in - a range's promoted variations, say - in the same
@@ -120,7 +120,7 @@ export default async function ShopProductDetailsOnlyPage({ params }: { params: P
         </div>
       )}
       {hasDesigned
-        ? <Render config={getModuleLayoutPuckRscConfig('shopProductDescription') as any} data={designed as unknown as Data} />
+        ? <CactusRender config={getModuleLayoutPuckRscConfig('shopProductDescription') as any} data={designed as unknown as Data} />
         : product.description
           ? <p>{product.description}</p>
           : null}

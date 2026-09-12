@@ -1,4 +1,3 @@
-import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
@@ -7,6 +6,7 @@ import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/compone
 import { CartPageClient } from '@/modules/shop/components/public/CartPageClient'
 import { ShopUpsellProducts } from '@/modules/shop/components/puck/ShopUpsellProducts'
 import { getShopCartHeaderActions } from '@/modules/shop/lib/cart-header-actions'
+import { CactusRender } from '@/lib/puck/CactusRender'
 
 export const metadata = { title: 'Your basket' }
 
@@ -40,7 +40,7 @@ export default async function ShopCartPage() {
         )}
       </div>
       {layout?.builderData ? (
-        <Render config={getModuleLayoutPuckRscConfig('shopCart') as any} data={layout.builderData as Data} />
+        <CactusRender config={getModuleLayoutPuckRscConfig('shopCart') as any} data={layout.builderData as Data} />
       ) : (
         <>
           <CartPageClient />

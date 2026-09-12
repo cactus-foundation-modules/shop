@@ -1,4 +1,3 @@
-import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
 import { prisma } from '@/lib/db/prisma'
 import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
@@ -16,6 +15,7 @@ import { mergeCardImages } from '@/modules/shop/lib/card-image-order'
 import type { ShopCardFromPrice } from '@/modules/shop/lib/card-price'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 import { resolveProductAdminEditBase } from '@/modules/shop/lib/admin-edit'
+import { CactusRender } from '@/lib/puck/CactusRender'
 
 // Server-only helper shared by every product-card surface (grid, related,
 // featured, single). It resolves the one Product Card template - a per-block
@@ -251,7 +251,7 @@ export async function renderCards(template: PuckData, items: CardItem[], eagerCo
             link sits above the picture and text (z-index) but below those controls -
             see shopCardCss. */}
         <a className="shop-card-link" href={ctx.productHref} aria-label={product.name} />
-        <Render config={config as any} data={data as Data} />
+        <CactusRender config={config as any} data={data as Data} />
       </div>
     )
   })

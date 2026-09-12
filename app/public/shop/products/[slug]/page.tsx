@@ -1,6 +1,5 @@
 import { cache } from 'react'
 import { notFound } from 'next/navigation'
-import { Render } from '@puckeditor/core/rsc'
 import type { Data } from '@puckeditor/core'
 import type { Metadata } from 'next'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
@@ -20,6 +19,7 @@ import { ShopClosedNotice, ShopStaffPreviewBanner, ShopStockHiddenBanner } from 
 import { getProductPageStockGate } from '@/modules/shop/lib/stock-visibility'
 import { injectProductContext } from '@/modules/shop/lib/inject-product-context'
 import type { PuckData, ShpProduct } from '@/modules/shop/lib/types'
+import { CactusRender } from '@/lib/puck/CactusRender'
 
 type Props = {
   params: Promise<{ slug: string }>
@@ -198,7 +198,7 @@ export async function ShopProductPageView({ params, searchParams }: Props) {
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 1.5rem 2rem' }}>
       {gate.staffPreview && <ShopStaffPreviewBanner />}
       {stock.staffPreview && <ShopStockHiddenBanner />}
-      <Render config={getModuleLayoutPuckRscConfig('shopProduct') as any} data={data as Data} />
+      <CactusRender config={getModuleLayoutPuckRscConfig('shopProduct') as any} data={data as Data} />
     </div>
   )
 }

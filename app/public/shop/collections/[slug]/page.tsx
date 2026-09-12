@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { Render } from '@puckeditor/core/rsc'
 import { getCollectionBySlug, listTags } from '@/modules/shop/lib/db/catalogue'
 import { listProducts, getProductMediaForProducts, getProductTagIdsForProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
@@ -22,6 +21,7 @@ import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { getSiteUrlOrNull } from '@/lib/config/env'
 import { absoluteSocialImageUrl, resolveCollectionSocialImage } from '@/modules/shop/lib/catalogue-social-image'
 import { SharedStyle } from '@/components/SharedStyle'
+import { CactusRender } from '@/lib/puck/CactusRender'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
@@ -66,7 +66,7 @@ export default async function ShopCollectionPage({ params, searchParams }: { par
     return (
       <>
         {gate.staffPreview && <ShopStaffPreviewBanner />}
-        <Render config={getModuleLayoutPuckRscConfig('shopCollection') as any} data={data as any} />
+        <CactusRender config={getModuleLayoutPuckRscConfig('shopCollection') as any} data={data as any} />
       </>
     )
   }
