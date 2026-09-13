@@ -84,7 +84,7 @@ function Style({ css }: { css: string }) {
 // declares a width, and `max-width` (unlike `width`) is ignored while the track
 // is being sized, so it clamps the column to the track afterwards without
 // feeding a percentage back into the measurement that produced it.
-export const galleryCss = ({ tabletBp, mobileBp }: Breakpoints, maxPct: number) => `
+export const galleryCss = ({ mobileBp }: Breakpoints, maxPct: number) => `
 /* Hard ceiling on the media column: whatever the Split's ratio says, the cell
    holding the gallery never takes more than maxPct of the row (the block's own
    "Max media width" field, default 45%), so the buy column keeps the rest.
@@ -221,15 +221,20 @@ export const galleryCss = ({ tabletBp, mobileBp }: Breakpoints, maxPct: number) 
 .spd-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .spd-thumb.on{border-color:var(--color-primary);box-shadow:0 0 0 1px var(--color-primary)}
 .spd-thumb:hover{border-color:var(--color-primary)}
-/* Nothing to stick to once the page is short of room for a sticky column. */
-@media (max-width:${tabletBp}){.spd-stage-col{position:static}}
-/* The hug stands down only where the Split actually stacks, which core does at
-   the MOBILE breakpoint (tokens.ts), not the tablet one - between the two the
-   buy column is still beside the gallery and still wants the slack. Stacked, the
-   gallery has the full width to itself and the photo should use the width it has
-   rather than shrink to a viewport it no longer shares; hugging there would only
-   donate the slack to the margin. */
-@media (max-width:${mobileBp}){.spd-stage-col{width:100%}}
+/* Sticky and the hug both stand down only where the Split actually stacks, which
+   core does at the MOBILE breakpoint (tokens.ts), not the tablet one. Between the
+   two the buy column is still beside the gallery: it still wants the slack, and
+   the gallery still has a column's worth of travel to stick through - the width
+   budget above already sizes the photo to the viewport's height, so it fits on a
+   tablet exactly as it does on a desktop. This used to switch sticky off at the
+   tablet breakpoint, which left a tablet shopper scrolling a long buy column
+   with the picture long gone.
+   Stacked, there is no column beside it to stick against (shop-variations pins
+   its own compact strip there instead), and the gallery has the full width to
+   itself, so the photo should use the width it has rather than shrink to a
+   viewport it no longer shares; hugging there would only donate the slack to
+   the margin. */
+@media (max-width:${mobileBp}){.spd-stage-col{position:static;width:100%}}
 `
 
 type GalleryProps = {
