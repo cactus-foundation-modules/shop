@@ -21,6 +21,9 @@ import {
   relativeTime,
 } from '@/modules/shop/components/admin/order-labels'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { reasonLabel } from '@/modules/shop/lib/order-requests'
+import { REQUEST_STATUS_DISPLAY, REQUEST_TYPE_LABEL, badgeClass } from '@/modules/shop/lib/order-display'
+import type { ShpOrderRequestStatus, ShpOrderRequestType } from '@/modules/shop/lib/types'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { useAlert, useConfirm, usePrompt } from '@/modules/shop/components/admin/dialogs'
 
@@ -93,6 +96,27 @@ type OrderDetail = {
   }>
   /** On a replacement, the order it is putting right. Null on a sale. */
   parentOrder?: { id: string; orderNumber: string } | null
+  /** What the customer has reported or asked for on this order, newest first:
+   *  damage reports with their photographs, returns, cancellations. Optional so
+   *  a response from an older deployment still renders. */
+  requests?: OrderRequest[]
+}
+
+type OrderRequest = {
+  id: string
+  type: ShpOrderRequestType
+  status: ShpOrderRequestStatus
+  reason: string
+  customerNote: string | null
+  adminNote: string | null
+  returnCharge: string | null
+  replacementOrderId: string | null
+  createdAt: string
+  decidedAt: string | null
+  items: Array<{ id: string; orderItemId: string; quantity: number }>
+  /** The photograph's current address - read off its library item on the
+   *  server, so an optimised or re-filed picture shows as it is now. */
+  photos: Array<{ id: string; url: string }>
 }
 
 // Dispatch progress is worked out from the shipment lines every time it is
@@ -486,6 +510,9 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
 
   const dispatchByItem = new Map((dispatch?.summary.lines ?? []).map((l) => [l.orderItemId, l]))
   const itemNames = new Map(data.items.map((i) => [i.id, i.productName]))
+  const requests = data.requests ?? []
+  const waitingRequests = requests.filter((r) => r.status === 'PENDING').length
+  const replacementNumbers = new Map((data.replacements ?? []).map((r) => [r.id, r.orderNumber]))
   const hasRefundableItems = data.items.some((i) => i.refundedQty < i.quantity)
   const hasOutstandingItems = (dispatch?.summary.lines ?? []).some((l) => l.outstandingQty > 0)
   const hold = dispatch?.preOrderHold
@@ -546,6 +573,25 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
         s.notes,
       ].filter(Boolean).join('\n'),
     })),
+    // A customer's report is part of what happened to the order, so it sits in
+    // the timeline too - raised, and (separately) when it was settled.
+    ...requests.map((r) => ({
+      id: `request-${r.id}`,
+      at: r.createdAt,
+      icon: r.type === 'DAMAGE' ? '⚠️' : '🙋',
+      title: `${REQUEST_TYPE_LABEL[r.type]} reported by the customer`,
+      note: [
+        reasonLabel(r.type, r.reason),
+        r.photos.length > 0 ? `${r.photos.length} photo${r.photos.length === 1 ? '' : 's'}` : null,
+      ].filter(Boolean).join(' · '),
+    })),
+    ...requests.filter((r) => r.decidedAt && r.status !== 'PENDING').map((r) => ({
+      id: `request-decided-${r.id}`,
+      at: r.decidedAt as string,
+      icon: '✅',
+      title: `${REQUEST_TYPE_LABEL[r.type]} ${REQUEST_STATUS_DISPLAY[r.status].label.toLowerCase()}`,
+      note: r.adminNote ?? undefined,
+    })),
     ...data.refunds.map((r) => ({
       id: `refund-${r.id}`,
       at: r.createdAt,
@@ -604,6 +650,11 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
             <span className={`badge ${dispatchBadge.cls}`}>{dispatchBadge.label}</span>
             {data.items.some((i) => i.isPreOrder) && <span className="badge badge-info">Has a pre-order</span>}
             {order.kind === 'REPLACEMENT' && <span className="badge badge-info">Replacement</span>}
+            {waitingRequests > 0 && (
+              <a className="badge badge-warning" href="#customer-reports">
+                {waitingRequests === 1 ? 'Customer report waiting' : `${waitingRequests} customer reports waiting`}
+              </a>
+            )}
           </div>
         </div>
         <div className="sox-orderhead-actions">
@@ -634,6 +685,15 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
 
       <div className="sox-cols">
         <div className="sox-col">
+          {/* What the customer has told us about this order. First in the column
+              while anything is still waiting, because a photograph of a broken
+              leg is the reason somebody opened the order in the first place; the
+              decision itself is made on the requests screen, which carries the
+              refund and replacement steps that go with it. */}
+          {requests.length > 0 && waitingRequests > 0 && (
+            <CustomerReports requests={requests} itemNames={itemNames} replacementNumbers={replacementNumbers} adminPath={adminPath} currencySymbol={currencySymbol} />
+          )}
+
           <section className="sox-card">
             <div className="sox-card-head">
               <h2>Items</h2>
@@ -771,6 +831,10 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                 </ul>
               </div>
             </section>
+          )}
+
+          {requests.length > 0 && waitingRequests === 0 && (
+            <CustomerReports requests={requests} itemNames={itemNames} replacementNumbers={replacementNumbers} adminPath={adminPath} currencySymbol={currencySymbol} />
           )}
 
           {/* What has been sent out to put this one right. Under the parcels
@@ -1345,5 +1409,93 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
       {confirmNode}
       {promptNode}
     </div>
+  )
+}
+
+/**
+ * Every report and request the customer has raised on this order: what it is,
+ * where it stands, which lines it is about, what they said, the photographs they
+ * sent (full size behind a click - a thumbnail of a scuff settles nothing) and
+ * what the shop said back. Read-only: deciding one means a refund or a part, and
+ * those steps live on the requests screen this links to.
+ */
+function CustomerReports({ requests, itemNames, replacementNumbers, adminPath, currencySymbol }: {
+  requests: OrderRequest[]
+  itemNames: Map<string, string>
+  replacementNumbers: Map<string, string>
+  adminPath: string
+  currencySymbol: string
+}) {
+  return (
+    <section className="sox-card" id="customer-reports">
+      <div className="sox-card-head">
+        <h2>Reported by the customer</h2>
+        <a className="btn btn-ghost btn-sm sox-noprint" href={`/${adminPath}/m/shop/requests`}>Open the requests screen</a>
+      </div>
+      <div className="sox-card-body">
+        <ul className="sox-list">
+          {requests.map((request) => {
+            const state = REQUEST_STATUS_DISPLAY[request.status]
+            return (
+              <li key={request.id}>
+                <div className="sox-list-main">
+                  <p className="sox-list-title">
+                    {REQUEST_TYPE_LABEL[request.type]}
+                    {' '}
+                    <span className={badgeClass(state.tone)}>{state.label}</span>
+                  </p>
+                  <p className="sox-list-sub">
+                    {reasonLabel(request.type, request.reason)} · reported {formatDateTime(request.createdAt)}
+                    {request.decidedAt && request.status !== 'PENDING' ? ` · settled ${formatDate(request.decidedAt)}` : ''}
+                  </p>
+                  {request.items.length > 0 ? (
+                    <p className="sox-list-sub">
+                      {request.items.map((item) => `${item.quantity} × ${itemNames.get(item.orderItemId) ?? 'an item no longer on this order'}`).join(', ')}
+                    </p>
+                  ) : request.type === 'CANCEL' ? (
+                    // A cancellation naming no lines is the whole order.
+                    <p className="sox-list-sub">The whole order</p>
+                  ) : null}
+                  {request.customerNote && (
+                    <p className="sox-report-note">&ldquo;{request.customerNote}&rdquo;</p>
+                  )}
+                  {request.photos.length > 0 && (
+                    <div className="sox-report-photos">
+                      {request.photos.map((photo, i) => (
+                        <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- a customer's upload of unknown size on the media provider's domain, not page furniture the image loader is set up for. */}
+                          <img
+                            src={photo.url}
+                            alt={`Photo ${i + 1} sent with this ${REQUEST_TYPE_LABEL[request.type].toLowerCase()} report`}
+                            loading="lazy"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  {request.returnCharge != null && (
+                    <p className="sox-list-sub">{formatMoney(request.returnCharge, currencySymbol)} return charge kept back</p>
+                  )}
+                  {request.adminNote && request.status !== 'PENDING' && (
+                    <p className="sox-list-sub">You replied: {request.adminNote}</p>
+                  )}
+                  {request.replacementOrderId && (
+                    <p className="sox-list-sub">
+                      Replacement sent as{' '}
+                      <a href={`/${adminPath}/m/shop/orders/${request.replacementOrderId}`}>
+                        {replacementNumbers.get(request.replacementOrderId) ?? 'a replacement order'}
+                      </a>
+                    </p>
+                  )}
+                </div>
+                {request.status === 'PENDING' && (
+                  <a className="btn btn-primary btn-sm sox-noprint" href={`/${adminPath}/m/shop/requests`}>Decide</a>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </section>
   )
 }

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
@@ -9,7 +9,7 @@ import {
 } from '@/modules/shop/lib/db'
 import { slugify, ensureUniqueProductSlug } from '@/modules/shop/lib/slug'
 import { maybeTriggerBackInStock } from '@/modules/shop/lib/back-in-stock-trigger'
-import { reorganiseProductMedia } from '@/modules/shop/lib/media/product-media'
+import { finishProductMediaMove, reorganiseProductMedia } from '@/modules/shop/lib/media/product-media'
 import { FaqSetBodySchema } from '@/modules/shop/lib/faq'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -112,7 +112,12 @@ const Body = z.object({
   collectionIds: z.array(z.string()).optional(),
 })
 
+// How long after the request arrived the background copying stops starting new
+// files - inside the function's 60-second ceiling, with room for the copy in flight.
+const COPY_BUDGET_MS = 50_000
+
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const startedAt = Date.now()
   const gate = await requireShopUser('shop.products')
   if (gate.error) return gate.error
 
@@ -148,17 +153,37 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (tagIds) await setProductTags(id, tagIds)
   if (collectionIds) await setProductCollections(id, collectionIds)
 
-  // File the product's images into Shop / <master category> / <product>, keeping
-  // each image's uploaded name. Runs after the media and category writes so it
-  // sees the final state; no-op when nothing moved.
-  if (media || finalCategoryIds || masterProvided) await reorganiseProductMedia(id)
-
-  const after = await getProductById(id)
-  if (after) {
-    await maybeTriggerBackInStock(after, { stockCount: before.stockCount, outOfStockBehaviour: before.outOfStockBehaviour })
+  // File the product's media into Shop / <master category> / <product>, keeping
+  // each image's uploaded name. Runs after the media, category and name writes so
+  // it sees the final state; no-op when nothing moved.
+  //
+  // The folder is named after the product, so a rename moves it as surely as a
+  // new category does - and it is the whole folder that moves, the variations'
+  // pictures, 3D models and downloads with it, not just the listing's own photos.
+  // The folder rows move here, before answering, so the library and the next
+  // upload see the new home at once. Copying the files onto their new storage
+  // path is real work at the storage provider - hundreds of files for a big range
+  // - so it carries on after the answer, until the budget runs out; every file
+  // serves from its old address until its copy lands, and the next save of this
+  // product (or the tidy-up on the categories screen) finishes whatever is left.
+  const renamed = fields.name !== undefined && fields.name !== before.name
+  if (media || finalCategoryIds || masterProvided || renamed) {
+    await reorganiseProductMedia(id, { previous: { name: before.name, masterCategoryId: before.masterCategoryId } })
+    after(async () => {
+      try {
+        await finishProductMediaMove(id, startedAt + COPY_BUDGET_MS)
+      } catch (err) {
+        console.warn(`[shop] could not finish moving the media files for product ${id}:`, err)
+      }
+    })
   }
 
-  return NextResponse.json({ product: after })
+  const saved = await getProductById(id)
+  if (saved) {
+    await maybeTriggerBackInStock(saved, { stockCount: before.stockCount, outOfStockBehaviour: before.outOfStockBehaviour })
+  }
+
+  return NextResponse.json({ product: saved })
 }
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {

@@ -80,9 +80,10 @@ export function CategoriesScreen() {
   const [confirm, confirmNode] = useConfirm()
   const [promptText, promptNode] = usePrompt()
   const [showAlert, alertNode] = useAlert()
-  // Filing drift: files still sitting under a category's old name after a
-  // rename. Reported by the save, put right on request - never as a side effect
-  // of the rename itself, because each product is real copying in storage.
+  // Filing drift: files still sitting under a category's or a product's old name
+  // after a rename. Checked when the screen opens and reported by a category
+  // save, put right on request - never as a side effect of a category rename,
+  // because each product is real copying in storage.
   const [drift, setDrift] = useState<{ products: number; files: number } | null>(null)
   const [tidying, setTidying] = useState<{ done: number; total: number } | null>(null)
 
@@ -96,6 +97,20 @@ export function CategoriesScreen() {
     })
   }
   useEffect(refresh, [])
+
+  // Anything left filed under an old name - by an import, which renames without
+  // moving files, or by a move that ran out of time - is offered for tidying as
+  // soon as the screen opens, not only after a category is renamed here. Read-only,
+  // and a failure just means no banner.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/m/shop/admin/products/media-drift').then(async (r) => {
+      if (!r.ok || cancelled) return
+      const data = await r.json().catch(() => null) as { products?: number; files?: number } | null
+      if (!cancelled && data?.products && data.files) setDrift({ products: data.products, files: data.files })
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   // Ordered children of a parent (the API already sorts by position then name).
   const childrenOf = (parentId: string | null) => categories.filter((c) => c.parentId === parentId)
@@ -218,14 +233,21 @@ export function CategoriesScreen() {
   // can carry hundreds of files, and a single request for the lot would run past
   // the function's ceiling with no way of telling what had been done. Each round
   // trip is a checkpoint, and the count on screen is what has actually finished.
+  // A listing with more files than one request has time to copy comes back
+  // unfinished and simply goes round again - each pass copies more of it.
   async function tidyFiling() {
     const res = await fetch('/api/m/shop/admin/products/media-drift')
     if (!res.ok) { await showAlert('Could not work out what needs re-filing.', 'Tidy up failed'); return }
     const { drifted } = await res.json() as { drifted: { productId: string }[] }
-    const ids = drifted.map((d) => d.productId)
-    setTidying({ done: 0, total: ids.length })
-    for (let i = 0; i < ids.length; i += 10) {
-      const batch = ids.slice(i, i + 10)
+    let queue = drifted.map((d) => d.productId)
+    const total = queue.length
+    let done = 0
+    let failed = 0
+    setTidying({ done, total })
+    // A backstop, not an expected limit: every pass either finishes a listing or
+    // copies a share of one, so this is never reached by a tidy-up that is working.
+    for (let pass = 0; queue.length > 0 && pass < 500; pass++) {
+      const batch = queue.slice(0, 10)
       const run = await fetch('/api/m/shop/admin/products/media-drift', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productIds: batch }),
@@ -235,11 +257,20 @@ export function CategoriesScreen() {
         await showAlert('Some files could not be moved. Nothing was lost - try again in a moment.', 'Tidy up stopped')
         return
       }
-      setTidying({ done: Math.min(i + batch.length, ids.length), total: ids.length })
+      const result = await run.json().catch(() => null) as { refiled?: string[]; failed?: string[]; unfinished?: string[] } | null
+      const unfinished = result?.unfinished ?? []
+      done += result?.refiled?.length ?? 0
+      failed += result?.failed?.length ?? 0
+      queue = [...unfinished, ...queue.slice(batch.length)]
+      setTidying({ done, total })
     }
     setTidying(null)
+    if (failed > 0 || queue.length > 0) {
+      await showAlert('Most of it is tidied, but some files would not move. Nothing was lost - try again in a moment.', 'Tidy up stopped')
+      return
+    }
     setDrift(null)
-    await showAlert('Everything is filed under its current category again.', 'Tidied up')
+    await showAlert('Everything is filed under its current name again.', 'Tidied up')
   }
 
   // Where a category's picture is filed: its own Shop / <category trail> folder.
@@ -440,8 +471,8 @@ export function CategoriesScreen() {
         }}>
           <span style={{ fontSize: '0.8125rem' }}>
             {drift.files} file{drift.files === 1 ? '' : 's'} across {drift.products} product
-            {drift.products === 1 ? ' is' : 's are'} still filed under an old category name. Nothing is
-            broken - the shop shows them all - but the media library will list them twice until they move.
+            {drift.products === 1 ? ' is' : 's are'} still filed under an old category or product name. Nothing
+            is broken - the shop shows them all - but the media library will list them twice until they move.
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {tidying && (

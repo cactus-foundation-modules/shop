@@ -37,6 +37,28 @@ export async function shopMediaReferenceRewriter(change: MediaReferenceChange): 
     UPDATE "shp_categories" SET "image_url" = ${newUrl} WHERE "image_url" = ${oldUrl}
   `
 
+  // An order's own pictures: the courier's proof of delivery on the shipment, and
+  // the photographs a customer sends with a return or a damage report. Both are
+  // real library items in Orders / <order number>, so both get optimised along
+  // with everything else - and before these were here, optimising a proof of
+  // delivery turned the .jpeg into a .webp and left the shipment naming the file
+  // that had just been deleted. Order DW000172's signature went missing exactly
+  // that way. The shipment keeps the storage key beside the url, and the key
+  // moves with it, so both are repointed.
+  await prisma.$executeRaw`
+    UPDATE "shp_shipments" SET "signature_url" = ${newUrl}, "updated_at" = CURRENT_TIMESTAMP
+    WHERE "signature_url" = ${oldUrl}
+  `
+  if (change.oldKey && change.oldKey !== change.newKey) {
+    await prisma.$executeRaw`
+      UPDATE "shp_shipments" SET "signature_key" = ${change.newKey}, "updated_at" = CURRENT_TIMESTAMP
+      WHERE "signature_key" = ${change.oldKey}
+    `
+  }
+  await prisma.$executeRaw`
+    UPDATE "shp_order_request_photos" SET "url" = ${newUrl} WHERE "url" = ${oldUrl}
+  `
+
   // A designed description is a Puck document held here, and the feature videos
   // and photographs inside it are addressed by url. Core rewrites the builder
   // JSON it owns - pages and layouts - and cannot see these columns, so a

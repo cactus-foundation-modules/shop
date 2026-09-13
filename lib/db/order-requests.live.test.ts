@@ -196,6 +196,22 @@ suite('cancel, return and damage requests, against a real database', () => {
     expect(all.find((r) => r.type === 'RETURN')?.photos).toEqual([])
   })
 
+  // The media library optimises and re-files a customer's photographs like any
+  // other picture, and the address changes when it does. The order screen has to
+  // show the picture where it is now, not where it was when the report came in.
+  it('shows a photograph at its library item\'s current address once it has been optimised', async () => {
+    await client.query(`
+      INSERT INTO "Media" ("id","key","provider","url","mimeType","sizeBytes")
+      VALUES ('media-1','media/orders/dw000200/issues/a.webp','B2','https://example.test/media/orders/dw000200/issues/a.webp','image/webp',100)
+    `)
+    const damage = (await requests.listRequestsForOrder('ord-1')).find((r) => r.type === 'DAMAGE')
+    expect(damage?.photos.map((p) => p.url)).toEqual([
+      'https://example.test/media/orders/dw000200/issues/a.webp',
+      // No library item behind this one, so it keeps the address it was sent with.
+      'https://example.test/b.jpg',
+    ])
+  })
+
   // And a second one on top of that. A report spends nothing - it names lines
   // without taking them off the order - so nothing double-counts when two are
   // open together, and the order of eight desks is opened one carton at a time.

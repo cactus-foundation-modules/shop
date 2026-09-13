@@ -81,9 +81,19 @@ async function attachItems(requests: ShpOrderRequest[]): Promise<ShpOrderRequest
     prisma.$queryRaw<Record<string, unknown>[]>`
       SELECT * FROM "shp_order_request_items" WHERE "request_id" IN (${ids})
     `,
+    // The photograph's address is read off its library item where it has one,
+    // not trusted from the copy stored beside the request. The media library
+    // re-encodes, resizes and re-files these like any other picture, and the
+    // address changes every time; the stored copy is repointed when that
+    // happens, but the library row is the one thing that cannot be out of date.
+    // A photo with no library item behind it keeps the address it was sent with.
     prisma.$queryRaw<Record<string, unknown>[]>`
-      SELECT * FROM "shp_order_request_photos" WHERE "request_id" IN (${ids})
-      ORDER BY "created_at" ASC
+      SELECT p."id", p."request_id", p."media_id", p."created_at",
+        COALESCE(m."url", p."url") AS "url"
+      FROM "shp_order_request_photos" p
+      LEFT JOIN "Media" m ON m."id" = p."media_id"
+      WHERE p."request_id" IN (${ids})
+      ORDER BY p."created_at" ASC
     `,
   ])
   const byRequest = new Map<string, ShpOrderRequestItem[]>()

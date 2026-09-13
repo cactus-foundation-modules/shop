@@ -189,6 +189,17 @@ export const ordersScreenCss = `
   border:1px solid var(--color-border);border-radius:0.25rem;
   background:var(--color-surface);padding:0.25rem}
 
+/* What a customer reported on the order: their words, then the photographs they
+   sent as a strip of square thumbnails, each opening full size. Square and
+   cropped because the decision rests on what is in the middle of the picture,
+   and a row of odd shapes is harder to scan than a row of tiles. */
+.sox-report-note{margin:0.375rem 0 0;font-style:italic;color:var(--color-text)}
+.sox-report-photos{display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem}
+.sox-report-photos a{display:block;border-radius:0.375rem}
+.sox-report-photos img{display:block;width:6rem;height:6rem;object-fit:cover;
+  border:1px solid var(--color-border);border-radius:0.375rem;background:var(--color-surface)}
+.sox-report-photos a:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
+
 /* "We took the money and could not write the order." The loudest thing on the
    orders screen, deliberately: this is the one failure the shop cannot see any
    other way, and the customer's next move is the telephone. Warning tokens

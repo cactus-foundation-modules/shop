@@ -7,6 +7,7 @@ import { deliveryInstructionsLabel } from '@/modules/shop/lib/delivery-instructi
 import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, listReplacementOrdersForParent, setOrderCustomerReference } from '@/modules/shop/lib/db/orders'
 import { listRefundsForOrder, listRefundItemsForOrder } from '@/modules/shop/lib/db/refunds'
 import { listDownloadsForOrder } from '@/modules/shop/lib/db/digital'
+import { listRequestsForOrder } from '@/modules/shop/lib/db/order-requests'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
 
@@ -21,7 +22,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const order = await getOrderById(id)
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
-  const [items, notes, emails, refunds, refundItems, downloads, customer, config, replacements] = await Promise.all([
+  const [items, notes, emails, refunds, refundItems, downloads, customer, config, replacements, requests] = await Promise.all([
     getOrderItems(id),
     listOrderNotes(id),
     listOrderEmails(id),
@@ -33,6 +34,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     // The parts sent out to put this one right. Cheap on every order and empty
     // on almost all of them - it is one indexed read on a partial index.
     listReplacementOrdersForParent(id),
+    // What the customer has reported or asked for on this order - a damage
+    // report with its photographs, a return, a cancellation - newest first.
+    // Decided on the requests screen; shown here so nobody has to go looking
+    // for it while they are looking at the order it is about.
+    listRequestsForOrder(id),
   ])
 
   // The parts themselves, so the items table can say which LINE each went out
@@ -92,7 +98,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     ? { mode: provider.refundMode ?? 'provider', label: provider.label }
     : null
 
-  return NextResponse.json({ order, items, notes, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, deliveryInstructionsLabel: deliveryInstructionsLabelText, refundNotice, replacements, replacementLines, parentOrder })
+  return NextResponse.json({ order, items, notes, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, deliveryInstructionsLabel: deliveryInstructionsLabelText, refundNotice, replacements, replacementLines, parentOrder, requests })
 }
 
 const PatchBody = z.object({
