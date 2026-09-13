@@ -35,7 +35,7 @@ export type ShopCategoryCardItem = {
   imageUrl: string | null
 }
 
-export function ShopCategoryCards({ categories, columns, breakpoints, ctaLabel = 'Browse', showBlurb = true }: {
+export function ShopCategoryCards({ categories, columns, breakpoints, ctaLabel = 'Browse', showBlurb = true, eagerCount = 0 }: {
   categories: ShopCategoryCardItem[]
   columns: number
   breakpoints: Breakpoints
@@ -43,6 +43,11 @@ export function ShopCategoryCards({ categories, columns, breakpoints, ctaLabel =
   // Whether the tile prints the category's short description under its name.
   // On (the historical look) unless the block turns it off for a tighter grid.
   showBlurb?: boolean
+  // How many tiles at the front are the first thing on the page, and so fetch
+  // their picture straight away and ahead of everything else. None unless the
+  // caller knows - the same rule, for the same reason, as renderCards' eagerCount.
+  // A category page leading with its sub-categories is the one that does.
+  eagerCount?: number
 }) {
   if (categories.length === 0) return null
 
@@ -50,7 +55,7 @@ export function ShopCategoryCards({ categories, columns, breakpoints, ctaLabel =
     <>
       <SharedStyle id="shop-cards" css={shopCardCss(breakpoints)} />
       <div className="shop-grid" style={{ ['--shop-cols' as string]: String(columns) } as React.CSSProperties}>
-        {categories.map((c) => {
+        {categories.map((c, at) => {
           // The short one if there is one, else the opening of the long one -
           // better a trimmed paragraph than a blank tile, and the card is the one
           // place the full thing would never fit anyway.
@@ -60,7 +65,7 @@ export function ShopCategoryCards({ categories, columns, breakpoints, ctaLabel =
               <div className="shop-card-img">
                 {c.imageUrl && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={c.imageUrl} alt="" loading="lazy" />
+                  <img src={c.imageUrl} alt="" loading={at < eagerCount ? 'eager' : 'lazy'} fetchPriority={at < eagerCount ? 'high' : undefined} />
                 )}
               </div>
               <h3 className="shop-card-name">{c.name}</h3>

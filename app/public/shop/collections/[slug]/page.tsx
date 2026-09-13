@@ -23,6 +23,12 @@ import { absoluteSocialImageUrl, resolveCollectionSocialImage } from '@/modules/
 import { SharedStyle } from '@/components/SharedStyle'
 import { CactusRender } from '@/lib/puck/CactusRender'
 
+// Products across a row of this page's grid on a wide screen, and so how many
+// cards make up its opening row - the ones that load their picture straight away.
+// One number for both, because the eager count used to be a separate 4 against a
+// 3-column grid, which marked the first card of the SECOND row urgent too.
+const GRID_COLUMNS = 3
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
   if ((await getShopGate()).blocked) return {}
@@ -104,7 +110,7 @@ export default async function ShopCollectionPage({ params, searchParams }: { par
   }))
   // The opening row loads eagerly, the rest of the shelf lazily. This page's
   // grid is always the top of the page, so page one's first row is the fold.
-  const cards = template ? await renderCards(template, items, page === 1 ? 4 : 0) : items.map((i) => <MinimalCard key={i.product.id} {...i} />)
+  const cards = template ? await renderCards(template, items, page === 1 ? GRID_COLUMNS : 0) : items.map((i) => <MinimalCard key={i.product.id} {...i} />)
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
@@ -125,7 +131,7 @@ export default async function ShopCollectionPage({ params, searchParams }: { par
       />
 
       <SharedStyle id="shop-cards" css={shopCardCss(bp)} />
-      <div className="shop-grid" style={{ ['--shop-cols' as string]: '3', marginTop: '1.5rem' } as React.CSSProperties}>
+      <div className="shop-grid" style={{ ['--shop-cols' as string]: String(GRID_COLUMNS), marginTop: '1.5rem' } as React.CSSProperties}>
         {cards}
       </div>
       {products.length === 0 && <p style={{ color: 'var(--color-text-muted)' }}>No products in this collection yet.</p>}

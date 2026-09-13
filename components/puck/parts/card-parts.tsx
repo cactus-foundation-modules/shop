@@ -7,6 +7,7 @@ import { packCardImages } from '@/modules/shop/lib/card-media-pack'
 import { ShopCardFillBlurb } from '@/modules/shop/components/public/ShopCardFillBlurb'
 import type { CardBadge, CardPartContext } from '@/modules/shop/components/puck/parts/part-context'
 import { SHOP_SECTION_HEAD_CSS } from '@/modules/shop/components/puck/parts/section-head-css'
+import { stripCssComments } from '@/modules/shop/lib/strip-css-comments'
 import { SharedStyle } from '@/components/SharedStyle'
 
 // Product Card part-blocks. These make up a Product Card layout (admin >
@@ -43,7 +44,28 @@ export const shopCardMediaCss = `
 // Full card + grid stylesheet. The surface sets `--shop-cols` on `.shop-grid`;
 // the card look follows from the Image part's display mode, so all three share
 // one source of truth. `:has()` is used for the beside/overlay arrangements.
-export function shopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
+//
+// Handed out with its comments taken off (see lib/strip-css-comments.ts). They
+// stay in the source below, where the reasoning is needed; on the wire they were
+// 44% of the sheet, and every card surface on a page carries its own copy in the
+// flight payload. Every module that prints shop cards calls this, so all of them
+// get the smaller sheet without being rebuilt.
+//
+// The last answer is kept, because a page asks for the same sheet once per card
+// surface and a site has one pair of breakpoints: the scan is cheap, but doing it
+// six times for one homepage is six times for nothing. One entry, not a map, so
+// there is nothing here that can grow.
+let lastCardCss: { key: string; css: string } | null = null
+
+export function shopCardCss(breakpoints: Breakpoints): string {
+  const key = `${breakpoints.tabletBp}|${breakpoints.mobileBp}`
+  if (lastCardCss?.key === key) return lastCardCss.css
+  const css = stripCssComments(commentedShopCardCss(breakpoints))
+  lastCardCss = { key, css }
+  return css
+}
+
+function commentedShopCardCss({ tabletBp, mobileBp }: Breakpoints): string {
   return `
 .shop-grid{display:grid;grid-template-columns:repeat(var(--shop-cols,3),minmax(0,1fr));gap:24px;margin-top:8px}
 .shop-scroller{display:flex;gap:20px;overflow-x:auto;margin-top:8px;padding-bottom:4px}

@@ -9,6 +9,11 @@ import { ShopGridPager } from '@/modules/shop/components/public/ShopGridPager'
 // the whole list at, so a category that used to fit still looks untouched - it
 // simply gains pages when it would previously have lost products.
 const CATEGORY_PAGE_SIZE = 60
+// Tiles and products across a row of this page's grids on a wide screen, and so
+// how many make up an opening row - the ones that load their picture straight
+// away. One number for both, because the eager count used to be a separate 4
+// against a 3-column grid, which marked the first card of the SECOND row urgent.
+const GRID_COLUMNS = 3
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { pageFromParams, pageTitleSuffix } from '@/modules/shop/lib/page-href'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
@@ -129,9 +134,14 @@ export default async function ShopCategoryPage({ params, searchParams }: { param
     product: p,
     ctx: buildCardContext(p, mediaByProduct.get(p.id) ?? [], tagById, tagIdsByProduct.get(p.id) ?? [], config.currencySymbol, pricing, fromPrices.get(p.id) ?? null, cardExtras.get(p.id), tagsById),
   }))
-  // The opening row loads eagerly, the rest of the shelf lazily. This page's
-  // grid is always the top of the page, so page one's first row is the fold.
-  const cards = template ? await renderCards(template, items, page === 1 ? 4 : 0) : items.map((i) => <MinimalCard key={i.product.id} {...i} />)
+  // One opening row loads eagerly and everything else lazily - and the opening
+  // row is whichever grid the page leads with. A category with sub-categories
+  // prints their tiles first (a row of tall pictures, a description after them),
+  // which puts the products under the fold; one without leads with the products.
+  // The tiles print on every page of the list, so they lead on every one; the
+  // products' row only counts on page one, as it always has.
+  const tilesLead = children.length > 0
+  const cards = template ? await renderCards(template, items, page === 1 && !tilesLead ? GRID_COLUMNS : 0) : items.map((i) => <MinimalCard key={i.product.id} {...i} />)
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
@@ -163,7 +173,7 @@ export default async function ShopCategoryPage({ params, searchParams }: { param
           owner built; leading with the sub-categories puts it back. */}
       {children.length > 0 && (
         <div style={{ marginTop: '1.5rem' }}>
-          <ShopCategoryCards categories={children} columns={3} breakpoints={bp} />
+          <ShopCategoryCards categories={children} columns={GRID_COLUMNS} breakpoints={bp} eagerCount={GRID_COLUMNS} />
         </div>
       )}
 
@@ -178,7 +188,7 @@ export default async function ShopCategoryPage({ params, searchParams }: { param
         perPage={CATEGORY_PAGE_SIZE}
         mode="pages"
         gridClassName="shop-grid"
-        gridStyle={{ ['--shop-cols' as string]: '3', marginTop: '1.5rem' } as React.CSSProperties}
+        gridStyle={{ ['--shop-cols' as string]: String(GRID_COLUMNS), marginTop: '1.5rem' } as React.CSSProperties}
         countTemplate="Showing {shown} of {total}"
       />
       {products.length === 0 && (

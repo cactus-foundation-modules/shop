@@ -97,9 +97,17 @@ async function ShopProductGridRscBody(props: ShopProductGridProps) {
     return <p style={{ color: 'var(--color-text-muted)' }}>{props.emptyText || 'No products to show yet.'}</p>
   }
   const items = await buildGridCardItems(wanted)
-  // The opening row eagerly, the rest of the shelf lazily - and only on page
-  // one, since a later page is one the shopper has already scrolled to.
-  const cards = template ? await renderCards(template, items, page === 1 ? columns : 0) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)
+  // Every picture lazily unless the owner has said this grid opens the page; then
+  // the opening row eagerly and the rest of the shelf lazily - and only on page
+  // one, since a later page is one the shopper has already scrolled to. See the
+  // imageLoading prop for why this block cannot work it out for itself.
+  //
+  // Lazy rather than eager-without-priority for the rest, because React writes a
+  // preload hint into the page for every server-rendered picture that is not
+  // lazy. "Eager but not urgent" would still put a row of shelf thumbnails in
+  // the queue ahead of whatever the page really opens with.
+  const eagerCount = props.imageLoading === 'eager' && page === 1 ? columns : 0
+  const cards = template ? await renderCards(template, items, eagerCount) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)
 
   // Same div, same class, same custom property either way - the pager renders
   // the grid wrapper itself so a paged grid and an unpaged one are the same

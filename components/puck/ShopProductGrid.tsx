@@ -1,6 +1,7 @@
 import type { LayoutRef } from '@/lib/puck/LayoutPickerField'
 import { SHOP_SECTION_HEAD_CSS } from '@/modules/shop/components/puck/parts/section-head-css'
 import { ShopLayoutPicker } from '@/modules/shop/components/public/ShopLayoutPicker'
+import { SharedStyle } from '@/components/SharedStyle'
 
 // Grid-level props (data source + layout) stay here; the card-internal design
 // now comes entirely from the Product Card layout, stamped once per product.
@@ -67,6 +68,22 @@ export type ShopProductGridProps = {
   // sellers", the whole catalogue in popularity order - has no such page until
   // the owner builds one, so that is the case this field is for.
   viewAllHref?: string
+  // Whether the pictures in the grid's opening row are fetched straight away or
+  // as the shopper scrolls towards them. Blank - every grid saved before this
+  // existed - is as they scroll.
+  //
+  // A setting rather than a detection because a block cannot see where it has
+  // been put: Puck hands it no position, and nothing in the render knows whether
+  // this grid opens the page or sits under a hero and three other sections, which
+  // is where the homepage's five are. Every grid used to assume it opened the
+  // page. On that homepage that was twenty pictures marked urgent, and fifteen
+  // preload hints ahead of the page's real first picture, for shelves nobody sees
+  // before scrolling - one of them a phone-only copy a desktop never shows at all.
+  //
+  // So the owner, who can see the page, says so - the same answer core's image
+  // blocks give ("Load immediately (above the fold)"). Only 'eager' changes
+  // anything.
+  imageLoading?: string
 }
 
 // Where the "View all" link points. Typed address wins; otherwise the grid's own
@@ -132,14 +149,16 @@ function GridSkeleton({ columns }: { columns: number }) {
 
 // Editor canvas: static skeleton, no fetch during render (Gazette pattern).
 // The heading is real text, so it renders here too - through the same classes
-// the storefront uses, with the section-head rules inlined because the editor
-// half never emits the full card stylesheet.
+// the storefront uses, with the section-head rules emitted here because the
+// editor half never emits the full card stylesheet.
+//
+// Through SharedStyle, so a page of six grids asks the canvas for the rules once
+// rather than six times - the same hoisted, de-duplicated tag the card parts
+// already use in the editor, which is what shows it works in the canvas.
 export function ShopProductGrid(props: ShopProductGridProps) {
   return (
     <>
-      {props.heading && (
-        <style dangerouslySetInnerHTML={{ __html: SHOP_SECTION_HEAD_CSS }} />
-      )}
+      {props.heading && <SharedStyle id="shop-section-head" css={SHOP_SECTION_HEAD_CSS} />}
       <GridSectionHead heading={props.heading} subheading={props.subheading} viewAll={gridViewAll(props)} />
       <GridSkeleton columns={props.columns ?? 3} />
     </>
@@ -208,6 +227,12 @@ export const shopProductGridPuckComponent = {
     ] },
     viewAllLabel: { type: 'text' as const, label: '"View all" wording' },
     viewAllHref: { type: 'text' as const, label: '"View all" address (blank uses this grid\u2019s own category, collection, tag or supplier page)' },
+    // See the prop's note above. The wording says where the grid is rather than
+    // how the browser fetches, because that is the thing the owner can judge.
+    imageLoading: { type: 'select' as const, label: 'Pictures in the first row', options: [
+      { value: 'auto', label: 'Load as the shopper scrolls to them' },
+      { value: 'eager', label: 'Load immediately (this grid is at the top of the page)' },
+    ] },
     emptyText: { type: 'text' as const, label: 'Wording when there are no products' },
     layoutRef: layoutField,
   },
@@ -216,6 +241,6 @@ export const shopProductGridPuckComponent = {
   // anybody having to find the setting. `limit: 12` is the opening screenful for
   // the same reason. Neither touches a layout already saved - defaults apply to
   // a block being added, not to one already on a page.
-  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', supplierSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, pageLoad: 'ondemand', moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', hiddenProducts: 'exclude', showViewAll: 'no', viewAllLabel: 'View all', viewAllHref: '', emptyText: 'No products to show yet.', layoutRef: null },
+  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', supplierSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, pageLoad: 'ondemand', moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', hiddenProducts: 'exclude', showViewAll: 'no', viewAllLabel: 'View all', viewAllHref: '', imageLoading: 'auto', emptyText: 'No products to show yet.', layoutRef: null },
   render: ShopProductGrid,
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ShopGridCardLoader } from '@/modules/shop/lib/grid-page-types'
 import { pageHref } from '@/modules/shop/lib/page-href'
+import { SharedStyle } from '@/components/SharedStyle'
 
 // Paging for the shop's product grids.
 //
@@ -138,6 +139,11 @@ export function pageNumbers(current: number, last: number): (number | '…')[] {
   return out
 }
 
+// Through SharedStyle rather than a plain <style>, so it is written into the page
+// once however many pagers the page holds. A plain tag repeats the sheet for every
+// grid that pages, and SharedStyle is the same hoisted, de-duplicated tag the card
+// sheet already uses - it works from a client component as well as a server one,
+// which this is.
 const pagerCss = `
 .shop-pager{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:28px}
 .shop-pager-count{font-size:13px;color:var(--color-text-muted)}
@@ -318,7 +324,7 @@ export function ShopGridPager({
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: pagerCss }} />
+      <SharedStyle id="shop-pager" css={pagerCss} />
       <div className={gridClassName} style={gridStyle}>
         {visible}
       </div>

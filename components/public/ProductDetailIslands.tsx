@@ -135,6 +135,14 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
               ? { src: current.url }
               : responsiveImg(current.url, '(max-width: 900px) 100vw, 640px', HALF_WIDTH_LADDER, resizing))}
             alt={current.alt || productName}
+            // The one picture on a product page that is urgent. It is the page's
+            // largest paint nearly every time, and without a priority a browser
+            // starts it at the same low priority as every other picture on the
+            // page until layout has shown it is on screen - and React's own
+            // preload hint for it went out without one too, since the hint copies
+            // what the <img> says. Not loading="eager": that is already what an
+            // <img> without the attribute does, and the stage has never been lazy.
+            fetchPriority="high"
             draggable={false}
             // Origin stays put while zoomed out, so releasing settles back into
             // the spot the shopper was looking at rather than snapping to centre.

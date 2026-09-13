@@ -34,6 +34,12 @@ import { CactusRender } from '@/lib/puck/CactusRender'
 // supplier's slug is injected into them first (lib/inject-supplier-context.ts).
 // What follows below is the fallback for a shop that has published none.
 
+// Products across a row of this page's grid on a wide screen, and so how many
+// cards make up its opening row - the ones that load their picture straight away.
+// One number for both, because the eager count used to be a separate 4 against a
+// 3-column grid, which marked the first card of the SECOND row urgent too.
+const GRID_COLUMNS = 3
+
 async function visibleSupplier(slug: string) {
   const config = await getShopConfigCached()
   // Two switches, both of which have to be on. The shop-wide one says supplier
@@ -106,7 +112,7 @@ export default async function ShopSupplierPage({ params, searchParams }: { param
   // The opening row loads eagerly, the rest of the shelf lazily. This page's grid
   // sits under a write-up rather than at the very top, but page one's first row is
   // still the nearest thing to the fold.
-  const cards = template ? await renderCards(template, items, page === 1 ? 4 : 0) : items.map((i) => <MinimalCard key={i.product.id} {...i} />)
+  const cards = template ? await renderCards(template, items, page === 1 ? GRID_COLUMNS : 0) : items.map((i) => <MinimalCard key={i.product.id} {...i} />)
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem 1.5rem' }}>
@@ -122,7 +128,7 @@ export default async function ShopSupplierPage({ params, searchParams }: { param
       <ShopSupplierDescriptionBody supplier={supplier} />
 
       <SharedStyle id="shop-cards" css={shopCardCss(bp)} />
-      <div className="shop-grid" style={{ ['--shop-cols' as string]: '3', marginTop: '1.5rem' } as React.CSSProperties}>
+      <div className="shop-grid" style={{ ['--shop-cols' as string]: String(GRID_COLUMNS), marginTop: '1.5rem' } as React.CSSProperties}>
         {cards}
       </div>
       {products.length === 0 && (

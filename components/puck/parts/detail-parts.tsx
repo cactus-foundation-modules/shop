@@ -20,6 +20,7 @@ import { ClearableNumberField } from '@/lib/puck/ClearableNumberField'
 import { splitLightDark, composeLightDark } from '@/lib/puck/lightDark'
 import type { CSSProperties, ReactNode } from 'react'
 import { SharedStyle } from '@/components/SharedStyle'
+import { stripCssComments } from '@/modules/shop/lib/strip-css-comments'
 import type { ImageResizing } from '@/lib/media/resize-url'
 
 // Product Detail part-blocks. Each is a small draggable piece of a Product
@@ -40,8 +41,16 @@ const yesNo = [
 // product page was carrying two 12 KB copies of the same rules; the parts that
 // emit something of their own get their own copy, keyed on its content. One id
 // for the lot: SharedStyle tells them apart by what they contain, not by name.
+//
+// With the comments taken off first (lib/strip-css-comments.ts). The reasoning
+// in these sheets is long and belongs in the source, not in front of a shopper:
+// measured on deskwell.co.uk in September 2026, a product page's detail sheets
+// came to 31.6 KB, of which about 18 KB was comments - sent once in the markup
+// and again in the flight payload. Stripped here rather than in each
+// sheet so every part, and every sheet a part adds later, is covered by the one
+// door they all go through.
 function Style({ css }: { css: string }) {
-  return <SharedStyle id="shop-detail" css={css} />
+  return <SharedStyle id="shop-detail" css={stripCssComments(css)} />
 }
 
 // ---------------------------------------------------------------------------

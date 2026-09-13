@@ -1,3 +1,6 @@
+import { SharedStyle } from '@/components/SharedStyle'
+import { SHOP_SECTION_HEAD_CSS } from '@/modules/shop/components/puck/parts/section-head-css'
+
 // productSlug is injected by the product detail page (lib/inject-product-context.ts).
 // The cards are stamped from the shared Product Card layout, same as the grid.
 //
@@ -8,10 +11,16 @@
 export type ShopRelatedProductsProps = { productSlug?: string; heading?: string; subheading?: string; layout?: string }
 
 // Editor canvas: static card-grid skeleton (Gazette pattern).
+//
+// The heading rules are the storefront's own (section-head-css.ts, which the card
+// stylesheet the RSC half emits already carries) rather than a hand-copied
+// subset of them, so the canvas heading cannot drift from the live one. Through
+// SharedStyle under the same id the Product Grid's editor half uses, so the two
+// blocks on one canvas share a single copy.
 export function ShopRelatedProducts(props: ShopRelatedProductsProps) {
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: '.shop-sec-head{display:flex;align-items:baseline;gap:16px;margin:8px 0 20px;flex-wrap:wrap}.shop-sec-head h2{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:26px;margin:0;color:var(--color-fg)}' }} />
+      <SharedStyle id="shop-section-head" css={SHOP_SECTION_HEAD_CSS} />
       <div className="shop-sec-head">
         <h2>{props.heading || 'Completes the setup'}</h2>
       </div>
