@@ -74,6 +74,13 @@ describe('the card stylesheet on the wire', () => {
     expect(sheet).toContain('@media (max-width:1111px)')
     expect(sheet).toContain('@media (max-width:555px)')
   })
+
+  it('shrinks over-photo badges with the two-up mobile cards', () => {
+    const sheet = shopCardCss({ ...DEFAULT_BREAKPOINTS, mobileBp: '555px' })
+    const mobileRules = sheet.slice(sheet.indexOf('@media (max-width:555px)'))
+    expect(mobileRules).toContain('.shop-grid .shop-card-badges{top:6px;left:6px;gap:3px;max-width:calc(100% - 12px)}')
+    expect(mobileRules).toContain('.shop-grid .shop-card-badge{font-size:9px;padding:3px 6px;border-radius:4px}')
+  })
 })
 
 describe('the product page sheets on the wire', () => {
