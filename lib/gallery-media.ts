@@ -90,6 +90,9 @@ export type ShopGalleryMediaProvider = {
   load: (productId: string) => Promise<unknown>
   Thumbs: ComponentType<ShopGalleryExtraThumbsProps>
   Stage: ComponentType<ShopGalleryExtraStageProps>
+  // Optional presentation hint for contributed media that should take over a
+  // phone's pinned gallery strip rather than sharing it with thumbnails.
+  mobileStage?: 'immersive'
 }
 
 // One resolved provider plus its payload, ready for a host gallery to render.
@@ -98,6 +101,7 @@ export type ShopGalleryExtra = {
   payload: unknown
   Thumbs: ComponentType<ShopGalleryExtraThumbsProps>
   Stage: ComponentType<ShopGalleryExtraStageProps>
+  mobileStage?: 'immersive'
 }
 
 type ExtensionPointEntry = { point: string; id: string }
@@ -149,7 +153,13 @@ export async function resolveShopGalleryExtras(productId: string): Promise<ShopG
         // Null/undefined means "nothing for this product" - the common case on a
         // site where only some products carry extra media, so it costs no markup.
         if (payload == null) continue
-        resolved.push({ id: entry.id, payload, Thumbs: provider.Thumbs, Stage: provider.Stage })
+        resolved.push({
+          id: entry.id,
+          payload,
+          Thumbs: provider.Thumbs,
+          Stage: provider.Stage,
+          ...(provider.mobileStage ? { mobileStage: provider.mobileStage } : {}),
+        })
       } catch (error) {
         console.error(`[shop] gallery-media provider "${entry.id}" failed to load for product ${productId}:`, error)
       }
