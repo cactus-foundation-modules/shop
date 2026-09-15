@@ -91,6 +91,7 @@ export function parcelDelivery(
   const arrived = meaning === 'delivered'
     || Boolean(shipment.deliveredAt)
     || Boolean(shipment.signedAt)
+    || Boolean(shipment.signedBy?.trim())
     || (meaning === 'progress' && progress?.phase === 'passed')
 
   // The courier's own flag where they report one, and the owner's reading of
@@ -147,7 +148,9 @@ export function parcelDelivery(
  * the van came.
  */
 export function railDelivery(deliveries: ParcelDelivery[]): ParcelDelivery | null {
-  const booked = deliveries.filter((d) => d.day && d.progress)
+  // A parcel that has arrived counts even when nobody typed a delivery day in
+  // at dispatch - the courier's own timestamp is the booking at that point.
+  const booked = deliveries.filter((d) => d.arrived || (d.day && d.progress))
   if (booked.length === 0) return null
 
   const upcoming = booked.filter((d) => !d.arrived)

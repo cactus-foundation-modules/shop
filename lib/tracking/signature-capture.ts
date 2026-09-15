@@ -77,8 +77,7 @@ const EXTENSION: Record<string, string> = {
  *
  * `options.headers` exists because not every courier serves the picture from a
  * public bucket. DPD's is behind the same session as the parcel's own data AND
- * refuses a Referer that names the parcel - a bare `https://track.dpd.co.uk/`
- * is accepted where the full tracking address is 403ed, `*` and all. The
+ * expects the follow-my-parcel referer from `www.dpd.co.uk/d/<code>`. The
  * caller holds that session, so it passes the headers rather than this file
  * learning who DPD are.
  *

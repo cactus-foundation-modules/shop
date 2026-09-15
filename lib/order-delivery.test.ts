@@ -166,6 +166,22 @@ describe('what the courier says beats what the stage words say', () => {
     expect(delivery.outForDelivery).toBe(false)
   })
 
+  it('treats a received-by name alone as arrived', () => {
+    const delivery = parcelDelivery(
+      config,
+      shipment({
+        carrierOutForDelivery: true,
+        signedBy: 'Patel',
+        trackingStage: 'Your parcel has been delivered and received by PATEL',
+      }),
+      new Date('2026-09-15T12:00:00.000Z'),
+      'Europe/London',
+    )
+    expect(delivery.arrived).toBe(true)
+    expect(delivery.outForDelivery).toBe(false)
+    expect(delivery.live.round).toBe('')
+  })
+
   it('stops saying out for delivery once the courier has delivered', () => {
     const delivery = parcelDelivery(
       config,
@@ -227,6 +243,17 @@ describe('railDelivery', () => {
   it('is nothing when no delivery is booked', () => {
     expect(railDelivery([])).toBeNull()
     expect(railDelivery([{ ...booked('a', '', 'upcoming'), date: '', day: '', progress: null }])).toBeNull()
+  })
+
+  it('includes a parcel that has arrived even with no booked day', () => {
+    const picked = railDelivery([{
+      ...booked('a', '', 'passed'),
+      date: '',
+      day: '',
+      progress: null,
+      arrived: true,
+    }])
+    expect(picked?.shipmentId).toBe('a')
   })
 })
 

@@ -28,8 +28,11 @@ function formatEventTime(at: string): string {
 }
 
 export function ParcelTracking({ delivery }: { delivery: ParcelDelivery }) {
-  const { live, events } = delivery
-  const hasLive = Boolean(live.round || live.yours)
+  const { live, events, arrived } = delivery
+  // DPD keep their out-for-delivery flag after delivery, and stale stop counts
+  // can still read as "on their way to you now". Once it has arrived, the
+  // history is enough.
+  const hasLive = !arrived && Boolean(live.round || live.yours)
   if (!hasLive && events.length === 0) return null
 
   return (

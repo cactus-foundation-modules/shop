@@ -145,7 +145,10 @@ async function readDpdParcelOnce(parcel: ShpShipment, timezone: string): Promise
   // dpdImageHeaders for the Referer that decides between a picture and a 403.
   const image = dpdPodImage(payloads.parcel)
   const proofImage = image && cookie
-    ? { url: dpdImageUrl(parcelCode, image), headers: dpdImageHeaders(cookie) }
+    ? {
+        url: dpdImageUrl(parcelCode, image),
+        headers: dpdImageHeaders(cookie, parcel.trackingShortCode),
+      }
     : null
 
   return {

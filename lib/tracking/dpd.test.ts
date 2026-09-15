@@ -268,13 +268,17 @@ describe('proof of delivery', () => {
     )
   })
 
-  // Both headers are load-bearing and the Referer is the surprising one: the
-  // tracking site's ROOT is accepted where the address naming the parcel - the
-  // one a browser would really send - is refused with a 403.
-  it('sends the session and a bare referer', () => {
+  it('sends the session and the follow-my-parcel referer when a short code is known', () => {
+    expect(dpdImageHeaders('sessionId=abc', '6dPoGeUjMS7d')).toEqual({
+      cookie: 'sessionId=abc',
+      Referer: 'https://www.dpd.co.uk/d/6dPoGeUjMS7d',
+    })
+  })
+
+  it('falls back to the tracking site root without a short code', () => {
     expect(dpdImageHeaders('sessionId=abc')).toEqual({
       cookie: 'sessionId=abc',
-      referer: 'https://track.dpd.co.uk/',
+      Referer: 'https://track.dpd.co.uk/',
     })
   })
 })

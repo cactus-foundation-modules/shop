@@ -259,12 +259,8 @@ export function readDpd(input: {
     // 12:41" is a different string on every parcel and on every delivery, so
     // no words an owner could type would ever match it.
     outForDelivery: data?.outForDeliveryDetails?.outForDelivery ?? null,
-    // Their proof of delivery, in words. The PHOTOGRAPH beside it in the same
-    // payload cannot be had: `/v1/parcels/{code}/images/{key}?imageType=S5`
-    // answers 403 to a follow-my-parcel session, and the session that can see
-    // it is the postcode login, which is behind a reCAPTCHA. A name and a time
-    // settle most arguments about a delivery anyway; the picture settles the
-    // rest, and for those there is the courier's own page.
+    // Their proof of delivery, in words. The photograph beside it is fetched
+    // separately - see dpdImageHeaders and read-parcel.ts.
     receivedBy: data?.deliveryDetails?.podDetails?.podName?.trim() || null,
     receivedAt: asDate(data?.deliveryDetails?.podDetails?.podDate, input.timezone),
   }
@@ -311,12 +307,15 @@ export function dpdImageUrl(parcelCode: string, image: { key: string; imageType:
 /**
  * The headers that picture needs, which are not the ones anything else needs.
  *
- * Two things, and it is 403 without either. The session cookie - the same one
- * that unlocks the round and the stop number - and a Referer of the tracking
- * site's ROOT. A Referer naming the parcel is refused, which is the opposite of
- * how referer checks usually behave and cost an afternoon to find: the address
- * a browser would actually send is the one that does not work.
+ * Two things, and it is 403 without either: the session cookie minted from the
+ * follow-my-parcel code (the same `createSession?parcelCode=…&origin=d` call
+ * that `www.dpd.co.uk/d/<code>` makes), and a Referer from that entry path.
+ *
+ * The parcel-number tracking URL is a different door in; the image endpoint
+ * expects the session that came through the short link.
  */
-export function dpdImageHeaders(cookie: string): Record<string, string> {
-  return { cookie, referer: 'https://track.dpd.co.uk/' }
+export function dpdImageHeaders(cookie: string, shortCode?: string | null): Record<string, string> {
+  const code = shortCode?.trim()
+  const Referer = code ? `https://www.dpd.co.uk/d/${code}` : 'https://track.dpd.co.uk/'
+  return { cookie, Referer }
 }

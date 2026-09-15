@@ -339,6 +339,12 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
       .filter((entry): entry is readonly [string, Date] => entry[1] instanceof Date),
   )
 
+  const deliveredItemIds = new Set<string>()
+  for (const shipment of shipments) {
+    if (!shipment.deliveredAt && !shipment.signedAt && !shipment.signedBy?.trim()) continue
+    for (const item of shipment.items) deliveredItemIds.add(item.orderItemId)
+  }
+
   /** 'today', 'yesterday' or '8/9/26', in the shop's own timezone. The instant
    *  is turned into a calendar day first: a delivery at half past midnight is
    *  remembered by the day it happened where it happened, not by whatever day
@@ -358,7 +364,8 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           // The courier's own word first, the clock only as a fallback: a
           // booked window says what was planned, the tracking page says what is
           // happening.
-          underway: railBooking.outForDelivery || railBooking.progress?.phase === 'during',
+          underway: !railBooking.arrived
+            && (railBooking.outForDelivery || railBooking.progress?.phase === 'during'),
           arrived: railBooking.arrived,
           // The day it actually came, where the courier gave one. Worded here
           // because this is where the timezone is.
@@ -760,6 +767,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
             productUrlStyle={config.productUrlStyle}
             buyAgainEnabled={config.buyAgainEnabled}
             timezone={timezone}
+            deliveredItemIds={deliveredItemIds}
           />
         </OrderCard>
 

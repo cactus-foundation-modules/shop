@@ -30,9 +30,18 @@ type Props = {
   productUrlStyle: ProductUrlStyle
   buyAgainEnabled: boolean
   timezone: string
+  /** Order lines on a parcel the courier has already handed over. */
+  deliveredItemIds?: ReadonlySet<string>
 }
 
-export function OrderItemList({ lines, currencySymbol, productUrlStyle, buyAgainEnabled, timezone }: Props) {
+export function OrderItemList({
+  lines,
+  currencySymbol,
+  productUrlStyle,
+  buyAgainEnabled,
+  timezone,
+  deliveredItemIds,
+}: Props) {
   const entries = sortLinesByGroup(
     lines.map((line) => ({ line, group: line.item.lineMeta?.group ?? null })),
   )
@@ -91,11 +100,13 @@ export function OrderItemList({ lines, currencySymbol, productUrlStyle, buyAgain
             ) : null}
 
             <div className="sod-item-foot">
-              {line.dispatchedQty > 0 && (
+              {deliveredItemIds?.has(item.id) ? (
+                <span className="badge badge-success">Delivered</span>
+              ) : line.dispatchedQty > 0 ? (
                 <span className="badge badge-success">
                   {line.dispatchedQty >= quantity ? 'Dispatched' : `${line.dispatchedQty} of ${quantity} dispatched`}
                 </span>
-              )}
+              ) : null}
               {item.refundedQty > 0 && <span className="badge badge-warning">{item.refundedQty} refunded</span>}
               {item.isPreOrder && (
                 <span className="badge badge-info">

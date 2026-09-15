@@ -35,10 +35,12 @@ export async function storeParcelReading(
     events: reading.events,
     windowFrom: reading.windowFrom,
     windowTo: reading.windowTo,
-    stopNumber: reading.stopNumber,
-    stopsCompleted: reading.stopsCompleted,
-    stopsTotal: reading.stopsTotal,
-    minutesToStop: reading.minutesToStop,
+    // Once it has landed, the round position is yesterday's news. DPD keep
+    // stale counts on the row and they read as "on their way to you now".
+    stopNumber: delivered ? null : reading.stopNumber,
+    stopsCompleted: delivered ? null : reading.stopsCompleted,
+    stopsTotal: delivered ? null : reading.stopsTotal,
+    minutesToStop: delivered ? null : reading.minutesToStop,
     driverName: reading.driverName,
     outForDelivery: delivered ? false : reading.outForDelivery,
   })
