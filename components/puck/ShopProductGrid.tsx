@@ -185,6 +185,7 @@ export const shopProductGridPuckComponent = {
     // Order the shelf is stacked in. 'Newest first' is what the grid always did.
     sort: { type: 'select' as const, label: 'Order products by', options: [
       { value: 'newest', label: 'Newest first' },
+      { value: 'new-tag-first', label: 'New tag first, then newest' },
       { value: 'popular', label: 'Best sellers first' },
       { value: 'price-asc', label: 'Price - low to high' },
       { value: 'price-desc', label: 'Price - high to low' },

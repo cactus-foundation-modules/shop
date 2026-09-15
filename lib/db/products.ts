@@ -315,10 +315,20 @@ export type ProductStockFilter = 'in' | 'low' | 'out'
 
 // Whitelist of admin list orderings. Kept as a fixed map (never interpolated
 // from the request) so the ORDER BY can never carry user input into SQL.
-export type ProductSort = 'newest' | 'oldest' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'stock-asc' | 'stock-desc' | 'popular'
+export type ProductSort = 'newest' | 'new-tag-first' | 'oldest' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc' | 'stock-asc' | 'stock-desc' | 'popular'
 
 const SORT_SQL: Record<ProductSort, Prisma.Sql> = {
   newest: Prisma.sql`p."created_at" DESC`,
+  // Products carrying the 'new' tag first, then the rest - each group still
+  // newest-first by when it was added. For a "Just in" shelf where the tag
+  // marks what you want to lead with rather than what was uploaded last.
+  'new-tag-first': Prisma.sql`(
+    EXISTS (
+      SELECT 1 FROM "shp_product_tags" pt
+      JOIN "shp_tags" t ON t."id" = pt."tag_id"
+      WHERE pt."product_id" = p."id" AND t."slug" = 'new'
+    )
+  ) DESC, p."created_at" DESC`,
   oldest: Prisma.sql`p."created_at" ASC`,
   'name-asc': Prisma.sql`p."name" ASC`,
   'name-desc': Prisma.sql`p."name" DESC`,

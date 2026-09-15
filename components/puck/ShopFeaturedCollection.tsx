@@ -38,6 +38,7 @@ export const shopFeaturedCollectionPuckComponent = {
     limit: { type: 'number' as const, label: 'Number of products' },
     sort: { type: 'select' as const, label: 'Order products by', options: [
       { value: 'newest', label: 'Newest first' },
+      { value: 'new-tag-first', label: 'New tag first, then newest' },
       { value: 'popular', label: 'Best sellers first' },
       { value: 'price-asc', label: 'Price - low to high' },
       { value: 'price-desc', label: 'Price - high to low' },
