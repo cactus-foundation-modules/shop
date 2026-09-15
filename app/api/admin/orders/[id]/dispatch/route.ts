@@ -18,7 +18,8 @@ import { hasFollowableTracking, sendTrackingAddedEmail } from '@/modules/shop/li
 import { sendDeliverySlotEmail } from '@/modules/shop/lib/delivery-slot-email'
 import { isDeliveryDate, isSlotTime, slotMinutes } from '@/modules/shop/lib/delivery-slot'
 import type { ShpConfig } from '@/modules/shop/lib/config'
-import type { ShpOrderItem, ShpShipmentWithItems } from '@/modules/shop/lib/types'
+import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
+import type { ShpOrderItem, ShpOrderStatus, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
 // A tracking link is offered to the customer as something to click, so only a
 // web address is accepted: anything else (a javascript: URL above all) would be
@@ -211,6 +212,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
 
+  await followDispatchWithStatus(id, order.status, 'recorded')
+
   // The parcel is out and the shipment is recorded whatever the mail server
   // thinks. A bounced send must not roll that back or report a failure the
   // owner would act on by dispatching all over again, so it is logged and
@@ -382,8 +385,52 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
   // Scoped to this order, so a shipment id from elsewhere cannot be deleted
   // through an order the caller happens to be allowed to see.
+  const order = await getOrderById(id)
   const deleted = await deleteShipment(shipmentId, id)
   if (!deleted) return NextResponse.json({ error: 'That dispatch is no longer on this order.' }, { status: 404 })
 
+  if (order) await followDispatchWithStatus(id, order.status, 'undone')
+
   return NextResponse.json({ success: true })
+}
+
+/**
+ * Keep the order's status in step with its parcels.
+ *
+ * The status and the dispatch record are two separate things an owner sets, and
+ * the customer's order page reads its headline off the status. Recording every
+ * parcel without also changing the dropdown left a replacement whose customer
+ * had been emailed "on its way" looking at a page that said "Being prepared".
+ * So the last parcel moves a PROCESSING order on to SHIPPED, and undoing a
+ * parcel moves a SHIPPED order that is no longer fully dispatched back again.
+ *
+ * Only those two statuses are touched. PENDING has not been paid for, ON_HOLD
+ * was put there by somebody on purpose, and COMPLETED and the refunded and
+ * cancelled states say something a parcel record has no business overruling.
+ *
+ * It goes through applyOrderStatusChange so invoicing on dispatch and the
+ * pre-order rules behave exactly as they do from the dropdown. No email: the
+ * dispatch note is this route's to send, and an undo is not news to a customer.
+ * A refusal is logged and stepped over - the parcel is recorded either way, and
+ * the dropdown is still there.
+ */
+async function followDispatchWithStatus(
+  orderId: string,
+  statusBefore: ShpOrderStatus,
+  change: 'recorded' | 'undone',
+): Promise<void> {
+  const wanted: { from: ShpOrderStatus; to: ShpOrderStatus } = change === 'recorded'
+    ? { from: 'PROCESSING', to: 'SHIPPED' }
+    : { from: 'SHIPPED', to: 'PROCESSING' }
+  if (statusBefore !== wanted.from) return
+
+  try {
+    const { fullyDispatched } = await getOrderDispatchSummary(orderId)
+    if (fullyDispatched !== (change === 'recorded')) return
+
+    const result = await applyOrderStatusChange({ orderId, status: wanted.to, sendEmail: false })
+    if (!result.ok) console.warn(`[shop] dispatch could not move order ${orderId} to ${wanted.to}: ${result.error}`)
+  } catch (error) {
+    console.error('[shop] dispatch status follow-up failed', orderId, error)
+  }
 }
