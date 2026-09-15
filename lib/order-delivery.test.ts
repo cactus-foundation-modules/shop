@@ -106,6 +106,25 @@ describe('parcelDelivery', () => {
     expect(delivery.day).toBe('tomorrow')
     expect(delivery.window).toBe('')
   })
+
+  it('words a courier-reported window when dispatch left the slot blank', () => {
+    const delivery = parcelDelivery(
+      config,
+      shipment({
+        deliveryWindowFrom: new Date('2026-09-15T10:25:00.000Z'),
+        deliveryWindowTo: new Date('2026-09-15T11:25:00.000Z'),
+        carrierOutForDelivery: true,
+        trackingStage: 'Your parcel will be with you today  between 11:25 and 12:25',
+      }),
+      new Date('2026-09-15T09:00:00.000Z'),
+      'Europe/London',
+    )
+    expect(delivery.date).toBe('2026-09-15')
+    expect(delivery.day).toBe('today')
+    expect(delivery.window).toBe('between 11.25am and 12.25pm')
+    expect(delivery.slotStart).toBe('11:25')
+    expect(delivery.slotEnd).toBe('12:25')
+  })
 })
 
 describe('what the courier says beats what the stage words say', () => {
@@ -146,6 +165,27 @@ describe('what the courier says beats what the stage words say', () => {
     )
     expect(delivery.outForDelivery).toBe(false)
   })
+
+  it('stops saying out for delivery once the courier has delivered', () => {
+    const delivery = parcelDelivery(
+      config,
+      shipment({
+        deliveryDate: '2026-09-10',
+        trackingStage: 'Your parcel has been delivered and received by PATEL',
+        carrierOutForDelivery: true,
+        deliveredAt: new Date('2026-09-10T11:53:00Z'),
+        minutesToStop: 2,
+        stopNumber: 24,
+        stopsCompleted: 24,
+        trackingCheckedAt: new Date('2026-09-10T11:00:00Z'),
+      }),
+      new Date('2026-09-10T12:00:00Z'),
+      'Europe/London',
+    )
+    expect(delivery.arrived).toBe(true)
+    expect(delivery.outForDelivery).toBe(false)
+    expect(delivery.live.yours).toBe('')
+  })
 })
 
 const booked = (id: string, date: string, phase: 'upcoming' | 'passed'): ParcelDelivery => ({
@@ -153,6 +193,8 @@ const booked = (id: string, date: string, phase: 'upcoming' | 'passed'): ParcelD
   date,
   day: `day ${date}`,
   window: '',
+  slotStart: null,
+  slotEnd: null,
   progress: { progress: phase === 'passed' ? 1 : 0, phase },
   outForDelivery: false,
   arrived: phase === 'passed',

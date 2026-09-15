@@ -17,6 +17,8 @@
 // to the page, and the only thing ever converted is NOW: the current instant is
 // read in the shop's timezone and compared like for like.
 
+import { calendarDateIn } from '@/lib/config/timezone'
+
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
 
@@ -43,6 +45,64 @@ export function isDeliveryDate(value: unknown): value is string {
 /** A 24-hour clock time, written 'HH:MM'. */
 export function isSlotTime(value: unknown): value is string {
   return typeof value === 'string' && TIME_PATTERN.test(value)
+}
+
+/** 'HH:MM' for an instant, in the shop's timezone. */
+export function slotTimeFromInstant(instant: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(instant)
+  const get = (type: Intl.DateTimeFormatPartTypes): string => parts.find((p) => p.type === type)?.value ?? '00'
+  const hour = get('hour').padStart(2, '0')
+  const minute = get('minute').padStart(2, '0')
+  return `${hour}:${minute}`
+}
+
+export type DeliveryBooking = {
+  date: string
+  slotStart: string | null
+  slotEnd: string | null
+}
+
+/** The day and window to show - the slot the shop booked, or the one the
+ *  courier reported on their own tracking page when no slot was typed in. */
+export function deliveryBookingForShipment(
+  shipment: {
+    deliveryDate: string | null
+    deliverySlotStart: string | null
+    deliverySlotEnd: string | null
+    deliveryWindowFrom: Date | null
+    deliveryWindowTo: Date | null
+  },
+  timezone: string,
+): DeliveryBooking {
+  if (isDeliveryDate(shipment.deliveryDate ?? '')
+    && isSlotTime(shipment.deliverySlotStart)
+    && isSlotTime(shipment.deliverySlotEnd)) {
+    return {
+      date: shipment.deliveryDate as string,
+      slotStart: shipment.deliverySlotStart,
+      slotEnd: shipment.deliverySlotEnd,
+    }
+  }
+
+  if (shipment.deliveryWindowFrom && shipment.deliveryWindowTo) {
+    const date = calendarDateIn(shipment.deliveryWindowFrom, timezone)
+    const slotStart = slotTimeFromInstant(shipment.deliveryWindowFrom, timezone)
+    const slotEnd = slotTimeFromInstant(shipment.deliveryWindowTo, timezone)
+    if (isDeliveryDate(date) && isSlotTime(slotStart) && isSlotTime(slotEnd)) {
+      return { date, slotStart, slotEnd }
+    }
+  }
+
+  return {
+    date: shipment.deliveryDate ?? '',
+    slotStart: shipment.deliverySlotStart,
+    slotEnd: shipment.deliverySlotEnd,
+  }
 }
 
 /** Minutes since midnight, for comparing times of day without dates. */

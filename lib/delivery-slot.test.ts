@@ -5,8 +5,10 @@ import {
   formatDeliveryDay,
   formatDeliveredDayRelative,
   formatDeliveryDayRelative,
+  deliveryBookingForShipment,
   formatDeliveryWindow,
   formatDeliveryWindowSpoken,
+  slotTimeFromInstant,
   isDeliveryDate,
   isSlotTime,
   nowInTimezone,
@@ -247,5 +249,43 @@ describe('formatDeliveryDayRelative', () => {
 
   it('falls back to the full date when today is not known', () => {
     expect(formatDeliveryDayRelative('2026-09-08', '')).toBe('Tuesday 8th of September')
+  })
+})
+
+describe('slotTimeFromInstant', () => {
+  it('reads the wall clock in the shop timezone', () => {
+    const instant = new Date('2026-09-15T10:25:00.000Z')
+    expect(slotTimeFromInstant(instant, 'Europe/London')).toBe('11:25')
+    expect(slotTimeFromInstant(instant, 'UTC')).toBe('10:25')
+  })
+})
+
+describe('deliveryBookingForShipment', () => {
+  it('prefers a slot typed in at dispatch', () => {
+    expect(deliveryBookingForShipment({
+      deliveryDate: '2026-09-08',
+      deliverySlotStart: '10:00',
+      deliverySlotEnd: '13:00',
+      deliveryWindowFrom: new Date('2026-09-08T09:00:00.000Z'),
+      deliveryWindowTo: new Date('2026-09-08T12:00:00.000Z'),
+    }, 'Europe/London')).toEqual({
+      date: '2026-09-08',
+      slotStart: '10:00',
+      slotEnd: '13:00',
+    })
+  })
+
+  it('falls back to the courier window when nothing was typed in', () => {
+    expect(deliveryBookingForShipment({
+      deliveryDate: null,
+      deliverySlotStart: null,
+      deliverySlotEnd: null,
+      deliveryWindowFrom: new Date('2026-09-15T10:25:00.000Z'),
+      deliveryWindowTo: new Date('2026-09-15T11:25:00.000Z'),
+    }, 'Europe/London')).toEqual({
+      date: '2026-09-15',
+      slotStart: '11:25',
+      slotEnd: '12:25',
+    })
   })
 })

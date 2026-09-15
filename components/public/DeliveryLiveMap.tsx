@@ -45,6 +45,9 @@ export type LiveDeliveryState = {
   /** 'Updated 1 minute ago', and whether that is old enough to distrust.
    *  Worded on the server so one visitor's wrong clock cannot age a delivery. */
   freshness?: { text: string; stale: boolean } | null
+  /** The server has just learned the parcel arrived. Reload so the rest of the
+   *  page - the progress rail, the tracking lines - catches up. */
+  refreshPage?: boolean
 }
 
 type Props = {
@@ -100,6 +103,10 @@ export default function DeliveryLiveMap({ orderId, shipmentId, initial }: Props)
       // screen with its own honest age against it, and we simply ask again later.
       if (!res.ok) return SLOW_POLL_MS
       const next = (await res.json()) as LiveDeliveryState
+      if (next.refreshPage) {
+        window.location.reload()
+        return SLOW_POLL_MS
+      }
       setState(next)
       return next.pollAfterMs > 0 ? next.pollAfterMs : SLOW_POLL_MS
     } catch {

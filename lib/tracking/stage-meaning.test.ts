@@ -76,4 +76,12 @@ describe('stages with the courier own detail stapled on', () => {
   it('still matches a tidy stage whole, as it always did', () => {
     expect(stageMeaning({ ...courier, deliveredStages: ['Complete'] }, 'Complete')).toBe('delivered')
   })
+
+  it('matches DPD out-for-delivery when only the window changed', () => {
+    const dpd = {
+      outForDeliveryStages: ['Your parcel will be with you today  between 11:41 and 12:41'],
+      deliveredStages: [] as string[],
+    }
+    expect(stageMeaning(dpd, 'Your parcel will be with you today  between 11:25 and 12:25')).toBe('out-for-delivery')
+  })
 })

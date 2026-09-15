@@ -624,7 +624,10 @@ export async function listShipmentsForTrackingPoll(limit: number): Promise<ShpSh
           AND s."shipped_at" > CURRENT_TIMESTAMP - ${SIGNATURE_CATCHUP_DAYS}::int * INTERVAL '1 day'
         )
       )
-    ORDER BY s."tracking_checked_at" ASC NULLS FIRST, s."shipped_at" ASC
+    ORDER BY
+      CASE WHEN s."carrier_out_for_delivery" = true THEN 0 ELSE 1 END,
+      s."tracking_checked_at" ASC NULLS FIRST,
+      s."shipped_at" ASC
     LIMIT ${limit}
   `
   // The lines are not read here: the poller does not care what is in the parcel,

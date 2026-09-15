@@ -175,6 +175,32 @@ export function dpdStatusWindow(statusHtml: string | null | undefined): { start:
   return { start: (m[1] as string).padStart(5, '0'), end: (m[2] as string).padStart(5, '0') }
 }
 
+/** Whether DPD's feed says this parcel has arrived.
+ *
+ * The shop's deliveredStages setting is intentionally blank for DPD because
+ * their scan text changes on every parcel. That only works if the session feed
+ * answers and `deliveredToConsumer` is read - and when session minting fails,
+ * the anonymous feed still carries "Your parcel has been delivered" in the
+ * events while the boolean is absent. Treating null as "not delivered" in that
+ * case leaves a parcel stuck out for delivery for the rest of the hour. */
+export function dpdFeedSaysDelivered(
+  data: Pick<DpdParcel, 'deliveredToConsumer' | 'trackingStatusCurrent'> | null,
+  events: TrackingEvent[],
+): boolean | null {
+  if (data?.deliveredToConsumer === true) return true
+  if (data?.deliveredToConsumer === false) return false
+
+  const status = (data?.trackingStatusCurrent ?? '').replace(/<[^>]*>/g, ' ').trim().toLowerCase()
+  if (status.includes('has been delivered')) return true
+
+  for (const event of events.slice(0, 3)) {
+    const text = event.text.trim().toLowerCase()
+    if (text.includes('has been delivered') || text.includes('received by')) return true
+  }
+
+  return null
+}
+
 /** Their history, newest first, in their words. */
 export function dpdEvents(payload: unknown): TrackingEvent[] {
   const parsed = dpdEventsSchema.safeParse(payload)
@@ -225,10 +251,9 @@ export function readDpd(input: {
     // page, and the route's display name has come back empty on a round whose
     // driver had not started.
     driverName: dpdDriverName(data?.parcelStatusHtml) ?? routeData?.driverDisplayName?.trim() ?? null,
-    // Their own boolean, and only from the session feed - the anonymous one
-    // does not carry it, where `undefined` correctly reads as "did not say"
-    // rather than as "not delivered".
-    delivered: data?.deliveredToConsumer ?? null,
+    // Session boolean when they give one; otherwise the events and status
+    // sentence, which the anonymous feed carries too once a parcel has landed.
+    delivered: dpdFeedSaysDelivered(data, events),
     // Their flag, and the reason this reader does not try to match their
     // status sentence: "Your parcel will be with you today between 11:41 and
     // 12:41" is a different string on every parcel and on every delivery, so

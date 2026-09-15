@@ -17,6 +17,7 @@ import { sendShipmentDispatchedEmail } from '@/modules/shop/lib/shipment-email'
 import { hasFollowableTracking, sendTrackingAddedEmail } from '@/modules/shop/lib/tracking-added-email'
 import { sendDeliverySlotEmail } from '@/modules/shop/lib/delivery-slot-email'
 import { isDeliveryDate, isSlotTime, slotMinutes } from '@/modules/shop/lib/delivery-slot'
+import { getSiteTimezone } from '@/lib/config/timezone.server'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 import type { ShpOrderItem, ShpOrderStatus, ShpShipmentWithItems } from '@/modules/shop/lib/types'
@@ -328,7 +329,8 @@ async function maybeSendSlotEmail(
   if (!(await claimSlotNotification(shipment.id, orderId))) return false
 
   try {
-    await sendDeliverySlotEmail({ orderId, shipmentId: shipment.id })
+    const timezone = await getSiteTimezone()
+    await sendDeliverySlotEmail({ orderId, shipmentId: shipment.id, timezone })
   } catch (error) {
     console.error('[shop] delivery slot email failed', error)
   }

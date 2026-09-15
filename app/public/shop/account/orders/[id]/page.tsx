@@ -374,11 +374,11 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   // across a rail the morning after is somebody's furniture being described as
   // "on its way" when it is not.
   const railShipment = railBooking ? shipments.find((s) => s.id === railBooking.shipmentId) ?? null : null
-  const van = railShipment && railBooking && !railBooking.arrived
+  const van = railBooking && !railBooking.arrived
     ? {
-        date: railShipment.deliveryDate ?? '',
-        slotStart: railShipment.deliverySlotStart,
-        slotEnd: railShipment.deliverySlotEnd,
+        date: railBooking.date,
+        slotStart: railBooking.slotStart,
+        slotEnd: railBooking.slotEnd,
       }
     : null
 

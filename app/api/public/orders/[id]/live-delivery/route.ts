@@ -7,6 +7,8 @@ import { getShipmentForOrder, recordVehiclePosition } from '@/modules/shop/lib/d
 import { resolveOrderViewer } from '@/modules/shop/lib/order-viewer'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { courierIsPolled, stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
+import { readParcelTracking } from '@/modules/shop/lib/tracking/read-parcel'
+import { storeParcelReading } from '@/modules/shop/lib/tracking/store-reading'
 import { fetchVehiclePosition, positionUrl } from '@/modules/shop/lib/tracking/multidrop-position'
 import { cachedVehiclePosition } from '@/modules/shop/lib/tracking/position-cache'
 import { livePollIntervalMs, positionFreshness, SLOW_POLL_MS } from '@/modules/shop/lib/tracking/live-delivery'
@@ -18,7 +20,9 @@ import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/l
 // last stored. Everything else about a delivery changes a few times a day and
 // an hourly poll is generous; a van moves continuously, and an hour-old
 // position drawn confidently on a map is the site telling a polite lie about
-// somebody's sofa.
+// somebody's sofa. While somebody is watching, the courier is also asked
+// whether the parcel has arrived - otherwise a DPD delivery can sit on "any
+// minute now" for the rest of the hour.
 //
 // It is driven by the page rather than by a schedule because the condition that
 // matters - somebody is actually watching - is one a cron job cannot know. A
@@ -77,25 +81,47 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     pollAfterMs: SLOW_POLL_MS,
   }
 
-  // A parcel that has arrived, a courier nobody set up for tracking, or a stage
-  // that does not say a van is out. Answered rather than refused: the page has
-  // asked a fair question and the answer is "nothing is moving".
-  const outForDelivery = stageMeaning(courier, shipment.trackingStage) === 'out-for-delivery'
-  if (shipment.deliveredAt || !courierIsPolled(courier) || !outForDelivery) {
+  // Same rule as lib/order-delivery.ts: the courier's own flag where they
+  // give one, and the stage words where they do not.
+  const outForDelivery = !shipment.deliveredAt
+    && (shipment.carrierOutForDelivery ?? stageMeaning(courier, shipment.trackingStage) === 'out-for-delivery')
+  if (!courier || !courierIsPolled(courier) || !outForDelivery) {
     return NextResponse.json(base)
   }
 
-  const url = shipment.trackingUrl && shipment.trackingClientId && shipment.trackingRouteId
-    ? positionUrl(shipment.trackingUrl, shipment.trackingClientId, shipment.trackingRouteId)
+  // Ask the courier while somebody is watching. The hourly job is too slow
+  // once a parcel is down to "any minute now", and couriers like DPD have no
+  // live map for us to poll instead.
+  let current = shipment
+  const reading = await readParcelTracking(courier, shipment, timezone)
+  if (reading?.stage) {
+    const { delivered } = await storeParcelReading(courier, shipment, reading, timezone)
+    if (delivered) {
+      return NextResponse.json({ ...base, arrived: true, refreshPage: true })
+    }
+    const refreshed = await getShipmentForOrder(order.id, shipmentId)
+    if (refreshed) current = refreshed
+  }
+
+  const url = current.trackingUrl && current.trackingClientId && current.trackingRouteId
+    ? positionUrl(current.trackingUrl, current.trackingClientId, current.trackingRouteId)
     : null
   // Out for delivery, but the scheduled job has not yet read the ids the
   // courier's map needs. Keep asking on the slow tick - the next hourly run
   // fills them in, and the page picks the van up without a reload.
-  if (!url) return NextResponse.json({ ...base, live: true })
+  if (!url) {
+    return NextResponse.json({
+      ...base,
+      live: true,
+      crewLine: current.crewLine,
+      dropsAway: current.dropsAway,
+      pollAfterMs: livePollIntervalMs(current.dropsAway),
+    })
+  }
 
   // Keyed on the round, so everyone watching this van shares one request.
   const { position, fetched } = await cachedVehiclePosition(
-    `${shipment.trackingClientId}:${shipment.trackingRouteId}`,
+    `${current.trackingClientId}:${current.trackingRouteId}`,
     () => fetchVehiclePosition(url, timezone),
   )
 
@@ -103,7 +129,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   // fast tick would write the same row every minute for every viewer, to record
   // a position the shop had already been given.
   if (fetched && position) {
-    await recordVehiclePosition(shipment.id, {
+    await recordVehiclePosition(current.id, {
       lat: position.lat,
       lng: position.lng,
       heading: position.heading,
@@ -114,19 +140,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   // The last known position when this read found nothing. A van whose fix is
   // four minutes old is still worth drawing - the freshness line says how old
   // it is, and that is the honest version of showing it.
-  const shown = position ?? (shipment.vehicleLat && shipment.vehicleLng
+  const shown = position ?? (current.vehicleLat && current.vehicleLng
     ? {
-        lat: shipment.vehicleLat,
-        lng: shipment.vehicleLng,
-        heading: shipment.vehicleHeading,
-        fixedAt: shipment.vehicleFixedAt,
+        lat: current.vehicleLat,
+        lng: current.vehicleLng,
+        heading: current.vehicleHeading,
+        fixedAt: current.vehicleFixedAt,
       }
     : null)
 
   return NextResponse.json({
     ...base,
     live: true,
-    pollAfterMs: livePollIntervalMs(shipment.dropsAway),
+    crewLine: current.crewLine,
+    dropsAway: current.dropsAway,
+    pollAfterMs: livePollIntervalMs(current.dropsAway),
     position: shown
       ? {
           lat: shown.lat,

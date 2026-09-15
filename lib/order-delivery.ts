@@ -1,4 +1,5 @@
 import {
+  deliveryBookingForShipment,
   deliveryProgress,
   formatDeliveryDayRelative,
   formatDeliveryWindowSpoken,
@@ -35,6 +36,9 @@ export type ParcelDelivery = {
   day: string
   /** 'between 10am and 1pm', or '' until the courier confirms one. */
   window: string
+  /** The start and end of the window, for the van on the rail. */
+  slotStart: string | null
+  slotEnd: string | null
   /** Where the clock has got to across the booked window. */
   progress: DeliveryProgress | null
   /** The courier's own tracking says a van is out with it. Beats the clock,
@@ -70,41 +74,50 @@ export function parcelDelivery(
   now: Date,
   timezone: string,
 ): ParcelDelivery {
-  const date = shipment.deliveryDate ?? ''
+  const booking = deliveryBookingForShipment(shipment, timezone)
+  const date = booking.date
   const courier = courierForShipment(config, shipment)
   const meaning = stageMeaning(courier, shipment.trackingStage)
   const progress = date
     ? deliveryProgress({
         date,
-        slotStart: shipment.deliverySlotStart,
-        slotEnd: shipment.deliverySlotEnd,
+        slotStart: booking.slotStart,
+        slotEnd: booking.slotEnd,
         now,
         timezone,
       })
     : null
 
+  const arrived = meaning === 'delivered'
+    || Boolean(shipment.deliveredAt)
+    || Boolean(shipment.signedAt)
+    || (meaning === 'progress' && progress?.phase === 'passed')
+
+  // The courier's own flag where they report one, and the owner's reading of
+  // their stage words where they do not. Same rule as `delivered` in the
+  // poller: a boolean from the carrier beats a sentence somebody matched.
+  // Once it has arrived, the flag is ignored - DPD in particular keep
+  // outForDelivery true after delivery, which would otherwise leave "any
+  // minute now" on the page for ever.
+  const outForDelivery = !arrived && (shipment.carrierOutForDelivery ?? meaning === 'out-for-delivery')
+
   return {
     shipmentId: shipment.id,
     date,
     day: formatDeliveryDayRelative(date, nowInTimezone(now, timezone).date),
-    window: formatDeliveryWindowSpoken(shipment.deliverySlotStart, shipment.deliverySlotEnd),
+    window: formatDeliveryWindowSpoken(booking.slotStart, booking.slotEnd),
+    slotStart: booking.slotStart,
+    slotEnd: booking.slotEnd,
     progress,
-    // The courier's own flag where they report one, and the owner's reading of
-    // their stage words where they do not. Same rule as `delivered` in the
-    // poller: a boolean from the carrier beats a sentence somebody matched.
-    outForDelivery: shipment.carrierOutForDelivery ?? meaning === 'out-for-delivery',
-    // Delivered is the courier's word for it where there is one, and the window
-    // having gone by where there is not. The clock is the weaker of the two and
-    // never overrules the stronger.
-    arrived: meaning === 'delivered'
-      || (meaning === 'progress' && progress?.phase === 'passed'),
+    outForDelivery,
+    arrived,
     showTracking: customerMaySeeTracking(config, shipment),
     trackingLabel: courier?.trackingLinkLabel.trim() || DEFAULT_TRACKING_LABEL,
     trackingHint: courier?.trackingLinkHint.trim() ?? '',
     // Only while it is actually out with a driver. The numbers persist in the
     // row until the next poll overwrites them, and a stop number shown against
     // a parcel that arrived yesterday would be a sentence about nothing.
-    live: (shipment.carrierOutForDelivery ?? meaning === 'out-for-delivery')
+    live: outForDelivery
       ? liveProgress({
           driverName: shipment.driverName,
           stopNumber: shipment.stopNumber,

@@ -43,12 +43,26 @@ function segments(stage: string): string[] {
     .filter(Boolean)
 }
 
+/** The part of a stage before a courier staples a timeslot on. DPD's
+ *  out-for-delivery line is the same opening on every parcel with only the
+ *  window changing, so a setting copied from one example still has to match
+ *  the rest. */
+function beforeWindow(value: string): string {
+  return normalise(value).split(/\bbetween\b/)[0]?.trim() ?? normalise(value)
+}
+
 /** Whether one of the owner's phrases names this stage. The whole stage counts
  *  as a segment, so a courier with tidy names behaves exactly as it did before
  *  any of this existed. */
 function named(list: string[], stage: string): boolean {
   const parts = new Set([normalise(stage), ...segments(stage)])
-  return list.some((entry) => parts.has(normalise(entry)))
+  const stageOpening = beforeWindow(stage)
+  return list.some((entry) => {
+    const entryNorm = normalise(entry)
+    if (parts.has(entryNorm)) return true
+    const entryOpening = beforeWindow(entry)
+    return entryOpening.length > 12 && entryOpening === stageOpening
+  })
 }
 
 export function stageMeaning(

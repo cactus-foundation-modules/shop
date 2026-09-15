@@ -24,6 +24,18 @@ const TIMEOUT_MS = 8000
  *  identifiable by the people serving it. */
 const USER_AGENT = 'CactusShopDeliveryTracking/1.0 (+order status)'
 
+/** Set-Cookie lines from a response. Node's fetch exposes getSetCookie; some
+ *  runtimes only expose the combined header - both must work or session minting
+ *  fails and every DPD parcel reads anonymously. */
+export function setCookieLines(res: Response): string[] {
+  if (typeof res.headers.getSetCookie === 'function') {
+    const modern = res.headers.getSetCookie()
+    if (modern.length > 0) return modern
+  }
+  const combined = res.headers.get('set-cookie')
+  return combined ? [combined] : []
+}
+
 async function request(url: string, cookie: string | null, redirect: RequestRedirect): Promise<Response | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
@@ -55,8 +67,7 @@ export async function mintDpdSession(shortCode: string): Promise<string | null> 
   const url = `${API}/createSession?parcelCode=${encodeURIComponent(shortCode)}&origin=d`
   const res = await request(url, null, 'manual')
   if (!res) return null
-  const cookies = res.headers.getSetCookie?.() ?? []
-  const session = cookies
+  const session = setCookieLines(res)
     .map((line) => line.split(';')[0]?.trim() ?? '')
     .filter((pair) => pair.startsWith('sessionId='))
   return session.length > 0 ? session.join('; ') : null

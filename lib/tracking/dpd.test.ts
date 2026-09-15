@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   dpdDepotCode,
+  dpdFeedSaysDelivered,
   dpdImageHeaders,
   dpdImageUrl,
   dpdPodImage,
@@ -226,6 +227,23 @@ const DELIVERED = {
     image: [{ key: '0045*21438*215*3600*22*001*0*1', caption: 'Delivered to recipient', type: 'S5', subType: 'P' }],
   },
 }
+
+describe('dpdFeedSaysDelivered', () => {
+  it('trusts the session boolean when DPD give one', () => {
+    expect(dpdFeedSaysDelivered({ deliveredToConsumer: true, trackingStatusCurrent: '' }, [])).toBe(true)
+  })
+
+  it('reads delivery from the anonymous events feed when the boolean is absent', () => {
+    const events = dpdEvents({
+      data: [{ eventDate: '2026-09-15 11:53:00', eventLocation: 'Preston', eventText: 'Your parcel has been delivered' }],
+    })
+    expect(dpdFeedSaysDelivered(null, events)).toBe(true)
+  })
+
+  it('does not call a failed delivery a delivery', () => {
+    expect(dpdFeedSaysDelivered(null, [{ at: '2026-09-15T09:00:00', location: '', text: 'NOT DELIVERED - CUSTOMER NOT IN' }])).toBe(null)
+  })
+})
 
 describe('proof of delivery', () => {
   it('reads who took it and when, in their spelling', () => {

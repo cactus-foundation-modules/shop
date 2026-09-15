@@ -121,7 +121,7 @@ async function readGfs(parcel: ShpShipment, carrier: string, timezone: string): 
   return reading.stage ? { ...EMPTY_PARCEL_READING, ...reading } : null
 }
 
-async function readDpdParcel(parcel: ShpShipment, timezone: string): Promise<ParcelReading | null> {
+async function readDpdParcelOnce(parcel: ShpShipment, timezone: string): Promise<ParcelReading | null> {
   const parcelCode = dpdParcelCodeFromUrl(parcel.trackingUrl)
   if (!parcelCode) return null
 
@@ -157,6 +157,16 @@ async function readDpdParcel(parcel: ShpShipment, timezone: string): Promise<Par
     routeId: routeCode,
     clientId: dpdDepotCode(payloads.parcel),
   }
+}
+
+async function readDpdParcel(parcel: ShpShipment, timezone: string): Promise<ParcelReading | null> {
+  // One quiet retry: a parcel that was out for delivery a minute ago and now
+  // reads as nothing is usually a timeout, not a courier who changed their
+  // mind. The hourly job has no other chance to ask for another hour.
+  const first = await readDpdParcelOnce(parcel, timezone)
+  if (first) return first
+  await new Promise((resolve) => setTimeout(resolve, 750))
+  return readDpdParcelOnce(parcel, timezone)
 }
 
 /**
