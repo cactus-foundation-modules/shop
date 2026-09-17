@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ShopGridCardLoader } from '@/modules/shop/lib/grid-page-types'
 import { pageHref } from '@/modules/shop/lib/page-href'
+import { holdScrollPosition } from '@/modules/shop/lib/hold-scroll-position'
 import { SharedStyle } from '@/components/SharedStyle'
 
 // Paging for the shop's product grids.
@@ -232,7 +233,10 @@ export function ShopGridPager({
     // it away while the in-flight guard refuses to ask for the same span again
     // leaves that part of the grid permanently empty.
     loadMore({ offset: span.offset, count: span.count })
-      .then((fetched) => {
+      // Held, because the shopper is usually at the bottom of the grid when a
+      // batch lands and the browser would otherwise carry them down to the
+      // footer - see holdScrollPosition.
+      .then((fetched) => holdScrollPosition(() => {
         setSlots((prev) => {
           const next = [...prev]
           fetched.forEach((card, i) => { next[span.offset + i] = card })
@@ -250,7 +254,7 @@ export function ShopGridPager({
           }
           return next
         })
-      })
+      }))
       // Loudly enough to be recoverable, quietly enough not to be a crash: the
       // retry line appears and the shopper presses it. Swallowing this would
       // leave a grid that has simply stopped growing.
@@ -271,8 +275,11 @@ export function ShopGridPager({
 
   // One way to grow the window, whether a thumb or an observer asked for it.
   const growing = mode === 'more' || mode === 'scroll'
+  // Held for the same reason a fetched batch is: with the cards already in hand
+  // they appear in this very commit, above the footer or the focused button the
+  // browser would otherwise keep on screen.
   const showMore = useCallback(() => {
-    setShown((n) => Math.min(n + size, total))
+    holdScrollPosition(() => setShown((n) => Math.min(n + size, total)))
   }, [size, total])
 
   // The server renders `?page=N` on its own, because a block has no idea what

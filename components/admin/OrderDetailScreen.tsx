@@ -570,6 +570,16 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   }
 
   const dispatchByItem = new Map((dispatch?.summary.lines ?? []).map((l) => [l.orderItemId, l]))
+  // Units of each line the courier says have arrived. Summed from the parcels
+  // rather than stored, for the same reason dispatch is: a parcel undone or
+  // re-recorded takes its count with it.
+  const deliveredByItem = new Map<string, number>()
+  for (const shipment of dispatch?.shipments ?? []) {
+    if (!shipment.deliveredAt) continue
+    for (const si of shipment.items) {
+      deliveredByItem.set(si.orderItemId, (deliveredByItem.get(si.orderItemId) ?? 0) + si.quantity)
+    }
+  }
   const itemNames = new Map(data.items.map((i) => [i.id, i.productName]))
   const requests = data.requests ?? []
   const waitingRequests = requests.filter((r) => r.status === 'PENDING').length
@@ -776,6 +786,11 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                 <tbody>
                   {data.items.map((item) => {
                     const line = dispatchByItem.get(item.id)
+                    const deliveredQty = deliveredByItem.get(item.id) ?? 0
+                    // "Sent" means still on its way once anything has landed,
+                    // so a line that has fully arrived reads "1 delivered"
+                    // rather than "1 sent" and "1 delivered" side by side.
+                    const inTransitQty = Math.max(0, (line?.dispatchedQty ?? 0) - deliveredQty)
                     return (
                       <tr key={item.id}>
                         <td>
@@ -801,7 +816,8 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                                 Pre-order{item.preOrderDispatchDate ? ` · due ${formatDate(item.preOrderDispatchDate)}` : ''}
                               </span>
                             )}
-                            {line && line.dispatchedQty > 0 && <span className="badge badge-success">{line.dispatchedQty} sent</span>}
+                            {deliveredQty > 0 && <span className="badge badge-success">{deliveredQty} delivered</span>}
+                            {inTransitQty > 0 && <span className="badge badge-success">{inTransitQty} sent</span>}
                             {line && line.outstandingQty > 0 && line.dispatchedQty > 0 && <span className="badge badge-warning">{line.outstandingQty} to go</span>}
                             {item.refundedQty > 0 && <span className="badge badge-warning">{item.refundedQty} refunded</span>}
                           </div>

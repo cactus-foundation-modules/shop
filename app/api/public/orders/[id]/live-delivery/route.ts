@@ -4,6 +4,7 @@ import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { getShipmentForOrder, recordVehiclePosition } from '@/modules/shop/lib/db/shipments'
+import { completeOrderIfEveryParcelArrived } from '@/modules/shop/lib/order-auto-complete'
 import { resolveOrderViewer } from '@/modules/shop/lib/order-viewer'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { courierIsPolled, stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
@@ -97,6 +98,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (reading?.stage) {
     const { delivered } = await storeParcelReading(courier, shipment, reading, timezone)
     if (delivered) {
+      // Finished off here and now, not left for the hourly job. This parcel
+      // has just dropped out of that job's queue, and the page is about to
+      // reload - it should reload onto a completed order, not a dispatched one
+      // with a delivered parcel on it. A failure here is logged and nothing
+      // more: the delivery is already recorded, and the hourly job's leftovers
+      // sweep finishes the order off on its next run.
+      await completeOrderIfEveryParcelArrived(order.id).catch((error: unknown) => {
+        console.error('[shop] could not complete delivered order', order.id, error)
+      })
       return NextResponse.json({ ...base, arrived: true, refreshPage: true })
     }
     const refreshed = await getShipmentForOrder(order.id, shipmentId)

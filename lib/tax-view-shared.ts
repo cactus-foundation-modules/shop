@@ -9,18 +9,29 @@
 // never know which side a particular shopper asked for - reading a cookie there
 // would either bust the cache for everyone who chose or serve one shopper's
 // choice to the next. So every switchable figure is printed on BOTH sides, the
-// side the shop shows by default visible and the other `hidden`, and one
-// attribute on <html> decides which of the pair is displayed:
+// side the shop shows by default visible and the other `hidden`, and one small
+// stylesheet in <head> decides which of the pair is displayed:
 //
-//   <html data-shop-tax-view="inc">
-//     <span data-shop-tax-side="ex">£97.00</span>
-//     <span data-shop-tax-side="inc" hidden>£116.40</span>
+//   <style id="shop-tax-view-css" data-shop-tax-view="inc">
+//     [data-shop-tax-side="ex"]{display:none!important} ...
+//   <span data-shop-tax-side="ex">£97.00</span>
+//   <span data-shop-tax-side="inc" hidden>£116.40</span>
 //
-// That attribute is set by a small inline script at the top of every public page
-// (lib/head.ts), before anything paints, so a shopper who chose never sees the
-// other figure first. Without JavaScript, or before the script has run, the
+// That stylesheet is written by a small inline script at the top of every public
+// page (lib/head.ts), before anything paints, so a shopper who chose never sees
+// the other figure first. Without JavaScript, or before the script has run, the
 // `hidden` attribute alone shows the shop's own default - the page is right
 // either way.
+//
+// The choice lives on the <style> element, NOT on <html>, and that is the whole
+// of a bug fix. It first went on <html> as an attribute, the way core's dark mode
+// does, and shoppers had to press the link again on every page: React owns <html>
+// as a "singleton", and whenever it takes the element over on the client (after
+// recovering from a hydration mismatch, for one) it strips every attribute it did
+// not render itself (react-dom's commitHostSingletonAcquisition). A <style> it
+// did not render, sat in <head>, is one of the few things React deliberately
+// leaves alone - along with scripts and stylesheet links - so the choice survives
+// whatever React does to the page around it.
 //
 // Client-safe: no database, no next. The browser half (reading and writing the
 // choice) is ./tax-view-client, the markup is components/public/TaxView*.
@@ -30,12 +41,12 @@ export type TaxViewSide = (typeof TAX_VIEW_SIDES)[number]
 
 /** Where the shopper's choice is kept between visits. */
 export const TAX_VIEW_STORAGE_KEY = 'cactus-shop-tax-view'
-/** On <html>: which side the shopper is looking at. */
-export const TAX_VIEW_ROOT_ATTRIBUTE = 'data-shop-tax-view'
 /** On each printed figure: which side of tax that copy of it is. */
 export const TAX_VIEW_FIGURE_ATTRIBUTE = 'data-shop-tax-side'
-/** The <style> element carrying TAX_VIEW_CSS, so it is only ever added once. */
+/** The one <style> element that shows the shopper's side (see taxViewCss). */
 export const TAX_VIEW_STYLE_ID = 'shop-tax-view-css'
+/** On that <style> element: which side it is showing, for code that has to ask. */
+export const TAX_VIEW_STATE_ATTRIBUTE = 'data-shop-tax-view'
 /** Fired on window when the shopper flips the switch, for text a span pair
  *  cannot carry (an <option>, a title). See useTaxViewSide. */
 export const TAX_VIEW_CHANGE_EVENT = 'cactus-shop-tax-view-change'
@@ -102,37 +113,42 @@ export function taxViewAmount(printed: number, view: Pick<ProductTaxView, 'defau
   return taxViewAmounts(printed, view)[side]
 }
 
-// Hides the side the shopper is not looking at and shows the one they are. The
-// `!important` on display is what beats the `hidden` attribute the non-default
-// side is printed with, and what stops a price block's own rules from showing
-// both. Only ever matches once the attribute is on <html>; until then `hidden`
-// alone decides, which is the shop's own default.
-export const TAX_VIEW_CSS = [
-  `html[${TAX_VIEW_ROOT_ATTRIBUTE}="inc"] [${TAX_VIEW_FIGURE_ATTRIBUTE}="ex"],html[${TAX_VIEW_ROOT_ATTRIBUTE}="ex"] [${TAX_VIEW_FIGURE_ATTRIBUTE}="inc"]{display:none!important}`,
-  `html[${TAX_VIEW_ROOT_ATTRIBUTE}="inc"] [${TAX_VIEW_FIGURE_ATTRIBUTE}="inc"],html[${TAX_VIEW_ROOT_ATTRIBUTE}="ex"] [${TAX_VIEW_FIGURE_ATTRIBUTE}="ex"]{display:inline!important}`,
-].join('')
+/**
+ * The stylesheet that shows `side` and hides the other. The `!important` on
+ * display is what beats the `hidden` attribute the non-default side is printed
+ * with, and what stops a price block's own rules from showing both.
+ */
+export function taxViewCss(side: TaxViewSide): string {
+  const hidden = otherTaxViewSide(side)
+  return (
+    `[${TAX_VIEW_FIGURE_ATTRIBUTE}="${hidden}"]{display:none!important}` +
+    `[${TAX_VIEW_FIGURE_ATTRIBUTE}="${side}"]{display:inline!important}`
+  )
+}
 
 /**
- * The inline script that puts the shopper's saved choice on <html> before the
- * page paints, with the CSS that acts on it. Plain ES5 and self-contained: it
- * runs parser-blocking at the top of the body, long before any bundle.
+ * The inline script that writes the shopper's saved side into the stylesheet
+ * before the page paints. Plain ES5 and self-contained: it runs parser-blocking
+ * at the top of the body, long before any bundle.
  *
  * The same steps as applyTaxViewSide in ./tax-view-client, which the switch runs
  * when clicked. Both are covered by tax-view-shared.test.ts, which runs this
- * string for real.
+ * string for real. Both stylesheets are embedded rather than built in the
+ * browser, so the CSS the page gets is exactly taxViewCss's.
  */
 export function taxViewBootScript(defaultSide: TaxViewSide): string {
   const key = JSON.stringify(TAX_VIEW_STORAGE_KEY)
-  const attribute = JSON.stringify(TAX_VIEW_ROOT_ATTRIBUTE)
   const styleId = JSON.stringify(TAX_VIEW_STYLE_ID)
-  const css = JSON.stringify(TAX_VIEW_CSS)
+  const stateAttribute = JSON.stringify(TAX_VIEW_STATE_ATTRIBUTE)
+  const cssBySide = JSON.stringify({ inc: taxViewCss('inc'), ex: taxViewCss('ex') })
   const fallback = JSON.stringify(defaultSide)
   return (
     `(function(){var d=document,v=null;` +
     `try{v=window.localStorage.getItem(${key})}catch(e){}` +
     `if(v!=="inc"&&v!=="ex")v=${fallback};` +
-    `d.documentElement.setAttribute(${attribute},v);` +
-    `if(!d.getElementById(${styleId})){var s=d.createElement("style");s.id=${styleId};s.textContent=${css};d.head.appendChild(s)}` +
+    `var s=d.getElementById(${styleId});` +
+    `if(!s){s=d.createElement("style");s.id=${styleId};d.head.appendChild(s)}` +
+    `s.setAttribute(${stateAttribute},v);s.textContent=${cssBySide}[v];` +
     `})();`
   )
 }

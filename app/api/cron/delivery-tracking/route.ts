@@ -2,14 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { errorResponse } from '@/lib/utils'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import {
-  allShipmentsDelivered,
-  getOrderDispatchSummary,
   listOrdersAwaitingCompletion,
   listShipmentsForTrackingPoll,
   recordTrackingCheck,
 } from '@/modules/shop/lib/db/shipments'
 import { getSiteTimezone } from '@/lib/config/timezone.server'
-import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
+import { completeOrderIfEveryParcelArrived } from '@/modules/shop/lib/order-auto-complete'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { courierIsPolled } from '@/modules/shop/lib/tracking/stage-meaning'
 import { readParcelTracking } from '@/modules/shop/lib/tracking/read-parcel'
@@ -125,25 +123,11 @@ async function handle(request: NextRequest) {
     ordersToReview.add(orderId)
   }
 
-  // Finishing an order off, once every parcel on it has arrived AND there is
-  // nothing left owing. Both halves matter: an order with one of three parcels
-  // delivered is not complete, and neither is one whose only parcel arrived
-  // while two items still sit here waiting for stock.
-  //
-  // It goes through applyOrderStatusChange rather than writing the status
-  // directly, so the completion email, the pre-order stock rules and everything
-  // else that hangs off a status change behave exactly as they do when an owner
-  // presses the button themselves.
+  // Finishing an order off, once every parcel on it has arrived and nothing is
+  // left owing. The rules live in lib/order-auto-complete.ts, shared with the
+  // customer's order page, which can learn of a delivery before this does.
   for (const orderId of ordersToReview) {
-    const [summary, everyParcelIn] = await Promise.all([
-      getOrderDispatchSummary(orderId),
-      allShipmentsDelivered(orderId),
-    ])
-    if (!everyParcelIn || !summary.fullyDispatched) continue
-
-    const result = await applyOrderStatusChange({ orderId, status: 'COMPLETED', sendEmail: true })
-    if (result.ok) outcome.completed += 1
-    else console.warn(`[shop] tracking could not complete order ${orderId}: ${result.error}`)
+    if (await completeOrderIfEveryParcelArrived(orderId)) outcome.completed += 1
   }
 
   return NextResponse.json({ ok: true, ...outcome })

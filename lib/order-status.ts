@@ -42,10 +42,10 @@ const STATUS_EMAIL_TRIGGER: Partial<Record<ShpOrderStatus, ShpEmailTemplateTrigg
 // bought, and "thanks for shopping with us" is the wrong sentence to end a
 // complaint on.
 //
-// COMPLETED is the one the courier reaches on its own. The delivery poller
-// finishes an order off through this same function once every parcel has
-// arrived (app/api/cron/delivery-tracking), so a replacement closes itself and
-// this is the message that goes with it.
+// COMPLETED is the one the courier reaches on its own. Once every parcel has
+// arrived the order is finished off through this same function (see
+// lib/order-auto-complete.ts), so a replacement closes itself and this is the
+// message that goes with it.
 const REPLACEMENT_STATUS_EMAIL_TRIGGER: Partial<Record<ShpOrderStatus, ShpEmailTemplateTrigger>> = {
   SHIPPED: 'REPLACEMENT_DISPATCHED',
   COMPLETED: 'REPLACEMENT_DELIVERED',
@@ -179,10 +179,16 @@ export async function orderStatusEmailVars(
   }
 }
 
-export async function applyOrderStatusChange({ orderId, status, sendEmail }: {
+export async function applyOrderStatusChange({ orderId, status, sendEmail, emailOnlyIfChanged }: {
   orderId: string
   status: ShpOrderStatus
   sendEmail?: boolean
+  /** For callers that are not a person pressing a button. An owner re-sending
+   *  a status gets the email again because they asked for it; the delivery
+   *  poller and a customer's open order page can reach the same completion
+   *  moments apart, and only the one that actually moved the order should
+   *  tell the customer about it. */
+  emailOnlyIfChanged?: boolean
 }): Promise<ApplyOrderStatusResult> {
   const order = await getOrderById(orderId)
   if (!order) return { ok: false, status: 404, error: 'Order not found' }
@@ -267,7 +273,7 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail }: {
     }
   }
 
-  if (sendEmail) {
+  if (sendEmail && (changed || !emailOnlyIfChanged)) {
     const trigger = order.kind === 'REPLACEMENT'
       ? REPLACEMENT_STATUS_EMAIL_TRIGGER[status]
       : STATUS_EMAIL_TRIGGER[status]

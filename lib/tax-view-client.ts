@@ -1,37 +1,43 @@
 // The browser half of the shopper's VAT switch (see ./tax-view-shared for the
 // pattern). Reads and writes the choice, and lets the few bits of text that
 // cannot be printed as a span pair - an <option>, a tooltip - follow it too.
+//
+// The choice is read from and written to the stylesheet the boot script made,
+// never an attribute on <html> - see ./tax-view-shared for why that matters.
 
 import { useSyncExternalStore } from 'react'
 import {
   parseTaxViewSide,
   TAX_VIEW_CHANGE_EVENT,
-  TAX_VIEW_CSS,
-  TAX_VIEW_ROOT_ATTRIBUTE,
+  TAX_VIEW_STATE_ATTRIBUTE,
   TAX_VIEW_STORAGE_KEY,
   TAX_VIEW_STYLE_ID,
+  taxViewCss,
   type TaxViewSide,
 } from '@/modules/shop/lib/tax-view-shared'
 
-/** The side the page is showing: the attribute the boot script set, or the
- *  shop's default where it has not run. */
+/** The side the page is showing: the one the stylesheet was written for, or the
+ *  shop's default where the boot script has not run. */
 export function currentTaxViewSide(defaultSide: TaxViewSide): TaxViewSide {
   if (typeof document === 'undefined') return defaultSide
-  return parseTaxViewSide(document.documentElement.getAttribute(TAX_VIEW_ROOT_ATTRIBUTE)) ?? defaultSide
+  const style = document.getElementById(TAX_VIEW_STYLE_ID)
+  return parseTaxViewSide(style?.getAttribute(TAX_VIEW_STATE_ATTRIBUTE)) ?? defaultSide
 }
 
-function ensureTaxViewStyle(): void {
-  if (document.getElementById(TAX_VIEW_STYLE_ID)) return
-  const style = document.createElement('style')
-  style.id = TAX_VIEW_STYLE_ID
-  style.textContent = TAX_VIEW_CSS
-  document.head.appendChild(style)
+function writeTaxViewStyle(side: TaxViewSide): void {
+  let style = document.getElementById(TAX_VIEW_STYLE_ID)
+  if (!style) {
+    style = document.createElement('style')
+    style.id = TAX_VIEW_STYLE_ID
+    document.head.appendChild(style)
+  }
+  style.setAttribute(TAX_VIEW_STATE_ATTRIBUTE, side)
+  style.textContent = taxViewCss(side)
 }
 
 /** Shows every switchable figure on the page on `side`, and keeps the choice. */
 export function applyTaxViewSide(side: TaxViewSide): void {
-  ensureTaxViewStyle()
-  document.documentElement.setAttribute(TAX_VIEW_ROOT_ATTRIBUTE, side)
+  writeTaxViewStyle(side)
   // Storage can be missing or refuse writes (a private window, blocked site
   // data). The page still switches; it just forgets by the next visit.
   try {

@@ -4,13 +4,14 @@ import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
-  TAX_VIEW_CSS,
-  TAX_VIEW_ROOT_ATTRIBUTE,
+  TAX_VIEW_STATE_ATTRIBUTE,
   TAX_VIEW_STORAGE_KEY,
   TAX_VIEW_STYLE_ID,
   taxViewAmounts,
   taxViewBootScript,
+  taxViewCss,
   type ProductTaxView,
+  type TaxViewSide,
 } from '@/modules/shop/lib/tax-view-shared'
 import { currentTaxViewSide } from '@/modules/shop/lib/tax-view-client'
 import { TaxViewMoney, TaxViewNote } from '@/modules/shop/components/public/TaxViewText'
@@ -56,9 +57,17 @@ function installMemoryStorage() {
 
 function resetDocument() {
   installMemoryStorage()
-  document.documentElement.removeAttribute(TAX_VIEW_ROOT_ATTRIBUTE)
   document.getElementById(TAX_VIEW_STYLE_ID)?.remove()
   document.body.innerHTML = ''
+}
+
+// What the page is showing, read the way the stylesheet decides it.
+function shownSide(): TaxViewSide | null {
+  const style = document.getElementById(TAX_VIEW_STYLE_ID)
+  const side = style?.getAttribute(TAX_VIEW_STATE_ATTRIBUTE)
+  if (side !== 'inc' && side !== 'ex') return null
+  expect(style?.textContent).toBe(taxViewCss(side))
+  return side
 }
 
 describe('taxViewAmounts', () => {
@@ -84,20 +93,37 @@ describe('taxViewBootScript', () => {
 
   it("opens on the shop's own side when the shopper has never chosen", () => {
     runBootScript('ex')
-    expect(document.documentElement.getAttribute(TAX_VIEW_ROOT_ATTRIBUTE)).toBe('ex')
-    expect(document.getElementById(TAX_VIEW_STYLE_ID)?.textContent).toBe(TAX_VIEW_CSS)
+    expect(shownSide()).toBe('ex')
   })
 
   it("opens on the shopper's saved side", () => {
     window.localStorage.setItem(TAX_VIEW_STORAGE_KEY, 'inc')
     runBootScript('ex')
-    expect(document.documentElement.getAttribute(TAX_VIEW_ROOT_ATTRIBUTE)).toBe('inc')
+    expect(shownSide()).toBe('inc')
   })
 
   it('ignores a saved value it does not recognise', () => {
     window.localStorage.setItem(TAX_VIEW_STORAGE_KEY, 'gross')
     runBootScript('inc')
-    expect(document.documentElement.getAttribute(TAX_VIEW_ROOT_ATTRIBUTE)).toBe('inc')
+    expect(shownSide()).toBe('inc')
+  })
+
+  // The bug this shape exists to prevent. React strips every attribute it did
+  // not render from <html> whenever it takes the element over on the client, and
+  // the choice used to live there - so the shopper's side was lost on page after
+  // page. Nothing on <html> may matter.
+  it('keeps the saved side when every attribute is stripped from <html>', () => {
+    window.localStorage.setItem(TAX_VIEW_STORAGE_KEY, 'inc')
+    runBootScript('ex')
+    const root = document.documentElement
+    while (root.attributes.length) root.removeAttributeNode(root.attributes[0]!)
+    expect(shownSide()).toBe('inc')
+    expect(currentTaxViewSide('ex')).toBe('inc')
+  })
+
+  it('carries the side it was given, and only that, in its stylesheet', () => {
+    expect(taxViewCss('inc')).toBe('[data-shop-tax-side="ex"]{display:none!important}[data-shop-tax-side="inc"]{display:inline!important}')
+    expect(taxViewCss('ex')).toBe('[data-shop-tax-side="inc"]{display:none!important}[data-shop-tax-side="ex"]{display:inline!important}')
   })
 
   it('adds its stylesheet once however often it runs', () => {
@@ -155,10 +181,16 @@ describe('TaxViewToggle', () => {
 
     await act(async () => button.click())
     expect(currentTaxViewSide('ex')).toBe('inc')
+    expect(shownSide()).toBe('inc')
     expect(window.localStorage.getItem(TAX_VIEW_STORAGE_KEY)).toBe('inc')
+    // And the next page load opens on it.
+    document.getElementById(TAX_VIEW_STYLE_ID)?.remove()
+    runBootScript('ex')
+    expect(shownSide()).toBe('inc')
 
     await act(async () => button.click())
     expect(currentTaxViewSide('ex')).toBe('ex')
+    expect(shownSide()).toBe('ex')
     expect(window.localStorage.getItem(TAX_VIEW_STORAGE_KEY)).toBe('ex')
     await act(async () => root.unmount())
   })
