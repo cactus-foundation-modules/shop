@@ -26,6 +26,8 @@ import { REQUEST_STATUS_DISPLAY, REQUEST_TYPE_LABEL, badgeClass } from '@/module
 import type { ShpOrderRequestStatus, ShpOrderRequestType } from '@/modules/shop/lib/types'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { useAlert, useConfirm, usePrompt } from '@/modules/shop/components/admin/dialogs'
+import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
+import { dpdShortCodeFromUrl } from '@/modules/shop/lib/tracking/dpd'
 
 type LineMetaField = { label: string; value: string; href?: string }
 type OrderItem = {
@@ -150,6 +152,65 @@ type DispatchDetail = {
   // Surfaced only. The shop's hold-everything policy is enforced when the
   // status is changed, not here.
   preOrderHold: { active: boolean; outstandingCount: number; expectedDate: string | null }
+}
+
+/** A follow-my-parcel link the staff can open. Same rules as on the customer
+ *  order page, but staff see whatever was saved even when it would not be
+ *  offered to a shopper. */
+function followParcelHref(value: string | null | undefined): string {
+  const trimmed = value?.trim() ?? ''
+  if (!trimmed) return ''
+  const asUrl = safeTrackingUrl(trimmed)
+  if (asUrl) return asUrl
+  const code = dpdShortCodeFromUrl(trimmed)
+  return code ? `https://www.dpd.co.uk/d/${encodeURIComponent(code)}` : ''
+}
+
+function AdminShipmentTracking({ shipment }: { shipment: ShipmentDetail }) {
+  const trackingUrl = safeTrackingUrl(shipment.trackingUrl)
+  const followHref = followParcelHref(shipment.trackingShortCode)
+  const number = shipment.trackingNumber?.trim()
+  const shortRaw = shipment.trackingShortCode?.trim()
+  const hasAny = Boolean(number || trackingUrl || shortRaw)
+
+  if (!hasAny) {
+    return (
+      <p className="sox-list-sub sox-muted" style={{ marginTop: '0.375rem' }}>
+        No tracking recorded yet. Use Edit tracking to add a number, a link or a follow-my-parcel code.
+      </p>
+    )
+  }
+
+  return (
+    <dl className="sox-detail" style={{ marginTop: '0.5rem', fontSize: '0.8125rem' }}>
+      {number && (
+        <div className="sox-detail-row">
+          <dt>Tracking number</dt>
+          <dd className="sox-mono">{number}</dd>
+        </div>
+      )}
+      {trackingUrl && (
+        <div className="sox-detail-row">
+          <dt>Tracking link</dt>
+          <dd>
+            <a href={trackingUrl} target="_blank" rel="noopener noreferrer">{trackingUrl}</a>
+          </dd>
+        </div>
+      )}
+      {shortRaw && (
+        <div className="sox-detail-row">
+          <dt>Follow-my-parcel</dt>
+          <dd>
+            {followHref ? (
+              <a href={followHref} target="_blank" rel="noopener noreferrer">{shortRaw}</a>
+            ) : (
+              <span className="sox-mono">{shortRaw}</span>
+            )}
+          </dd>
+        </div>
+      )}
+    </dl>
+  )
 }
 
 const EMAIL_TRIGGER_LABEL: Record<string, string> = {
@@ -770,7 +831,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
 
           {dispatch && dispatch.shipments.length > 0 && (
             <section className="sox-card">
-              <div className="sox-card-head"><h2>Parcels</h2></div>
+              <div className="sox-card-head"><h2>Parcels &amp; tracking</h2></div>
               <div className="sox-card-body">
                 <ul className="sox-list">
                   {dispatch.shipments.map((shipment) => (
@@ -779,13 +840,13 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                         <p className="sox-list-title">
                           {formatDate(shipment.shippedAt)}
                           {shipment.carrier ? ` · ${shipment.carrier}` : ''}
-                          {shipment.trackingNumber ? ` · ${shipment.trackingNumber}` : ''}
                           {/* Only ever set on a parcel that went out with
                               nothing to follow and was given something later,
                               so it says what happened rather than restating
                               what the dispatch note already carried. */}
                           {shipment.trackingNotifiedAt ? ' · tracking sent to the customer' : ''}
                         </p>
+                        <AdminShipmentTracking shipment={shipment} />
                         <p className="sox-list-sub">
                           {shipment.items.map((si) => `${si.quantity} × ${itemNames.get(si.orderItemId) ?? 'an item no longer on this order'}`).join(', ')}
                           {shipment.notes ? ` - ${shipment.notes}` : ''}
@@ -824,7 +885,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                           </>
                         )}
                       </div>
-                      <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => setEditingParcelId(shipment.id)}>Details</button>
+                      <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => setEditingParcelId(shipment.id)}>Edit tracking</button>
                       <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => undoDispatch(shipment)}>Undo</button>
                     </li>
                   ))}
@@ -967,8 +1028,8 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
               </label>
               {order.status !== 'SHIPPED' && (
                 <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                  Courier, tracking number and tracking link are recorded per parcel in <strong>Dispatch items</strong>,
-                  which is also what puts them into the customer&rsquo;s email.
+                  Courier, tracking number and tracking links are recorded per parcel when you <strong>Dispatch items</strong>,
+                  or later with <strong>Edit tracking</strong> on each parcel. That is also what goes into the customer&rsquo;s email.
                 </p>
               )}
               <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.8125rem' }}>
