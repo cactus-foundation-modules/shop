@@ -12,8 +12,9 @@ import { otherTaxViewSide, type TaxViewSwitch } from '@/modules/shop/lib/tax-vie
 import { TaxViewText } from '@/modules/shop/components/public/TaxViewText'
 
 // Link-like, in the theme's own link colour, and never broken over two lines:
-// it sits in a row of prices that wraps whole items rather than words. Sized in
-// em so it tracks whichever note it sits beside.
+// it sits in a row of prices that wraps whole items rather than words. Its hover
+// is the thicker underline below and nothing else - see `data-cactus-unstyled`
+// on the button for why that has to be said out loud.
 const TAX_VIEW_TOGGLE_CSS = `.shop-tax-toggle{appearance:none;background:none;border:0;padding:0;margin:0;font:inherit;font-size:13px;line-height:inherit;color:var(--color-primary);text-decoration:underline;text-underline-offset:2px;cursor:pointer;white-space:nowrap}
 .shop-tax-toggle:hover{text-decoration-thickness:2px}
 .shop-tax-toggle:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px;border-radius:2px}`
@@ -31,7 +32,16 @@ export function TaxViewToggle({ view, className }: TaxViewToggleProps) {
   return (
     <>
       <SharedStyle id="shop-tax-toggle" css={TAX_VIEW_TOGGLE_CSS} />
-      <button type="button" className={className ? `shop-tax-toggle ${className}` : 'shop-tax-toggle'} onClick={flip}>
+      {/* data-cactus-unstyled opts out of the site's Styles > Buttons hover
+          fill, which core paints on every <button> on a public page with
+          !important (lib/design/tokens.ts) - it put a gold block behind a piece
+          of link text. Shop-variations' Reset options opts out the same way. */}
+      <button
+        type="button"
+        className={className ? `shop-tax-toggle ${className}` : 'shop-tax-toggle'}
+        data-cactus-unstyled=""
+        onClick={flip}
+      >
         {/* While figures are shown without tax the link offers them with it, and
             the other way about. */}
         <TaxViewText defaultSide={view.defaultSide} excluding={view.showIncludingLabel} including={view.showExcludingLabel} />

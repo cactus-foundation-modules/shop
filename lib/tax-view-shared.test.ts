@@ -174,6 +174,8 @@ describe('TaxViewToggle', () => {
     const root = createRoot(container)
     await act(async () => root.render(createElement(TaxViewToggle, { view: NET_SHOP })))
     const button = container.querySelector('button')!
+    // Opted out of the site's button hover fill, or it hovers as a filled block.
+    expect(button.hasAttribute('data-cactus-unstyled')).toBe(true)
     // The offer while figures are net is the gross one, and only that one shows
     // before any stylesheet is involved.
     const visible = () => [...button.querySelectorAll('span')].filter((span) => !span.hidden).map((span) => span.textContent)
