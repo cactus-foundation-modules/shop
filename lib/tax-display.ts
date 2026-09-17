@@ -13,21 +13,45 @@ import { getDefaultTaxZoneId, listTaxZoneRates } from '@/modules/shop/lib/db/tax
 import {
   DEFAULT_PRICE_DISPLAY,
   displayAmount,
+  displayIncludesTax,
   displayPriceFactor,
   type PriceDisplay,
 } from '@/modules/shop/lib/tax-display-shared'
+import type { ProductTaxView, TaxViewSwitch } from '@/modules/shop/lib/tax-view-shared'
+import type { ShpConfig } from '@/modules/shop/lib/config'
 
 export type TaxDisplay = {
   display: PriceDisplay
   /** Rate per tax-class id in the default zone. A class that is absent, and a
    *  product with no class at all, is zero-rated. */
   rates: Map<string, number>
+  /** The shopper's with/without VAT switch, or null where the shop has it off
+   *  (lib/tax-view-shared.ts). Figures are still printed on `display`'s side;
+   *  this only says the other side is to be printed beside them. */
+  taxSwitch: TaxViewSwitch | null
 }
 
 /** An inert resolution: print what is stored, say nothing. Used as the answer on
  *  a shop that has not switched the setting on, and as the fallback anywhere the
  *  config could not be read. */
-export const NO_TAX_DISPLAY: TaxDisplay = { display: DEFAULT_PRICE_DISPLAY, rates: new Map() }
+export const NO_TAX_DISPLAY: TaxDisplay = { display: DEFAULT_PRICE_DISPLAY, rates: new Map(), taxSwitch: null }
+
+/** The switch as the shop has set it up, or null where it is off. The side a page
+ *  opens on is the side the shop prints, so the suffix already worded for that
+ *  side is that side's note, and the switch's own suffix words the other. */
+function resolveTaxSwitch(config: ShpConfig, display: PriceDisplay): TaxViewSwitch | null {
+  if (!config.priceDisplayTaxSwitch) return null
+  const opensIncluding = displayIncludesTax(display)
+  const openingNote = display.suffix
+  const switchedNote = config.priceDisplayTaxSwitchSuffix.trim()
+  return {
+    defaultSide: opensIncluding ? 'inc' : 'ex',
+    includingNote: opensIncluding ? openingNote : switchedNote,
+    excludingNote: opensIncluding ? switchedNote : openingNote,
+    showIncludingLabel: config.priceDisplayTaxSwitchIncludingLabel.trim() || 'Show prices including VAT',
+    showExcludingLabel: config.priceDisplayTaxSwitchExcludingLabel.trim() || 'Show prices excluding VAT',
+  }
+}
 
 export async function resolveTaxDisplay(): Promise<TaxDisplay> {
   const config = await getShopConfigCached()
@@ -36,6 +60,7 @@ export async function resolveTaxDisplay(): Promise<TaxDisplay> {
     storedIncludesTax: config.taxMode === 'INCLUSIVE',
     suffix: config.priceDisplayTaxSuffix.trim(),
   }
+  const taxSwitch = resolveTaxSwitch(config, display)
   // Nothing to convert: skip the zone and rate queries entirely rather than
   // loading a rate table every grid render for a multiply by one.
   //
@@ -46,21 +71,31 @@ export async function resolveTaxDisplay(): Promise<TaxDisplay> {
   // 'AS_ENTERED', where it prints exactly what is stored and converts nothing.
   // So the skip is "stored gross and printing what is stored", which is the
   // default shop and still costs it no queries at all.
-  if (display.mode === 'AS_ENTERED' && display.storedIncludesTax) return { display, rates: new Map() }
+  //
+  // A third job joined them: the shopper's switch prints the other side beside
+  // every figure, at each product's own rate, whatever the storefront opens on.
+  if (display.mode === 'AS_ENTERED' && display.storedIncludesTax && !taxSwitch) return { display, rates: new Map(), taxSwitch }
 
   const zoneId = await getDefaultTaxZoneId()
-  if (!zoneId) return { display, rates: new Map() }
+  if (!zoneId) return { display, rates: new Map(), taxSwitch }
   const rates = new Map<string, number>()
   for (const rate of await listTaxZoneRates(zoneId)) {
     const value = Number(rate.rate)
     if (Number.isFinite(value)) rates.set(rate.taxClassId, value)
   }
-  return { display, rates }
+  return { display, rates, taxSwitch }
 }
 
 /** This product's display tax rate, as a fraction. */
 export function taxDisplayRate(taxDisplay: TaxDisplay, taxClassId: string | null | undefined): number {
   return taxClassId ? taxDisplay.rates.get(taxClassId) ?? 0 : 0
+}
+
+/** The shopper's switch for one product, ready to hand to a price that prints
+ *  both sides - or null where the shop has the switch off. */
+export function productTaxView(taxDisplay: TaxDisplay, taxClassId: string | null | undefined): ProductTaxView | null {
+  if (!taxDisplay.taxSwitch) return null
+  return { ...taxDisplay.taxSwitch, rate: taxDisplayRate(taxDisplay, taxClassId) }
 }
 
 /** The multiplier for one product, ready to hand to a client island that has to

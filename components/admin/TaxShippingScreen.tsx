@@ -118,6 +118,11 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
   const [priceSuffix, setPriceSuffix] = useState('')
   const [storedTaxMode, setStoredTaxMode] = useState<'INCLUSIVE' | 'EXCLUSIVE'>('INCLUSIVE')
   const [priceDisplaySaved, setPriceDisplaySaved] = useState(false)
+  // The shopper's own with/without VAT switch (lib/tax-view-shared.ts).
+  const [taxSwitch, setTaxSwitch] = useState(false)
+  const [taxSwitchSuffix, setTaxSwitchSuffix] = useState('')
+  const [taxSwitchIncludingLabel, setTaxSwitchIncludingLabel] = useState('')
+  const [taxSwitchExcludingLabel, setTaxSwitchExcludingLabel] = useState('')
 
   // Guarded so landing straight on a contributed tab does not fire this screen's
   // own three calls; they run the moment Tax & shipping is opened instead.
@@ -132,6 +137,10 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
       setPriceDisplay(config?.priceDisplayTax ?? 'AS_ENTERED')
       setPriceSuffix(config?.priceDisplayTaxSuffix ?? '')
       setStoredTaxMode(config?.taxMode === 'EXCLUSIVE' ? 'EXCLUSIVE' : 'INCLUSIVE')
+      setTaxSwitch(config?.priceDisplayTaxSwitch === true)
+      setTaxSwitchSuffix(config?.priceDisplayTaxSwitchSuffix ?? '')
+      setTaxSwitchIncludingLabel(config?.priceDisplayTaxSwitchIncludingLabel ?? '')
+      setTaxSwitchExcludingLabel(config?.priceDisplayTaxSwitchExcludingLabel ?? '')
     })
   }, [activeTab])
 
@@ -149,7 +158,14 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
     setTimeout(() => setWeightShippingSaved(false), 2000)
   }
 
-  async function savePriceDisplay(patch: { priceDisplayTax?: PriceDisplayTax; priceDisplayTaxSuffix?: string }) {
+  async function savePriceDisplay(patch: {
+    priceDisplayTax?: PriceDisplayTax
+    priceDisplayTaxSuffix?: string
+    priceDisplayTaxSwitch?: boolean
+    priceDisplayTaxSwitchSuffix?: string
+    priceDisplayTaxSwitchIncludingLabel?: string
+    priceDisplayTaxSwitchExcludingLabel?: string
+  }) {
     await fetch('/api/m/shop/admin/settings', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
@@ -168,6 +184,12 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
     setPriceSuffix(suffix)
     savePriceDisplay({ priceDisplayTax: mode, priceDisplayTaxSuffix: suffix })
   }
+
+  // Which side a page opens on, in the owner's terms, so the switch's wording box
+  // can say which prices it sits beside. The same rule as displayIncludesTax.
+  const opensIncludingTax = priceDisplay === 'AS_ENTERED' || priceDisplay === null
+    ? storedTaxMode === 'INCLUSIVE'
+    : priceDisplay === 'INCLUSIVE'
 
   function loadTaxClasses() {
     fetch('/api/m/shop/admin/tax-classes').then(async (r) => {
@@ -427,7 +449,9 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
           ))}
         </div>
         <div className="field" style={{ margin: 0, maxWidth: 260 }}>
-          <label htmlFor="shp-price-suffix">Wording after the price</label>
+          <label htmlFor="shp-price-suffix">
+            {taxSwitch ? (opensIncludingTax ? 'Wording after prices with VAT' : 'Wording after prices without VAT') : 'Wording after the price'}
+          </label>
           <input
             id="shp-price-suffix"
             value={priceSuffix}
@@ -441,6 +465,57 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
           Leave it blank for no wording at all. Whichever rate applies comes from the zone below that covers everyone - the checkout still works the real rate out from the delivery postcode.
           {priceDisplaySaved && <span style={{ color: 'var(--color-success)', marginLeft: '0.5rem' }}>Saved</span>}
         </p>
+
+        <hr style={hr} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: priceDisplay === null ? 'default' : 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={taxSwitch}
+            disabled={priceDisplay === null}
+            onChange={(e) => {
+              setTaxSwitch(e.target.checked)
+              savePriceDisplay({ priceDisplayTaxSwitch: e.target.checked })
+            }}
+          />
+          Let shoppers switch between prices with and without VAT
+        </label>
+        <p className="field-hint" style={{ marginTop: '0.5rem', marginBottom: taxSwitch ? '0.75rem' : 0 }}>
+          Puts a link beside the price on product pages. One click turns every price on the site to the other side of VAT - product pages, options, add-ons and every product card - and the site remembers it for that shopper&apos;s next visit. Pages still open {opensIncludingTax ? 'with VAT included' : 'without VAT'}, as set above, until a shopper chooses. The basket and checkout carry on showing VAT on a line of its own.
+        </p>
+        {taxSwitch && (
+          <div style={{ display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))' }}>
+            <div className="field" style={{ margin: 0 }}>
+              <label htmlFor="shp-price-switch-suffix">{opensIncludingTax ? 'Wording after prices without VAT' : 'Wording after prices with VAT'}</label>
+              <input
+                id="shp-price-switch-suffix"
+                value={taxSwitchSuffix}
+                onChange={(e) => setTaxSwitchSuffix(e.target.value)}
+                onBlur={(e) => savePriceDisplay({ priceDisplayTaxSwitchSuffix: e.target.value })}
+                placeholder={opensIncludingTax ? 'e.g. + VAT' : 'e.g. inc. VAT'}
+              />
+            </div>
+            <div className="field" style={{ margin: 0 }}>
+              <label htmlFor="shp-price-switch-including">Link offering prices with VAT</label>
+              <input
+                id="shp-price-switch-including"
+                value={taxSwitchIncludingLabel}
+                onChange={(e) => setTaxSwitchIncludingLabel(e.target.value)}
+                onBlur={(e) => savePriceDisplay({ priceDisplayTaxSwitchIncludingLabel: e.target.value })}
+                placeholder="Show prices including VAT"
+              />
+            </div>
+            <div className="field" style={{ margin: 0 }}>
+              <label htmlFor="shp-price-switch-excluding">Link offering prices without VAT</label>
+              <input
+                id="shp-price-switch-excluding"
+                value={taxSwitchExcludingLabel}
+                onChange={(e) => setTaxSwitchExcludingLabel(e.target.value)}
+                onBlur={(e) => savePriceDisplay({ priceDisplayTaxSwitchExcludingLabel: e.target.value })}
+                placeholder="Show prices excluding VAT"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card">

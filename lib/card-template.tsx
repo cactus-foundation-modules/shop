@@ -5,9 +5,10 @@ import type { LayoutRef } from '@/lib/puck/LayoutPickerField'
 import type { PuckData, ShpProduct, ShpProductMedia, ShpTag, ShpTagBadge } from '@/modules/shop/lib/types'
 import { injectShopProductCardEmbed } from '@/modules/shop/lib/inject-part-context'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { TaxViewMoney, TaxViewNote } from '@/modules/shop/components/public/TaxViewText'
 import { isOnSale, priceView } from '@/modules/shop/lib/pricing'
 import { resolveTagBadges } from '@/modules/shop/lib/tag-badges'
-import { makeDisplayAdjuster, NO_TAX_DISPLAY, type TaxDisplay } from '@/modules/shop/lib/tax-display'
+import { makeDisplayAdjuster, NO_TAX_DISPLAY, productTaxView, type TaxDisplay } from '@/modules/shop/lib/tax-display'
 import { SHOP_DEFAULT_COMMERCE_MODE, type ResolvedShopCommerceMode } from '@/modules/shop/lib/commerce-mode-shared'
 import type { CardPartContext, CardBadge, PartImage } from '@/modules/shop/components/puck/parts/part-context'
 import type { ShopCardExtra } from '@/modules/shop/lib/card-media'
@@ -190,6 +191,7 @@ export function buildCardContext(
     commerce: pricing?.commerce ?? SHOP_DEFAULT_COMMERCE_MODE,
     prices: priceView(product, pricing?.enabledPriceTypes, adjust),
     priceSuffix: taxDisplay.display.suffix,
+    taxView: productTaxView(taxDisplay, product.taxClassId),
     showRetailPrice: pricing?.showRetailPrice ?? false,
     badges,
     // The first of them, kept so a card surface built before the card printed
@@ -259,6 +261,7 @@ export async function renderCards(template: PuckData, items: CardItem[], eagerCo
 
 // Safety-net card used only when no Product Card layout is published at all.
 export function MinimalCard({ product, ctx }: CardItem) {
+  const money = (amount: number) => formatMoney(amount, ctx.currencySymbol)
   return (
     <a href={ctx.productHref} className="shop-card">
       <div className="shop-card-img">
@@ -274,14 +277,14 @@ export function MinimalCard({ product, ctx }: CardItem) {
         {ctx.commerce.hidePrices ? (
           <span className="shop-card-price">{ctx.commerce.hiddenPriceLabel}</span>
         ) : ctx.fromPrice != null ? (
-          <span className="shop-card-price">{ctx.fromPriceVaries ? 'From ' : ''}{formatMoney(ctx.fromPrice, ctx.currencySymbol)}</span>
+          <span className="shop-card-price">{ctx.fromPriceVaries ? 'From ' : ''}<TaxViewMoney amount={Number(ctx.fromPrice)} view={ctx.taxView} format={money} /></span>
         ) : (
           <>
-            <span className="shop-card-price">{formatMoney(ctx.prices.now, ctx.currencySymbol)}</span>
-            {ctx.prices.was && <span className="shop-card-compare">{formatMoney(ctx.prices.was, ctx.currencySymbol)}</span>}
+            <span className="shop-card-price"><TaxViewMoney amount={Number(ctx.prices.now)} view={ctx.taxView} format={money} /></span>
+            {ctx.prices.was && <span className="shop-card-compare"><TaxViewMoney amount={Number(ctx.prices.was)} view={ctx.taxView} format={money} /></span>}
           </>
         )}
-        {!ctx.commerce.hidePrices && ctx.priceSuffix && <span className="shop-card-taxnote">{ctx.priceSuffix}</span>}
+        {!ctx.commerce.hidePrices && <TaxViewNote view={ctx.taxView} suffix={ctx.priceSuffix} className="shop-card-taxnote" />}
       </div>
     </a>
   )

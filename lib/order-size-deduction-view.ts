@@ -13,9 +13,11 @@ import { effectivePrice, isOnSale, type PricedProduct } from '@/modules/shop/lib
 import {
   deductionAmount,
   orderSizeDeductionLineParts,
+  type OrderSizeDeductionFigures,
   type OrderSizeDeductionLineView,
   type OrderSizeDeductionRule,
 } from '@/modules/shop/lib/order-size-deduction'
+import { taxViewAmount, type ProductTaxView, type TaxViewSide } from '@/modules/shop/lib/tax-view-shared'
 
 /** The bits of a product this needs. Structural, so a caller can hand over an
  *  ShpProduct or a variation row without either side knowing about the other. */
@@ -50,6 +52,12 @@ export type DeductionViewParams = {
    * replaces it with the definite one the moment a combination is settled.
    */
   someOptionsOnly?: boolean
+  /**
+   * The shopper's VAT switch for this product, or null/omitted where the shop
+   * has it off. Where it is on, the line carries its figures on both sides of
+   * tax, worked out from the converted figures above at this product's rate.
+   */
+  taxView?: ProductTaxView | null
 }
 
 /**
@@ -63,7 +71,7 @@ export type DeductionViewParams = {
  * the checkout will not keep.
  */
 export function orderSizeDeductionView(params: DeductionViewParams): OrderSizeDeductionLineView | null {
-  const { product, rule, enabledPriceTypes, adjust, currencySymbol, someOptionsOnly } = params
+  const { product, rule, enabledPriceTypes, adjust, currencySymbol, someOptionsOnly, taxView } = params
   if (!rule) return null
   if (!isOnSale(product, enabledPriceTypes)) return null
   const amount = deductionAmount(product.orderSizeDeduction)
@@ -88,5 +96,20 @@ export function orderSizeDeductionView(params: DeductionViewParams): OrderSizeDe
     currencySymbol,
     someOptionsOnly,
   })
-  return parts
+  if (!taxView) return parts
+
+  // Each side composed by the same call as the line itself, so the struck
+  // figure is dropped on a side exactly when it would read equal there.
+  const figuresOn = (side: TaxViewSide): OrderSizeDeductionFigures => {
+    const sideParts = orderSizeDeductionLineParts({
+      reducedPrice: taxViewAmount(reducedPrice, taxView, side),
+      currentPrice: taxViewAmount(currentPrice, taxView, side),
+      supplier: rule.supplier,
+      threshold: taxViewAmount(threshold, taxView, side),
+      currencySymbol,
+      someOptionsOnly,
+    })
+    return { was: sideParts.was, now: sideParts.now, tail: sideParts.tail }
+  }
+  return { ...parts, taxSides: { defaultSide: taxView.defaultSide, inc: figuresOn('inc'), ex: figuresOn('ex') } }
 }

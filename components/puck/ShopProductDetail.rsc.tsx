@@ -11,7 +11,7 @@ import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { isOnSale, priceView } from '@/modules/shop/lib/pricing'
 import { resolveTagBadges } from '@/modules/shop/lib/tag-badges'
 import { resolveCardFromPrices } from '@/modules/shop/lib/card-price'
-import { makeDisplayAdjuster, makeGrossAdjuster, resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
+import { makeDisplayAdjuster, makeGrossAdjuster, productTaxView, resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { injectShopProductDetailEmbed } from '@/modules/shop/lib/inject-part-context'
 import { resolveShopDetailProvider, narrowShopDetailSlot, coveredByLayoutBlocks, collectLayoutBlockTypes } from '@/modules/shop/lib/detail-slot'
 import { resolveShopDetailTabs } from '@/modules/shop/lib/detail-tabs'
@@ -440,6 +440,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
       adjust: displayAdjust,
       currencySymbol: config.currencySymbol,
       someOptionsOnly: slot != null,
+      taxView: productTaxView(taxDisplay, product.taxClassId),
     })
   }
 
@@ -456,6 +457,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     lowStock,
     prices,
     priceSuffix: taxDisplay.display.suffix,
+    taxView: productTaxView(taxDisplay, product.taxClassId),
     showRetailPrice: config.showRetailPrice,
     supplierLabel: config.supplierFieldEnabled && config.supplierShowOnFrontend ? resolveSupplierLabel(config) : null,
     supplierBadge: supplierBadge(),

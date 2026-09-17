@@ -23,6 +23,7 @@ import { CART_PAGE_NOTE_DEFAULTS, pickCartNoteOptions, type CartNoteOptions } fr
 import { useCartUndo, useOutOfView } from '@/modules/shop/components/public/use-cart-undo'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
+import { computeBasketTotals } from '@/modules/shop/lib/cart-basket-totals'
 
 // Full cart-display island. ONE render path, shared by the Puck editor preview
 // (seeded with SAMPLE_LINES, no fetch, controls inert) and the live frontend
@@ -384,33 +385,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   const panelRadius = props.borderRadius ?? 12
   const maxWidth = props.maxWidth && props.maxWidth > 0 ? props.maxWidth : undefined
 
-  // The basket's money, broken out. Every line's price already has its charges
-  // inside it (a delivery service is priced into the line so the checkout can
-  // never disagree with the cart), so the goods figure is the lot minus what the
-  // resolvers attributed away - never a second sum that could drift from it.
-  // Same-labelled charges from different lines merge into one row, in the order
-  // the basket first mentions them.
-  const lineTotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
-  const chargeRows: { label: string; amount: number }[] = []
-  for (const line of lines) {
-    for (const charge of line.charges ?? []) {
-      const row = chargeRows.find((r) => r.label === charge.label)
-      if (row) row.amount += charge.amount
-      else chargeRows.push({ label: charge.label, amount: charge.amount })
-    }
-  }
-  const chargeTotal = chargeRows.reduce((sum, r) => sum + r.amount, 0)
-  const subtotal = lineTotal - chargeTotal
-  // Tax, per line at that line's own rate, exactly as the checkout works it out
-  // - so the figure the shopper reads here is the one they meet at the end.
-  // Inclusive pricing means the tax is already inside the line price and is
-  // shown for information; exclusive means it is added on top.
-  const taxAmount = lines.reduce((sum, l) => {
-    const rate = l.taxRate ?? 0
-    if (rate <= 0) return sum
-    return sum + (taxMode === 'INCLUSIVE' ? l.lineSubtotal - l.lineSubtotal / (1 + rate) : l.lineSubtotal * rate)
-  }, 0)
-  const total = taxMode === 'INCLUSIVE' ? lineTotal : lineTotal + taxAmount
+  const { subtotal, chargeRows, taxAmount, total } = computeBasketTotals(lines, taxMode)
   const itemCount = lines.reduce((sum, l) => sum + l.quantity, 0)
   // Every figure on the cart goes through here, so a shop quoting by hand shows
   // its "POA" everywhere at once rather than in some rows and not others.

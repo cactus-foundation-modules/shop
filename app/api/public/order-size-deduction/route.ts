@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { getProductById } from '@/modules/shop/lib/db/products'
 import { getDeductionRules } from '@/modules/shop/lib/db/suppliers'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { makeDisplayAdjuster, resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
+import { makeDisplayAdjuster, productTaxView, resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { orderSizeDeductionView } from '@/modules/shop/lib/order-size-deduction-view'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
 
@@ -59,6 +59,9 @@ export async function GET(request: NextRequest) {
       // A definite combination, so the definite wording - this is the whole
       // point of the round trip.
       someOptionsOnly: false,
+      // Both sides of tax where the shopper's switch is on, so the replaced line
+      // follows it exactly as the one the page opened with did.
+      taxView: productTaxView(taxDisplay, product.taxClassId),
     }),
   )
 }

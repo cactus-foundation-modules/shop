@@ -18,6 +18,7 @@ import { getInstalledManifests } from '@/lib/modules/live-status'
 import type { ShopGalleryExtra } from '@/modules/shop/lib/gallery-media'
 import type { ImageResizing } from '@/lib/media/resize-url'
 import type { PuckData, ShpProduct } from '@/modules/shop/lib/types'
+import type { ProductTaxView } from '@/modules/shop/lib/tax-view-shared'
 
 // Handed to every slot component so a replaced part is styled by the layout it
 // sits in, not by the module that supplied it. The provider renders shop's own
@@ -132,6 +133,12 @@ export type ShopDetailPriceSlotProps = SlotBase & {
   // keeps the note on screen while its own price resolves, instead of having it
   // appear a beat later.
   priceSuffix?: string
+  // The shopper's with/without VAT switch for the parent product, or null where
+  // the shop has it off (lib/tax-view-shared.ts). A provider that prints its own
+  // figures prints them through components/public/TaxViewText so they follow the
+  // switch, and puts TaxViewToggle beside its wording. Optional for the same
+  // reason as `priceSuffix`.
+  taxView?: ProductTaxView | null
 }
 
 export type ShopDetailPurchaseSlotProps = SlotBase & {

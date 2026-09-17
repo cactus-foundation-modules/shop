@@ -9,7 +9,7 @@ import { makeGrossAdjuster, type TaxDisplay } from '@/modules/shop/lib/tax-displ
 const VAT = 'tax-standard'
 
 function taxDisplay(mode: TaxDisplay['display']['mode'], storedIncludesTax: boolean, rate = 0.2): TaxDisplay {
-  return { display: { mode, storedIncludesTax, suffix: '' }, rates: new Map([[VAT, rate]]) }
+  return { display: { mode, storedIncludesTax, suffix: '' }, rates: new Map([[VAT, rate]]), taxSwitch: null }
 }
 
 describe('makeGrossAdjuster', () => {

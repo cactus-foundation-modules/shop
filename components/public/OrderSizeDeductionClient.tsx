@@ -22,7 +22,8 @@
 // nothing about the shop's prices has to be trusted to the client.
 
 import { useEffect, useRef, useState } from 'react'
-import type { OrderSizeDeductionLineView } from '@/modules/shop/lib/order-size-deduction'
+import type { OrderSizeDeductionFigures, OrderSizeDeductionLineView } from '@/modules/shop/lib/order-size-deduction'
+import { TaxViewText } from '@/modules/shop/components/public/TaxViewText'
 
 // Mirrors VariantSelectionDetail in shop-variations. Declared rather than
 // imported for the reason above; only the three fields this needs are named, so
@@ -109,15 +110,28 @@ export function OrderSizeDeductionClient({
   // The sentence arrives already broken into its parts, so nothing here composes
   // or searches - it only dresses what the server worked out. `was` is what the
   // shopper pays today and is struck; `now` is what the offer takes it to.
+  //
+  // Where the shopper's VAT switch is on, the figured half is printed once per
+  // side of tax and the stylesheet shows one (lib/tax-view-shared.ts).
   return (
     <div className="spd-osd-box">
       <p className="spd-osd-line">
         {line.lead}
-        {line.was && <s className="spd-osd-was">{line.was}</s>}
-        {line.was && ' '}
-        <span className="spd-osd-amount">{line.now}</span>
-        {line.tail}
+        {line.taxSides
+          ? <TaxViewText defaultSide={line.taxSides.defaultSide} excluding={<LineFigures figures={line.taxSides.ex} />} including={<LineFigures figures={line.taxSides.inc} />} />
+          : <LineFigures figures={line} />}
       </p>
     </div>
+  )
+}
+
+function LineFigures({ figures }: { figures: OrderSizeDeductionFigures }) {
+  return (
+    <>
+      {figures.was && <s className="spd-osd-was">{figures.was}</s>}
+      {figures.was && ' '}
+      <span className="spd-osd-amount">{figures.now}</span>
+      {figures.tail}
+    </>
   )
 }

@@ -14,6 +14,7 @@
 // into the browser bundle - the same arrangement lib/min-order.ts has.
 
 import { formatMoney } from '@/modules/shop/lib/money'
+import type { TaxViewSide } from '@/modules/shop/lib/tax-view-shared'
 
 /** A supplier's rule: how much of their goods the basket needs. `threshold` is
  *  in stored price terms, matching the amounts on the products. */
@@ -244,7 +245,22 @@ export type OrderSizeDeductionLineView = {
   now: string
   /** " on Dynamic Office Solutions orders of £350 or more". */
   tail: string
+  /**
+   * The figured half of the sentence on each side of tax, where the shopper's
+   * VAT switch is on (lib/tax-view-shared.ts) - every figure in it, the
+   * threshold included, moves together. Null or absent where the switch is off,
+   * and then `was`/`now`/`tail` above are the whole story. The lead-in carries no
+   * figure and is the same on both sides.
+   */
+  taxSides?: {
+    defaultSide: TaxViewSide
+    inc: OrderSizeDeductionFigures
+    ex: OrderSizeDeductionFigures
+  } | null
 }
+
+/** The part of the line that carries money, on one side of tax. */
+export type OrderSizeDeductionFigures = Pick<OrderSizeDeductionLineView, 'was' | 'now' | 'tail'>
 
 /**
  * The product page's line, in the parts a renderer needs to dress it:

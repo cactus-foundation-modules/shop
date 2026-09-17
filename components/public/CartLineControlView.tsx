@@ -17,6 +17,8 @@
 
 import type { CSSProperties } from 'react'
 import type { CartLineControl } from '@/modules/shop/lib/line-meta'
+import { TaxViewText } from '@/modules/shop/components/public/TaxViewText'
+import { useTaxViewSide } from '@/modules/shop/lib/tax-view-client'
 import type { LineMetaField } from '@/modules/shop/lib/types'
 import { TickIcon } from '@/modules/shop/components/public/CartChrome'
 
@@ -40,6 +42,23 @@ export function isSummaryControl(control: CartLineControl): boolean {
 // price then reads in the success colour rather than as another charge.
 export function isFreeOption(o: CartLineControl['options'][number]): boolean {
   return typeof o.priceAdjust === 'number' && o.priceAdjust <= 0
+}
+
+type ControlOption = CartLineControl['options'][number]
+
+// An option's price, and its flat label, as markup that follows the shopper's
+// VAT switch where the resolver gave both sides - otherwise the one wording it
+// always had.
+function OptionPriceLabel({ option }: { option: ControlOption }) {
+  if (!option.taxSides) return <>{option.summary?.priceLabel}</>
+  const { defaultSide, ex, inc } = option.taxSides
+  return <TaxViewText defaultSide={defaultSide} excluding={ex.priceLabel} including={inc.priceLabel} />
+}
+
+function OptionLabel({ option }: { option: ControlOption }) {
+  if (!option.taxSides) return <>{option.label}</>
+  const { defaultSide, ex, inc } = option.taxSides
+  return <TaxViewText defaultSide={defaultSide} excluding={ex.label} including={inc.label} />
 }
 
 // A line's meta comes from two kinds of source a cart treats differently: the
@@ -97,10 +116,12 @@ type ControlProps = {
 function SummaryControl({ control, groupName, preview, summaryLayout, onChange }: ControlProps) {
   const chosen = control.options.find((o) => o.value === control.value) ?? control.options[0]!
   const alts = control.options.filter((o) => o.value !== chosen.value)
+  // For the chips' tooltips, which take text alone - see SelectControl.
+  const taxSide = useTaxViewSide(chosen.taxSides?.defaultSide ?? 'ex')
   const stacked = summaryLayout === 'stacked'
   const secondary = chosen.summary!.secondary && <span className="scl-s-desc">{chosen.summary!.secondary}</span>
   const fee = chosen.summary!.priceLabel && (
-    <span className={`scl-s-fee${isFreeOption(chosen) ? ' scl-free' : ''}`}>{chosen.summary!.priceLabel}</span>
+    <span className={`scl-s-fee${isFreeOption(chosen) ? ' scl-free' : ''}`}><OptionPriceLabel option={chosen} /></span>
   )
   // The service's own free-text description (e.g. "Left in your porch if you
   // are out"), as distinct from `secondary` (the service's name) - the two read
@@ -144,14 +165,14 @@ function SummaryControl({ control, groupName, preview, summaryLayout, onChange }
         <div className="scl-hints">
           <span className="scl-hints-t">Switch to:</span>
           {alts.map((o) => (
-            <label key={o.value} className="scl-hint" title={o.label}>
+            <label key={o.value} className="scl-hint" title={o.taxSides ? o.taxSides[taxSide].label : o.label}>
               <input
                 type="radio" name={groupName} value={o.value} checked={false} disabled={preview}
                 onChange={() => onChange(o.value)}
               />
               {o.summary!.switchLabel ?? o.label}
               {o.summary!.priceLabel && (
-                <span className={`scl-hint-fee${isFreeOption(o) ? ' scl-free' : ''}`}>{o.summary!.priceLabel}</span>
+                <span className={`scl-hint-fee${isFreeOption(o) ? ' scl-free' : ''}`}><OptionPriceLabel option={o} /></span>
               )}
             </label>
           ))}
@@ -182,11 +203,11 @@ function RadiosControl({ control, groupName, preview, onChange }: ControlProps) 
           />
           {o.description ? (
             <span style={{ display: 'grid', gap: '0.125rem' }}>
-              <span>{o.label}</span>
+              <span><OptionLabel option={o} /></span>
               <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>{o.description}</span>
             </span>
           ) : (
-            <span>{o.label}</span>
+            <span><OptionLabel option={o} /></span>
           )}
         </label>
       ))}
@@ -198,6 +219,9 @@ function SelectControl({ control, preview, onChange }: ControlProps) {
   // The chosen option's description (if it carries one) sits under the picker -
   // a <select> has nowhere to show per-option copy of its own.
   const chosenDescription = control.options.find((o) => o.value === control.value)?.description
+  // A native <option> takes text alone, so it follows the shopper's VAT switch by
+  // asking which side they are on rather than printing both.
+  const taxSide = useTaxViewSide(control.options[0]?.taxSides?.defaultSide ?? 'ex')
   return (
     <div style={{ display: 'grid', gap: '0.25rem', margin: '0.375rem 0 0' }}>
       <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
@@ -210,7 +234,7 @@ function SelectControl({ control, preview, onChange }: ControlProps) {
           style={{ padding: '0.25rem 0.375rem', borderRadius: 6, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)', fontSize: '0.8125rem' }}
         >
           {control.options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+            <option key={o.value} value={o.value}>{o.taxSides ? o.taxSides[taxSide].label : o.label}</option>
           ))}
         </select>
       </label>

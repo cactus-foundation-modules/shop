@@ -41,6 +41,7 @@ import type { CartLineControl, CartLineGroup, CartLineTitle } from '@/modules/sh
 import { effectiveGroup, groupMemberKeys, sortLinesByGroup } from '@/modules/shop/lib/cart-group'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
+import { computeBasketTotals } from '@/modules/shop/lib/cart-basket-totals'
 
 // The cart validate's line shape, as the cart page reads it too. Kept in step
 // with CartFullClient's copy by hand: the response is the module's own, so a
@@ -58,6 +59,8 @@ type ValidatedLine = {
   control?: CartLineControl | null
   displayTitle?: CartLineTitle | null
   group?: CartLineGroup | null
+  charges?: { label: string; amount: number }[] | null
+  taxRate?: number
   // What came off each unit because the basket reached its supplier's order-size
   // threshold, and what the unit cost before it did (lib/order-size-deduction.ts).
   // Both already on the shop's display side of tax. Null/absent on every line
@@ -115,6 +118,9 @@ export function CartDrawerClient({
   const [notes, setNotes] = useState<string[]>([])
   const [deductionNotes, setDeductionNotes] = useState<CartDeductionNote[]>([])
   const [currencySymbol, setCurrencySymbol] = useState('£')
+  // Whether the prices on screen already include tax - same question the cart
+  // page asks before it prints a VAT row (see lib/tax-display-shared.ts).
+  const [taxMode, setTaxMode] = useState<'INCLUSIVE' | 'EXCLUSIVE'>('INCLUSIVE')
   // How this shop is transacted with (see lib/commerce-mode-shared.ts). Shop's
   // own basket-and-checkout until the config lands.
   const [commerce, setCommerce] = useState(SHOP_DEFAULT_COMMERCE_MODE)
@@ -168,6 +174,8 @@ export function CartDrawerClient({
         // to the default style; a shop on ROOT has no /shop/products/<slug>
         // address at all, so guessing it would hand the shopper a 404.
         if (data.productUrlStyle === 'ROOT' || data.productUrlStyle === 'SHOP') setUrlStyle(data.productUrlStyle)
+        const mode = data.priceDisplay?.displayTaxMode ?? data.taxMode
+        if (mode === 'INCLUSIVE' || mode === 'EXCLUSIVE') setTaxMode(mode)
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -244,7 +252,7 @@ export function CartDrawerClient({
     const before = lineSubtotalBeforeDeduction(line)
     return before == null ? null : money(before)
   }
-  const subtotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
+  const { subtotal, chargeRows, taxAmount, total } = computeBasketTotals(lines, taxMode)
   const showImage = o.drawerShowImage !== 'no'
   const showDelivery = o.drawerShowDelivery !== 'no'
 
@@ -444,10 +452,24 @@ export function CartDrawerClient({
 
         {hasLoaded && lines.length > 0 && (
           <div className="scd-foot">
-            <div className="scd-sub">
-              <span>{o.drawerSubtotalLabel}</span>
-              <span>{money(subtotal)}</span>
-            </div>
+            <dl className="scl-tot">
+              <dt>{o.drawerSubtotalLabel}</dt>
+              <dd>{money(subtotal)}</dd>
+              {chargeRows.map((row) => (
+                <div key={row.label} style={{ display: 'contents' }}>
+                  <dt>{row.label}</dt>
+                  <dd>{money(row.amount)}</dd>
+                </div>
+              ))}
+              {taxAmount > 0 && (
+                <>
+                  <dt>{o.drawerTaxLabel}{taxMode === 'INCLUSIVE' ? ' (included)' : ''}</dt>
+                  <dd>{money(taxAmount)}</dd>
+                </>
+              )}
+              <dt className="scl-tot-t">{o.drawerTotalLabel}</dt>
+              <dd className="scl-tot-t">{money(total)}</dd>
+            </dl>
             {/* Whole-basket lines other modules contributed to this validate (a
                 delivery module's "everything by Fri 4 Sep"). Shop displays them,
                 it never composes them. */}

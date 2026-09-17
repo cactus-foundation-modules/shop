@@ -16,6 +16,9 @@ export type CartDrawerOptions = CartNoteOptions & {
   drawerShowImage: 'yes' | 'no'
   drawerShowDelivery: 'yes' | 'no'
   drawerSubtotalLabel: string
+  /** VAT row label; the row only appears when there is tax to show. */
+  drawerTaxLabel: string
+  drawerTotalLabel: string
   drawerCheckoutLabel: string
   // Empty hides the secondary button - a shop happy for the panel to be the only
   // basket needs no way through to the cart page.
@@ -52,6 +55,8 @@ export const DRAWER_DEFAULTS: CartDrawerOptions = {
   drawerShowImage: 'yes',
   drawerShowDelivery: 'yes',
   drawerSubtotalLabel: 'Subtotal',
+  drawerTaxLabel: 'VAT',
+  drawerTotalLabel: 'Total',
   drawerCheckoutLabel: 'Checkout',
   drawerViewCartLabel: 'View full basket',
   drawerEmptyText: 'Your basket is empty.',

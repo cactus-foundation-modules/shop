@@ -84,6 +84,17 @@ export const ShpConfigSchema = z.object({
   // Switching a whole catalogue to gross prices with no word of explanation
   // reads to a returning shopper as a price rise, hence the label.
   priceDisplayTaxSuffix: z.string().default(''),
+  // Lets a SHOPPER flip every price between with and without tax, and keeps the
+  // choice for their next visit (lib/tax-view-shared.ts). Off by default: a shop
+  // that has not asked for it prints exactly what it printed before. The side a
+  // page opens on is still `priceDisplayTax` above, worded by the suffix above.
+  priceDisplayTaxSwitch: z.boolean().default(false),
+  // The wording beside prices once a shopper has switched to the OTHER side -
+  // "inc. VAT" on a shop that opens net. Blank shows nothing.
+  priceDisplayTaxSwitchSuffix: z.string().default(''),
+  // The link beside the price that does the switching, one wording per way.
+  priceDisplayTaxSwitchIncludingLabel: z.string().default('Show prices including VAT'),
+  priceDisplayTaxSwitchExcludingLabel: z.string().default('Show prices excluding VAT'),
 
   // Shipping. Plenty of shops post everything for the same money and never want
   // to see a weight box again. Switching this off drops the weight-based option

@@ -2,6 +2,8 @@
 // builder's client bundle, and ./breakpoints reaches prisma via lib/config/site.
 import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { TaxViewMoney, TaxViewNote } from '@/modules/shop/components/public/TaxViewText'
+import type { ProductTaxView } from '@/modules/shop/lib/tax-view-shared'
 import { ShopCardMedia } from '@/modules/shop/components/public/ShopCardMedia'
 import { packCardImages } from '@/modules/shop/lib/card-media-pack'
 import { ShopCardFillBlurb } from '@/modules/shop/components/public/ShopCardFillBlurb'
@@ -502,8 +504,8 @@ type CardPriceProps = PuckPart & { _ctx?: CardPartContext; showCompare?: string;
 // single price and a variations range's "From £…" - print it through here, so
 // the wording, the class and therefore the styling are the same figure to a
 // shopper whichever kind of listing they are looking at.
-function CardRrp({ amount, symbol }: { amount: string; symbol: string }) {
-  return <span className="shop-card-rrp">RRP {formatMoney(amount, symbol)}</span>
+function CardRrp({ amount, symbol, taxView }: { amount: string; symbol: string; taxView: ProductTaxView | null | undefined }) {
+  return <span className="shop-card-rrp">RRP <TaxViewMoney amount={Number(amount)} view={taxView} format={(n) => formatMoney(n, symbol)} /></span>
 }
 
 export function ShopCardPrice(props: CardPriceProps) {
@@ -532,6 +534,11 @@ export function ShopCardPrice(props: CardPriceProps) {
   // class, same wording as the single-price branch below - the two are printed
   // by one CardRrp precisely so they cannot drift apart.
   const fromRrp = ctx && ctx.showRetailPrice ? ctx.fromPriceRrp : null
+  // Where the shopper's VAT switch is on, every figure below is printed on both
+  // sides of tax and the stylesheet shows one (lib/tax-view-shared.ts). Null in
+  // the editor canvas and wherever the switch is off, which prints as before.
+  const taxView = ctx?.taxView ?? null
+  const money = (amount: number) => formatMoney(amount, symbol)
   return (
     <>
       <EditorStyle ctx={ctx} />
@@ -548,25 +555,25 @@ export function ShopCardPrice(props: CardPriceProps) {
           <span className="shop-card-price">{ctx.commerce.hiddenPriceLabel}</span>
         ) : fromPrice != null ? (
           <>
-            <span className="shop-card-price">{fromVaries ? 'From ' : ''}{formatMoney(fromPrice, symbol)}</span>
-            {showRrp && fromRrp && <CardRrp amount={fromRrp} symbol={symbol} />}
+            <span className="shop-card-price">{fromVaries ? 'From ' : ''}<TaxViewMoney amount={Number(fromPrice)} view={taxView} format={money} /></span>
+            {showRrp && fromRrp && <CardRrp amount={fromRrp} symbol={symbol} taxView={taxView} />}
           </>
         ) : (
           <>
-            <span className="shop-card-price">{formatMoney(now, symbol)}</span>
+            <span className="shop-card-price"><TaxViewMoney amount={Number(now)} view={taxView} format={money} /></span>
             {showCompare && was && (
-              <span className="shop-card-compare">{formatMoney(was, symbol)}</span>
+              <span className="shop-card-compare"><TaxViewMoney amount={Number(was)} view={taxView} format={money} /></span>
             )}
             {showSave && ctx?.prices.savePct != null && (
               <span className="shop-card-save">Save {ctx.prices.savePct}%</span>
             )}
-            {showRrp && rrp && <CardRrp amount={rrp} symbol={symbol} />}
+            {showRrp && rrp && <CardRrp amount={rrp} symbol={symbol} taxView={taxView} />}
           </>
         )}
         {/* Says which side of tax the figure beside it sits on, where the shop
             has set the wording. The editor canvas has no context and so no
             note - there is no shop config to read there. */}
-        {!ctx?.commerce.hidePrices && ctx?.priceSuffix && <span className="shop-card-taxnote">{ctx.priceSuffix}</span>}
+        {ctx && !ctx.commerce.hidePrices && <TaxViewNote view={taxView} suffix={ctx.priceSuffix} className="shop-card-taxnote" />}
       </div>
     </>
   )

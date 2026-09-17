@@ -9,6 +9,7 @@
 // manifests. It MUST be server-safe (this file runs inside lib/checkout.ts).
 import { getInstalledManifests } from '@/lib/modules/live-status'
 import type { CartLineCharge, LineMeta, LineMetaBatch, ShpProduct } from '@/modules/shop/lib/types'
+import type { TaxViewSide } from '@/modules/shop/lib/tax-view-shared'
 
 // A declarative per-line picker a resolver can offer for display in the cart.
 // Shop renders it generically - a labelled <select> by default, a radio group
@@ -35,6 +36,14 @@ export type CartLineControlSummary = {
   priceLabel?: string
 }
 
+// An option's priced wording on ONE side of tax, for the shopper's with/without
+// VAT switch (lib/tax-view-shared.ts): the flat label, and the summary's price on
+// its own. Everything else about an option says the same on both sides.
+export type CartLineControlTaxWording = {
+  label: string
+  priceLabel?: string
+}
+
 export type CartLineControl = {
   key: string
   label: string
@@ -55,6 +64,11 @@ export type CartLineControl = {
     priceAdjust?: number
     description?: string
     summary?: CartLineControlSummary
+    // The option's priced wording on both sides of tax, where the shopper's VAT
+    // switch is on. `label` and `summary.priceLabel` above are the side the page
+    // opens on; the renderer prints both and the stylesheet shows one. Optional:
+    // a resolver that leaves it out renders exactly as before.
+    taxSides?: { defaultSide: TaxViewSide; ex: CartLineControlTaxWording; inc: CartLineControlTaxWording }
   }[]
   renderAs?: 'select' | 'radios' | 'summary'
   // Opt-in: the options' own labels already state their outcome in full (e.g. a

@@ -10,6 +10,7 @@ import type { ResolvedShopCommerceMode } from '@/modules/shop/lib/commerce-mode-
 import type { OrderSizeDeductionLineView } from '@/modules/shop/lib/order-size-deduction'
 import type { ShpFaqItem } from '@/modules/shop/lib/faq'
 import type { ShpProduct } from '@/modules/shop/lib/types'
+import type { ProductTaxView } from '@/modules/shop/lib/tax-view-shared'
 
 // Shared context passed to the shop's part-blocks (the small draggable pieces
 // that make up a Product Detail or Product Card layout). Each part reads its own
@@ -120,6 +121,11 @@ export type DetailPartContext = {
   // has set none. The figures in `prices` are already converted to match it -
   // this is only the wording (Shop settings > Tax & shipping).
   priceSuffix: string
+  // The shopper's with/without VAT switch for this product, or null where the
+  // shop has it off (lib/tax-view-shared.ts). Where it is on, every figure is
+  // printed on both sides - `prices` is still the side the page opens on - and
+  // the wording comes from here rather than `priceSuffix`.
+  taxView: ProductTaxView | null
   // Whether the shop puts its RRP in front of shoppers. The figure itself is on
   // `prices.rrp`, and is null unless it sits above what is being charged.
   showRetailPrice: boolean
@@ -273,6 +279,9 @@ export type CardPartContext = {
   // As DetailPartContext.priceSuffix - the wording only; `prices` and
   // `fromPrice` already carry the converted figures.
   priceSuffix: string
+  // As DetailPartContext.taxView. Optional so a companion module building a card
+  // context of its own against the older shape still compiles.
+  taxView?: ProductTaxView | null
   showRetailPrice: boolean
   // Every badge this product has earned, in print order: stock and pre-order
   // facts first, then the owner's own tag badges (lib/tag-badges.ts, the same

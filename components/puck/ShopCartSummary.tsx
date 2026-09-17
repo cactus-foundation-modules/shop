@@ -80,6 +80,8 @@ export const shopCartSummaryPuckComponent = {
     drawerShowImage: { type: 'select' as const, label: 'Slide-out: show product images', options: yesNo },
     drawerShowDelivery: { type: 'select' as const, label: 'Slide-out: show delivery options', options: yesNo },
     drawerSubtotalLabel: { type: 'text' as const, label: 'Slide-out: subtotal label' },
+    drawerTaxLabel: { type: 'text' as const, label: 'Slide-out: VAT label' },
+    drawerTotalLabel: { type: 'text' as const, label: 'Slide-out: total label' },
     drawerCheckoutLabel: { type: 'text' as const, label: 'Slide-out: checkout button' },
     drawerViewCartLabel: { type: 'text' as const, label: 'Slide-out: cart page button (empty hides it)' },
     drawerEmptyText: { type: 'text' as const, label: 'Slide-out: empty basket text' },

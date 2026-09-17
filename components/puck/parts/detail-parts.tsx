@@ -9,6 +9,8 @@ import { OrderSizeDeductionClient } from '@/modules/shop/components/public/Order
 // builder's client bundle, and ./breakpoints reaches prisma via lib/config/site.
 import { DEFAULT_BREAKPOINTS, type Breakpoints } from '@/modules/shop/lib/breakpoints-shared'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { TaxViewMoney, TaxViewNote } from '@/modules/shop/components/public/TaxViewText'
+import { TaxViewToggle } from '@/modules/shop/components/public/TaxViewToggle'
 // commerce-mode-shared, not commerce-mode: these parts land in the page
 // builder's client bundle, and the resolver reaches prisma.
 import { commerceModeButtonLabel } from '@/modules/shop/lib/commerce-mode-shared'
@@ -745,11 +747,16 @@ export const shopDetailSkuPuckRscComponent = { ...shopDetailSkuPuckComponent, re
 
 const priceCss = `
 .spd-price-block{margin:18px 0 4px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+/* The row wraps whole items, never the words inside one: "RRP" parted from its
+   figure, or a price's tax wording split over two lines, reads as two things. */
+.spd-price-block>*{white-space:nowrap}
 .spd-price-now{font-family:var(--display-family,Georgia,serif);font-weight:600;font-size:var(--spd-price-size,34px);color:var(--color-primary)}
 .spd-price-was{font-size:15px;color:var(--color-text-muted);text-decoration:line-through}
 .spd-save{background:var(--color-success-subtle);color:var(--color-success);font-size:12px;font-weight:600;border-radius:9999px;padding:4px 11px}
 .spd-price-rrp{font-size:13px;color:var(--color-text-muted)}
-.spd-price-taxnote{font-size:13px;color:var(--color-text-muted)}
+/* Straight after the figure it describes, closer than the gap between prices, so
+   "£97.00 + VAT" reads as one price rather than a price and a stray remark. */
+.spd-price-taxnote{font-size:13px;color:var(--color-text-muted);margin-left:-6px}
 `
 
 type PriceProps = { _ctx?: DetailPartContext; showCompare?: string; showSave?: string; showRrp?: string; size?: number; align?: string }
@@ -782,6 +789,7 @@ export function ShopDetailPriceRsc(props: PriceProps) {
   const showSave = props.showSave !== 'no'
   const showRrp = props.showRrp !== 'no'
   const rrp = ctx.showRetailPrice && showRrp ? prices.rrp : null
+  const money = (amount: number) => formatMoney(amount, currencySymbol)
   // The layout already carries the provider's own price block. Rendering our
   // static parent price beside it would put two different figures for the one
   // product on the page - which is exactly what an ordinary product with
@@ -808,6 +816,7 @@ export function ShopDetailPriceRsc(props: PriceProps) {
           showCompare={showCompare}
           showSave={showSave}
           priceSuffix={ctx.priceSuffix}
+          taxView={ctx.taxView}
           classNames={{ block: 'spd-price-block', now: 'spd-price-now', was: 'spd-price-was', save: 'spd-save' }}
         />
         </div>
@@ -825,13 +834,17 @@ export function ShopDetailPriceRsc(props: PriceProps) {
           <span className="spd-price-now">{ctx.commerce.hiddenPriceLabel}</span>
         ) : (
           <>
-            <span className="spd-price-now">{formatMoney(prices.now, currencySymbol)}</span>
+            <span className="spd-price-now"><TaxViewMoney amount={Number(prices.now)} view={ctx.taxView} format={money} /></span>
+            {/* The tax wording belongs to the figure charged, so it sits beside
+                that one - with the shopper's switch, where the shop has it on,
+                straight after. */}
+            <TaxViewNote view={ctx.taxView} suffix={ctx.priceSuffix} className="spd-price-taxnote" />
+            <TaxViewToggle view={ctx.taxView} />
             {showCompare && prices.was && (
-              <span className="spd-price-was">{formatMoney(prices.was, currencySymbol)}</span>
+              <span className="spd-price-was"><TaxViewMoney amount={Number(prices.was)} view={ctx.taxView} format={money} /></span>
             )}
             {showSave && prices.savePct != null && <span className="spd-save">Save {prices.savePct}%</span>}
-            {rrp && <span className="spd-price-rrp">RRP {formatMoney(rrp, currencySymbol)}</span>}
-            {ctx.priceSuffix && <span className="spd-price-taxnote">{ctx.priceSuffix}</span>}
+            {rrp && <span className="spd-price-rrp">RRP <TaxViewMoney amount={Number(rrp)} view={ctx.taxView} format={money} /></span>}
           </>
         )}
       </div>
