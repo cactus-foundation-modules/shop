@@ -5,7 +5,7 @@ import { TabStrip } from '@/components/admin/TabStrip'
 import { UnsavedChangesModal } from '@/components/admin/UnsavedChangesModal'
 import { useUnsavedChanges } from '@/components/admin/useUnsavedChanges'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
-import { useConfirm, useAlert } from '@/modules/shop/components/admin/dialogs'
+import { useConfirm, useAlert, usePrompt } from '@/modules/shop/components/admin/dialogs'
 import {
   ProductEditorRegistryProvider,
   ProductEditorSaveTickProvider,
@@ -47,6 +47,7 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
 }) {
   const adminPath = useAdminPath()
   const [confirm, confirmNode] = useConfirm()
+  const [prompt, promptNode] = usePrompt()
   const [alert, alertNode] = useAlert()
   const [state, setState] = useState<EditorState | null>(null)
   const [baseline, setBaseline] = useState<EditorState | null>(null)
@@ -405,12 +406,22 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
       message: `"${name}" will be permanently removed. Any orders that included it keep their history.`,
       confirmLabel: 'Delete',
     }))) return
-    const res = await fetch(`/api/m/shop/admin/products/${productId}`, { method: 'DELETE' })
+    const redirectTo = await prompt({
+      title: 'Redirect the old link?',
+      message: 'Optional. Send visitors to another product\'s web address, or a page on your site starting with /. Click Cancel on this box to delete without a redirect.',
+      placeholder: 'e.g. green-office-chairs or /shop/categories/chairs',
+      confirmLabel: 'Continue',
+    })
+    const res = await fetch(`/api/m/shop/admin/products/${productId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ redirectTo: redirectTo ?? null }),
+    })
     if (!res.ok) { await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'Could not delete this product.'); return }
     dirtyRef.current = false
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- see the note above - hard load on purpose, and adminPath is resolved server-side
     window.location.href = `/${adminPath}/m/shop/products`
-  }, [productId, adminPath, confirm, alert, dirtyRef])
+  }, [productId, adminPath, confirm, prompt, alert, dirtyRef])
 
   // --- Tabs ----------------------------------------------------------------
   const setField = useCallback(<K extends keyof ProductForm>(key: K, value: ProductForm[K]) => {
@@ -637,6 +648,7 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
         }}
       />
       {confirmNode}
+      {promptNode}
       {alertNode}
     </>
   )

@@ -2,6 +2,7 @@ import { cache } from 'react'
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import { notifyProductSaved } from '@/modules/shop/lib/product-saved'
+import { recordProductSlugRedirect } from '@/modules/shop/lib/db/slug-redirects'
 import { normaliseFaqSet, type ShpFaqSet } from '@/modules/shop/lib/faq'
 import type { PuckData, ShpProduct, ShpProductMedia, ShpProductStatus, ShpProductType } from '@/modules/shop/lib/types'
 
@@ -705,6 +706,14 @@ const COLUMN_MAP: Record<Exclude<keyof UpdateProductInput, 'descriptionPuck' | '
 }
 
 export async function updateProduct(id: string, fields: UpdateProductInput): Promise<void> {
+  let slugBefore: string | null = null
+  if (fields.slug !== undefined) {
+    const rows = await prisma.$queryRaw<Array<{ slug: string }>>`
+      SELECT "slug" FROM "shp_products" WHERE "id" = ${id} LIMIT 1
+    `
+    slugBefore = rows[0]?.slug ?? null
+  }
+
   const sets: Prisma.Sql[] = []
   const written: string[] = []
   // jsonb column: the generic assignment below can't cast a JS value to jsonb,
@@ -737,6 +746,9 @@ export async function updateProduct(id: string, fields: UpdateProductInput): Pro
   // restock (or a further drop) should be eligible for its own alert.
   if ('stockCount' in fields) sets.push(Prisma.sql`"low_stock_alerted_at" = NULL`)
   await prisma.$executeRaw`UPDATE "shp_products" SET ${Prisma.join(sets, ', ')} WHERE "id" = ${id}`
+  if (slugBefore && fields.slug !== undefined && fields.slug !== slugBefore) {
+    await recordProductSlugRedirect(slugBefore, fields.slug)
+  }
   // Let any module keeping its own rows in step with this product know what
   // moved (see lib/product-saved). Awaited so a listener's write lands before
   // the caller reads the product back, and swallowing its own failures so a

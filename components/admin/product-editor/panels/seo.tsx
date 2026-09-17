@@ -45,7 +45,7 @@ export function SeoPanel({ state, setField, siteUrl, productUrlStyle }: PanelPro
             <>
               <p className="spe-save-note" style={{ margin: 0 }}>
                 The address is rebuilt from the name when you save, and every variation of this product moves with it.
-                The old address stops working.
+                The old address forwards to the new one automatically.
               </p>
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => setField('regenerateSlug', false)}>
                 Leave the address alone

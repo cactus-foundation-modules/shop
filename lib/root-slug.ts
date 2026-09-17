@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db/prisma'
 import { getShopConfigCached } from './config'
 import { orderTrackingRootSlug } from './order-tracking'
+import { hasProductSlugRedirect } from '@/modules/shop/lib/db/slug-redirects'
 
 // Answers core's "does any module own this bare slug?" question, registered
 // through publicRootSlug in cactus.module.json.
@@ -34,5 +35,8 @@ export async function shopClaimsRootSlug(slug: string): Promise<boolean> {
   const rows = await prisma.$queryRaw<Array<{ id: string }>>`
     SELECT "id" FROM "shp_products" WHERE "slug" = ${slug} LIMIT 1
   `
-  return rows.length > 0
+  if (rows.length > 0) return true
+
+  // A renamed product's old bare address still needs to answer so it can forward.
+  return hasProductSlugRedirect(slug)
 }

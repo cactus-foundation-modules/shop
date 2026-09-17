@@ -11,6 +11,12 @@ import { slugify, ensureUniqueProductSlug } from '@/modules/shop/lib/slug'
 import { maybeTriggerBackInStock } from '@/modules/shop/lib/back-in-stock-trigger'
 import { finishProductMediaMove, reorganiseProductMedia } from '@/modules/shop/lib/media/product-media'
 import { FaqSetBodySchema } from '@/modules/shop/lib/faq'
+import {
+  collectProductRedirectSlugs,
+  parseDeleteRedirectTarget,
+  recordProductSlugRedirectTarget,
+} from '@/modules/shop/lib/db/slug-redirects'
+import { getProductBySlug } from '@/modules/shop/lib/db/products'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireShopUser('shop.products', { allowAccess: true })
@@ -186,11 +192,48 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   return NextResponse.json({ product: saved })
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+const DeleteBody = z.object({
+  /** Another product's slug, or a path on this site starting with /. */
+  redirectTo: z.string().max(500).nullable().optional(),
+})
+
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireShopUser('shop.products')
   if (gate.error) return gate.error
   const { id } = await params
+
+  let redirectTo: string | null | undefined
+  if (request.headers.get('content-type')?.includes('application/json')) {
+    const parsed = DeleteBody.safeParse(await request.json().catch(() => ({})))
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 })
+    }
+    redirectTo = parsed.data.redirectTo
+  }
+
+  const redirectTarget = parseDeleteRedirectTarget(redirectTo ?? undefined)
+  if (redirectTo?.trim() && !redirectTarget) {
+    return NextResponse.json({ error: 'Redirect must be a path starting with / or another product\'s web address (letters, numbers and hyphens).' }, { status: 400 })
+  }
+  if (redirectTarget && 'productSlug' in redirectTarget) {
+    const dest = await getProductBySlug(redirectTarget.productSlug)
+    if (!dest) {
+      return NextResponse.json({ error: 'No product found at that web address.' }, { status: 404 })
+    }
+    if (dest.id === id) {
+      return NextResponse.json({ error: 'A product cannot redirect to itself.' }, { status: 400 })
+    }
+  }
+
+  const slugsToForward = redirectTarget ? await collectProductRedirectSlugs(id) : []
+
   try {
+    if (redirectTarget && slugsToForward.length > 0) {
+      await recordProductSlugRedirectTarget(
+        slugsToForward,
+        'path' in redirectTarget ? redirectTarget : { productSlug: redirectTarget.productSlug },
+      )
+    }
     await deleteProduct(id)
   } catch (err) {
     // A product still tied to another module's data (e.g. it backs live product

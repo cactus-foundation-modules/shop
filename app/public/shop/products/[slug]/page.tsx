@@ -1,5 +1,6 @@
 import { cache } from 'react'
 import { notFound } from 'next/navigation'
+import { redirectIfStaleProductSlug } from '@/modules/shop/lib/product-slug-redirect'
 import type { Data } from '@puckeditor/core'
 import type { Metadata } from 'next'
 import { getModuleLayoutPuckRscConfig } from '@/lib/puck/config.rsc'
@@ -148,9 +149,11 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
 // that one would send the root address to itself, forever.
 export async function ShopProductPageView({ params, searchParams }: Props) {
   const { slug } = await params
+  const sp = (await searchParams) ?? {}
   // Same parking as generateMetadata: the layout's blocks (and companion
   // modules behind them) read the shared link's selection while they render.
-  rememberProductPageSearchParams((await searchParams) ?? {})
+  rememberProductPageSearchParams(sp)
+  await redirectIfStaleProductSlug(slug, sp)
   const gate = await getShopGate()
   if (gate.blocked) return <ShopClosedNotice message={gate.message} />
 
@@ -216,6 +219,8 @@ export async function ShopProductPageView({ params, searchParams }: Props) {
 // changes: the claim is false and this address is the product's own.
 export default async function ShopProductPage({ params, searchParams }: Props) {
   const { slug } = await params
+  const sp = (await searchParams) ?? {}
+  await redirectIfStaleProductSlug(slug, sp)
   if (await shopClaimsRootSlug(slug)) notFound()
   return <ShopProductPageView params={params} searchParams={searchParams} />
 }

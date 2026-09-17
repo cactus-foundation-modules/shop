@@ -1435,3 +1435,21 @@ CREATE TABLE IF NOT EXISTS "shp_order_access_attempts" (
 
 CREATE INDEX IF NOT EXISTS "shp_order_access_attempts_updated_at_idx"
     ON "shp_order_access_attempts" ("updated_at");
+
+-- Mirror of 059_product_slug_redirects.sql. Old product and variation addresses
+-- forward permanently when a listing is renamed or removed with a redirect set.
+CREATE TABLE IF NOT EXISTS "shp_product_slug_redirects" (
+    "slug" TEXT NOT NULL,
+    "target_slug" TEXT,
+    "target_path" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "shp_product_slug_redirects_pkey" PRIMARY KEY ("slug"),
+    CONSTRAINT "shp_product_slug_redirects_target_check" CHECK (
+        ("target_slug" IS NOT NULL AND "target_path" IS NULL)
+        OR ("target_slug" IS NULL AND "target_path" IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS "shp_product_slug_redirects_target_slug_idx"
+    ON "shp_product_slug_redirects" ("target_slug")
+    WHERE "target_slug" IS NOT NULL;
