@@ -571,9 +571,9 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
               </button>
 
               {/* Preview sits under Save because that is the order you use them in:
-                  save, then look. Only an active product has a shop page, so a
-                  draft gets the button greyed rather than a link to a 404. */}
-              {f.status === 'ACTIVE' && f.slug ? (
+                  save, then look. Drafts open for signed-in staff only; archived
+                  products still have no page to preview. */}
+              {(f.status === 'ACTIVE' || f.status === 'DRAFT') && f.slug ? (
                 <a
                   className="btn btn-secondary spe-save-btn"
                   href={productHref(f.slug, productUrlStyle)}
@@ -587,12 +587,12 @@ export function ProductEditor({ productId, extraTabs = [], mediaSections = [], i
                 <span
                   className="btn btn-secondary spe-save-btn spe-preview-off"
                   aria-disabled="true"
-                  title="Only active products have a shop page to preview."
+                  title="Only active or draft products can be previewed on the shop."
                 >
                   Preview ↗
                 </span>
               )}
-              {dirty && f.status === 'ACTIVE' && f.slug && (
+              {dirty && (f.status === 'ACTIVE' || f.status === 'DRAFT') && f.slug && (
                 <p className="spe-save-note">Preview shows the last saved version.</p>
               )}
 

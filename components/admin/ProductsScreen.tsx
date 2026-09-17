@@ -397,7 +397,7 @@ export function ProductsScreen({ toolbarExtras }: {
                     </td>
                     <td className="sps-actions">
                       <div className="sps-actions-row">
-                        {p.status === 'ACTIVE' ? (
+                        {p.status === 'ACTIVE' || p.status === 'DRAFT' ? (
                           <a
                             className="btn btn-secondary btn-sm"
                             href={productHref(p.slug, urlStyle)}
@@ -411,7 +411,7 @@ export function ProductsScreen({ toolbarExtras }: {
                           <span
                             className="btn btn-secondary btn-sm sps-preview-off"
                             aria-disabled="true"
-                            title="Only active products have a shop page to preview."
+                            title="Only active or draft products can be previewed on the shop."
                           >
                             Preview ↗
                           </span>

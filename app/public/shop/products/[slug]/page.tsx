@@ -8,7 +8,6 @@ import { resolveThemeLayout } from '@/lib/layout/resolveThemeLayout'
 import { getSiteUrlOrNull } from '@/lib/config/env'
 import { getProductBySlugCached } from '@/modules/shop/lib/db/products'
 import { getProductMedia } from '@/modules/shop/lib/db'
-import { resolveAliasedProduct } from '@/modules/shop/lib/product-page-resolver'
 import { resolveProductSocialImage } from '@/modules/shop/lib/product-social-image'
 import { rememberProductPageSearchParams, type ProductPageSearchParams } from '@/modules/shop/lib/product-page-params'
 import { productUrl } from '@/modules/shop/lib/product-url'
@@ -16,7 +15,13 @@ import { resolveProductCanonicalQuery } from '@/modules/shop/lib/product-canonic
 import { getProductUrlStyle } from '@/modules/shop/lib/product-url-server'
 import { shopClaimsRootSlug } from '@/modules/shop/lib/root-slug'
 import { getShopGate } from '@/modules/shop/lib/access'
-import { ShopClosedNotice, ShopStaffPreviewBanner, ShopStockHiddenBanner } from '@/modules/shop/components/public/ShopClosedNotice'
+import {
+  ShopClosedNotice,
+  ShopDraftPreviewBanner,
+  ShopStaffPreviewBanner,
+  ShopStockHiddenBanner,
+} from '@/modules/shop/components/public/ShopClosedNotice'
+import { resolveProductForProductPage } from '@/modules/shop/lib/product-page-gate'
 import { getProductPageStockGate } from '@/modules/shop/lib/stock-visibility'
 import { injectProductContext } from '@/modules/shop/lib/inject-product-context'
 import type { PuckData, ShpProduct } from '@/modules/shop/lib/types'
@@ -98,47 +103,35 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   const sp = (await searchParams) ?? {}
   rememberProductPageSearchParams(sp)
   const found = await getProduct(slug)
+  const resolved = await resolveProductForProductPage(slug, found)
   // Mirrors the page's visibility gate below. Next currently discards this
   // metadata once the page calls notFound(), but only while no
   // global-not-found convention exists - adding one flips metadata resolution
   // back to the page and would publish a hidden product's name.
-  if (found && found.status === 'ACTIVE' && !found.catalogueHidden) {
-    if ((await getProductPageStockGate(found.id)).notFound) return {}
-    const title = found.metaTitle || found.name
-    const description = found.metaDescription || found.shortDescription || undefined
-    const siteUrl = getSiteUrlOrNull()
+  if (!resolved) return {}
+  const { product: visible, draftPreview } = resolved
+  if ((await getProductPageStockGate(visible.id)).notFound) return {}
+  const isDirectListing = found && found.id === visible.id && found.status === 'ACTIVE' && !found.catalogueHidden
+  const title =
+    isDirectListing || draftPreview ? visible.metaTitle || visible.name : found?.name || visible.metaTitle || visible.name
+  const description = visible.metaDescription || visible.shortDescription || undefined
+  const siteUrl = getSiteUrlOrNull()
+  const draftRobots = draftPreview ? { robots: { index: false, follow: false } as const } : {}
+  if (isDirectListing || draftPreview) {
     return {
       title,
       description,
-      // Self-canonical in the shop's chosen URL style, unless a module has
-      // published this request's configuration as a page of its own - see
-      // canonicalUrl above.
-      ...(siteUrl ? { alternates: { canonical: await canonicalUrl(found, siteUrl, sp) } } : {}),
-      ...(await socialMetadata(found, title, description, slug, sp)),
+      ...draftRobots,
+      ...(siteUrl ? { alternates: { canonical: await canonicalUrl(visible, siteUrl, sp) } } : {}),
+      ...(await socialMetadata(visible, title, description, slug, sp)),
     }
   }
-  // A slug shop won't show on its own may still be a variant's deep link. If a
-  // module aliases it to a real product, title the tab after the variant itself
-  // (its own descriptive name), so a shared link reads true, and take the
-  // description from the parent it resolved to.
-  const parent = await resolveAliasedProduct(slug, found)
-  if (!parent) return {}
-  if ((await getProductPageStockGate(parent.id)).notFound) return {}
-  const title = found?.name || parent.metaTitle || parent.name
-  const description = parent.metaDescription || parent.shortDescription || undefined
-  const siteUrl = getSiteUrlOrNull()
   return {
     title,
     description,
-    // A variation's own link renders the parent's page, so the parent's URL is
-    // the canonical one. Without this, every variation deep link (the cart's,
-    // and the Google Shopping feed's) reads to a crawler as a duplicate of the
-    // parent page under a different address.
-    ...(siteUrl ? { alternates: { canonical: productUrl(siteUrl, parent.slug, await getProductUrlStyle()) } } : {}),
-    // The social image resolves against the parent - the page that renders -
-    // with the deep link's combination already recorded by the resolver above,
-    // so the preview shows the variation the link names.
-    ...(await socialMetadata(parent, title, description, slug, sp)),
+    ...draftRobots,
+    ...(siteUrl ? { alternates: { canonical: productUrl(siteUrl, visible.slug, await getProductUrlStyle()) } } : {}),
+    ...(await socialMetadata(visible, title, description, slug, sp)),
   }
 }
 
@@ -157,18 +150,10 @@ export async function ShopProductPageView({ params, searchParams }: Props) {
   const gate = await getShopGate()
   if (gate.blocked) return <ShopClosedNotice message={gate.message} />
 
-  let product = await getProduct(slug)
-  // Catalogue-hidden rows (variant children) are reached only through their
-  // parent's selector, never on their own URL - except a companion module may
-  // alias such a URL to the product whose page should stand in for it (a
-  // variation deep link resolving to its parent, opened on that combination).
-  // The same door catches an inactive or unknown slug; nothing claims those, so
-  // the page 404s exactly as before.
-  if (!product || product.status !== 'ACTIVE' || product.catalogueHidden) {
-    const aliased = await resolveAliasedProduct(slug, product)
-    if (!aliased) notFound()
-    product = aliased
-  }
+  const found = await getProduct(slug)
+  const resolved = await resolveProductForProductPage(slug, found)
+  if (!resolved) notFound()
+  const { product, draftPreview } = resolved
 
   // A shop set to hide sold-out products everywhere turns this page away too.
   // Checked on the product that will actually render, so a variant deep link is
@@ -200,6 +185,7 @@ export async function ShopProductPageView({ params, searchParams }: Props) {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 1.5rem 2rem' }}>
       {gate.staffPreview && <ShopStaffPreviewBanner />}
+      {draftPreview && <ShopDraftPreviewBanner />}
       {stock.staffPreview && <ShopStockHiddenBanner />}
       <CactusRender config={getModuleLayoutPuckRscConfig('shopProduct') as any} data={data as Data} />
     </div>

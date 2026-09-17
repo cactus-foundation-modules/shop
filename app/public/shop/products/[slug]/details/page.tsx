@@ -2,7 +2,7 @@ import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import type { Data } from '@puckeditor/core'
 import { getProductBySlugCached, getProductMediaForProducts } from '@/modules/shop/lib/db/products'
-import { resolveAliasedProduct } from '@/modules/shop/lib/product-page-resolver'
+import { resolveProductForProductPage } from '@/modules/shop/lib/product-page-gate'
 import { getShopGate } from '@/modules/shop/lib/access'
 import { getProductPageStockGate } from '@/modules/shop/lib/stock-visibility'
 import { resolveShopDetailSpec } from '@/modules/shop/lib/detail-spec'
@@ -56,7 +56,18 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params
   if ((await getShopGate()).blocked) return { robots: { index: false, follow: false } }
   const found = await getProduct(slug)
-  const name = found && found.status === 'ACTIVE' && !found.catalogueHidden ? found.name : null
+  const resolved = await resolveProductForProductPage(slug, found)
+  let name: string | null = null
+  if (resolved?.draftPreview) name = resolved.product.name
+  else if (
+    resolved &&
+    found &&
+    found.id === resolved.product.id &&
+    found.status === 'ACTIVE' &&
+    !found.catalogueHidden
+  ) {
+    name = found.name
+  }
   return {
     // The product's own page is the one search engines should have; this view
     // exists to be embedded, and indexing it would surface a chrome-less
@@ -74,12 +85,10 @@ export default async function ShopProductDetailsOnlyPage({ params }: { params: P
   const gate = await getShopGate()
   if (gate.blocked) notFound()
 
-  let product = await getProduct(slug)
-  if (!product || product.status !== 'ACTIVE' || product.catalogueHidden) {
-    const aliased = await resolveAliasedProduct(slug, product)
-    if (!aliased) notFound()
-    product = aliased
-  }
+  const found = await getProduct(slug)
+  const resolved = await resolveProductForProductPage(slug, found)
+  if (!resolved) notFound()
+  const product = resolved.product
   const stock = await getProductPageStockGate(product.id)
   if (stock.notFound) notFound()
 

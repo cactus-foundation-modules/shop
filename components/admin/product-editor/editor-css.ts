@@ -22,7 +22,7 @@ export const productEditorCss = `
 .spe-save{display:flex;flex-direction:column;gap:0.5rem}
 .spe-save-btn{width:100%;justify-content:center}
 .spe-save-note{margin:0;font-size:0.75rem;color:var(--color-text-secondary);text-align:center}
-/* A draft or archived product has no shop page yet, so its Preview reads as
+/* An archived product has no shop page to preview, so its Preview reads as
    unavailable rather than sending anyone to a 404. */
 .spe-preview-off{opacity:0.5;cursor:default}
 .spe-dirty-list{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:0.25rem;justify-content:center}

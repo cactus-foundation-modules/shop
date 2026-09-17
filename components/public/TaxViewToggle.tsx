@@ -16,7 +16,7 @@ import { TaxViewText } from '@/modules/shop/components/public/TaxViewText'
 // is the thicker underline below and nothing else - see `data-cactus-unstyled`
 // on the button for why that has to be said out loud.
 const TAX_VIEW_TOGGLE_CSS = `.shop-tax-toggle{appearance:none;background:none;border:0;padding:0;margin:0;font:inherit;font-size:13px;line-height:inherit;color:var(--color-primary);text-decoration:underline;text-underline-offset:2px;cursor:pointer;white-space:nowrap}
-.shop-tax-toggle:hover{text-decoration-thickness:2px}
+.shop-tax-toggle:hover{background:none;text-decoration-thickness:2px}
 .shop-tax-toggle:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px;border-radius:2px}`
 
 export type TaxViewToggleProps = {

@@ -35,6 +35,13 @@ export async function canPreviewClosedShop(): Promise<boolean> {
   return hasShopPermission(user, 'shop.access', { allowAccess: true })
 }
 
+// Draft products stay off the storefront for shoppers, but staff with shop
+// access need a live page while they are still working on one - same bar as
+// canPreviewClosedShop, for the same reason.
+export async function canPreviewDraftProducts(): Promise<boolean> {
+  return canPreviewClosedShop()
+}
+
 // Staff who keep seeing products the shop hides from shoppers for being out of
 // stock (see lib/stock-visibility.ts). Same bar as the closed-shop preview, for
 // the same reason: this is a read of the storefront, and anyone with shop access

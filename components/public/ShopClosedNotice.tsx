@@ -38,3 +38,12 @@ export function ShopStockHiddenBanner() {
     </p>
   )
 }
+
+export function ShopDraftPreviewBanner() {
+  return (
+    <p style={bannerStyle}>
+      This product is still a draft. Only signed-in staff can see this page - everyone else gets a page-not-found.
+      Set it to Active when you are ready for customers to see it.
+    </p>
+  )
+}
