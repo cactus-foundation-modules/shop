@@ -1,3 +1,4 @@
+import { Component } from 'react'
 import { flushSync } from 'react-dom'
 
 // Grows the product grid without moving the page.
@@ -41,13 +42,51 @@ import { flushSync } from 'react-dom'
 // An event handler, an observer callback or a resolved promise are all fine,
 // and those are the only places the grid grows from.
 export function holdScrollPosition(update: () => void): void {
-  if (typeof window === 'undefined') {
+  const held = beginScrollHold()
+  if (!held) {
     update()
     return
   }
-  const top = window.scrollY
-  const left = window.scrollX
   flushSync(update)
+  endScrollHold(held)
+}
+
+// holdScrollPosition is for an update made of things already on the page - a
+// window growing over cards in hand. It must NOT carry cards that have only just
+// arrived from the server, and it did until 18 September 2026. A card fresh off
+// the flight channel can suspend (it names a client chunk this visit has not
+// loaded yet - a signed-in admin's cards did, a shopper's happened not to), and
+// a SYNC update that suspends makes React swap the nearest Suspense boundary for
+// its fallback there and then. Measured on the live site in Safari 27: the whole
+// grid went display:none, the page lost 2,886px of height, the browser clamped
+// the scroll to the new bottom - the footer - and when the cards came back 446ms
+// later anchoring, doing its job properly for once, kept the footer where it was.
+// The position had been put back faithfully, into a page too short to hold it.
+//
+// So a fetched batch goes in through startTransition, which keeps what is on
+// screen until the new cards can actually render, and the hold moves to where
+// that commit really happens, whenever that turns out to be:
+//
+//   <ScrollHoldSnapshot token={cards} into={heldRef} />   beside the grid
+//   useLayoutEffect(() => releaseScrollHold(heldRef), [cards])   LAST layout effect
+//
+// getSnapshotBeforeUpdate is the one place React offers that runs before the
+// commit touches the DOM, which is why this is a class. A child's lifecycle runs
+// before its parent's layout effects, so the snapshot is always in the ref by
+// the time the parent's last effect - after its own sort and paging passes have
+// finished moving cards about - comes to release it.
+
+export type HeldScroll = { top: number; left: number }
+
+/** Where the page is now. Null where there is no window. */
+export function beginScrollHold(): HeldScroll | null {
+  if (typeof window === 'undefined') return null
+  return { top: window.scrollY, left: window.scrollX }
+}
+
+/** Both guards described at the top of the file: the read-back restore, then the
+ *  nudge. */
+export function endScrollHold({ top, left }: HeldScroll): void {
   if (window.scrollY !== top || window.scrollX !== left) {
     window.scrollTo({ top, left, behavior: 'instant' })
   }
@@ -57,4 +96,31 @@ export function holdScrollPosition(update: () => void): void {
     window.scrollTo({ top: top - 1, left, behavior: 'instant' })
     window.scrollTo({ top, left, behavior: 'instant' })
   }
+}
+
+type ScrollHoldSnapshotProps = { token: unknown; into: { current: HeldScroll | null } }
+
+/** Renders nothing. Notes the scroll position in the instant before a commit
+ *  that changes `token` reaches the DOM, and leaves it in `into` for
+ *  releaseScrollHold. */
+export class ScrollHoldSnapshot extends Component<ScrollHoldSnapshotProps> {
+  override getSnapshotBeforeUpdate(prev: ScrollHoldSnapshotProps): HeldScroll | null {
+    return prev.token === this.props.token ? null : beginScrollHold()
+  }
+
+  override componentDidUpdate(_prev: ScrollHoldSnapshotProps, _state: unknown, held: HeldScroll | null): void {
+    if (held) this.props.into.current = held
+  }
+
+  override render(): null {
+    return null
+  }
+}
+
+/** The other half of ScrollHoldSnapshot. Safe to call when nothing is held. */
+export function releaseScrollHold(into: { current: HeldScroll | null }): void {
+  const held = into.current
+  if (!held) return
+  into.current = null
+  endScrollHold(held)
 }

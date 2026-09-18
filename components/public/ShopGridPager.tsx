@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import { startTransition, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ShopGridCardLoader } from '@/modules/shop/lib/grid-page-types'
 import { pageHref } from '@/modules/shop/lib/page-href'
-import { holdScrollPosition } from '@/modules/shop/lib/hold-scroll-position'
+import { holdScrollPosition, releaseScrollHold, ScrollHoldSnapshot, type HeldScroll } from '@/modules/shop/lib/hold-scroll-position'
 import { SharedStyle } from '@/components/SharedStyle'
 
 // Paging for the shop's product grids.
@@ -165,6 +165,10 @@ const pagerCss = `
 .shop-pager-gap{display:flex;align-items:flex-end;min-width:20px;justify-content:center;color:var(--color-text-muted);font-size:14px}
 `
 
+// useLayoutEffect where there is a DOM, useEffect where there is not - this is
+// server-rendered too, and a layout effect has nothing to lay out there.
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect
+
 export function ShopGridPager({
   cards,
   perPage,
@@ -233,10 +237,13 @@ export function ShopGridPager({
     // it away while the in-flight guard refuses to ask for the same span again
     // leaves that part of the grid permanently empty.
     loadMore({ offset: span.offset, count: span.count })
-      // Held, because the shopper is usually at the bottom of the grid when a
-      // batch lands and the browser would otherwise carry them down to the
-      // footer - see holdScrollPosition.
-      .then((fetched) => holdScrollPosition(() => {
+      // A transition, never a sync update: a card fresh from the server can
+      // suspend, and a sync update that suspends swaps the whole grid for an
+      // empty fallback - the page collapses under the shopper and the browser
+      // drops them at the footer. A transition keeps what is on screen until the
+      // batch can render, and the scroll is held where that commit actually
+      // happens - ScrollHoldSnapshot below, see lib/hold-scroll-position.
+      .then((fetched) => startTransition(() => {
         setSlots((prev) => {
           const next = [...prev]
           fetched.forEach((card, i) => { next[span.offset + i] = card })
@@ -272,6 +279,12 @@ export function ShopGridPager({
     () => slots.slice(from, to).filter((card): card is ReactNode => card !== undefined),
     [slots, from, to],
   )
+
+  // Lets go of the hold ScrollHoldSnapshot took as a fetched batch was committed.
+  const heldScrollRef = useRef<HeldScroll | null>(null)
+  useIsomorphicLayoutEffect(() => {
+    releaseScrollHold(heldScrollRef)
+  }, [slots])
 
   // One way to grow the window, whether a thumb or an observer asked for it.
   const growing = mode === 'more' || mode === 'scroll'
@@ -332,6 +345,9 @@ export function ShopGridPager({
   return (
     <>
       <SharedStyle id="shop-pager" css={pagerCss} />
+      {/* Renders nothing: notes the scroll position in the instant before a
+          fetched batch reaches the DOM. */}
+      <ScrollHoldSnapshot token={slots} into={heldScrollRef} />
       <div className={gridClassName} style={gridStyle}>
         {visible}
       </div>
