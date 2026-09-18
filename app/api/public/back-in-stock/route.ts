@@ -4,7 +4,8 @@ import { subscribeBackInStock, unsubscribeBackInStock } from '@/modules/shop/lib
 import { getProductById } from '@/modules/shop/lib/db/products'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { verifyUnsubscribeToken } from '@/modules/shop/lib/unsubscribe-token'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
 
 const SubscribeBody = z.object({ productId: z.string(), email: z.string().email() })
@@ -14,7 +15,7 @@ export async function POST(request: NextRequest) {
   const closed = await shopClosedResponse()
   if (closed) return closed
 
-  const ip = getClientIpFromRequest(request)
+  const ip = await getClientIp()
   if (!checkInMemoryRateLimit(`back-in-stock:${ip}`, 20, 60 * 60 * 1000)) {
     return NextResponse.json({ error: 'Too many requests, please try again later.' }, { status: 429 })
   }

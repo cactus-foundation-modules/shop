@@ -13,7 +13,8 @@ import { storeParcelReading } from '@/modules/shop/lib/tracking/store-reading'
 import { fetchVehiclePosition, positionUrl } from '@/modules/shop/lib/tracking/multidrop-position'
 import { cachedVehiclePosition } from '@/modules/shop/lib/tracking/position-cache'
 import { livePollIntervalMs, positionFreshness, SLOW_POLL_MS } from '@/modules/shop/lib/tracking/live-delivery'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 
 // PUBLIC - where the van is, for the customer whose parcel is on it.
 //
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const closed = await shopClosedResponse()
   if (closed) return closed
 
-  const ip = getClientIpFromRequest(request)
+  const ip = await getClientIp()
   if (!checkInMemoryRateLimit(`live-delivery:${ip}`, RATE_LIMIT.max, RATE_LIMIT.windowMs)) {
     return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
   }

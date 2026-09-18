@@ -12,7 +12,8 @@ import {
 } from '@/modules/shop/lib/db/order-access'
 import { orderNumberCandidates, postcodeMatches } from '@/modules/shop/lib/order-lookup'
 import { grantGuestOrderAccess, guestOrderAccessIdsFromRequest } from '@/modules/shop/lib/guest-order-access'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 import type { ShpOrder } from '@/modules/shop/lib/types'
 
 // PUBLIC - a shopper with no account proving that an order is theirs.
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Order tracking is not available on this shop.' }, { status: 404 })
   }
 
-  if (!checkInMemoryRateLimit(`order-track:${getClientIpFromRequest(request)}`, 20, 15 * 60 * 1000)) {
+  if (!checkInMemoryRateLimit(`order-track:${(await getClientIp())}`, 20, 15 * 60 * 1000)) {
     return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
   }
 

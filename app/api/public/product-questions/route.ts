@@ -7,7 +7,8 @@ import { createProductQuestion } from '@/modules/shop/lib/db/product-questions'
 import { getProductById } from '@/modules/shop/lib/db/products'
 import { syncProductQuestionsNotification } from '@/modules/shop/lib/product-question-notify'
 import { sendProductQuestionNotice } from '@/modules/shop/lib/product-question-emails'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 
 // "Ask a question", from the product page (migration 056).
 //
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const ip = getClientIpFromRequest(request)
+  const ip = await getClientIp()
   if (!checkInMemoryRateLimit(`product-question:${ip}`, 5, 60 * 60 * 1000)) {
     return NextResponse.json({ error: 'Too many questions from here just now. Please try again later.' }, { status: 429 })
   }

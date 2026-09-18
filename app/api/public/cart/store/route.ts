@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 import { errorResponse } from '@/lib/utils'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { deleteGuestCart, getGuestCart, saveGuestCart, GUEST_CART_MAX_LINES } from '@/modules/shop/lib/db/guest-cart'
@@ -92,6 +94,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  // Generous ceiling: the browser saves on every cart change. Here to stop a
+  // script filling the guest-cart table, not to get in a shopper's way.
+  if (!checkInMemoryRateLimit(`shop_cart_store:${await getClientIp()}`, 120, 60_000)) {
+    return NextResponse.json({ error: 'Too many requests - please wait a moment and try again.' }, { status: 429 })
+  }
   if (await signedIn()) return errorResponse('Signed in', 409)
 
   let raw: unknown

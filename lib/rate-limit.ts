@@ -1,3 +1,5 @@
+import { clientIpFromHeaders } from '@/lib/auth/rate-limit'
+
 // In-memory IP rate limiter for the shop module's public mutating routes
 // (back-in-stock, coupon apply). Deliberately not table-backed like
 // contact-form's - those tables carry a natural IP column already; adding one
@@ -39,8 +41,20 @@ export function checkInMemoryRateLimit(key: string, maxAttempts: number, windowM
   return true
 }
 
+/**
+ * @deprecated Use `getClientIp()` from `@/lib/auth/rate-limit` - every caller in
+ * this module and the shop add-ons now does. Kept only because an add-on module
+ * an install has not updated yet may still import it, and removing it would
+ * break that install's build.
+ *
+ * This used to return the LEFTMOST x-forwarded-for entry, which is whatever the
+ * caller typed: rotate it per request and every per-IP limit here was walked
+ * straight through. Now the last hop (the one the platform appended), via
+ * core's own parser. What it cannot do synchronously is honour the owner's
+ * "behind Cloudflare" setting - there, every visitor shares Cloudflare's
+ * address, so a stale caller over-limits rather than under-limits until it is
+ * updated. That is the safe way round.
+ */
 export function getClientIpFromRequest(req: Request): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-    ?? req.headers.get('x-real-ip')
-    ?? 'unknown'
+  return clientIpFromHeaders((name) => req.headers.get(name))
 }

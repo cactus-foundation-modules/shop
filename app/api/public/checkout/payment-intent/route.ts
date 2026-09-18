@@ -16,7 +16,8 @@ import { signOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
 import { grantReceiptAccess } from '@/modules/shop/lib/receipt-access-cookie'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { fillBlankMemberContactDetails } from '@/lib/members/contact'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 import { isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
 import type { ShpAddress } from '@/modules/shop/lib/types'
 
@@ -80,7 +81,7 @@ export async function POST(request: NextRequest) {
   // This endpoint creates a real DB order row AND a live provider intent (Stripe
   // PaymentIntent / PayPal order) on every call, so it is the most expensive
   // public mutating route - rate-limit it per IP like apply-coupon/back-in-stock.
-  const ip = getClientIpFromRequest(request)
+  const ip = await getClientIp()
   if (!checkInMemoryRateLimit(`payment-intent:${ip}`, 10, 15 * 60 * 1000)) {
     return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
   }

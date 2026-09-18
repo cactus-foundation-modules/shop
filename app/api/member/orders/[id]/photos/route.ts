@@ -5,7 +5,8 @@ import { getOrCreateFolderByPath, resolveFolderPath } from '@/lib/media/organise
 import { getActiveMediaProvider, isMediaProviderConfigured } from '@/lib/config/env'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { requireOrderAccess } from '@/modules/shop/lib/order-route-access'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 
 // PROTECTED - a photograph for a damage report, uploaded one file at a time by
 // somebody who can already see the order (a member, or a guest who has proved
@@ -27,7 +28,7 @@ const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Secondary guard only - the access check below is the real one. Tighter than
   // the request endpoint's because this one writes files.
-  if (!checkInMemoryRateLimit(`shop_damage_photo:${getClientIpFromRequest(request)}`, 20, 60_000)) {
+  if (!checkInMemoryRateLimit(`shop_damage_photo:${(await getClientIp())}`, 20, 60_000)) {
     return errorResponse('That is a lot of photographs at once. Give it a minute.', 429)
   }
 

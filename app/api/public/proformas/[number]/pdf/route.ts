@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 import { proformaPath } from '@/modules/shop/lib/invoice-token'
 import { resolveDocumentAccess } from '@/modules/shop/lib/document-access'
 import { InvoicePdfUnavailableError, invoicePdfFilename } from '@/modules/shop/lib/invoice-pdf'
@@ -18,7 +19,7 @@ import { loadProforma } from '@/modules/shop/lib/proforma'
 // order numbers run in sequence.
 
 export async function GET(request: NextRequest, context: { params: Promise<{ number: string }> }) {
-  const ip = getClientIpFromRequest(request)
+  const ip = await getClientIp()
   if (!checkInMemoryRateLimit(`shp-proforma-pdf:${ip}`, 5, 60_000)) {
     return NextResponse.json({ error: 'Too many downloads at once, please try again in a minute.' }, { status: 429 })
   }

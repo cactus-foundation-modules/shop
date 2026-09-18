@@ -5,7 +5,8 @@ import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { fulfillPaidOrder } from '@/modules/shop/lib/order-fulfillment'
 import { announceOrderAwaitingPayment } from '@/modules/shop/lib/order-placed-email'
 import { rememberOrderAddress } from '@/modules/shop/lib/order-address-book'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 import { getCheckoutDraft, materialiseDraftOrder } from '@/modules/shop/lib/checkout-draft'
 
 const Body = z.object({ orderId: z.string(), payload: z.unknown() })
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
   // provider decides whether money moved, so nobody can fake a payment here; what
   // they COULD do unthrottled is walk order ids and drive other people's pending
   // orders to PAYMENT_FAILED, one call each.
-  const ip = getClientIpFromRequest(request)
+  const ip = await getClientIp()
   if (!checkInMemoryRateLimit(`checkout-confirm:${ip}`, 20, 15 * 60 * 1000)) {
     return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
   }

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 import { getProductsByIds } from '@/modules/shop/lib/db/products'
 import { resolveUpsellsForProducts } from '@/modules/shop/lib/db/recommendations'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
@@ -16,6 +18,12 @@ const Body = z.object({
 // takes the ids the client already holds and returns the merged, de-duplicated
 // suggestions (cart products excluded) in cart order.
 export async function POST(request: NextRequest) {
+  // Each call prices the whole cart against the database. The browser calls it
+  // on every cart change, so the ceiling is generous - it is here to stop a
+  // script hammering it, not to get in a shopper's way.
+  if (!checkInMemoryRateLimit(`shop_cart_upsells:${await getClientIp()}`, 120, 60_000)) {
+    return NextResponse.json({ error: 'Too many requests - please wait a moment and try again.' }, { status: 429 })
+  }
   const closed = await shopClosedResponse()
   if (closed) return closed
 

@@ -16,7 +16,8 @@ import {
 } from '@/modules/shop/lib/order-receipt-challenge'
 import { grantGuestOrderAccess, guestOrderAccessIdsFromRequest } from '@/modules/shop/lib/guest-order-access'
 import { grantReceiptAccess } from '@/modules/shop/lib/receipt-access-cookie'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 
 // PUBLIC - proving that a receipt is yours, on a browser that has not proved it.
 //
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
   const closed = await shopClosedResponse()
   if (closed) return closed
 
-  if (!checkInMemoryRateLimit(`order-receipt-access:${getClientIpFromRequest(request)}`, 20, 15 * 60 * 1000)) {
+  if (!checkInMemoryRateLimit(`order-receipt-access:${(await getClientIp())}`, 20, 15 * 60 * 1000)) {
     return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
   }
 

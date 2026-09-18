@@ -6,7 +6,8 @@ import { MAX_DAMAGE_PHOTOS } from '@/modules/shop/lib/order-requests'
 import { loadOrderDetail } from '@/modules/shop/lib/member-orders'
 import { requireOrderAccess } from '@/modules/shop/lib/order-route-access'
 import { submitOrderRequest } from '@/modules/shop/lib/order-request-actions'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 
 const Body = z.object({
   type: z.enum(['CANCEL', 'RETURN', 'DAMAGE']),
@@ -30,7 +31,7 @@ const Body = z.object({
 // exactly the same answer a real click would have.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Secondary guard only - the access check below is the real one.
-  if (!checkInMemoryRateLimit(`shop_request:${getClientIpFromRequest(request)}`, 10, 60_000)) {
+  if (!checkInMemoryRateLimit(`shop_request:${(await getClientIp())}`, 10, 60_000)) {
     return errorResponse('That is a lot of requests at once. Give it a minute.', 429)
   }
 

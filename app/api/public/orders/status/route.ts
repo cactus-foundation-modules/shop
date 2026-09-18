@@ -4,7 +4,8 @@ import { getProductMediaForProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getPaymentProvider, getPaymentMethodLabels } from '@/modules/shop/lib/payments/registry'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 import { verifyOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
 import { receiptChallengeFor } from '@/modules/shop/lib/order-receipt-challenge'
 import { mayOpenReceipt } from '@/modules/shop/lib/order-viewer'
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
   // so the number is not a secret at all. Unthrottled, whatever stands behind it
   // can be picked at whatever rate the network allows, and what falls out is the
   // customer's name, full delivery address and order total.
-  const ip = getClientIpFromRequest(request)
+  const ip = await getClientIp()
   if (!checkInMemoryRateLimit(`order-status:${ip}`, 20, 15 * 60 * 1000)) {
     return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
   }

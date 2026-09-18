@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 import { resolveCartLines } from '@/modules/shop/lib/checkout'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { previewOrderPaymentNotes } from '@/modules/shop/lib/order-payment-state'
@@ -19,6 +21,12 @@ const Body = z.object({
 // unavailable line is not an error either - the note is about the method, and
 // the cart's own validation already tells the shopper about the line.
 export async function POST(request: NextRequest) {
+  // Each call prices the whole cart against the database. The browser calls it
+  // on every cart change, so the ceiling is generous - it is here to stop a
+  // script hammering it, not to get in a shopper's way.
+  if (!checkInMemoryRateLimit(`shop_payment_note:${await getClientIp()}`, 30, 60_000)) {
+    return NextResponse.json({ error: 'Too many requests - please wait a moment and try again.' }, { status: 429 })
+  }
   const closed = await shopClosedResponse()
   if (closed) return closed
 

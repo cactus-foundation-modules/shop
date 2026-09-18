@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 import { blockedLinesMessage, resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkout'
 import { resolveShippingZoneForPostcode, listShippingRatesForZone } from '@/modules/shop/lib/db/tax-shipping'
 import { excludedPostcodeMessage } from '@/modules/shop/lib/excluded-postcode'
@@ -19,6 +21,12 @@ const Body = z.object({
 // PROTECTED - server-only totals (spec 19). Recalculated on every address or
 // coupon change; the client never computes tax.
 export async function POST(request: NextRequest) {
+  // Each call prices the whole cart against the database. The browser calls it
+  // on every cart change, so the ceiling is generous - it is here to stop a
+  // script hammering it, not to get in a shopper's way.
+  if (!checkInMemoryRateLimit(`shop_checkout_session:${await getClientIp()}`, 60, 60_000)) {
+    return NextResponse.json({ error: 'Too many requests - please wait a moment and try again.' }, { status: 429 })
+  }
   const parsed = Body.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: 'Invalid checkout session request' }, { status: 400 })
   const { lines: rawLines, postcode, shippingRateId, couponCode, customerEmail } = parsed.data

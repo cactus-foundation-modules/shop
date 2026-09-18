@@ -6,7 +6,8 @@ import { requireOrderAccess } from '@/modules/shop/lib/order-route-access'
 import { getInvoiceForOrder } from '@/modules/shop/lib/db/invoices'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { customerCanSetReference, CUSTOMER_REFERENCE_MAX_LENGTH } from '@/modules/shop/lib/customer-reference'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -38,7 +39,7 @@ const PatchBody = z.object({
 // drift, and a hand-rolled request gets the same answer a real click would.
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   // Secondary guard only - the access check below is the real one.
-  if (!checkInMemoryRateLimit(`shop_order_reference:${getClientIpFromRequest(request)}`, 20, 60_000)) {
+  if (!checkInMemoryRateLimit(`shop_order_reference:${(await getClientIp())}`, 20, 60_000)) {
     return errorResponse('That is a lot of changes at once. Give it a minute.', 429)
   }
 

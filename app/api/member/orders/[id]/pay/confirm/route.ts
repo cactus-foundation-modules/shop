@@ -8,7 +8,8 @@ import { requireOrderAccess } from '@/modules/shop/lib/order-route-access'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { assertPayableOnline } from '@/modules/shop/lib/order-pay-online'
 import { fulfillPaidOrder } from '@/modules/shop/lib/order-fulfillment'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 
 const Body = z.object({ method: z.string().min(1), payload: z.unknown() })
 
@@ -25,7 +26,7 @@ const Body = z.object({ method: z.string().min(1), payload: z.unknown() })
 // still pay by bank transfer tomorrow: a declined card is a card that did not
 // work, not an order that fell over.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  if (!checkInMemoryRateLimit(`shop_order_pay_confirm:${getClientIpFromRequest(request)}`, 20, 15 * 60 * 1000)) {
+  if (!checkInMemoryRateLimit(`shop_order_pay_confirm:${(await getClientIp())}`, 20, 15 * 60 * 1000)) {
     return errorResponse('Too many attempts, please try again in a little while.', 429)
   }
 

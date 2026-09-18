@@ -5,7 +5,8 @@ import { adoptOrderPaymentMethod } from '@/modules/shop/lib/db/orders'
 import { requireOrderAccess } from '@/modules/shop/lib/order-route-access'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { assertPayableOnline } from '@/modules/shop/lib/order-pay-online'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 
 const Body = z.object({ method: z.string().min(1) })
 
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // This calls out to a payment provider and creates a live payment object on
   // it, so it is throttled like the checkout's own intent route. Secondary to
   // the access check below, which is the real guard.
-  if (!checkInMemoryRateLimit(`shop_order_pay:${getClientIpFromRequest(request)}`, 10, 15 * 60 * 1000)) {
+  if (!checkInMemoryRateLimit(`shop_order_pay:${(await getClientIp())}`, 10, 15 * 60 * 1000)) {
     return errorResponse('Too many attempts, please try again in a little while.', 429)
   }
 

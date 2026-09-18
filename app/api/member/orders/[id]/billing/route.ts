@@ -13,7 +13,8 @@ import {
   reissueWarning,
 } from '@/modules/shop/lib/customer-billing'
 import { changeOrderBillingIdentity } from '@/modules/shop/lib/invoice-reissue'
-import { checkInMemoryRateLimit, getClientIpFromRequest } from '@/modules/shop/lib/rate-limit'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
+import { getClientIp } from '@/lib/auth/rate-limit'
 
 // PROTECTED - a customer correcting who their own order is invoiced to. A
 // signed-in member, or a guest who has proved the delivery postcode - see
@@ -64,7 +65,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   // Secondary guard only - the access check below is the real one. Tighter
   // than the reference route's twenty, because one of these can raise two
   // numbered documents.
-  if (!checkInMemoryRateLimit(`shop_order_billing:${getClientIpFromRequest(request)}`, 10, 60_000)) {
+  if (!checkInMemoryRateLimit(`shop_order_billing:${(await getClientIp())}`, 10, 60_000)) {
     return errorResponse('That is a lot of changes at once. Give it a minute.', 429)
   }
 
