@@ -4,6 +4,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ProductFaqSearch } from '@/modules/shop/components/public/ProductFaqSearch'
+import type { ShpFaqRendered } from '@/modules/shop/lib/faq'
 
 // The product page's FAQs section hides its questions behind a search box. The
 // point of these tests is the thing that would otherwise regress in silence:
@@ -11,10 +12,25 @@ import { ProductFaqSearch } from '@/modules/shop/components/public/ProductFaqSea
 // notices that in review, and nobody notices it on the page either - it shows up
 // weeks later as questions that stopped being quoted in search results.
 
-const ITEMS = [
-  { question: 'How long does delivery take?', answer: 'Three working days to the mainland.' },
-  { question: 'Does it come assembled?', answer: 'Arms and castors go on at your end.' },
-  { question: 'Can I have it in another fabric?', answer: 'Anything off the Spice card.' },
+// Already rendered, as they always are by the time this component sees them:
+// the answers' HTML is built and sanitised server-side (lib/faq-render.ts), so
+// nothing here needs jsdom to make a list.
+const ITEMS: ShpFaqRendered[] = [
+  {
+    question: 'How long does delivery take?',
+    answer: 'Three working days to the mainland.',
+    answerHtml: '<p>Three working days to the mainland.</p>',
+  },
+  {
+    question: 'Does it come assembled?',
+    answer: 'Arms and castors go on at your end.',
+    answerHtml: '<p>Arms and castors go on at your end.</p>',
+  },
+  {
+    question: 'Can I have it in another fabric?',
+    answer: 'Anything off the Spice card.',
+    answerHtml: '<p>Anything off the <strong>Spice</strong> card.</p>',
+  },
 ]
 
 const ASK = { productId: 'prod-1', buttonLabel: 'Ask a question', intro: 'Ask us anything.', thanks: 'Thank you.' }
@@ -30,7 +46,9 @@ describe('what a crawler reads', () => {
     const markup = html()
     for (const item of ITEMS) {
       expect(markup).toContain(item.question)
-      expect(markup).toContain(item.answer)
+      // The answer's MARKUP, which is what actually lands on the page now that
+      // an answer may carry a list or a link of its own.
+      expect(markup).toContain(item.answerHtml)
     }
   })
 

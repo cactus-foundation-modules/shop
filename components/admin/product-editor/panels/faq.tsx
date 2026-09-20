@@ -10,7 +10,8 @@ import type { ShpFaqItem } from '@/modules/shop/lib/faq'
  *
  * The questions written here appear in a FAQs section on the product page, below
  * Dimensions and above Downloads, with a link of its own in the page's section
- * strip. Nothing here, nothing on the category and nothing shop-wide means no
+ * strip. An answer may be plain writing or a fragment of HTML - see lib/faq.ts,
+ * which works out which it was given, and lib/faq-render.ts, which cleans it. Nothing here, nothing on the category and nothing shop-wide means no
  * section at all - an empty accordion is worse than no accordion.
  */
 export function FaqPanel({ state, patch }: PanelProps) {
@@ -77,11 +78,14 @@ export function FaqPanel({ state, patch }: PanelProps) {
                     />
                   )}
                 </Field>
-                <Field label="Answer">
+                <Field
+                  label="Answer"
+                  hint={index === 0 ? 'Plain writing is fine, and line breaks are kept. If you want a link, a list or a bit of bold, you can type HTML here and it will be shown as such.' : undefined}
+                >
                   {(p) => (
                     <TextArea
                       {...p}
-                      rows={3}
+                      rows={4}
                       value={item.answer}
                       onChange={(e) => setItem(index, { answer: e.target.value })}
                       placeholder="Made to order, so allow three to four weeks."

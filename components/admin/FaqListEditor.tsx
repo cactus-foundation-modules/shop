@@ -8,6 +8,10 @@ import type { ShpFaqItem } from '@/modules/shop/lib/faq'
 // field primitives - these two screens have no such primitives and would
 // otherwise have grown two copies of the same eight buttons.
 //
+// An answer may be plain writing or a fragment of HTML. Nothing decides which
+// here either - the text answers for itself on the way to the page (lib/faq.ts),
+// and what it prints is cleaned there (lib/faq-render.ts).
+//
 // Order is the print order, so rows move rather than needing to be retyped.
 // Nothing is validated here: a half-written row is dropped on the way into the
 // database (lib/faq.ts), which is the one place that decision belongs.
@@ -71,10 +75,16 @@ export function FaqListEditor({ items, onChange, emptyNote, addLabel = 'Add a qu
             <textarea
               value={item.answer}
               onChange={(e) => setItem(index, { answer: e.target.value })}
-              rows={3}
+              rows={4}
               placeholder="Most things leave us within three working days."
               style={{ ...input, resize: 'vertical' }}
             />
+            {index === 0 && (
+              <span style={label}>
+                Plain writing is fine, and line breaks are kept. If you want a link, a list or a bit of bold, you can
+                type HTML here and it will be shown as such.
+              </span>
+            )}
           </label>
         </div>
       ))}

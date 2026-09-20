@@ -1,4 +1,4 @@
-import { buildProductFaqJsonLd, faqJsonLdScript, type ShpFaqItem } from '@/modules/shop/lib/faq'
+import { buildProductFaqJsonLd, faqJsonLdScript, type ShpFaqRendered } from '@/modules/shop/lib/faq'
 
 // One question-and-answer list, and the FAQPage structured data that goes with
 // it. Plain <details>, so it costs no client JavaScript and a jump-link lands on
@@ -9,7 +9,8 @@ import { buildProductFaqJsonLd, faqJsonLdScript, type ShpFaqItem } from '@/modul
 // carries both an SEO FAQ block and one of shop's own should not look like two
 // different websites.
 //
-// The class names are the CALLER's, not this file's, because the two surfaces
+// The class names are the CALLER's, not this file's (bar the answer's - see
+// below), because the two surfaces
 // that draw a list live under different stylesheets: the product page's sections
 // are dressed inside .spd-tabs (see tabsCss in detail-parts.tsx), and the
 // category-page block brings its own. Only the markup and the JSON-LD are shared
@@ -25,7 +26,7 @@ import { buildProductFaqJsonLd, faqJsonLdScript, type ShpFaqItem } from '@/modul
 export function FaqAccordion({
   items, wrapperClassName, itemClassName, visibleQuestions, openQuestions, onToggleQuestion,
 }: {
-  items: ShpFaqItem[]
+  items: ShpFaqRendered[]
   wrapperClassName: string
   itemClassName: string
   /** Questions to SHOW. Undefined - the ordinary case, and every server-rendered
@@ -55,7 +56,17 @@ export function FaqAccordion({
           onToggle={onToggleQuestion ? (e) => onToggleQuestion(item.question, e.currentTarget.open) : undefined}
         >
           <summary>{item.question}</summary>
-          <p>{item.answer}</p>
+          {/* The answer's own markup, already sanitised by renderFaqItems - see
+              lib/faq-render.ts, and note the TYPE: only that function makes a
+              ShpFaqRendered, so a caller cannot hand this component a raw
+              stored answer and have it printed as HTML.
+
+              A div rather than the <p> this used to be, because an answer that
+              carries its own paragraphs cannot be nested inside one. Its class
+              is fixed here rather than passed in like the two around it: this is
+              the one element BOTH stylesheets have to dress identically, and a
+              caller free to name it is a caller free to forget. */}
+          <div className="faq-a" dangerouslySetInnerHTML={{ __html: item.answerHtml }} />
         </details>
       ))}
       {jsonLd && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: faqJsonLdScript(jsonLd) }} />}

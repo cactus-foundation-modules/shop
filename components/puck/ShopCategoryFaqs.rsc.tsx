@@ -3,6 +3,7 @@ import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getCategoryFaqChainBySlug, getCollectionFaqSetBySlug } from '@/modules/shop/lib/db/catalogue'
 import { normaliseFaqItems, resolveCategoryFaqs, type ShpFaqItem } from '@/modules/shop/lib/faq'
+import { renderFaqItems } from '@/modules/shop/lib/faq-render'
 import { FaqAccordion } from '@/modules/shop/components/public/FaqAccordion'
 import { shopCategoryFaqsPuckComponent, type ShopCategoryFaqsProps } from './ShopCategoryFaqs'
 
@@ -14,6 +15,12 @@ import { shopCategoryFaqsPuckComponent, type ShopCategoryFaqsProps } from './Sho
 // therefore costs an empty category exactly one thing - no gap, no heading, no
 // structured data claiming a page answers questions it does not.
 
+// An answer's own markup is dressed by .faq-a, whose class name is fixed inside
+// FaqAccordion so this stylesheet and the product page's cannot drift. The
+// `white-space:pre-wrap` that used to do the line breaks is gone: the breaks are
+// in the markup now (lib/faq.ts), and pre-wrap would have turned the newlines
+// between an author's own tags into blank lines on the page.
+//
 // The headline matches .spd-tabs h3 on the product page, so the same questions
 // look the same wherever a shopper meets them. The list itself matches the FAQ
 // (SEO) block - see FaqAccordion.
@@ -33,7 +40,15 @@ const faqsCss = ({ tabletBp }: { tabletBp: string }) => `
 @media (max-width:${tabletBp}){.shop-faqs-2{grid-template-columns:1fr}}
 .shop-faq{border-bottom:1px solid var(--color-border);padding:12px 0}
 .shop-faq > summary{cursor:pointer;font-weight:600;color:var(--color-fg)}
-.shop-faq p{margin:8px 0 0;color:var(--color-text);white-space:pre-wrap}
+.shop-faq .faq-a{margin-top:8px;color:var(--color-text)}
+.shop-faq .faq-a > *{margin:0 0 8px}
+.shop-faq .faq-a > :last-child{margin-bottom:0}
+.shop-faq .faq-a ul,.shop-faq .faq-a ol{padding-left:20px}
+.shop-faq .faq-a li{margin:2px 0}
+.shop-faq .faq-a a{color:var(--color-primary);text-decoration:underline}
+.shop-faq .faq-a img{max-width:100%;height:auto}
+.shop-faq .faq-a table{border-collapse:collapse;width:100%}
+.shop-faq .faq-a th,.shop-faq .faq-a td{border:1px solid var(--color-border);padding:6px 8px;text-align:left}
 `
 
 export async function ShopCategoryFaqsRsc(props: ShopCategoryFaqsProps) {
@@ -83,7 +98,7 @@ export async function ShopCategoryFaqsRsc(props: ShopCategoryFaqsProps) {
     <section className="shop-faqs-block">
       <style dangerouslySetInnerHTML={{ __html: faqsCss(bp) }} />
       {title ? <h2 className="shop-faqs-title">{title}</h2> : null}
-      <FaqAccordion items={items} wrapperClassName={wrapper} itemClassName="shop-faq" />
+      <FaqAccordion items={renderFaqItems(items)} wrapperClassName={wrapper} itemClassName="shop-faq" />
     </section>
   )
 }

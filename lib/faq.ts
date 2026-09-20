@@ -22,9 +22,32 @@
 
 import { z } from 'zod'
 
-/** One question and its answer. Both are plain text; the answer renders as a
- *  paragraph, exactly as the FAQ (SEO) block's does. */
+/** One question and its answer, as STORED.
+ *
+ *  The answer is either plain text or a fragment of HTML - an owner who wants a
+ *  link, a list or a bit of bold in an answer writes the markup themselves, the
+ *  same way the email-signature box works. Which of the two it is, is a question
+ *  about the text itself (`answerIsHtml`) rather than a flag beside it, because
+ *  every answer written before this existed is plain text and nothing was going
+ *  to go back and mark them.
+ *
+ *  Nothing here renders it. The HTML an answer ends up putting on a page is
+ *  sanitised on the way out, in lib/faq-render.ts, which is server-only. */
 export type ShpFaqItem = { question: string; answer: string }
+
+/** A stored item plus the HTML its answer actually renders as - sanitised, and
+ *  built for a plain-text answer too, so a renderer never has to ask which sort
+ *  it was given.
+ *
+ *  `answer` stays the PLAIN TEXT of the answer whichever sort it is, because two
+ *  things still want text rather than markup: the search box (typing "castors"
+ *  must not be beaten by an answer that happens to carry `<li>`), and the
+ *  FAQPage structured data.
+ *
+ *  Only lib/faq-render.ts makes one, which is the whole point of it being a
+ *  separate type: a component that renders `answerHtml` cannot be handed a raw
+ *  stored item by accident. */
+export type ShpFaqRendered = ShpFaqItem & { answerHtml: string }
 
 /** What one level holds: its own questions, and whether the levels above it
  *  still get a say. */
@@ -57,7 +80,12 @@ const FaqSetSchema = z.object({
 // product editor - which is a product nobody can edit, from a cap two files
 // apart disagreeing.
 export const FAQ_QUESTION_MAX = 300
-export const FAQ_ANSWER_MAX = 4000
+// Raised from 4000 when answers gained the right to carry markup: a list of a
+// dozen counties costs several hundred characters in tags alone, and a cap an
+// owner can actually meet by writing a long answer properly is not a cap, it is
+// a trap. Still a cap, because the column is jsonb and a request body should not
+// be able to put an unbounded blob in one.
+export const FAQ_ANSWER_MAX = 12000
 
 const FaqItemBodySchema = z.object({
   question: z.string().max(FAQ_QUESTION_MAX),
@@ -102,6 +130,79 @@ function cleanItems(items: ShpFaqItem[]): ShpFaqItem[] {
     cleaned.push({ question, answer })
   }
   return cleaned
+}
+
+// --- Answers that carry markup -----------------------------------------------
+//
+// An answer is stored as whatever the owner typed. Most are a sentence or two of
+// plain text; some are a fragment of HTML, because "we deliver to these twelve
+// counties" is a list and "see the returns policy" is a link, and neither reads
+// well as one long paragraph.
+//
+// There is no flag saying which. Every answer written before this feature is
+// plain text, nobody was going to go back and mark them, and a flag that is
+// wrong is worse than no flag - so the text answers for itself, below.
+
+// A closing tag, or one of the tags that never has a closing partner. Requiring
+// one of those rather than "any angle bracket" is deliberate: an answer reading
+// `Use <strong> for emphasis` is somebody TALKING about markup, not writing it,
+// and swallowing their example would be a strange way to reward the question.
+const HTML_ANSWER_RE = /<\/[a-z][a-z0-9]*\s*>|<(?:br|hr|img|input)\b[^>]*>|<[a-z][a-z0-9]*\b[^>]*\/>/i
+
+/** Whether a stored answer is a fragment of HTML rather than plain text. */
+export function answerIsHtml(answer: string): boolean {
+  return HTML_ANSWER_RE.test(answer)
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/**
+ * A plain-text answer as the HTML it prints: a paragraph per blank-line-separated
+ * block, a `<br />` for a single line break.
+ *
+ * Every answer used to render inside one `<p>` with `white-space:pre-wrap` doing
+ * the line breaks. That trick cannot survive an answer that carries its own
+ * markup - pre-wrap turns the newlines BETWEEN an author's tags into blank lines
+ * on the page - so the breaks are put into the markup here instead, and the two
+ * sorts of answer come out of the renderer as the same shape.
+ */
+export function plainAnswerToHtml(answer: string): string {
+  return answer
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => `<p>${escapeHtml(block).replace(/\n/g, '<br />')}</p>`)
+    .join('')
+}
+
+/**
+ * The readable text inside an answer's HTML - what the search box matches on and
+ * what the structured data quotes.
+ *
+ * Crude on purpose: it runs on markup this module's own sanitiser has already
+ * cleaned, so there is no script or comment left to be clever about, and a
+ * regular expression that never sees a hostile document is the right size of
+ * tool. The tags that end a line become a space, so a three-item list reads as
+ * three words rather than one long one.
+ */
+export function htmlAnswerToPlainText(html: string): string {
+  return html
+    .replace(/<\/(?:p|li|h[1-6]|div|tr|blockquote)\s*>|<br\b[^>]*>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;|&apos;/gi, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 /** What two questions have to match on to count as the same one, so a product

@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
   EMPTY_FAQ_SET,
+  answerIsHtml,
   buildProductFaqJsonLd,
+  htmlAnswerToPlainText,
+  plainAnswerToHtml,
   faqJsonLdScript,
   matchFaqQuestions,
   normaliseFaqItems,
@@ -196,5 +199,65 @@ describe('buildProductFaqJsonLd', () => {
     const serialised = faqJsonLdScript(json as object)
     expect(serialised).not.toContain('<')
     expect(serialised).toContain('\\u003cstrong')
+  })
+})
+
+describe('answerIsHtml', () => {
+  it('reads plain writing as plain writing, angle brackets and all', () => {
+    expect(answerIsHtml('Three working days.')).toBe(false)
+    expect(answerIsHtml('Allow 3 < 5 weeks.')).toBe(false)
+    // Somebody TALKING about markup rather than writing it. Treating this as
+    // HTML would swallow the very thing they were trying to show.
+    expect(answerIsHtml('Use <strong> for emphasis.')).toBe(false)
+  })
+
+  it('reads a real fragment as HTML', () => {
+    expect(answerIsHtml('<p>Three working days.</p>')).toBe(true)
+    expect(answerIsHtml('Mainland only.<br>Islands take longer.')).toBe(true)
+    expect(answerIsHtml('<ul><li>Scotland</li></ul>')).toBe(true)
+    expect(answerIsHtml('See the <a href="/returns">returns policy</a>.')).toBe(true)
+    expect(answerIsHtml('<img src="/a.png" alt="" />')).toBe(true)
+  })
+})
+
+describe('plainAnswerToHtml', () => {
+  it('gives a paragraph per block and a break per single newline', () => {
+    expect(plainAnswerToHtml('One.\n\nTwo.')).toBe('<p>One.</p><p>Two.</p>')
+    expect(plainAnswerToHtml('One.\nStill one.')).toBe('<p>One.<br />Still one.</p>')
+  })
+
+  it('escapes what the writer typed, so plain text can never become markup', () => {
+    expect(plainAnswerToHtml('Use <strong> & "quotes"')).toBe(
+      '<p>Use &lt;strong&gt; &amp; &quot;quotes&quot;</p>',
+    )
+  })
+
+  it('prints nothing at all for nothing at all', () => {
+    expect(plainAnswerToHtml('   \n\n  ')).toBe('')
+  })
+})
+
+describe('htmlAnswerToPlainText', () => {
+  it('reads the words out of a fragment, one space between blocks', () => {
+    expect(htmlAnswerToPlainText('<p>Mainland only.</p><p>Islands take longer.</p>'))
+      .toBe('Mainland only. Islands take longer.')
+    expect(htmlAnswerToPlainText('<ul><li>Scotland</li><li>Wales</li></ul>')).toBe('Scotland Wales')
+    expect(htmlAnswerToPlainText('Mainland.<br>Islands.')).toBe('Mainland. Islands.')
+  })
+
+  it('decodes the entities a writer would actually meet', () => {
+    expect(htmlAnswerToPlainText('<p>Marks &amp; Spencer&#39;s &quot;best&quot;</p>'))
+      .toBe('Marks & Spencer\'s "best"')
+  })
+})
+
+describe('matchFaqQuestions over an answer that carries markup', () => {
+  it('matches the words, not the tags', () => {
+    // The plain text is what the search box is handed (see ShpFaqRendered), so
+    // a shopper typing a word finds it, and one typing "li" does not find every
+    // list in the shop.
+    const items = [{ question: 'Where to?', answer: htmlAnswerToPlainText('<ul><li>Scotland</li></ul>') }]
+    expect(matchFaqQuestions(items, 'scotland')).toHaveLength(1)
+    expect(matchFaqQuestions(items, '<li>')).toHaveLength(0)
   })
 })

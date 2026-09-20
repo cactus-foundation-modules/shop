@@ -3,7 +3,7 @@
 import { useId, useMemo, useRef, useState } from 'react'
 import { AskProductQuestion } from '@/modules/shop/components/public/AskProductQuestion'
 import { FaqAccordion } from '@/modules/shop/components/public/FaqAccordion'
-import { matchFaqQuestions, type ShpFaqItem } from '@/modules/shop/lib/faq'
+import { matchFaqQuestions, type ShpFaqRendered } from '@/modules/shop/lib/faq'
 
 // The product page's FAQs section: a search box rather than a wall of questions.
 //
@@ -51,7 +51,7 @@ const SFS_NOSCRIPT_CSS = `
 `
 
 export function ProductFaqSearch({ items, ask, placeholder }: {
-  items: ShpFaqItem[]
+  items: ShpFaqRendered[]
   ask: { productId: string; buttonLabel: string; intro: string; thanks: string } | null
   placeholder: string
 }) {

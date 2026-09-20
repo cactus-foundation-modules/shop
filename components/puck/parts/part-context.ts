@@ -8,7 +8,7 @@ import type { CardFact, CardOverlay } from '@/modules/shop/lib/card-media'
 import type { PriceView } from '@/modules/shop/lib/pricing'
 import type { ResolvedShopCommerceMode } from '@/modules/shop/lib/commerce-mode-shared'
 import type { OrderSizeDeductionLineView } from '@/modules/shop/lib/order-size-deduction'
-import type { ShpFaqItem } from '@/modules/shop/lib/faq'
+import type { ShpFaqRendered } from '@/modules/shop/lib/faq'
 import type { ShpProduct } from '@/modules/shop/lib/types'
 import type { ProductTaxView } from '@/modules/shop/lib/tax-view-shared'
 
@@ -195,7 +195,7 @@ export type DetailPartContext = {
   // the walk up the category tree is a query. Empty on a shop with the feature
   // switched off and on every product nobody has written a question for, where
   // no FAQs section and no nav link appear at all.
-  faqs: ShpFaqItem[]
+  faqs: ShpFaqRendered[]
   // The "Ask a question" form under those questions, or null on a shop that has
   // not switched it on. Carries its own wording because the strings are shop
   // settings and buildDetailSections runs nowhere near the config.

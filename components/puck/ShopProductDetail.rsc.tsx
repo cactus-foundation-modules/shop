@@ -18,6 +18,7 @@ import { resolveShopDetailTabs } from '@/modules/shop/lib/detail-tabs'
 import { resolveShopDetailSpec } from '@/modules/shop/lib/detail-spec'
 import { getProductFaqCategoryChain } from '@/modules/shop/lib/db/catalogue'
 import { normaliseFaqItems, resolveProductFaqs } from '@/modules/shop/lib/faq'
+import { renderFaqItems } from '@/modules/shop/lib/faq-render'
 import { resolveShopGalleryExtras } from '@/modules/shop/lib/gallery-media'
 import { stripHtmlToPlainText } from '@/modules/shop/lib/strip-html'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
@@ -144,12 +145,19 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
   // it is skipped entirely on a shop with the feature off and on any product
   // that has said it inherits nothing - so a shop that never writes a question
   // pays for none of it.
+  //
+  // Rendered here and not further down because the section itself is drawn by a
+  // CLIENT component (the search box), and turning an answer's markup into safe
+  // HTML needs the sanitiser, which needs jsdom, which must never cross into the
+  // browser bundle. Server side is the only side that can do it.
   const faqs = config.productFaqsEnabled
-    ? resolveProductFaqs({
-        product: product.faqs,
-        categories: product.faqs.inherit ? await getProductFaqCategoryChain(product.id) : [],
-        shopWide: normaliseFaqItems(config.productFaqs),
-      })
+    ? renderFaqItems(
+        resolveProductFaqs({
+          product: product.faqs,
+          categories: product.faqs.inherit ? await getProductFaqCategoryChain(product.id) : [],
+          shopWide: normaliseFaqItems(config.productFaqs),
+        }),
+      )
     : []
 
   // The "Ask a question" form that sits under them. Independent of whether this

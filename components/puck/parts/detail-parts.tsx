@@ -1378,7 +1378,18 @@ export const tabsCss = ({ mobileBp }: Breakpoints) => `
    is body copy, not a caption. */
 .spd-faq{border-bottom:1px solid var(--color-border);padding:12px 0}
 .spd-faq > summary{cursor:pointer;font-weight:600;color:var(--color-fg)}
-.spd-tabs .spd-faq p{margin:8px 0 0;color:var(--color-text)}
+/* An answer's own markup. The .faq-a class is fixed inside FaqAccordion rather
+   than passed in, so this stylesheet and the category block's dress it
+   identically - see the note there. */
+.spd-tabs .spd-faq .faq-a{margin-top:8px;color:var(--color-text)}
+.spd-tabs .spd-faq .faq-a > *{margin:0 0 8px}
+.spd-tabs .spd-faq .faq-a > :last-child{margin-bottom:0}
+.spd-tabs .spd-faq .faq-a ul,.spd-tabs .spd-faq .faq-a ol{padding-left:20px}
+.spd-tabs .spd-faq .faq-a li{margin:2px 0}
+.spd-tabs .spd-faq .faq-a a{color:var(--color-primary);text-decoration:underline}
+.spd-tabs .spd-faq .faq-a img{max-width:100%;height:auto}
+.spd-tabs .spd-faq .faq-a table{border-collapse:collapse;width:100%}
+.spd-tabs .spd-faq .faq-a th,.spd-tabs .spd-faq .faq-a td{border:1px solid var(--color-border);padding:6px 8px;text-align:left}
 /* Standalone "Section links" block: the same nav strip, on its own, so it can
    sit above the image while the sections stay below. Links jump to the section
    anchors the Sections block renders in stacked/accordion mode. */
