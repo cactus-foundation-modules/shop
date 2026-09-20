@@ -87,7 +87,7 @@ export function PricingPanel({ state, setField, errors, currency, enabledPriceTy
           label="Amount inside the price"
           optional
           error={errors.orderSizeDeduction}
-          hint="Per item, not per order. Leave blank if this one carries nothing. It only ever comes off while the item is on offer."
+          hint="Per item, not per order. Leave blank if this one carries nothing. It comes off whatever this item is charged at, sale price or not, so it wants checking whenever you reprice."
         >
           {(p) => (
             <Control

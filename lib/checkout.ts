@@ -271,7 +271,7 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[]): Promise<{
     }
   }))
   const pooled = applyMinimumOrderQuantities(resolved.filter((line): line is PoolingLine => line !== null))
-  const deducted = await applyOrderSizeDeductions(pooled, enabledPriceTypes)
+  const deducted = await applyOrderSizeDeductions(pooled)
   return { lines: deducted.lines, orderSizeDeduction: deducted.states }
 }
 
@@ -287,21 +287,25 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[]): Promise<{
  * lines that never carried an amount. As a price change the VAT falls exactly
  * where the money did, and shp_order_items.unit_price records what was charged.
  *
+ * Note what it does NOT read: whether the line is on sale. The amount stamped on
+ * a product is a statement about the price being charged now, and a supplier
+ * whose amount sits inside the ordinary price is as ordinary a case as one whose
+ * amount sits inside a sale price.
+ *
  * Two shortcuts keep this free on the shops it is not for: the config switch, and
  * "does anything in this basket actually carry an amount". An ordinary shop
  * therefore fires no query at all.
  */
 export async function applyOrderSizeDeductions(
   lines: ResolvedCartLine[],
-  enabledPriceTypes: readonly string[] | undefined,
 ): Promise<{ lines: ResolvedCartLine[]; states: OrderSizeDeductionState[] }> {
   const { orderSizeDeductionEnabled } = await getShopConfigCached()
   if (!orderSizeDeductionEnabled) return { lines, states: [] }
 
   // The basket as the rule sees it. `lineSubtotal` less the resolver charges is
-  // the goods figure - see goodsValue in the rule module - and `onOffer` is the
-  // live sale test rather than the stamp, so a product whose offer has ended
-  // cannot lose money it no longer carries.
+  // the goods figure - see goodsValue in the rule module. The stamp on the
+  // product is the whole test: it says how much of TODAY'S price was put there
+  // to come back off, whether that price is a sale one or the ordinary one.
   const candidates: Array<OrderSizeDeductionLine & { index: number }> = lines.map((line, index) => ({
     index,
     supplier: line.product.supplier,
@@ -310,13 +314,13 @@ export async function applyOrderSizeDeductions(
     lineSubtotal: line.lineSubtotal,
     charges: line.charges ?? null,
     deduction: deductionAmount(line.product.orderSizeDeduction),
-    onOffer: isOnSale(line.product, enabledPriceTypes),
   }))
 
   // Nothing carrying an amount means nothing to deduct and nothing to say, so
-  // the supplier lookup never happens. A full-price basket from a supplier WITH
-  // a rule is exactly this case: it would qualify, and there is nothing to take.
-  if (!candidates.some((c) => c.onOffer && c.deduction != null)) return { lines, states: [] }
+  // the supplier lookup never happens. A basket of unstamped goods from a
+  // supplier WITH a rule is exactly this case: it would qualify, and there is
+  // nothing to take.
+  if (!candidates.some((c) => c.deduction != null)) return { lines, states: [] }
 
   const rules = await getDeductionRules(
     candidates.map((c) => c.supplier).filter((name): name is string => !!name),

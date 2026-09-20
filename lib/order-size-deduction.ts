@@ -38,11 +38,20 @@ export type OrderSizeDeductionLine = {
    *  subtotal: a delivery service inside a line's price is not goods, and a
    *  basket that clears the threshold only because of it never reached it. */
   charges?: ReadonlyArray<{ label: string; amount: number }> | null
-  /** The stored per-unit amount on the product. Null/0/negative all mean none. */
+  /**
+   * The stored per-unit amount on the product. Null/0/negative all mean none.
+   *
+   * It says how much of the price the shopper is being charged TODAY was put
+   * there for this rule to take back off - whichever of a product's prices that
+   * happens to be. The amount used to be ignored on anything not currently on
+   * sale, which sounded like a guard against a stale stamp and was really a
+   * guard against the ordinary case: a supplier whose amount sits inside the
+   * NORMAL price could only be made to work by inventing a sale price for the
+   * product, and the storefront then advertised that invention as an offer. The
+   * stamp is the owner's statement about the current price; keeping it in step
+   * with the price is the job of whatever sets the two, not of this file.
+   */
   deduction: number | null | undefined
-  /** Whether this line is CURRENTLY on offer. A stale amount left on a product
-   *  whose sale has ended must never take money off a full price. */
-  onOffer: boolean
 }
 
 /** Where one supplier stands in this basket, for the copy and for the tests. */
@@ -92,11 +101,10 @@ function goodsValue(line: OrderSizeDeductionLine): number {
 }
 
 /** What this line would lose, per unit, if its supplier qualified. Null unless
- *  the line is on offer AND carries an amount: a full-price line counts towards
- *  the threshold and loses nothing, which is the whole asymmetry of the rule and
- *  the easiest part of it to get wrong. */
+ *  the line carries an amount: a line carrying none counts towards the threshold
+ *  and loses nothing, which is the whole asymmetry of the rule and the easiest
+ *  part of it to get wrong. */
 function lineDeduction(line: OrderSizeDeductionLine): number | null {
-  if (!line.onOffer) return null
   const amount = deductionAmount(line.deduction)
   if (amount == null) return null
   // A deduction may never take a line below nothing. Capped at the unit price
@@ -176,8 +184,8 @@ export type DeductedLine<T> = T & {
  * The whole rule, applied to a basket: reduced lines, plus where each supplier
  * stands.
  *
- * Only lines that actually carry an amount lose anything. Full-price lines from
- * the same supplier count towards the threshold and are charged in full.
+ * Only lines that actually carry an amount lose anything. Lines from the same
+ * supplier carrying none count towards the threshold and are charged in full.
  */
 export function applyOrderSizeDeduction<T extends OrderSizeDeductionLine>(
   lines: readonly T[],

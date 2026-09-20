@@ -9,7 +9,7 @@
 // Pure, like the rule module it sits beside: no database, no next, nothing the
 // storefront bundle would object to.
 
-import { effectivePrice, isOnSale, type PricedProduct } from '@/modules/shop/lib/pricing'
+import { effectivePrice, type PricedProduct } from '@/modules/shop/lib/pricing'
 import {
   deductionAmount,
   orderSizeDeductionLineParts,
@@ -30,8 +30,10 @@ export type DeductionViewParams = {
   product: DeductionViewProduct
   /** The supplier's rule, or null when they have none - see getDeductionRules. */
   rule: OrderSizeDeductionRule | null
-  /** Which optional price types the shop runs, so a shop that has switched sale
-   *  prices off never advertises a deduction it would not apply. */
+  /** Which optional price types the shop runs, so the figure struck through is
+   *  the one the shopper is actually charged today - the same call the checkout
+   *  makes, on a shop that has sale prices switched off as much as one that has
+   *  them on. */
   enabledPriceTypes?: readonly string[]
   /**
    * Turns a stored figure into the one this shop prints (lib/tax-display.ts).
@@ -64,16 +66,18 @@ export type DeductionViewParams = {
  * The finished line, or null when there is nothing to say - which is every
  * product on every shop bar the handful this was built for.
  *
- * Silent unless all three hold: the supplier has a rule, the product carries an
- * amount, and the product is CURRENTLY on offer. That last one is not
- * decoration: a sale that has ended leaves the stamped amount behind, and a page
- * promising money off a price nobody built it into is a page making a promise
- * the checkout will not keep.
+ * Silent unless both hold: the supplier has a rule, and the product carries an
+ * amount. It deliberately does NOT also require the product to be on offer.
+ * That extra test read as a guard against a stale stamp and behaved as a ban on
+ * the ordinary case - a supplier whose amount sits inside the normal price
+ * could only be made to work by giving its products a sale price they never
+ * had, which the storefront then advertised as a genuine reduction. The same
+ * two tests decide it here and in the basket, so the page cannot promise
+ * something the checkout declines to do.
  */
 export function orderSizeDeductionView(params: DeductionViewParams): OrderSizeDeductionLineView | null {
   const { product, rule, enabledPriceTypes, adjust, currencySymbol, someOptionsOnly, taxView } = params
   if (!rule) return null
-  if (!isOnSale(product, enabledPriceTypes)) return null
   const amount = deductionAmount(product.orderSizeDeduction)
   if (amount == null) return null
 

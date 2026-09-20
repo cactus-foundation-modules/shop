@@ -80,7 +80,7 @@ describe('applyOrderSizeDeductions', () => {
   it('does nothing, and asks the database nothing, while the switch is off', async () => {
     config.mockResolvedValue({ orderSizeDeductionEnabled: false })
     const lines = [line({ price: 500, salePrice: 400, quantity: 1 })]
-    const out = await applyOrderSizeDeductions(lines, ['sale'])
+    const out = await applyOrderSizeDeductions(lines)
     expect(out.lines).toBe(lines)
     expect(out.states).toEqual([])
     expect(rules).not.toHaveBeenCalled()
@@ -91,7 +91,6 @@ describe('applyOrderSizeDeductions', () => {
     // supplier that HAS a rule. There is simply nothing to take off it.
     const out = await applyOrderSizeDeductions(
       [line({ price: 400, salePrice: null, deduction: null, quantity: 1 })],
-      ['sale'],
     )
     expect(out.states).toEqual([])
     expect(rules).not.toHaveBeenCalled()
@@ -100,7 +99,6 @@ describe('applyOrderSizeDeductions', () => {
   it('takes the money off a qualifying basket and records what came off', async () => {
     const out = await applyOrderSizeDeductions(
       [line({ price: 130, salePrice: 116, quantity: 4 })],
-      ['sale'],
     )
     expect(out.lines[0]!.unitPrice).toBe(110)
     expect(out.lines[0]!.lineSubtotal).toBe(440)
@@ -116,7 +114,6 @@ describe('applyOrderSizeDeductions', () => {
         line({ id: 'ok', price: 130, salePrice: 116, quantity: 3 }),
         line({ id: 'short', price: 130, salePrice: 116, quantity: 1, available: false, reason: 'The smallest order for this is 4 - add 3 more' }),
       ],
-      ['sale'],
     )
     expect(out.states[0]!.qualified).toBe(true)
     // Both lines are repriced; neither changes hands on whether it can be bought.
@@ -131,32 +128,36 @@ describe('applyOrderSizeDeductions', () => {
     const [pooled] = [line({ price: 130, salePrice: 116, quantity: 4 })]
     pooled!.minOrderQuantity = 4
     pooled!.minOrderPooled = true
-    const out = await applyOrderSizeDeductions([pooled!], ['sale'])
+    const out = await applyOrderSizeDeductions([pooled!])
     expect(out.lines[0]!.minOrderQuantity).toBe(4)
     expect(out.lines[0]!.minOrderPooled).toBe(true)
   })
 
-  it('reads the LIVE sale, not the stamp, so an ended offer loses nothing', async () => {
-    // The amount is still on the row; the sale price is not below the price any
-    // more. Deducting here would take money off a full price nobody built it into.
+  it('takes the amount off a product that is not on offer at all', async () => {
+    // The case the rule used to refuse. A supplier whose amount sits inside the
+    // ORDINARY price is not a sale, and the only way to make the old rule serve
+    // one was to invent a sale price for every product - which the storefront
+    // then advertised as a genuine reduction, on the card and on the page.
     const out = await applyOrderSizeDeductions(
-      [line({ price: 400, salePrice: 400, quantity: 1 })],
-      ['sale'],
+      [line({ price: 400, salePrice: null, quantity: 1 })],
     )
-    expect(out.lines[0]!.unitPrice).toBe(400)
-    expect(out.lines[0]!.orderSizeDeduction).toBeUndefined()
+    expect(out.lines[0]!.unitPrice).toBe(394)
+    expect(out.lines[0]!.orderSizeDeduction).toBe(6)
   })
 
-  it('respects a shop that has switched sale prices off entirely', async () => {
-    // effectivePrice charges the full price on such a shop, so nothing is on
-    // offer and nothing may be deducted - the two have to agree or the basket
-    // would deduct from a price the checkout never reduced.
+  it('takes it off the price the line is actually charged at', async () => {
+    // The pass runs on RESOLVED lines, so whichever of a product's prices the
+    // shop settled on - sale, ordinary, or the ordinary one because sale prices
+    // are switched off shop-wide - is already sitting in unitPrice by the time
+    // the rule sees it. The stamp is a statement about that figure, so the two
+    // agree by construction. What it cannot do is notice an owner who repriced
+    // and left the stamp behind, which is what the Suppliers report is for.
     const out = await applyOrderSizeDeductions(
-      [line({ price: 400, salePrice: 116, quantity: 1 })],
-      [],
+      [line({ price: 130, salePrice: 116, quantity: 1 }), line({ id: 'full', price: 400, salePrice: null, quantity: 1 })],
     )
-    expect(out.lines[0]!.orderSizeDeduction).toBeUndefined()
-    expect(rules).not.toHaveBeenCalled()
+    expect(out.lines[0]!.unitPrice).toBe(110)
+    expect(out.lines[1]!.unitPrice).toBe(394)
+    expect(out.states[0]!.saving).toBe(12)
   })
 
   it('leaves the money in a basket held back by resolver charges', async () => {
@@ -164,7 +165,7 @@ describe('applyOrderSizeDeductions', () => {
     // £300 of goods, against a £350 threshold: the basket has not reached it.
     const held = line({ price: 400, salePrice: 360, quantity: 1 })
     held.charges = [{ label: 'Delivery', amount: 60 }]
-    const out = await applyOrderSizeDeductions([held], ['sale'])
+    const out = await applyOrderSizeDeductions([held])
     expect(out.states[0]!.goodsSubtotal).toBe(300)
     expect(out.states[0]!.qualified).toBe(false)
     expect(out.lines[0]!.unitPrice).toBe(360)
@@ -177,7 +178,6 @@ describe('applyOrderSizeDeductions', () => {
         line({ id: 'b', supplier: 'Furdeco', price: 130, salePrice: 116 }),
         line({ id: 'c', supplier: null, price: 130, salePrice: 116 }),
       ],
-      ['sale'],
     )
     expect(rules).toHaveBeenCalledWith([DYNAMIC, 'Furdeco'])
   })

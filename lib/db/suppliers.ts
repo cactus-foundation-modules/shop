@@ -442,6 +442,13 @@ export type OrderSizeDeductionCheck = {
  *   never get back, and there is no way to tell the two apart from here - which
  *   is exactly why it is a report and not an error.
  *
+ *   Being on offer is no longer what decides whether an amount can be deducted
+ *   (see lib/order-size-deduction.ts) - it is kept here purely as the narrowing
+ *   that makes the list readable. Without it this is "every product that
+ *   supplier sells", which on a range where only some lines carry an amount is
+ *   hundreds of rows saying nothing. A product priced with an amount inside its
+ *   ORDINARY price and never stamped therefore will not show up here.
+ *
  * Deliberately generic: it knows nothing about catalogues, sale-code prefixes or
  * whatever script stamped the rows. It compares three columns and a join, which
  * is all any shop's version of this rule can be.
@@ -458,11 +465,11 @@ export async function listOrderSizeDeductionChecks(
   missing: OrderSizeDeductionCheck[]
 }> {
   const db = opts.client ?? prisma
-  // "On offer" here has to mean what effectivePrice means, or the report would
-  // flag rows the checkout would never deduct from: a sale price that is set,
+  // "On offer" here means what effectivePrice means: a sale price that is set,
   // non-negative and genuinely under the normal price. The shop-wide "are sale
   // prices switched on at all" half is settled by the caller, which does not
-  // open this report on a shop that has them off.
+  // open this report on a shop that has them off. It narrows the second list
+  // rather than describing the rule - see the note above.
   const onOffer = Prisma.sql`
     p."sale_price" IS NOT NULL AND p."sale_price" >= 0 AND p."sale_price" < p."price"
   `

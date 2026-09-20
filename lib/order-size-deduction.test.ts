@@ -37,7 +37,6 @@ const line = (over: Partial<OrderSizeDeductionLine> = {}): OrderSizeDeductionLin
     lineSubtotal: unitPrice * quantity,
     charges: null,
     deduction: 6,
-    onOffer: true,
     ...over,
   }
 }
@@ -193,17 +192,31 @@ describe('the qualifying subtotal', () => {
 })
 
 describe('which lines actually lose money', () => {
-  it('never takes anything off a line that is not currently on offer', () => {
-    // A sale that has ended leaves the stamped amount behind. Deducting it would
-    // take money off a full price nobody built it into.
+  it('never takes anything off a line carrying no amount', () => {
+    // The stamp is the whole test. A line without one counts towards the
+    // threshold and is charged in full, whether or not it is on offer.
     const { lines, states } = applyOrderSizeDeduction(
-      [line({ unitPrice: 400, quantity: 1, lineSubtotal: 400, deduction: 6, onOffer: false })],
+      [line({ unitPrice: 400, quantity: 1, lineSubtotal: 400, deduction: null })],
       [rule()],
     )
     expect(states[0]!.qualified).toBe(true)
     expect(states[0]!.saving).toBe(0)
     expect(lines[0]!.unitPrice).toBe(400)
     expect(lines[0]!.orderSizeDeduction).toBeNull()
+  })
+
+  it('takes the amount off a line that is not on offer', () => {
+    // The whole reason this file stopped asking. An amount inside the ORDINARY
+    // price is as ordinary as one inside a sale price, and refusing it forced a
+    // shop to invent a sale the storefront then advertised as real.
+    const { lines, states } = applyOrderSizeDeduction(
+      [line({ unitPrice: 400, quantity: 1, lineSubtotal: 400, deduction: 30 })],
+      [rule()],
+    )
+    expect(states[0]!.qualified).toBe(true)
+    expect(states[0]!.saving).toBe(30)
+    expect(lines[0]!.unitPrice).toBe(370)
+    expect(lines[0]!.orderSizeDeduction).toBe(30)
   })
 
   it('never takes a line below zero', () => {

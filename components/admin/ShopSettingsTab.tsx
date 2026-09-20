@@ -488,7 +488,7 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             Take an amount off once a basket is big enough
           </label>
           <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
-            For when a supplier builds a per-item amount into what they charge you and stops charging it once you order enough at once. Set the amount on each product under Prices, and how big the basket has to be on the supplier under Suppliers. It only ever comes off items that are on offer, and nothing at all happens until you have set both.
+            For when a supplier builds a per-item amount into what they charge you and stops charging it once you order enough at once. Set the amount on each product under Prices, and how big the basket has to be on the supplier under Suppliers. It comes off whatever the item is charged at, sale price or not, and nothing at all happens until you have set both.
           </p>
           {config.orderSizeDeductionEnabled && (
             <>
