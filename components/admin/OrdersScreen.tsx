@@ -599,7 +599,8 @@ export function OrdersScreen() {
                         <span className={`badge ${dispatch.cls}`}>{dispatch.label}</span>
                         {m?.hasPreOrder && <span className="badge badge-info">Pre-order</span>}
                       </div>
-                      {/* The soonest parcel still to arrive, never one that
+                      {/* The soonest thing still to arrive - a line's promised
+                          day, or a parcel's booked one - never something that
                           already has: the question this answers is "when is
                           the next van", and a delivered parcel is not it. */}
                       {nextDelivery && <p className="sox-sub sox-nowrap">Delivery due {nextDelivery}</p>}

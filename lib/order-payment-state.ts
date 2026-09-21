@@ -20,6 +20,11 @@
 // line_meta by label: same label replaces, everything else is left exactly as it
 // was. That way a module can restate its own "Delivery" line without touching a
 // variation's "Colour" line sitting next to it.
+//
+// It may also hand back its own machine-readable state (`data`), merged into the
+// line's `line_meta.data` by top-level key on the same principle. Shop never
+// reads a key of it; it exists so that a module which re-dates a line can keep
+// the new date where it can find it again, rather than only in a sentence.
 import { prisma } from '@/lib/db/prisma'
 import { gatherCartExtensionPoint } from '@/modules/shop/lib/line-meta'
 import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
@@ -46,7 +51,13 @@ export type OrderPaymentStateResult = {
   // Replacement fields for named order items, merged into each item's stored
   // line_meta by label. An item not mentioned is left alone; a field whose label
   // the item has never carried is appended.
-  items?: Array<{ itemId: string; fields: LineMetaField[] }>
+  items?: Array<{
+    itemId: string
+    fields: LineMetaField[]
+    // Keys of this line's `line_meta.data` to replace, each under the module's
+    // own namespaced key. A key not mentioned is left alone.
+    data?: Record<string, unknown>
+  }>
   // One sentence for the checkout's payment step, shown once the shopper has
   // picked this order's payment method. Plain text - shop only ever prints it.
   note?: string | null
@@ -58,20 +69,29 @@ export type OrderPaymentStateProvider = (
 
 const POINT = 'shop.order-payment-state'
 
-// Merge one provider's replacement fields into a line's stored meta. Label is the
-// identity: a module restates its own field and nothing else moves.
-function mergeFields(existing: LineMeta | null, replacements: LineMetaField[]): LineMeta {
+// Merge one provider's restatement into a line's stored meta. Label is the
+// identity for a field and the top-level key is the identity for data: a module
+// restates its own and nothing else moves.
+function mergeRestatement(existing: LineMeta | null, replacements: LineMetaField[], data: Record<string, unknown> | undefined): LineMeta {
   const fields = [...(existing?.fields ?? [])]
   for (const field of replacements) {
     const at = fields.findIndex((f) => f.label === field.label)
     if (at >= 0) fields[at] = field
     else fields.push(field)
   }
-  return { ...(existing ?? {}), fields }
+  const merged: LineMeta = { ...(existing ?? {}), fields }
+  if (data && Object.keys(data).length > 0) merged.data = { ...(existing?.data ?? {}), ...data }
+  return merged
 }
 
 function sameFields(a: LineMetaField[], b: LineMetaField[]): boolean {
   return a.length === b.length && a.every((f, i) => f.label === b[i]!.label && f.value === b[i]!.value && f.href === b[i]!.href)
+}
+
+// Compared as JSON: the values are whatever a provider serialised, so a JSON
+// round trip is exactly what they will be once stored anyway.
+function sameData(a: Record<string, unknown> | undefined, b: Record<string, unknown> | undefined): boolean {
+  return JSON.stringify(a ?? {}) === JSON.stringify(b ?? {})
 }
 
 /**
@@ -114,8 +134,9 @@ export async function applyOrderPaymentState(orderId: string): Promise<string[]>
     if (result.note) notes.push(result.note)
     for (const restatement of result.items ?? []) {
       const item = items.find((i) => i.id === restatement.itemId)
-      if (!item || restatement.fields.length === 0) continue
-      pending.set(item.id, mergeFields(pending.get(item.id) ?? item.lineMeta, restatement.fields))
+      const hasData = restatement.data !== undefined && Object.keys(restatement.data).length > 0
+      if (!item || (restatement.fields.length === 0 && !hasData)) continue
+      pending.set(item.id, mergeRestatement(pending.get(item.id) ?? item.lineMeta, restatement.fields, restatement.data))
     }
   }
 
@@ -123,7 +144,7 @@ export async function applyOrderPaymentState(orderId: string): Promise<string[]>
     const before = items.find((i) => i.id === itemId)?.lineMeta ?? null
     // Nothing to write when the wording is already what it should be - this runs
     // on every order creation, and most of them change nothing.
-    if (before && sameFields(before.fields, lineMeta.fields)) continue
+    if (before && sameFields(before.fields, lineMeta.fields) && sameData(before.data, lineMeta.data)) continue
     await prisma.$executeRaw`
       UPDATE "shp_order_items" SET "line_meta" = ${JSON.stringify(lineMeta)}::jsonb WHERE "id" = ${itemId}
     `

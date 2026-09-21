@@ -2,6 +2,7 @@ import { prisma, type PrismaTransactionClient } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import { decrementPreOrderCount, getProductById } from '@/modules/shop/lib/db/products'
 import { normaliseStoredPhone } from '@/modules/shop/lib/phone'
+import { nextDueDate, resolveOrderLineDueDates, type DueParcel } from '@/modules/shop/lib/order-line-due-date'
 import type { LineMeta, ShpAddress, ShpOrder, ShpOrderAgreement, ShpOrderItem, ShpOrderKind, ShpOrderStatus, ShpPaymentMethod, ShpPaymentStatus } from '@/modules/shop/lib/types'
 
 function mapOrder(r: Record<string, unknown>): ShpOrder {
@@ -706,9 +707,9 @@ export async function listOrders(filter: ListOrdersFilter): Promise<{ orders: Sh
 
 // What a row on the orders list needs beyond the order itself: how big it is,
 // how much of it has gone out, whether any of it is a pre-order, and when the
-// next of its parcels is due at the door. Fetched for a whole page of orders at
-// once rather than per row - one query for the lines and one for the parcels,
-// side by side - so a page of 50 orders costs the same as a page of one.
+// next thing on it is due at the door. Fetched for a whole page of orders at
+// once rather than per row - the lines, the parcels and the lines' promises side
+// by side - so a page of 50 orders costs the same as a page of one.
 export type OrderRowMetrics = {
   lineCount: number
   unitCount: number
@@ -716,11 +717,13 @@ export type OrderRowMetrics = {
   dispatchedUnits: number
   outstandingUnits: number
   hasPreOrder: boolean
-  /** The soonest booked delivery day, 'YYYY-MM-DD', among the parcels the
-   *  courier has not yet said arrived. A parcel already delivered is skipped,
-   *  so this is always the next thing to happen rather than the last - the
-   *  same choice railDelivery makes for the customer's own page. Null when no
-   *  parcel still out has a day booked. */
+  /** The soonest day, 'YYYY-MM-DD', anything on the order is due at the door:
+   *  the day a line still to go out was promised (shop.order-line-due-date),
+   *  or the courier's booked day for a parcel on its way. A delivered parcel is
+   *  skipped, so this is always the next thing to happen rather than the last -
+   *  the same choice railDelivery makes for the customer's own page. Null on an
+   *  order that is finished with (completed, cancelled, refunded) and on one
+   *  where nothing still to come has a day. See nextDueDate. */
   nextDeliveryDate: string | null
   /** At least one parcel, and every one of them delivered. Counted from
    *  delivered_at, the record the auto-complete and the order screen both go
@@ -728,9 +731,14 @@ export type OrderRowMetrics = {
   allDelivered: boolean
 }
 
+// Orders nothing is still due on, whatever their parcels say. A completed order
+// with a parcel the courier never confirmed is done with all the same, and a
+// date hanging off it would read as a van still owed.
+const SETTLED_ORDER_STATUSES = ['COMPLETED', 'CANCELLED', 'REFUNDED']
+
 export async function getOrderRowMetrics(orderIds: string[]): Promise<Record<string, OrderRowMetrics>> {
   if (orderIds.length === 0) return {}
-  const [rows, parcels] = await Promise.all([
+  const [rows, parcels, openLines] = await Promise.all([
     prisma.$queryRaw<Array<{
       order_id: string
       line_count: number
@@ -755,28 +763,73 @@ export async function getOrderRowMetrics(orderIds: string[]): Promise<Record<str
       WHERE oi."order_id" IN (${Prisma.join(orderIds)})
       GROUP BY oi."order_id"
     `,
-    // MIN on the text column is safe as a date comparison: the CHECK constraint
-    // (migration 039) holds every value to 'YYYY-MM-DD', which sorts as text in
-    // exactly the order it sorts as a calendar.
+    // One row per parcel, carrying which lines went in it: a parcel with no day
+    // booked yet is still due whenever those lines were promised.
     prisma.$queryRaw<Array<{
       order_id: string
-      parcel_count: number
-      delivered_count: number
-      next_delivery_date: string | null
+      delivery_date: string | null
+      delivered: boolean
+      item_ids: string[]
     }>>`
       SELECT s."order_id" AS order_id,
-             COUNT(*)::int AS parcel_count,
-             COUNT(s."delivered_at")::int AS delivered_count,
-             MIN(s."delivery_date") FILTER (WHERE s."delivered_at" IS NULL) AS next_delivery_date
+             s."delivery_date" AS delivery_date,
+             (s."delivered_at" IS NOT NULL) AS delivered,
+             COALESCE(ARRAY_AGG(si."order_item_id") FILTER (WHERE si."order_item_id" IS NOT NULL), ARRAY[]::text[]) AS item_ids
       FROM "shp_shipments" s
+      LEFT JOIN "shp_shipment_items" si ON si."shipment_id" = s."id"
       WHERE s."order_id" IN (${Prisma.join(orderIds)})
-      GROUP BY s."order_id"
+      GROUP BY s."id"
+    `,
+    // The lines of orders still in progress, with what each still has to send
+    // and its snapshot, for the providers to read their promises back out of.
+    // Settled orders are left out here, which is what keeps them dateless.
+    prisma.$queryRaw<Array<{
+      item_id: string
+      order_id: string
+      outstanding: number
+      line_meta: LineMeta | null
+      paid: boolean
+    }>>`
+      SELECT oi."id" AS item_id,
+             oi."order_id" AS order_id,
+             GREATEST(oi."quantity" - oi."refunded_qty" - COALESCE(sent."qty", 0), 0)::int AS outstanding,
+             oi."line_meta" AS line_meta,
+             (o."paid_at" IS NOT NULL) AS paid
+      FROM "shp_order_items" oi
+      JOIN "shp_orders" o ON o."id" = oi."order_id"
+      LEFT JOIN (
+        SELECT si."order_item_id" AS order_item_id, SUM(si."quantity")::int AS qty
+        FROM "shp_shipment_items" si GROUP BY si."order_item_id"
+      ) sent ON sent."order_item_id" = oi."id"
+      WHERE oi."order_id" IN (${Prisma.join(orderIds)})
+        AND o."status" NOT IN (${Prisma.join(SETTLED_ORDER_STATUSES)})
     `,
   ])
-  const parcelsByOrder = new Map(parcels.map((p) => [p.order_id, p]))
+
+  const dueByItem = await resolveOrderLineDueDates(openLines.map((l) => ({
+    itemId: l.item_id,
+    orderId: l.order_id,
+    lineMeta: l.line_meta ?? null,
+    paid: l.paid,
+  })))
+
+  const parcelsByOrder = new Map<string, DueParcel[]>()
+  for (const p of parcels) {
+    const list = parcelsByOrder.get(p.order_id) ?? []
+    list.push({ deliveryDate: p.delivery_date, delivered: p.delivered, itemIds: p.item_ids })
+    parcelsByOrder.set(p.order_id, list)
+  }
+  const openLinesByOrder = new Map<string, Array<{ itemId: string; outstanding: number }>>()
+  for (const l of openLines) {
+    const list = openLinesByOrder.get(l.order_id) ?? []
+    list.push({ itemId: l.item_id, outstanding: l.outstanding })
+    openLinesByOrder.set(l.order_id, list)
+  }
+
   const out: Record<string, OrderRowMetrics> = {}
   for (const r of rows) {
-    const p = parcelsByOrder.get(r.order_id)
+    const orderParcels = parcelsByOrder.get(r.order_id) ?? []
+    const lines = openLinesByOrder.get(r.order_id)
     out[r.order_id] = {
       lineCount: r.line_count,
       unitCount: r.unit_count,
@@ -784,8 +837,10 @@ export async function getOrderRowMetrics(orderIds: string[]): Promise<Record<str
       dispatchedUnits: r.dispatched_units,
       outstandingUnits: r.outstanding_units,
       hasPreOrder: r.has_pre_order,
-      nextDeliveryDate: p?.next_delivery_date ?? null,
-      allDelivered: p ? p.parcel_count > 0 && p.delivered_count === p.parcel_count : false,
+      // No open lines means a settled order (see the third query), which is due
+      // nothing whatever its parcels say.
+      nextDeliveryDate: lines ? nextDueDate(lines, orderParcels, dueByItem) : null,
+      allDelivered: orderParcels.length > 0 && orderParcels.every((p) => p.delivered),
     }
   }
   return out
