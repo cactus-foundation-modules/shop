@@ -705,9 +705,10 @@ export async function listOrders(filter: ListOrdersFilter): Promise<{ orders: Sh
 }
 
 // What a row on the orders list needs beyond the order itself: how big it is,
-// how much of it has gone out, and whether any of it is a pre-order. Fetched
-// for a whole page of orders in one query rather than per row, so a page of 50
-// orders is two round trips in total, not fifty-one.
+// how much of it has gone out, whether any of it is a pre-order, and when the
+// next of its parcels is due at the door. Fetched for a whole page of orders at
+// once rather than per row - one query for the lines and one for the parcels,
+// side by side - so a page of 50 orders costs the same as a page of one.
 export type OrderRowMetrics = {
   lineCount: number
   unitCount: number
@@ -715,36 +716,67 @@ export type OrderRowMetrics = {
   dispatchedUnits: number
   outstandingUnits: number
   hasPreOrder: boolean
+  /** The soonest booked delivery day, 'YYYY-MM-DD', among the parcels the
+   *  courier has not yet said arrived. A parcel already delivered is skipped,
+   *  so this is always the next thing to happen rather than the last - the
+   *  same choice railDelivery makes for the customer's own page. Null when no
+   *  parcel still out has a day booked. */
+  nextDeliveryDate: string | null
+  /** At least one parcel, and every one of them delivered. Counted from
+   *  delivered_at, the record the auto-complete and the order screen both go
+   *  by, rather than from the courier's stage words. */
+  allDelivered: boolean
 }
 
 export async function getOrderRowMetrics(orderIds: string[]): Promise<Record<string, OrderRowMetrics>> {
   if (orderIds.length === 0) return {}
-  const rows = await prisma.$queryRaw<Array<{
-    order_id: string
-    line_count: number
-    unit_count: number
-    refunded_units: number
-    dispatched_units: number
-    outstanding_units: number
-    has_pre_order: boolean
-  }>>`
-    SELECT oi."order_id" AS order_id,
-           COUNT(*)::int AS line_count,
-           COALESCE(SUM(oi."quantity"), 0)::int AS unit_count,
-           COALESCE(SUM(oi."refunded_qty"), 0)::int AS refunded_units,
-           COALESCE(SUM(COALESCE(sent."qty", 0)), 0)::int AS dispatched_units,
-           COALESCE(SUM(GREATEST(oi."quantity" - oi."refunded_qty" - COALESCE(sent."qty", 0), 0)), 0)::int AS outstanding_units,
-           BOOL_OR(oi."is_pre_order") AS has_pre_order
-    FROM "shp_order_items" oi
-    LEFT JOIN (
-      SELECT si."order_item_id" AS order_item_id, SUM(si."quantity")::int AS qty
-      FROM "shp_shipment_items" si GROUP BY si."order_item_id"
-    ) sent ON sent."order_item_id" = oi."id"
-    WHERE oi."order_id" IN (${Prisma.join(orderIds)})
-    GROUP BY oi."order_id"
-  `
+  const [rows, parcels] = await Promise.all([
+    prisma.$queryRaw<Array<{
+      order_id: string
+      line_count: number
+      unit_count: number
+      refunded_units: number
+      dispatched_units: number
+      outstanding_units: number
+      has_pre_order: boolean
+    }>>`
+      SELECT oi."order_id" AS order_id,
+             COUNT(*)::int AS line_count,
+             COALESCE(SUM(oi."quantity"), 0)::int AS unit_count,
+             COALESCE(SUM(oi."refunded_qty"), 0)::int AS refunded_units,
+             COALESCE(SUM(COALESCE(sent."qty", 0)), 0)::int AS dispatched_units,
+             COALESCE(SUM(GREATEST(oi."quantity" - oi."refunded_qty" - COALESCE(sent."qty", 0), 0)), 0)::int AS outstanding_units,
+             BOOL_OR(oi."is_pre_order") AS has_pre_order
+      FROM "shp_order_items" oi
+      LEFT JOIN (
+        SELECT si."order_item_id" AS order_item_id, SUM(si."quantity")::int AS qty
+        FROM "shp_shipment_items" si GROUP BY si."order_item_id"
+      ) sent ON sent."order_item_id" = oi."id"
+      WHERE oi."order_id" IN (${Prisma.join(orderIds)})
+      GROUP BY oi."order_id"
+    `,
+    // MIN on the text column is safe as a date comparison: the CHECK constraint
+    // (migration 039) holds every value to 'YYYY-MM-DD', which sorts as text in
+    // exactly the order it sorts as a calendar.
+    prisma.$queryRaw<Array<{
+      order_id: string
+      parcel_count: number
+      delivered_count: number
+      next_delivery_date: string | null
+    }>>`
+      SELECT s."order_id" AS order_id,
+             COUNT(*)::int AS parcel_count,
+             COUNT(s."delivered_at")::int AS delivered_count,
+             MIN(s."delivery_date") FILTER (WHERE s."delivered_at" IS NULL) AS next_delivery_date
+      FROM "shp_shipments" s
+      WHERE s."order_id" IN (${Prisma.join(orderIds)})
+      GROUP BY s."order_id"
+    `,
+  ])
+  const parcelsByOrder = new Map(parcels.map((p) => [p.order_id, p]))
   const out: Record<string, OrderRowMetrics> = {}
   for (const r of rows) {
+    const p = parcelsByOrder.get(r.order_id)
     out[r.order_id] = {
       lineCount: r.line_count,
       unitCount: r.unit_count,
@@ -752,6 +784,8 @@ export async function getOrderRowMetrics(orderIds: string[]): Promise<Record<str
       dispatchedUnits: r.dispatched_units,
       outstandingUnits: r.outstanding_units,
       hasPreOrder: r.has_pre_order,
+      nextDeliveryDate: p?.next_delivery_date ?? null,
+      allDelivered: p ? p.parcel_count > 0 && p.delivered_count === p.parcel_count : false,
     }
   }
   return out

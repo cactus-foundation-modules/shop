@@ -596,7 +596,11 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
 
   const statusBadge = badgeFor(ORDER_STATUS_BADGE, order.status)
   const paymentBadge = badgeFor(PAYMENT_STATUS_BADGE, order.paymentStatus)
-  const dispatchBadge = fulfilmentBadge(dispatch ? { dispatchedUnits, outstandingUnits } : undefined)
+  // Same rule as the orders list, so the badge cannot say "All delivered" there
+  // and "All dispatched" here about the same order.
+  const parcels = dispatch?.shipments ?? []
+  const allDelivered = parcels.length > 0 && parcels.every((s) => Boolean(s.deliveredAt))
+  const dispatchBadge = fulfilmentBadge(dispatch ? { dispatchedUnits, outstandingUnits, allDelivered } : undefined)
   // The method it was PLACED with, not necessarily the one on it now: a customer
   // who started a card payment from their own order page and thought better of
   // it may well have gone and done the transfer instead, and this button is how

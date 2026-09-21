@@ -3,6 +3,7 @@ import {
   deliveryProgress,
   formatClockTime,
   formatDeliveryDay,
+  formatDeliveryDayShort,
   formatDeliveredDayRelative,
   formatDeliveryDayRelative,
   deliveryBookingForShipment,
@@ -91,6 +92,28 @@ describe('formatDeliveryDay', () => {
   it('prints nothing for a date that is not one', () => {
     expect(formatDeliveryDay('08/09/2026')).toBe('')
     expect(formatDeliveryDay('')).toBe('')
+  })
+})
+
+describe('formatDeliveryDayShort', () => {
+  it('fits the day in a table column', () => {
+    expect(formatDeliveryDayShort('2026-09-08')).toBe('Tue 8 Sep')
+    expect(formatDeliveryDayShort('2026-12-25')).toBe('Fri 25 Dec')
+  })
+
+  it('names the same day whatever the machine thinks the time is', () => {
+    const previous = process.env.TZ
+    try {
+      process.env.TZ = 'Pacific/Honolulu'
+      expect(formatDeliveryDayShort('2026-09-08')).toBe('Tue 8 Sep')
+    } finally {
+      process.env.TZ = previous
+    }
+  })
+
+  it('prints nothing for a date that is not one', () => {
+    expect(formatDeliveryDayShort('08/09/2026')).toBe('')
+    expect(formatDeliveryDayShort('')).toBe('')
   })
 })
 

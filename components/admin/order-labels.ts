@@ -54,9 +54,14 @@ export function badgeFor(map: Record<string, Badge>, key: string): Badge {
 // building, never stored, so it cannot drift out of step with the parcels.
 // "Nothing to send" covers an order that is entirely refunded or entirely
 // digital - saying "Not dispatched" there would be a job that never comes.
-export function fulfilmentBadge(m: { dispatchedUnits: number; outstandingUnits: number } | undefined): Badge {
+// "All delivered" once everything has gone AND every parcel has landed: an
+// order that arrived last week still reading "All dispatched" makes it look as
+// though the van is somewhere on the M6. Optional, so a caller that knows
+// nothing about parcels gets the dispatch wording it always had.
+export function fulfilmentBadge(m: { dispatchedUnits: number; outstandingUnits: number; allDelivered?: boolean } | undefined): Badge {
   if (!m) return { cls: 'badge-default', label: '—' }
   if (m.outstandingUnits === 0 && m.dispatchedUnits === 0) return { cls: 'badge-default', label: 'Nothing to send' }
+  if (m.outstandingUnits === 0 && m.allDelivered) return { cls: 'badge-success', label: 'All delivered' }
   if (m.outstandingUnits === 0) return { cls: 'badge-success', label: 'All dispatched' }
   if (m.dispatchedUnits > 0) return { cls: 'badge-warning', label: 'Partly dispatched' }
   return { cls: 'badge-default', label: 'Not dispatched' }

@@ -14,6 +14,7 @@ import {
 } from '@/modules/shop/components/admin/order-labels'
 import { orderCompanyName } from '@/modules/shop/lib/order-display'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { formatDeliveryDayShort } from '@/modules/shop/lib/delivery-slot'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { useAlert, useConfirm } from '@/modules/shop/components/admin/dialogs'
 import type { ShpAddress } from '@/modules/shop/lib/types'
@@ -47,6 +48,10 @@ type RowMetrics = {
   dispatchedUnits: number
   outstandingUnits: number
   hasPreOrder: boolean
+  /** Optional, like `kind` above, so a response from an older deployment
+   *  still renders - it just says "All dispatched" and shows no day. */
+  nextDeliveryDate?: string | null
+  allDelivered?: boolean
 }
 type Overview = {
   awaitingPayment: number
@@ -551,6 +556,7 @@ export function OrdersScreen() {
                 const status = badgeFor(ORDER_STATUS_BADGE, o.status)
                 const payment = badgeFor(PAYMENT_STATUS_BADGE, o.paymentStatus)
                 const dispatch = fulfilmentBadge(m)
+                const nextDelivery = m?.nextDeliveryDate ? formatDeliveryDayShort(m.nextDeliveryDate) : ''
                 const company = orderCompanyName(o)
                 return (
                   <tr key={o.id} className={selected.has(o.id) ? 'is-selected' : ''}>
@@ -593,6 +599,10 @@ export function OrdersScreen() {
                         <span className={`badge ${dispatch.cls}`}>{dispatch.label}</span>
                         {m?.hasPreOrder && <span className="badge badge-info">Pre-order</span>}
                       </div>
+                      {/* The soonest parcel still to arrive, never one that
+                          already has: the question this answers is "when is
+                          the next van", and a delivered parcel is not it. */}
+                      {nextDelivery && <p className="sox-sub sox-nowrap">Delivery due {nextDelivery}</p>}
                     </td>
                     <td><span className={`badge ${status.cls}`}>{status.label}</span></td>
                     <td className="sox-num">

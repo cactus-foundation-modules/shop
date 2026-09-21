@@ -147,6 +147,21 @@ export function formatDeliveryDay(date: string): string {
   return `${weekday} ${ordinal(day)} of ${MONTHS[month - 1] ?? ''}`
 }
 
+/**
+ * "Tue 8 Sep" - the same day, small enough for a column in a table.
+ *
+ * For the owner's order list, where there are fifty of these stacked up and
+ * "Tuesday 8th of September" would wrap every row in two. Built by hand for
+ * the same reason as formatDeliveryDay: no instant is ever invented, so no
+ * timezone gets the chance to print the day before.
+ */
+export function formatDeliveryDayShort(date: string): string {
+  if (!isDeliveryDate(date)) return ''
+  const { year, month, day } = dateParts(date)
+  const weekday = WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()] ?? ''
+  return `${weekday.slice(0, 3)} ${day} ${(MONTHS[month - 1] ?? '').slice(0, 3)}`
+}
+
 /** "between 10:00 and 13:00", or '' unless both ends are real times. The exact
  *  form, for anywhere the 24-hour clock is what is wanted. */
 export function formatDeliveryWindow(start: string | null, end: string | null): string {
