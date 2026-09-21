@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AskProductQuestion } from '@/modules/shop/components/public/AskProductQuestion'
 import { FaqAccordion } from '@/modules/shop/components/public/FaqAccordion'
 import { matchFaqQuestions, type ShpFaqRendered } from '@/modules/shop/lib/faq'
@@ -77,6 +77,10 @@ export function ProductFaqSearch({ items, ask, placeholder }: {
   // every question after the first.
   const popOpen = focused && query.trim().length > 0
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // A blur just before the section goes away (a client-side navigation, say)
+  // would otherwise leave that timer to set state on a component that is gone.
+  useEffect(() => () => { if (blurTimer.current) clearTimeout(blurTimer.current) }, [])
 
   function choose(question: string) {
     setOpen((prev) => (prev.includes(question) ? prev : [...prev, question]))

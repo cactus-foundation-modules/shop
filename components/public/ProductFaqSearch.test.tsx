@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect } from 'vitest'
 import { act } from 'react'
-import { createRoot } from 'react-dom/client'
+import { createRoot, type Root } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ProductFaqSearch } from '@/modules/shop/components/public/ProductFaqSearch'
 import type { ShpFaqRendered } from '@/modules/shop/lib/faq'
@@ -77,14 +77,29 @@ describe('what a crawler reads', () => {
 })
 
 describe('what a shopper gets', () => {
+  let root: Root | null = null
+  let host: HTMLDivElement | null = null
+
+  // Each test's box has to leave the page with it. Left mounted, the next test's
+  // focus() blurred it, and its 150ms close timer went off after jsdom had
+  // already been torn down: "window is not defined", reported against no test.
+  afterEach(() => {
+    act(() => root?.unmount())
+    host?.remove()
+    root = null
+    host = null
+  })
+
   async function mount(ask: typeof ASK | null = ASK) {
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-    const root = createRoot(host)
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const mounted = createRoot(container)
+    host = container
+    root = mounted
     await act(async () => {
-      root.render(<ProductFaqSearch items={ITEMS} ask={ask} placeholder="Search our answers" />)
+      mounted.render(<ProductFaqSearch items={ITEMS} ask={ask} placeholder="Search our answers" />)
     })
-    const input = host.querySelector('input.sfs-input') as HTMLInputElement
+    const input = container.querySelector('input.sfs-input') as HTMLInputElement
     const type = async (value: string) => {
       await act(async () => {
         input.focus()
@@ -96,7 +111,7 @@ describe('what a shopper gets', () => {
     const click = async (el: Element) => {
       await act(async () => { el.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
     }
-    return { host, input, type, click }
+    return { host: container, input, type, click }
   }
 
   it('opens on no questions showing at all', async () => {
