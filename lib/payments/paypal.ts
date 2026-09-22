@@ -1,11 +1,14 @@
 // PROTECTED - PayPal payment provider integration (spec 7.2). Raw REST calls,
 // no SDK dependency, to keep the bundle lean (spec's own instruction).
 import { getPayPalApiBase } from '@/modules/shop/lib/env'
+import { getSiteUrl } from '@/lib/config/env'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
+import { signOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
 import type {
   ShpOrderDraft, ShpPaymentIntent, ShpPaymentProvider, ShpPaymentResult, ShpRefundRequest, ShpRefundResult, ShpWebhookResult,
 } from '@/modules/shop/lib/payments/provider'
 import { paypalLogo } from '@/modules/shop/lib/payments/logos'
+import { decimalToMinorUnits } from '@/modules/shop/lib/payments/webhook-amount'
 
 let cachedToken: { token: string; expiresAt: number } | null = null
 
@@ -28,14 +31,43 @@ async function getAccessToken(): Promise<string> {
 }
 
 async function paypalFetch(path: string, init: RequestInit): Promise<Response> {
-  const token = await getAccessToken()
-  return fetch(`${getPayPalApiBase()}${path}`, {
+  const send = (token: string) => fetch(`${getPayPalApiBase()}${path}`, {
     ...init,
     headers: { ...init.headers, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
   })
+  const res = await send(await getAccessToken())
+  // The token above is held for the life of a warm instance, and PayPal can stop
+  // honouring it before it says it will - the secret rotated, the app's access
+  // revoked. Every call on that instance then failed until the clock ran out.
+  // A 401 is PayPal refusing the token itself, before it did anything with the
+  // request, so asking once more with a fresh one cannot do anything twice.
+  if (res.status !== 401) return res
+  cachedToken = null
+  return send(await getAccessToken())
 }
 
+// The query parameter the confirmation page looks for to know it has been
+// handed back by PayPal, carrying the shop's own order id. PayPal adds its own
+// `token` (its order id) and `PayerID` alongside. Read by
+// components/public/OrderConfirmationClient.tsx, which spells it out itself
+// rather than importing it: that is a client file, and importing this one would
+// drag the secret-holding half of PayPal into the browser. Keep the two in step.
+const PAYPAL_RETURN_PARAM = 'paypalReturn'
+
 async function createIntent(order: ShpOrderDraft): Promise<ShpPaymentIntent> {
+  // Where PayPal puts the buyer down afterwards. Without these PayPal had
+  // nowhere to send anybody, so an approved payment was never captured and the
+  // order sat unpaid for good. The confirmation page is the one place with
+  // everything needed to finish the job: the signed receipt token opens it, and
+  // the shop's order id lets it ask the confirm route to capture. Absolute,
+  // because PayPal insists, and always this site's own address.
+  const siteUrl = getSiteUrl()
+  const returnUrl =
+    `${siteUrl}/shop/checkout/confirmation` +
+    `?orderNumber=${encodeURIComponent(order.orderNumber)}` +
+    `&t=${encodeURIComponent(signOrderReceiptToken(order.orderNumber))}` +
+    `&${PAYPAL_RETURN_PARAM}=${encodeURIComponent(order.orderId)}`
+
   const res = await paypalFetch('/v2/checkout/orders', {
     method: 'POST',
     body: JSON.stringify({
@@ -45,12 +77,44 @@ async function createIntent(order: ShpOrderDraft): Promise<ShpPaymentIntent> {
         custom_id: order.orderId,
         amount: { currency_code: order.currency, value: order.amount.toFixed(2) },
       }],
+      payment_source: {
+        paypal: {
+          experience_context: {
+            return_url: returnUrl,
+            // Back to checkout with the basket intact. The order left behind is
+            // unpaid and pruned in the usual way; the next "Place order" starts
+            // a fresh one, since a prepared payment never outlives its page.
+            cancel_url: `${siteUrl}/shop/checkout`,
+            // The money is taken the moment they land back here, so PayPal's
+            // button should say so rather than "Continue".
+            user_action: 'PAY_NOW',
+          },
+        },
+      },
     }),
   })
   if (!res.ok) throw new Error(`PayPal order create failed: ${res.status}`)
   const data = (await res.json()) as { id: string; links: Array<{ rel: string; href: string }> }
-  const approvalUrl = data.links.find((l) => l.rel === 'approve')?.href
+  // `payer-action` is what PayPal calls the approval link once the request
+  // carries a payment_source; `approve` is the older name, kept as a fallback.
+  const approvalUrl = data.links.find((l) => l.rel === 'payer-action' || l.rel === 'approve')?.href
   return { providerOrderId: data.id, approvalUrl }
+}
+
+type PayPalOrderBody = {
+  status: string
+  purchase_units: Array<{
+    custom_id?: string
+    payments?: { captures?: Array<{ id: string; amount?: { value: string; currency_code: string } }> }
+  }>
+}
+
+// Whether PayPal refused the capture because it had already been done - a
+// reload of the return page, or a second tab, getting there after the first.
+async function isAlreadyCaptured(res: Response): Promise<boolean> {
+  if (res.status !== 422) return false
+  const body = (await res.json().catch(() => null)) as { details?: Array<{ issue?: string }> } | null
+  return body?.details?.some((d) => d.issue === 'ORDER_ALREADY_CAPTURED') ?? false
 }
 
 // Captures the approved PayPal Order server-side.
@@ -58,16 +122,24 @@ async function confirmPayment(order: ShpOrderDraft, payload: unknown): Promise<S
   const body = payload as { paypalOrderId?: string } | null
   const paypalOrderId = body?.paypalOrderId
   if (!paypalOrderId) return { success: false, error: 'Missing paypalOrderId' }
+  // Pasted into a path below, and it came off a query string.
+  if (!/^[A-Z0-9]{1,64}$/i.test(paypalOrderId)) return { success: false, error: 'Invalid paypalOrderId' }
 
-  const res = await paypalFetch(`/v2/checkout/orders/${paypalOrderId}/capture`, { method: 'POST' })
-  if (!res.ok) return { success: false, error: `PayPal capture failed: ${res.status}` }
-  const data = (await res.json()) as {
-    status: string
-    purchase_units: Array<{
-      custom_id?: string
-      payments?: { captures?: Array<{ id: string; amount?: { value: string; currency_code: string } }> }
-    }>
+  let res = await paypalFetch(`/v2/checkout/orders/${paypalOrderId}/capture`, { method: 'POST' })
+  // Captured already, by an earlier attempt whose answer never made it back.
+  // Read the order instead and run it through exactly the same checks: the
+  // money was taken, and calling that a refusal would tell a buyer who has paid
+  // that they have not.
+  if (!res.ok && await isAlreadyCaptured(res)) {
+    res = await paypalFetch(`/v2/checkout/orders/${paypalOrderId}`, { method: 'GET' })
   }
+  // Never `declined`. A refused capture (a declined funding source, most often)
+  // is recovered by sending the buyer back to PayPal to choose another way to
+  // pay against the same PayPal order, so the shop's order stays unpaid rather
+  // than failed - and nothing in this response proves the PayPal order was this
+  // order's to begin with.
+  if (!res.ok) return { success: false, error: `PayPal capture failed: ${res.status}` }
+  const data = (await res.json()) as PayPalOrderBody
   if (data.status !== 'COMPLETED') return { success: false, error: `Capture not completed (status: ${data.status})` }
   const customId = data.purchase_units[0]?.custom_id
   if (customId !== order.orderId) return { success: false, error: 'PayPal order does not match this order' }
@@ -130,7 +202,7 @@ async function handleWebhook(req: Request): Promise<ShpWebhookResult> {
     resource: {
       custom_id?: string
       id: string
-      amount?: { value?: string }
+      amount?: { value?: string; currency_code?: string }
       seller_payable_breakdown?: { total_refunded_amount?: { value?: string } }
     }
   }
@@ -138,7 +210,19 @@ async function handleWebhook(req: Request): Promise<ShpWebhookResult> {
   if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED') {
     const orderId = event.resource.custom_id
     if (!orderId) return { error: 'Missing custom_id' }
-    return { orderId, status: 'PAID', providerReference: event.resource.id }
+    // What the capture actually took, for the route to check against the order
+    // (see webhook-amount.ts). Read from PayPal's decimal string, never via a
+    // float; left off altogether when PayPal does not say, which settles the
+    // order as it always was.
+    const value = event.resource.amount?.value
+    const currency = event.resource.amount?.currency_code
+    const minorUnits = value ? decimalToMinorUnits(value) : null
+    return {
+      orderId,
+      status: 'PAID',
+      providerReference: event.resource.id,
+      ...(minorUnits !== null && currency ? { paidAmount: { minorUnits, currency } } : {}),
+    }
   }
 
   if (event.event_type === 'PAYMENT.CAPTURE.REFUNDED') {
@@ -171,7 +255,13 @@ async function handleWebhook(req: Request): Promise<ShpWebhookResult> {
 
     // Penny tolerance for rounding on the way through PayPal.
     const fully = refundedSoFar + 0.01 >= orderTotal
-    return { orderId, status: fully ? 'REFUNDED' : 'PARTIALLY_REFUNDED' }
+    return {
+      orderId,
+      status: fully ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
+      // Cumulative only when PayPal gave the breakdown; this refund's own
+      // amount otherwise, which is the same thing on the common single refund.
+      refundedTotal: refundedSoFar.toFixed(2),
+    }
   }
 
   return {}

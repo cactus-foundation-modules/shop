@@ -65,6 +65,15 @@ export type ShopGate =
 //
 // Staff with shop access see the whole storefront regardless, so they can walk
 // it before reopening; everyone else is blocked.
+//
+// Everything that sells, that is - not everything a customer has already
+// bought. The post-purchase surfaces are deliberately left outside this gate,
+// the same call the paperwork makes (lib/document-access.ts): guest tracking
+// and the order-email landing page, the receipt proof and order status behind
+// the confirmation page, delivery updates and live delivery, the order pages
+// in the account area, and paid-for downloads. A customer whose sofa is still
+// on the lorry is owed its whereabouts however shut the shop is. Anything that
+// starts a NEW order - the catalogue, the basket, the checkout - stays behind it.
 export async function getShopGate(): Promise<ShopGate> {
   const config = await getShopConfigCached()
   // Only the CLOSED path reads the session cookie. On an open shop this stays
@@ -80,6 +89,23 @@ export async function getShopGate(): Promise<ShopGate> {
 export async function shopClosedResponse(): Promise<Response | null> {
   const gate = await getShopGate()
   return gate.blocked ? errorResponse(gate.message, 503) : null
+}
+
+// The checkout's own counterpart, for the routes that price an order or make
+// one. Stricter than shopClosedResponse, because BROWSE_ONLY is open for looking
+// and shut for ordering; but staff with shop access still get through, whether
+// the shop is closed or browse-only, for the reason they see a closed storefront
+// at all - so the owner can walk the whole checkout (totals, delivery, payment)
+// before letting the public back in. The session is only read when the shop is
+// not open, so an open shop's checkout costs nothing extra.
+export async function checkoutClosedResponse(): Promise<Response | null> {
+  const config = await getShopConfigCached()
+  if (config.shopStatus === 'OPEN') return null
+  if (await canPreviewClosedShop()) return null
+  const message = config.shopStatus === 'CLOSED' && config.shopClosedMessage.trim()
+    ? config.shopClosedMessage
+    : 'The shop is not currently accepting orders.'
+  return errorResponse(message, 503)
 }
 
 // Shared session + permission gate for admin API routes. Returns the session

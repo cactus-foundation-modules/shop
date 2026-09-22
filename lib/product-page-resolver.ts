@@ -40,6 +40,11 @@ const POINT = 'shop.product-page-resolver'
 // tie-break resolveShopDetailProvider uses, for the same reason: two modules
 // aliasing one URL to two different products would need an arbiter, and the query
 // order is as good as any and stable.
+//
+// A resolver that throws is taken as declining, as a throwing
+// shop.product-selected-variation provider is: the next module still gets its
+// turn, and a URL nobody claims 404s as it always did, rather than one broken
+// module turning every variation deep link into an error page.
 export async function resolveAliasedProduct(slug: string, found: ShpProduct | null): Promise<ShpProduct | null> {
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return null
@@ -53,8 +58,12 @@ export async function resolveAliasedProduct(slug: string, found: ShpProduct | nu
       if (entry.point !== POINT) continue
       const provider = providers[entry.id] as ShopProductPageResolver | undefined
       if (!provider) continue
-      const resolved = await provider.resolve(slug, found)
-      if (resolved) return resolved
+      try {
+        const resolved = await provider.resolve(slug, found)
+        if (resolved) return resolved
+      } catch (error) {
+        console.error(`[shop] product-page resolver "${entry.id}" failed:`, error)
+      }
     }
   }
   return null

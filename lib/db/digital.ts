@@ -46,6 +46,43 @@ export async function incrementDownloadCount(id: string): Promise<void> {
   await prisma.$executeRaw`UPDATE "shp_digital_downloads" SET "download_count" = "download_count" + 1 WHERE "id" = ${id}`
 }
 
+/**
+ * Takes one of the link's downloads before a byte is sent, or reports that
+ * there are none left. True when the slot was taken.
+ *
+ * The limit lives in the WHERE, so the check and the count are one statement.
+ * Reading the count and adding to it afterwards let a shopper with one download
+ * left open five tabs at once and get five: every request read "one left"
+ * before any of them had finished and counted. Here the row lock makes the
+ * second request wait for the first, and by then the first has taken the last.
+ *
+ * Two statements rather than one with an `IS NULL OR` in it: a parameter that
+ * is sometimes a number and sometimes NULL has to be cast to be compared, and
+ * the unlimited case has nothing to compare anyway.
+ */
+export async function reserveDownloadSlot(id: string, limit: number | null): Promise<boolean> {
+  const taken = limit == null
+    ? await prisma.$executeRaw`
+        UPDATE "shp_digital_downloads" SET "download_count" = "download_count" + 1
+        WHERE "id" = ${id}
+      `
+    : await prisma.$executeRaw`
+        UPDATE "shp_digital_downloads" SET "download_count" = "download_count" + 1
+        WHERE "id" = ${id} AND "download_count" < ${limit}
+      `
+  return taken > 0
+}
+
+/** Hands back a slot reserveDownloadSlot took, for a transfer that never
+ *  finished - the file could not be fetched, or the customer's connection
+ *  dropped partway. Clamped at zero so a stray second call cannot go negative. */
+export async function releaseDownloadSlot(id: string): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "shp_digital_downloads" SET "download_count" = GREATEST("download_count" - 1, 0)
+    WHERE "id" = ${id}
+  `
+}
+
 export async function listDownloadsForOrder(orderId: string): Promise<ShpDigitalDownload[]> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_digital_downloads" WHERE "order_id" = ${orderId}`
   return rows.map(mapDownload)

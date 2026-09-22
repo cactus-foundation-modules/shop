@@ -163,3 +163,26 @@ describe('netOrderOfRefunds', () => {
     expect(tax.toFixed(2)).toBe(net.order.taxAmount)
   })
 })
+
+describe('netOrderOfRefunds and delivery', () => {
+  it('takes refunded delivery off the delivery charge, its VAT with it', () => {
+    const items = [item({ id: 'a' }), item({ id: 'b' })]
+    // £10 delivery plus £2 VAT; the whole £12 was refunded.
+    const source = order({ shippingAmount: '10.00', taxAmount: '42.00', total: '252.00' })
+    const net = netOrderOfRefunds(source, items, [], 12)
+    expect(net.order.shippingAmount).toBe('0.00')
+    expect(net.order.taxAmount).toBe('40.00')
+    expect(net.order.total).toBe('240.00')
+    expect(net.refundedTotal).toBe('12.00')
+  })
+
+  it('takes half the delivery off for half of it refunded', () => {
+    const items = [item({ id: 'a' }), item({ id: 'b' })]
+    const source = order({ shippingAmount: '10.00', taxAmount: '42.00', total: '252.00' })
+    const net = netOrderOfRefunds(source, items, [], 6)
+    expect(net.order.shippingAmount).toBe('5.00')
+    expect(net.order.taxAmount).toBe('41.00')
+    expect(net.order.total).toBe('246.00')
+  })
+})
+

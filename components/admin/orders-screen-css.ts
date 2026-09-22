@@ -219,6 +219,7 @@ export const ordersScreenCss = `
 .sox-stranded-meta{font-size:0.75rem;color:var(--color-text-muted)}
 /* The raw failure, kept readable but out of the way - it is for whoever ends up
    diagnosing it, not for the owner deciding whether to ring the customer. */
+.sox-stranded-dismiss{margin-top:0.5rem}
 .sox-stranded-error{margin:0.375rem 0 0;font-size:0.6875rem;line-height:1.4;
   font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);
   color:var(--color-text-muted);word-break:break-word;overflow-wrap:anywhere}

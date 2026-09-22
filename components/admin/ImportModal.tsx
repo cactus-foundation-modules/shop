@@ -2,9 +2,46 @@
 
 import { useState } from 'react'
 import { parseCsv, headerMatchesFormat, headerMatchesUpdateFormat, CSV_COLUMNS } from '@/modules/shop/lib/csv'
+import { tooLargeReason, uploadErrorMessage } from '@/lib/media/limits'
+import { IMPORT_CSV_MAX_BYTES, IMPORT_CSV_MAX_MB, SPLIT_THE_SHEET, needsDirectUpload } from '@/modules/shop/lib/direct-upload'
+import { sendToStorage, shopRouteError } from '@/modules/shop/lib/direct-upload-client'
 
 type Step = 'upload' | 'mapping' | 'progress'
 type Mode = 'FULL' | 'UPDATE_ONLY'
+
+const ROUTE = '/api/m/shop/admin/products/import'
+
+/**
+ * Start the import on the server, whichever way the sheet has to travel. Returns
+ * the job to poll, or the sentence to show. Small sheets post as a form, as they
+ * always have; a bigger one goes straight to storage first and the route reads
+ * it back from there (see lib/direct-upload.ts).
+ */
+async function startImport(file: File, mode: Mode, map?: Record<string, string>): Promise<{ jobId: string } | { error: string }> {
+  let res: Response
+  if (needsDirectUpload(file.size)) {
+    const sent = await sendToStorage(ROUTE, file, { limitMb: IMPORT_CSV_MAX_MB, advice: SPLIT_THE_SHEET })
+    if (!sent.ok) return { error: sent.error }
+    res = await fetch(ROUTE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'import', filename: file.name, key: sent.key, token: sent.token, mode, columnMap: map ?? null }),
+    })
+    if (!res.ok) return { error: await shopRouteError(res, file, IMPORT_CSV_MAX_MB) }
+  } else {
+    const body = new FormData()
+    body.append('file', file)
+    body.append('mode', mode)
+    if (map) body.append('columnMap', JSON.stringify(map))
+    res = await fetch(ROUTE, { method: 'POST', body })
+    // Not res.json(): a refusal from the hosting platform (a file too big to
+    // accept) is an HTML page, and parsing it threw away the reason.
+    if (!res.ok) return { error: await uploadErrorMessage(res, file) }
+  }
+  const data: unknown = await res.json().catch(() => null)
+  const jobId = typeof data === 'object' && data !== null && 'jobId' in data ? (data as { jobId: unknown }).jobId : null
+  return typeof jobId === 'string' ? { jobId } : { error: 'The import started, but the reply could not be read. Reload the page to see how it is getting on.' }
+}
 
 // The columns a sale-price sheet carries: the product's own code to match on,
 // then the offer price and the code the supplier wants while it is on. Offered
@@ -27,9 +64,19 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
   const [error, setError] = useState<string | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
   const [progress, setProgress] = useState<{ status: string; createdCount: number; updatedCount: number; skippedCount: number; totalRows: number } | null>(null)
+  // A big sheet takes a while to send, and the first click is the one that
+  // counts: a second would start the same import twice over.
+  const [sending, setSending] = useState(false)
 
   async function handleFile(f: File) {
     setError(null)
+    // The same ceiling the server holds, said before anything is read or sent:
+    // past it the upload is refused outright, and the owner may as well split
+    // the sheet now rather than after waiting for it.
+    if (f.size > IMPORT_CSV_MAX_BYTES) {
+      setError(`${tooLargeReason(f.size, IMPORT_CSV_MAX_MB)} ${SPLIT_THE_SHEET}`)
+      return
+    }
     setFile(f)
     const text = await f.text()
     const rows = parseCsv(text)
@@ -44,16 +91,20 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
   }
 
   async function submit(f: File, map?: Record<string, string>) {
-    const body = new FormData()
-    body.append('file', f)
-    body.append('mode', mode)
-    if (map) body.append('columnMap', JSON.stringify(map))
-    const res = await fetch('/api/m/shop/admin/products/import', { method: 'POST', body })
-    if (!res.ok) { setError((await res.json()).error ?? 'Import failed to start'); return }
-    const { jobId: id } = await res.json()
-    setJobId(id)
-    setStep('progress')
-    poll(id)
+    if (sending) return
+    setError(null)
+    setSending(true)
+    try {
+      const started = await startImport(f, mode, map)
+      if ('error' in started) { setError(started.error); return }
+      setJobId(started.jobId)
+      setStep('progress')
+      poll(started.jobId)
+    } catch {
+      setError('The import could not be started. Check your connection and try again.')
+    } finally {
+      setSending(false)
+    }
   }
 
   function poll(id: string) {
@@ -116,8 +167,10 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
                 {mode === 'FULL'
                   ? 'Choose a CSV file exported from Cactus, or your own using the same columns as the import template.'
                   : 'Choose a CSV file with a sku (or slug) column plus the columns you want to change.'}
+                {` Files can be up to ${IMPORT_CSV_MAX_MB} MB.`}
               </p>
-              <input type="file" accept=".csv,text/csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f) }} />
+              <input type="file" accept=".csv,text/csv" disabled={sending} onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f) }} />
+              {sending && <p role="status" style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', margin: 0 }}>Sending the sheet - a big one can take a little while.</p>}
             </div>
           )}
 
@@ -146,8 +199,8 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
               {mode === 'UPDATE_ONLY' && !hasMatchColumn && (
                 <p style={{ fontSize: '0.8125rem', color: 'var(--color-danger)', margin: 0 }}>Pick a sku or slug column first, or no row can be matched to a product.</p>
               )}
-              <button type="button" className="btn btn-primary" disabled={!file || (mode === 'UPDATE_ONLY' && !hasMatchColumn)} onClick={() => file && submit(file, columnMap)} style={{ justifySelf: 'start' }}>
-                Start import
+              <button type="button" className="btn btn-primary" disabled={!file || sending || (mode === 'UPDATE_ONLY' && !hasMatchColumn)} onClick={() => file && submit(file, columnMap)} style={{ justifySelf: 'start' }}>
+                {sending ? 'Sending the sheet…' : 'Start import'}
               </button>
             </div>
           )}
@@ -159,6 +212,12 @@ export function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: 
                 <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
                   {progress.createdCount} created, {progress.updatedCount} updated, {progress.skippedCount} skipped
                   {progress.totalRows ? ` of ${progress.totalRows} rows` : ''}
+                </p>
+              )}
+              {progress?.status === 'FAILED' && (
+                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', margin: 0 }}>
+                  The import stopped before the end of the file - usually because a big file ran out of time. Everything
+                  it got through has been saved. Import the same file again to carry on: rows already in are left as they are.
                 </p>
               )}
               {(progress?.status === 'COMPLETED' || progress?.status === 'FAILED') && (

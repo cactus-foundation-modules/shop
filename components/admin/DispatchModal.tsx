@@ -16,6 +16,11 @@ type DispatchLine = {
   refundedQty: number
   dispatchedQty: number
   outstandingQty: number
+  /** Units the customer has asked to call off that nobody has decided on yet.
+   *  Optional because only the dispatch route's own read carries it. */
+  pendingCancelQty?: number
+  /** Units the customer has asked to send back, likewise undecided. */
+  pendingReturnQty?: number
 }
 
 // Per-item dispatch modal, built on the same bones as RefundModal: a quantity
@@ -45,6 +50,12 @@ export function DispatchModal({ orderId, lines, couriers, onClose, onDone }: {
     .filter((x) => x.quantity > 0)
   const totalUnits = selected.reduce((sum, x) => sum + x.quantity, 0)
   const nothingOutstanding = lines.every((l) => l.outstandingQty === 0)
+  // Lines still to go out that the customer has asked to call off. The server
+  // will not stop this dispatch - an ask is not an approval, and the owner may
+  // yet say no - so this is the one place the person packing finds out before
+  // the van does rather than after the refund.
+  const askedToCancel = lines.some((l) => (l.pendingCancelQty ?? 0) > 0 && l.outstandingQty > 0)
+  const askedToReturn = lines.some((l) => (l.pendingReturnQty ?? 0) > 0)
 
   async function submit() {
     if (selected.length === 0) return
@@ -79,6 +90,19 @@ export function DispatchModal({ orderId, lines, couriers, onClose, onDone }: {
               Everything on this order has either gone out or been refunded, so there is nothing left to dispatch.
             </p>
           )}
+          {askedToCancel && (
+            <div className="alert alert-warning" style={{ margin: 0, fontSize: '0.8125rem' }}>
+              The customer has asked to call off some of what is left on this order, and nobody has decided yet. Check
+              the request before sending the lines marked below - if it is approved, anything that has gone out has to
+              come back before the money does.
+            </div>
+          )}
+          {!askedToCancel && askedToReturn && (
+            <p style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
+              The customer has asked to send some of this order back. It is worth a look at their request before more of
+              the same goes out.
+            </p>
+          )}
           {error && <p style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}>{error}</p>}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -91,7 +115,19 @@ export function DispatchModal({ orderId, lines, couriers, onClose, onDone }: {
                 const outstanding = line.outstandingQty
                 return (
                   <tr key={line.orderItemId} style={{ borderBottom: '1px solid var(--color-border)', color: outstanding === 0 ? 'var(--color-text-secondary)' : undefined }}>
-                    <td style={{ padding: '0.375rem' }}>{line.productName}</td>
+                    <td style={{ padding: '0.375rem' }}>
+                      {line.productName}
+                      {(line.pendingCancelQty ?? 0) > 0 && outstanding > 0 && (
+                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--color-warning)' }}>
+                          Customer has asked to call off {line.pendingCancelQty}
+                        </span>
+                      )}
+                      {(line.pendingReturnQty ?? 0) > 0 && (
+                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                          Customer has asked to send back {line.pendingReturnQty}
+                        </span>
+                      )}
+                    </td>
                     <td>{line.quantity}</td>
                     <td>{line.dispatchedQty}</td>
                     <td>{line.refundedQty}</td>

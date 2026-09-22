@@ -9,6 +9,7 @@
 // settlement that has already gone wrong, and an alarm that throws while raising
 // itself would turn a recoverable incident into a lost one. The original error is
 // always what reaches the caller.
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 
 export type StrandedPayment = {
@@ -66,6 +67,49 @@ export async function recordStrandedPayment(draftId: string, err: unknown): Prom
     // Loud, because this is the alarm failing to sound. Never rethrown: the
     // settlement's own error is the one that matters to the caller.
     console.error(`[shop] could not record a stranded payment for draft ${draftId}`, writeErr)
+  }
+}
+
+/**
+ * A payment that arrived for an order which no longer exists.
+ *
+ * The on-page card methods create an unpaid order the moment a shopper picks
+ * them, and the daily sweep clears unpaid orders after a day
+ * (pruneAbandonedPendingOrders). A card box left open in a tab for longer than
+ * that can still be paid - Stripe's payment intents do not expire - and the
+ * money then lands against an order the sweep has already removed. The webhook
+ * found nothing to mark paid and said nothing, which is the one failure this
+ * table exists to stop being silent.
+ *
+ * Filed on the same banner as a draft that never became an order, keyed on the
+ * order id the payment was taken for: a provider retrying the webhook bumps
+ * `attempts` instead of adding rows. There is no draft to rebuild it from, so
+ * the note says what to do instead.
+ */
+export async function recordOrphanedPayment(input: {
+  orderId: string
+  orderNumber: string
+  paymentMethod: string
+  amountMinorUnits: number
+  currency: string
+}): Promise<void> {
+  try {
+    // Pence to pounds without passing through a float: the column is NUMERIC.
+    const total = new Prisma.Decimal(input.amountMinorUnits).div(100).toFixed(2)
+    const note = "Paid after its unpaid order had been cleared away (unpaid orders are removed after a day), so there is no order and nothing to rebuild it from. Refund the payment in your provider's account, or take the order again by hand and keep the payment."
+    await prisma.$executeRaw`
+      INSERT INTO "shp_stranded_payments" (
+        "draft_id", "order_number", "payment_method", "total", "currency", "error"
+      ) VALUES (
+        ${input.orderId}, ${input.orderNumber}, ${input.paymentMethod},
+        ${total}::numeric, ${input.currency.toUpperCase()}, ${note}
+      )
+      ON CONFLICT ("draft_id") DO UPDATE
+        SET "attempts" = "shp_stranded_payments"."attempts" + 1,
+            "last_seen_at" = CURRENT_TIMESTAMP
+    `
+  } catch (writeErr) {
+    console.error(`[shop] could not record an orphaned payment for order ${input.orderId}`, writeErr)
   }
 }
 

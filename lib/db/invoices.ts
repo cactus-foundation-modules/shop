@@ -205,8 +205,8 @@ export async function saveSinkResults(invoiceId: string, results: ShpInvoiceSink
 
 /** Voids an invoice. Never deletes: the number stays spent and the document
  *  stays readable, which is the whole point of voiding rather than removing. */
-export async function voidInvoice(invoiceId: string, reason: string): Promise<boolean> {
-  const count = await prisma.$executeRaw`
+export async function voidInvoice(invoiceId: string, reason: string, tx?: PrismaTransactionClient): Promise<boolean> {
+  const count = await (tx ?? prisma).$executeRaw`
     UPDATE "shp_invoices"
     SET "status" = 'VOID', "voided_at" = CURRENT_TIMESTAMP,
         "void_reason" = ${reason.trim() || null}, "updated_at" = CURRENT_TIMESTAMP

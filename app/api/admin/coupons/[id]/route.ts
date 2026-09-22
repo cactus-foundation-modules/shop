@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { getSiteTimezone } from '@/lib/config/timezone.server'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { updateCoupon, deleteCoupon } from '@/modules/shop/lib/db'
+import { DiscountWindowInput, discountExpiryInstant, discountWindowInstant } from '@/modules/shop/lib/discount-window'
 
 const Body = z.object({
   code: z.string().min(1).optional(),
@@ -10,8 +12,9 @@ const Body = z.object({
   minimumOrderValue: z.number().nonnegative().nullable().optional(),
   usageLimit: z.number().int().positive().nullable().optional(),
   perCustomerLimit: z.number().int().positive().nullable().optional(),
-  startsAt: z.coerce.date().nullable().optional(),
-  expiresAt: z.coerce.date().nullable().optional(),
+  startsAt: DiscountWindowInput.nullable().optional(),
+  // A bare day here is the LAST day the code works; a full instant is kept as sent.
+  expiresAt: DiscountWindowInput.nullable().optional(),
   isActive: z.boolean().optional(),
 })
 
@@ -21,8 +24,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params
   const parsed = Body.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: 'Invalid coupon' }, { status: 400 })
-  const { code, ...rest } = parsed.data
-  await updateCoupon(id, { ...rest, ...(code ? { code: code.toUpperCase() } : {}) })
+  const { code, startsAt, expiresAt, ...rest } = parsed.data
+  const timezone = await getSiteTimezone()
+  await updateCoupon(id, {
+    ...rest,
+    ...(code ? { code: code.toUpperCase() } : {}),
+    startsAt: discountWindowInstant(startsAt, timezone),
+    expiresAt: discountExpiryInstant(expiresAt, timezone),
+  })
   return NextResponse.json({ success: true })
 }
 

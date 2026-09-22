@@ -10,6 +10,10 @@ import { generateOrderNumber } from '@/modules/shop/lib/order-number'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
 import { listStrandedPayments } from '@/modules/shop/lib/stranded-payments'
+import { BoundedAddressSchema, customerNameField, phoneField } from '@/modules/shop/lib/address-limits'
+import { MEMBER_CART_MAX_LINES } from '@/modules/shop/lib/db/member-cart'
+import { BILLING_COMPANY_MAX_LENGTH } from '@/modules/shop/lib/customer-billing'
+import { CUSTOMER_REFERENCE_MAX_LENGTH } from '@/modules/shop/lib/customer-reference'
 
 export async function GET(request: NextRequest) {
   const gate = await requireShopUser('shop.orders', { allowAccess: true })
@@ -34,22 +38,30 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ orders, total, metrics, overview, stranded })
 }
 
-// No company field: the organisation is a contact detail on the order now
-// (customerOrganisation below), not part of an address.
-const AddressSchema = z.object({
-  firstName: z.string().min(1), lastName: z.string().min(1),
-  line1: z.string().min(1), line2: z.string().optional(), city: z.string().min(1), county: z.string().optional(),
-  postcode: z.string().min(1), country: z.string().min(2).default('GB'), phone: z.string().optional(),
-})
-
+// The delivery address is the shared bounded shape (lib/address-limits.ts) the
+// checkout writes, so an order keyed in by hand cannot carry a line the order
+// hub or a courier label would then refuse. No company field: the organisation
+// is a contact detail on the order now (customerOrganisation below), not part
+// of an address.
+//
+// The lines take the member basket's ceiling. A phone order is a basket an
+// admin types in for somebody, and each line is resolved and priced in full
+// below, so a pasted or scripted list of thousands is turned away here rather
+// than priced.
 const Body = z.object({
-  lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1) })),
-  customerEmail: z.string().email(),
-  customerName: z.string().min(1),
-  customerOrganisation: z.string().optional(),
-  customerReference: z.string().optional(),
-  customerPhone: z.string().optional(),
-  shippingAddress: AddressSchema,
+  lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1) }))
+    .max(MEMBER_CART_MAX_LINES, `An order can have at most ${MEMBER_CART_MAX_LINES} lines.`),
+  // 254 is the longest address the email standards allow.
+  customerEmail: z.string().email().max(254),
+  customerName: customerNameField,
+  customerOrganisation: z.string()
+    .max(BILLING_COMPANY_MAX_LENGTH, `Organisation name is too long - ${BILLING_COMPANY_MAX_LENGTH} characters at most.`)
+    .optional(),
+  customerReference: z.string()
+    .max(CUSTOMER_REFERENCE_MAX_LENGTH, `Purchase order number is too long - ${CUSTOMER_REFERENCE_MAX_LENGTH} characters at most.`)
+    .optional(),
+  customerPhone: phoneField.optional(),
+  shippingAddress: BoundedAddressSchema,
   paymentMethod: z.enum(['STRIPE', 'PAYPAL', 'BANK_TRANSFER', 'CASH']),
 })
 
@@ -64,7 +76,8 @@ export async function POST(request: NextRequest) {
   const data = parsed.data
 
   const config = await getShopConfigCached()
-  const resolvedLines = await resolveCartLines(data.lines)
+  // Staff may sell a spare part by hand; the shop's own baskets may not.
+  const resolvedLines = await resolveCartLines(data.lines, { includeParts: true })
   if (resolvedLines.length === 0) return NextResponse.json({ error: 'No valid items' }, { status: 400 })
 
   const zone = await findShippingZoneForPostcode(data.shippingAddress.postcode)

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyInternalExportBearer } from '@/lib/members/export'
-import { listOrdersByMemberId, getOrderItems } from '@/modules/shop/lib/db/orders'
+import { listOrdersByMemberId, getOrderItemsForOrders } from '@/modules/shop/lib/db/orders'
 import { listSavedAddresses } from '@/modules/shop/lib/db/addresses'
 import { getMemberCart } from '@/modules/shop/lib/db/member-cart'
 import { prisma } from '@/lib/db/prisma'
@@ -15,7 +15,10 @@ export async function GET(request: NextRequest) {
   if (!memberId) return NextResponse.json({ error: 'Missing member id' }, { status: 400 })
 
   const orders = await listOrdersByMemberId(memberId)
-  const ordersWithItems = await Promise.all(orders.map(async (order) => ({ order, items: await getOrderItems(order.id) })))
+  // Every order's lines in one query. A query per order, all fired at once, was
+  // a burst of hundreds against the database for a long-standing customer.
+  const itemsByOrder = await getOrderItemsForOrders(orders.map((o) => o.id))
+  const ordersWithItems = orders.map((order) => ({ order, items: itemsByOrder.get(order.id) ?? [] }))
   const addresses = await listSavedAddresses(memberId)
   const subscriptions = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_back_in_stock_subscriptions" WHERE "member_id" = ${memberId}`
   // Questions this member asked on a product page, answers and all. Matched on

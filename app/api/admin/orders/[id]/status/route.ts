@@ -17,6 +17,11 @@ const Body = z.object({
 // on CANCELLED and the customer email all live in lib/order-status.ts, because
 // the bulk bar on the orders list makes exactly the same change and the two must
 // not drift apart.
+//
+// `byHand` is what keeps money off this menu: a paid order cannot be cancelled,
+// and no order can be called refunded, without the money actually going back
+// through Refund (lib/order-status-money.ts). The refusal is written for the
+// owner and the screen shows it as it comes.
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireShopUser('shop.orders')
   if (gate.error) return gate.error
@@ -29,6 +34,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     orderId: id,
     status: parsed.data.status,
     sendEmail: parsed.data.sendEmail,
+    byHand: true,
   })
   if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
 

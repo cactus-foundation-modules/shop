@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSiteTimezone } from '@/lib/config/timezone.server'
-import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { getShipmentForOrder, recordVehiclePosition } from '@/modules/shop/lib/db/shipments'
@@ -42,10 +41,10 @@ import { getClientIp } from '@/lib/auth/rate-limit'
  *  script, not a family. */
 const RATE_LIMIT = { max: 120, windowMs: 5 * 60 * 1000 }
 
+// Deliberately NOT behind the shop gate: a parcel already on its way is
+// post-purchase, and its customer is owed where it has got to while the shop is
+// closed (see getShopGate in lib/access.ts).
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const closed = await shopClosedResponse()
-  if (closed) return closed
-
   const ip = await getClientIp()
   if (!checkInMemoryRateLimit(`live-delivery:${ip}`, RATE_LIMIT.max, RATE_LIMIT.windowMs)) {
     return NextResponse.json({ error: 'Too many requests' }, { status: 429 })

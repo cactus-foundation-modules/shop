@@ -1,7 +1,10 @@
 import { prisma } from '@/lib/db/prisma'
 import { round2 } from '@/modules/shop/lib/checkout'
-import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { getShopConfigCached, type ShpConfig } from '@/modules/shop/lib/config'
+import { createDigitalDownload } from '@/modules/shop/lib/db/digital'
 import { getProductById } from '@/modules/shop/lib/db/products'
+import { takeStockForPaidOrder } from '@/modules/shop/lib/db/order-stock'
+import { issueInvoiceForOrder, shouldIssueOn } from '@/modules/shop/lib/invoices'
 import type { CreateOrderInput } from '@/modules/shop/lib/db/orders'
 import {
   addOrderNote,
@@ -287,12 +290,94 @@ export async function createReplacementOrder(input: CreateReplacementInput): Pro
   const order = await getOrderById(created.id)
   if (!order) return { ok: false, status: 500, error: 'The replacement was created but could not be read back.' }
 
+  await settleReplacement(order, config)
+
   // Told at the moment it is raised, not at dispatch. A part waiting on a
   // supplier can be a fortnight of silence after somebody was promised it would
   // be put right, and that fortnight is when they ring up.
   await sendReplacementRaisedEmail(order)
 
   return { ok: true, order, orderNumber: created.orderNumber }
+}
+
+/**
+ * What a paid order gets from lib/order-fulfillment.ts that a replacement is
+ * still owed, done here because a replacement never goes through it.
+ *
+ * fulfillPaidOrder hangs off markOrderPaid, and a replacement is born PAID, so
+ * it never passes through the one door every other order's side effects wait
+ * behind. Calling fulfillPaidOrder itself is not the answer: most of what it does
+ * is wrong for a part sent to put an order right - an "order confirmed" email for
+ * something the customer never ordered, the owner's new-order alert, the
+ * shop.order-paid announcement a purchasing module reads as "buy this in". So
+ * this takes the three things that ARE owed, and only those:
+ *
+ *   - Stock. The part came off a shelf. Every ordinary line leaves stock at
+ *     payment, and dispatch deliberately touches only pre-order lines (the
+ *     single-decrement invariant in lib/db/shipments.ts), so a replacement that
+ *     did not come off here never came off at all - and the spares shelf went on reading five gas
+ *     lifts long after the last one had gone out. Replacement lines are never
+ *     pre-orders, so every line goes. Taken the same way a paid order's are, so
+ *     the stock ledger records it and a refund before dispatch can put it back
+ *     (restockRefundedUnits only returns what the ledger says was taken), and a
+ *     part that was not on the shelf is written on the order rather than lost.
+ *   - Download links, for a digital product sent again, minted exactly as a paid
+ *     order mints them. Without them the replacement is an order page with
+ *     nothing on it to click.
+ *   - The invoice, for a shop that invoices on payment and a part somebody is
+ *     being charged for. lib/order-status.ts already invoices a charged
+ *     replacement on dispatch or on completion; the shop set to invoice on
+ *     payment was the one that never got one at all.
+ *
+ * IF A CHARGED REPLACEMENT IS EVER COLLECTED THROUGH THE ORDINARY CONFIRM-PAYMENT
+ * PATH INSTEAD OF BEING BORN PAID, this must stop running for it in the same
+ * change: fulfillPaidOrder would then do all three a second time.
+ *
+ * Each step logs its own failure and carries on. The replacement exists by now,
+ * and failing the request would only invite the owner to raise it twice.
+ */
+async function settleReplacement(order: ShpOrder, config: ShpConfig): Promise<void> {
+  const items = await getOrderItems(order.id)
+
+  try {
+    const shortfalls = await takeStockForPaidOrder(order.orderNumber, items.filter((item) => !item.isPreOrder).map((item) => item.id))
+    if (shortfalls.length > 0) {
+      await addOrderNote(
+        order.id,
+        'Not enough stock when this replacement was raised:\n' +
+          shortfalls.map((s) => `- ${s.productName}: ${s.ordered} needed, ${s.inStock} in stock`).join('\n') +
+          '\nThe stock count has been taken down to nothing. Check the part is on the shelf before promising it.',
+        true,
+        null,
+      )
+    }
+  } catch (error) {
+    console.error('[shop] could not take replacement stock off', order.id, error)
+  }
+
+  for (const item of items.filter((i) => i.productType === 'DIGITAL')) {
+    if (!item.productId) continue
+    try {
+      const product = await getProductById(item.productId)
+      if (!product?.digitalFileId) continue
+      const expiresAt = product.downloadExpiry ? new Date(Date.now() + product.downloadExpiry * 24 * 60 * 60 * 1000) : null
+      await createDigitalDownload({ orderId: order.id, orderItemId: item.id, fileId: product.digitalFileId, expiresAt })
+    } catch (error) {
+      console.error('[shop] could not mint a replacement download', order.id, item.id, error)
+    }
+  }
+
+  // Tests the money and not the kind, as the dispatch trigger does: a free part
+  // raises no invoice, because a £0 invoice for the shop's own mistake reads as
+  // a bill.
+  if (Number(order.total) > 0 && shouldIssueOn(config, 'PAID')) {
+    try {
+      const invoiced = await issueInvoiceForOrder(order.id, { trigger: 'PAID', issuedBy: 'AUTO' })
+      if (!invoiced.ok) console.error('[shop] could not invoice replacement', order.id, invoiced.error)
+    } catch (error) {
+      console.error('[shop] could not invoice replacement', order.id, error)
+    }
+  }
 }
 
 /** Postgres 23505 on the order number, which is the only collision this can

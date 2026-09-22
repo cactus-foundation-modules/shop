@@ -676,6 +676,9 @@ export type ShpRefund = {
    *  it goes out - never both - and this says which happened. Null until an
    *  invoice nets it off, and null again if that invoice is voided. */
   nettedOffInvoiceId: string | null
+  /** The delivery charge handed back with this refund, tax and all - part of
+   *  `amount`, not on top of it. "0.00" on a refund of goods only. */
+  shippingAmount: string
   createdBy: string
   createdAt: Date
 }

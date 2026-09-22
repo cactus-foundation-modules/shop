@@ -6,9 +6,10 @@ import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { reasonLabel } from '@/modules/shop/lib/order-requests'
+import { paymentHeld, paymentTaken } from '@/modules/shop/lib/payment-taken'
 import { REQUEST_DECISION_LABEL, REQUEST_STATUS_DISPLAY, REQUEST_TYPE_LABEL, badgeClass } from '@/modules/shop/lib/order-display'
 import { ReplacementModal, type ReplacementOrderLine } from '@/modules/shop/components/admin/ReplacementModal'
-import type { ShpOrderRequestStatus, ShpOrderRequestType } from '@/modules/shop/lib/types'
+import type { ShpOrderRequestStatus, ShpOrderRequestType, ShpPaymentStatus } from '@/modules/shop/lib/types'
 
 // The queue: every cancellation, return and damage report a customer has
 // raised, oldest pending first, with the two buttons that settle it.
@@ -37,6 +38,11 @@ type RequestRow = {
   customerName: string
   customerEmail: string
   orderTotal: string
+  /** Whether money was actually taken - see openPanel. */
+  paymentStatus: ShpPaymentStatus
+  /** What the order charged for delivery - refunded with a whole-order
+   *  cancellation made before anything was sent, and not otherwise. */
+  shippingAmount: string
   returnCharge: string | null
   /** Something on this request was sold on the understanding that taking it
    *  back would be a favour rather than a right - so saying no is genuinely on
@@ -56,6 +62,13 @@ const FILTERS: Array<{ key: 'PENDING' | 'ALL' | ShpOrderRequestStatus; label: st
   { key: 'DECLINED', label: 'Declined' },
   { key: 'ALL', label: 'Everything' },
 ]
+
+/** Money was taken and some of it is still there to send back. Anything else -
+ *  an unpaid bank transfer, a card that never went through, an order already
+ *  refunded in full - has a total and nothing behind it. */
+function moneyTaken(row: Pick<RequestRow, 'paymentStatus'>): boolean {
+  return paymentHeld(row.paymentStatus)
+}
 
 export function RequestsScreen() {
   const currencySymbol = useCurrencySymbol()
@@ -126,8 +139,10 @@ export function RequestsScreen() {
     setCharge('')
     // Pre-ticked only when there is money to send back at all. A cancellation
     // of an unpaid order has nothing to refund, so offering it ticked would be
-    // an invitation to a confusing error.
-    setRefund(Number(row.orderTotal) > 0)
+    // an invitation to a confusing error. Read off whether the money was taken,
+    // not off the total: an unpaid bank transfer has a total too, and ticking
+    // off that is exactly how somebody got a provider error for approving it.
+    setRefund(moneyTaken(row) && Number(row.orderTotal) > 0)
     setMessage(null)
   }
 
@@ -347,11 +362,31 @@ export function RequestsScreen() {
                           : ' (just the items being sent back)'}
                     </span>
                   </label>
+                  {!moneyTaken(row) && (
+                    <p className="field-hint" style={{ margin: 0 }}>
+                      {paymentTaken(row.paymentStatus)
+                        ? 'Everything taken for this order has already been refunded, so there is nothing left to send back.'
+                        : 'No payment has been taken for this order yet, so there is nothing to send back.'}{' '}
+                      Leave the refund box unticked.
+                    </p>
+                  )}
                   {refund && (
                     <p className="field-hint" style={{ margin: 0 }}>
                       This sends money back through the original payment method now
                       {row.type === 'RETURN' && charge.trim() !== '' && ', less the charge above'}. Leave it unticked to
                       {row.type === 'DAMAGE' ? ' sort a replacement instead' : ' approve first and refund once the goods are back'}.
+                    </p>
+                  )}
+                  {/* Said out loud on a cancellation, where a customer who never
+                      received a thing may well expect the delivery charge back:
+                      it goes back with the whole order when nothing has been sent
+                      (lib/order-request-actions.ts), and otherwise stays, with the
+                      order screen's Refund there for the owner who decides it should. */}
+                  {refund && row.type === 'CANCEL' && Number(row.shippingAmount) > 0 && (
+                    <p className="field-hint" style={{ margin: 0 }}>
+                      If this cancels the whole order and nothing has been sent yet, the delivery charge goes back too.
+                      Otherwise the refund covers the goods only - refund delivery from the order itself if it should
+                      go back as well.
                     </p>
                   )}
 

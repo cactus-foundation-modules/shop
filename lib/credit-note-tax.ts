@@ -1,4 +1,5 @@
 import type { ShpInvoiceLine, ShpInvoiceTaxRow } from '@/modules/shop/lib/types'
+import type { DeliverySlice } from '@/modules/shop/lib/invoice-tax'
 
 // The arithmetic on a credit note, kept pure and kept here so it can be tested
 // without a database (see credit-note-tax.test.ts). Nothing in this file reads
@@ -31,6 +32,10 @@ export type CreditNoteMoney = {
   lines: ShpInvoiceLine[]
   taxBreakdown: ShpInvoiceTaxRow[]
   subtotal: string
+  /** The delivery credited, on the document's own convention: gross on an
+   *  INCLUSIVE shop, net (its tax in the tax row) on an EXCLUSIVE one - the
+   *  way the invoice prints its delivery. "0.00" when none went back. */
+  shippingAmount: string
   taxAmount: string
   total: string
 }
@@ -93,11 +98,18 @@ function creditedCharges(source: ShpInvoiceLine, gross: number, sourceGross: num
  * Turns an invoice and a settled refund into credit note lines and a
  * net/tax/gross summary per rate.
  */
+//
+// `delivery` is the delivery charge handed back with the refund, already split
+// across rates and scaled to what went back (deliverySlices in
+// lib/invoice-tax.ts, which is how the invoice split it). It lands in the rate
+// rows and the totals, and in `shippingAmount` rather than as a line, because
+// delivery is not a line on the invoice either.
 export function buildCreditNoteMoney(
   invoiceLines: ShpInvoiceLine[],
   orderItemIds: string[],
   refundItems: CreditRefundItem[],
   taxMode: 'INCLUSIVE' | 'EXCLUSIVE',
+  delivery: DeliverySlice[] = [],
 ): CreditNoteMoney {
   type Bucket = { rate: number; net: number; tax: number; gross: number }
   const buckets = new Map<string, Bucket>()
@@ -154,6 +166,23 @@ export function buildCreditNoteMoney(
     })
   }
 
+  // Goods first, so the subtotal below is the goods' alone.
+  const goodsNet = totalNet
+  const goodsGross = totalGross
+  let deliveryNet = 0
+  let deliveryGross = 0
+  for (const slice of delivery) {
+    const bucket = buckets.get(slice.ratePercent) ?? { rate: slice.rate, net: 0, tax: 0, gross: 0 }
+    bucket.net += slice.net
+    bucket.tax += slice.tax
+    bucket.gross += slice.gross
+    buckets.set(slice.ratePercent, bucket)
+    deliveryNet += slice.net
+    deliveryGross += slice.gross
+    totalTax += slice.tax
+    totalGross += slice.gross
+  }
+
   const rows: ShpInvoiceTaxRow[] = [...buckets.entries()]
     .sort((a, b) => b[1].rate - a[1].rate)
     .map(([key, bucket]) => ({
@@ -173,7 +202,8 @@ export function buildCreditNoteMoney(
     // the net figure with the tax added as its own row beneath, an INCLUSIVE
     // one's already carries it. Matching the invoice matters more than usual
     // here, because the two documents are read side by side.
-    subtotal: money(taxMode === 'INCLUSIVE' ? totalGross : totalNet),
+    subtotal: money(taxMode === 'INCLUSIVE' ? goodsGross : goodsNet),
+    shippingAmount: money(taxMode === 'INCLUSIVE' ? deliveryGross : deliveryNet),
     taxAmount: money(taxAmount),
     total: money(total),
   }

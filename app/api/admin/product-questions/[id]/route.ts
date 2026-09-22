@@ -17,6 +17,12 @@ import { syncProductQuestionsNotification } from '@/modules/shop/lib/product-que
 const AnswerBody = z.object({ answer: z.string().trim().min(1).max(FAQ_ANSWER_MAX) })
 const StatusBody = z.object({ status: z.enum(['PENDING', 'ANSWERED', 'REJECTED']) })
 
+// Every handler here changes something, so every one needs shop.products (or
+// shop.manage, which covers it). Shop access alone reads the queue - that is the
+// list route - but it is the "see but not change" role, and answering emails a
+// customer and puts words on a live product page, while deleting erases what
+// somebody gave us for good.
+
 /**
  * Answer one question: email it to whoever asked, put it on the product page,
  * record what was sent.
@@ -28,7 +34,7 @@ const StatusBody = z.object({ status: z.enum(['PENDING', 'ANSWERED', 'REJECTED']
  * heard about - and nobody at the shop would ever find out.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const gate = await requireShopUser('shop.products', { allowAccess: true })
+  const gate = await requireShopUser('shop.products')
   if (gate.error) return gate.error
 
   const { id } = await params
@@ -94,7 +100,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 // Bin it, re-open it, or mark it dealt with by hand. No email either way - this
 // is the shop's own filing, not a message to anybody.
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const gate = await requireShopUser('shop.products', { allowAccess: true })
+  const gate = await requireShopUser('shop.products')
   if (gate.error) return gate.error
 
   const { id } = await params
@@ -119,7 +125,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 // touched, because it is the shop's own words about its own product; remove it
 // on the product's FAQs tab if it should go too.
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const gate = await requireShopUser('shop.products', { allowAccess: true })
+  const gate = await requireShopUser('shop.products')
   if (gate.error) return gate.error
 
   const { id } = await params

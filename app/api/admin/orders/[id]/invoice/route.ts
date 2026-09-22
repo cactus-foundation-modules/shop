@@ -2,21 +2,26 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { listInvoicesForOrder } from '@/modules/shop/lib/db/invoices'
+import { getInvoiceById, listInvoicesForOrder } from '@/modules/shop/lib/db/invoices'
 import { issueInvoiceForOrder, resendInvoiceToSinks, voidInvoiceAndTellSinks } from '@/modules/shop/lib/invoices'
 import { hasInvoiceSinks } from '@/modules/shop/lib/invoice-sinks'
 import { proformaPath, proformaPdfPath, signInvoiceToken } from '@/modules/shop/lib/invoice-token'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { proformaAvailable } from '@/modules/shop/lib/proforma'
+import { paymentTaken } from '@/modules/shop/lib/payment-taken'
 import type { ShpInvoice } from '@/modules/shop/lib/types'
 
 // The order screen's invoice panel: what this order has been invoiced, and the
 // three things staff can do about it.
 //
-// Voiding needs the heavier permission. Raising an invoice is day-to-day order
-// work; withdrawing one that has already gone to a customer and into the books
-// is not, and a spent number that nobody can explain is exactly the sort of
-// thing an audit asks about.
+// Looking is open to anyone with shop access; acting is not. Raising or
+// re-sending an invoice is day-to-day order work, so it needs shop.orders like
+// every other change to an order - shop.access is the "see but not change" role,
+// and a document with a number on it that has gone into the books is very much a
+// change. Voiding needs the heavier permission still: withdrawing one that has
+// already gone to a customer and into the books is not day-to-day at all, and a
+// spent number that nobody can explain is exactly the sort of thing an audit
+// asks about.
 
 /** The invoice as the admin screen needs it: the document plus the signed link,
  *  which is minted here rather than in the browser because the key that signs it
@@ -70,7 +75,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const proforma = order && proformaAvailable(config, order)
     ? {
         orderNumber: order.orderNumber,
-        paid: order.paymentStatus === 'PAID',
+        // Paid is paid, whatever has been refunded since (lib/payment-taken.ts).
+        paid: paymentTaken(order.paymentStatus),
         viewUrl: proformaPath(order.orderNumber),
         pdfUrl: proformaPdfPath(order.orderNumber),
       }
@@ -94,8 +100,20 @@ const Body = z.object({
   reason: z.string().max(500).optional(),
 })
 
+/** The invoice named in the body, but only if it is one of THIS order's.
+ *
+ *  The body carries a bare invoice id and the URL carries the order, and the two
+ *  are only ever sent as a matching pair by the order screen. Nothing else made
+ *  them match, so a request from one order's URL could re-send or void another
+ *  order's invoice. Not found either way, so the answer says nothing about
+ *  invoices that belong elsewhere. */
+async function invoiceOnOrder(invoiceId: string, orderId: string): Promise<ShpInvoice | null> {
+  const invoice = await getInvoiceById(invoiceId)
+  return invoice && invoice.orderId === orderId ? invoice : null
+}
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const gate = await requireShopUser('shop.orders', { allowAccess: true })
+  const gate = await requireShopUser('shop.orders')
   if (gate.error) return gate.error
 
   const { id } = await params
@@ -111,6 +129,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   if (action === 'resend') {
     if (!invoiceId) return NextResponse.json({ error: 'Which invoice?' }, { status: 400 })
+    if (!(await invoiceOnOrder(invoiceId, id))) return NextResponse.json({ error: 'Invoice not found.' }, { status: 404 })
     const outcome = await resendInvoiceToSinks(invoiceId)
     if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
     return NextResponse.json({ invoice: present(outcome.invoice) })
@@ -123,6 +142,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (voidGate.error) return voidGate.error
   if (!invoiceId) return NextResponse.json({ error: 'Which invoice?' }, { status: 400 })
   if (!reason?.trim()) return NextResponse.json({ error: 'Say why this invoice is being voided.' }, { status: 400 })
+  if (!(await invoiceOnOrder(invoiceId, id))) return NextResponse.json({ error: 'Invoice not found.' }, { status: 404 })
 
   // Voiding tells the books as part of the same action - see
   // lib/invoices.ts. What they made of it comes back on the invoice's own sink

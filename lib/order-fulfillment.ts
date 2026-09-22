@@ -1,7 +1,9 @@
 import { getSiteUrl } from '@/lib/config/env'
-import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
-import { decrementStockOnShip, incrementPreOrderCount, getProductById } from '@/modules/shop/lib/db/products'
-import { incrementCouponUsage } from '@/modules/shop/lib/db/discounts'
+import { countPriorCouponOrdersByEmail, flagOrderForAttention, getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
+import { incrementPreOrderCount, getProductById, type PreOrderCounted } from '@/modules/shop/lib/db/products'
+import { getCouponById, incrementCouponUsage } from '@/modules/shop/lib/db/discounts'
+import { takeStockForPaidOrder } from '@/modules/shop/lib/db/order-stock'
+import { fulfilmentAttention, type CouponOveruse, type PreOrderOvershoot } from '@/modules/shop/lib/order-attention'
 import { createDigitalDownload } from '@/modules/shop/lib/db/digital'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
@@ -52,12 +54,23 @@ export async function fulfillPaidOrder(
   // to be offered back at the next checkout.
   await rememberOrderAddress(order)
 
+  // Normal lines come off the shelf now, and are written into the stock ledger
+  // so a refund can later put back exactly what this order took (see
+  // lib/db/order-stock.ts). Whatever was not there to take comes back as a
+  // shortfall rather than vanishing into a count that stops at nothing.
   const nonPreOrderItemIds = items.filter((i) => !i.isPreOrder).map((i) => i.id)
-  await decrementStockOnShip(nonPreOrderItemIds)
+  const shortfalls = await takeStockForPaidOrder(order.orderNumber, nonPreOrderItemIds)
 
+  // Pre-order lines take an allocation slot instead. One figure per product -
+  // the last line's, which is the count after all of this order's lines.
+  const preOrderCounts = new Map<string, PreOrderCounted>()
   for (const item of items.filter((i) => i.isPreOrder)) {
-    if (item.productId) await incrementPreOrderCount(item.productId, item.quantity)
+    if (!item.productId) continue
+    const counted = await incrementPreOrderCount(item.productId, item.quantity)
+    if (counted) preOrderCounts.set(item.productId, counted)
   }
+  const overshoots: PreOrderOvershoot[] = [...preOrderCounts.values()].flatMap((c) =>
+    c.limit !== null && c.count > c.limit ? [{ productName: c.productName, count: c.count, limit: c.limit }] : [])
 
   // Only burn a coupon redemption when a coupon was genuinely resolved at
   // checkout (coupon_id is non-null). The raw coupon_code the shopper typed is
@@ -65,9 +78,31 @@ export async function fulfillPaidOrder(
   // resolveDiscounts and left off the order, so it must never bump usage_count
   // or a later "you have already used this coupon" would fire against a code
   // that never actually applied.
+  //
+  // Both of a coupon's limits were checked at checkout, before this payment
+  // landed, and both can be beaten by two checkouts overlapping. The overall
+  // limit is held by the conditional increment itself, which refuses to count
+  // past it; the per-customer one is counted again here, now this order is
+  // paid and so counts itself. Either way the discount has been given and the
+  // money taken with it, so the owner is told rather than the order undone.
+  let couponOveruse: CouponOveruse | null = null
   if (order.couponId) {
-    await incrementCouponUsage(order.couponId)
+    const counted = await incrementCouponUsage(order.couponId)
+    const coupon = await getCouponById(order.couponId)
+    if (coupon && !counted && coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit) {
+      couponOveruse = { kind: 'usage-limit', code: coupon.code, limit: coupon.usageLimit }
+    } else if (coupon && coupon.perCustomerLimit !== null) {
+      const uses = await countPriorCouponOrdersByEmail(order.customerEmail, coupon.id)
+      if (uses > coupon.perCustomerLimit) {
+        couponOveruse = { kind: 'per-customer', code: coupon.code, limit: coupon.perCustomerLimit, uses }
+      }
+    }
   }
+
+  // Written straight away rather than at the end, so a failure further down
+  // (an email that will not send) cannot lose the note.
+  const attention = fulfilmentAttention({ shortfalls, overshoots, coupon: couponOveruse })
+  if (attention) await flagOrderForAttention(order.id, attention.note, { hold: attention.hold })
 
   for (const item of items.filter((i) => i.productType === 'DIGITAL')) {
     if (!item.productId) continue
@@ -103,26 +138,37 @@ export async function fulfillPaidOrder(
   const customerNotice = opts.customerNotice
     ?? (order.originalPaymentMethod ? 'PAYMENT_RECEIVED' : 'ORDER_CONFIRMED')
 
+  // Neither email below may stop what comes after it. By this point the money
+  // has landed and the order is real, and this function runs exactly once - a
+  // payment webhook that failed here would be retried against an order already
+  // marked paid, which does nothing. So an email service having a bad minute
+  // used to cost the order its invoice, the owner's alert and every order-paid
+  // listener (a purchase order never raised is goods never bought in). A failed
+  // send is logged, and sendShopEmail has already left a note on the order.
   if (customerNotice !== 'NONE') {
-    await notifyOrderCustomer(customerNotice, order, {
-      orderNumber: order.orderNumber,
-      customerName: order.customerName,
-      customerEmail: order.customerEmail,
-      orderTotal: formatMoney(order.total, config.currencySymbol),
-      orderItems: itemsList,
-      orderStatus: order.status,
-      shippingAddress: formatAddress(order.shippingAddress),
-      trackingUrl: '',
-      paymentMethod: provider ? await resolveProviderLabel(provider) : order.paymentMethod,
-      paymentReference: order.paymentReference ?? '',
-      hasPaymentReference: order.paymentReference ? 'true' : 'false',
-      hasPreOrderItems: preOrderItem ? 'true' : 'false',
-      preOrderItemName: preOrderItem?.productName ?? '',
-      preOrderDispatchDate: preOrderItem?.preOrderDispatchDate?.toLocaleDateString('en-GB') ?? '',
-      ...customerReferenceVars(order, config),
-      shopName: config.shopTitle || 'Shop',
-      shopUrl: `${siteUrl}/shop`,
-    })
+    try {
+      await notifyOrderCustomer(customerNotice, order, {
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        orderTotal: formatMoney(order.total, config.currencySymbol),
+        orderItems: itemsList,
+        orderStatus: order.status,
+        shippingAddress: formatAddress(order.shippingAddress),
+        trackingUrl: '',
+        paymentMethod: provider ? await resolveProviderLabel(provider) : order.paymentMethod,
+        paymentReference: order.paymentReference ?? '',
+        hasPaymentReference: order.paymentReference ? 'true' : 'false',
+        hasPreOrderItems: preOrderItem ? 'true' : 'false',
+        preOrderItemName: preOrderItem?.productName ?? '',
+        preOrderDispatchDate: preOrderItem?.preOrderDispatchDate?.toLocaleDateString('en-GB') ?? '',
+        ...customerReferenceVars(order, config),
+        shopName: config.shopTitle || 'Shop',
+        shopUrl: `${siteUrl}/shop`,
+      })
+    } catch (error) {
+      console.error('[shop] could not tell the customer their order is paid', order.id, error)
+    }
   }
 
   // The invoice, for a shop that invoices on payment rather than on despatch or
@@ -143,16 +189,20 @@ export async function fulfillPaidOrder(
   // codes, so a module's manual method behaves the same way.
   const adminAlertEmail = provider?.confirmMode === 'manual' ? '' : (config.adminOrderAlertEmail || config.storeEmail)
   if (adminAlertEmail) {
-    await sendShopEmail('ADMIN_NEW_ORDER', adminAlertEmail, {
-      orderNumber: order.orderNumber,
-      customerName: order.customerName,
-      customerEmail: order.customerEmail,
-      orderTotal: formatMoney(order.total, config.currencySymbol),
-      orderItems: itemsList,
-      ...customerReferenceVars(order, config),
-      shopName: config.shopTitle || 'Shop',
-      shopUrl: `${siteUrl}/shop`,
-    })
+    try {
+      await sendShopEmail('ADMIN_NEW_ORDER', adminAlertEmail, {
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        orderTotal: formatMoney(order.total, config.currencySymbol),
+        orderItems: itemsList,
+        ...customerReferenceVars(order, config),
+        shopName: config.shopTitle || 'Shop',
+        shopUrl: `${siteUrl}/shop`,
+      })
+    } catch (error) {
+      console.error('[shop] could not send the new-order alert', order.id, error)
+    }
   }
 
   // Last, and after everything the shopper and the owner were owed. Whatever a

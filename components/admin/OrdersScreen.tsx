@@ -74,6 +74,7 @@ type Stranded = {
   error: string
   attempts: number
   firstSeenAt: string
+  lastSeenAt: string
 }
 
 // Every control on the screen lives in one object, which is also exactly what
@@ -249,6 +250,19 @@ export function OrdersScreen() {
       .catch(() => {})
   }, [overviewToken])
 
+  // Takes a stranded payment off the banner once the owner has refunded it or
+  // taken the order again by hand. Asked first, because the banner is the only
+  // record the shop keeps that the money arrived.
+  const dismissStranded = async (s: Stranded) => {
+    if (!window.confirm(`Take ${s.orderNumber} off this list? Only do this once the payment has been refunded or the order taken again - nothing else here remembers it.`)) return
+    const r = await fetch(`/api/m/shop/admin/stranded-payments/${encodeURIComponent(s.draftId)}`, { method: 'DELETE' })
+    if (!r.ok) {
+      window.alert('That could not be cleared. Try again in a moment.')
+      return
+    }
+    setStranded((rows) => rows.filter((row) => row.draftId !== s.draftId))
+  }
+
   // A fixed-position menu would drift away from its button on scroll.
   useEffect(() => {
     if (!menuFor) return
@@ -366,9 +380,16 @@ export function OrdersScreen() {
               ? 'A payment was taken but the order was never created'
               : `${stranded.length} payments were taken but their orders were never created`}
           </p>
+          {/* What to actually do, in order. It used to promise the order could
+              be recovered without saying how, which left an owner to dig
+              through logs for the one reference that does it. */}
           <p className="sox-stranded-lead">
-            The customer has been charged and there is no order here to show for it. Check the payment with your
-            provider before doing anything else - in most cases the order can be recovered rather than refunded.
+            The customer has been charged and there is no order here to show for it. First find the payment in your
+            payment provider&rsquo;s account - the order number, amount and customer below will pick it out. Providers
+            usually try again by themselves, and once whatever stopped the order being written is put right, the order
+            appears here and this notice clears on its own. If it is still here after that, send the checkout reference
+            below to whoever looks after your site: for 30 days after the checkout the order can be rebuilt from it
+            rather than refunded. The note under each one says so where it cannot be, and what to do instead.
           </p>
           <ul className="sox-stranded-list">
             {stranded.map((s) => (
@@ -382,9 +403,23 @@ export function OrdersScreen() {
                 </div>
                 <div className="sox-stranded-meta">
                   First seen {new Date(s.firstSeenAt).toLocaleString('en-GB')}
-                  {s.attempts > 1 ? ` - ${s.attempts} attempts` : ''}
+                  {s.attempts > 1 ? ` - ${s.attempts} attempts, the latest ${new Date(s.lastSeenAt).toLocaleString('en-GB')}` : ''}
+                </div>
+                {/* The draft id: the one thing the order can be rebuilt from.
+                    Selects whole on a click, for pasting into a message. */}
+                <div className="sox-stranded-meta">
+                  Checkout reference <span className="sox-mono" style={{ userSelect: 'all' }}>{s.draftId}</span>
                 </div>
                 <p className="sox-stranded-error">{s.error}</p>
+                {/* The only way off the banner for a payment put right some
+                    other way - refunded, or the order taken again by hand. */}
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm sox-stranded-dismiss"
+                  onClick={() => void dismissStranded(s)}
+                >
+                  I have dealt with this
+                </button>
               </li>
             ))}
           </ul>

@@ -13,6 +13,7 @@ import {
   reissueWarning,
 } from '@/modules/shop/lib/customer-billing'
 import { changeOrderBillingIdentity } from '@/modules/shop/lib/invoice-reissue'
+import { addressFields } from '@/modules/shop/lib/address-limits'
 import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
 import { getClientIp } from '@/lib/auth/rate-limit'
 
@@ -43,10 +44,15 @@ import { getClientIp } from '@/lib/auth/rate-limit'
 // let a hand-rolled request change who an invoice is addressed to while
 // pretending to move it. The name, the country and the telephone number are
 // carried over from the order below, untouched.
+//
+// Each box bounded by the same ceilings the checkout puts on it
+// (lib/address-limits.ts). Without them the company name was the only capped
+// field here, and an invoice address could be saved an essay long and printed
+// on every document raised after it.
 const AddressSchema = z.object({
-  line1: z.string().min(1), line2: z.string().optional(),
-  city: z.string().min(1), county: z.string().optional(),
-  postcode: z.string().min(1),
+  line1: addressFields.line1, line2: addressFields.line2,
+  city: addressFields.city, county: addressFields.county,
+  postcode: addressFields.postcode,
 })
 
 const Body = z.object({

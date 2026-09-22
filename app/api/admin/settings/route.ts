@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { requireShopUser } from '@/modules/shop/lib/access'
-import { getShopConfig, updateShopConfig, ShpConfigSchema, BUILT_IN_PAYMENT_METHODS } from '@/modules/shop/lib/config'
+import { getShopConfig, updateShopConfig, ShpConfigSchema, BUILT_IN_PAYMENT_METHODS, paymentInstructionsTooLong } from '@/modules/shop/lib/config'
 import { getAllPaymentProviders, getModuleProviderEntryIds, resolveProviderLabel } from '@/modules/shop/lib/payments/registry'
 import type { ShpAdminPaymentMethod } from '@/modules/shop/lib/payments/admin-methods'
 import { isStripeConfigured, isPayPalConfigured } from '@/modules/shop/lib/env'
@@ -71,6 +71,11 @@ export async function PUT(request: NextRequest) {
   const body = await request.json()
   const parsed = ShpConfigSchema.partial().safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid config' }, { status: 400 })
+
+  // Held to its ceiling here, on the way in, and only where it changed - see
+  // paymentInstructionsTooLong for why not on the schema itself.
+  const tooLong = paymentInstructionsTooLong(parsed.data, await getShopConfig())
+  if (tooLong) return NextResponse.json({ error: tooLong }, { status: 400 })
 
   const config = await updateShopConfig(parsed.data)
   return NextResponse.json({ config })

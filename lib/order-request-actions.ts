@@ -1,16 +1,18 @@
 import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { getOrderDispatchSummary } from '@/modules/shop/lib/db/shipments'
-import { processRefund } from '@/modules/shop/lib/db/refunds'
+import { listRefundsForOrder, processRefund } from '@/modules/shop/lib/db/refunds'
 import { creditNoteForSettledRefund } from '@/modules/shop/lib/credit-notes'
-import { createOrderRequest, decideRequest, type CreateOrderRequestInput } from '@/modules/shop/lib/db/order-requests'
-import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
+import { createOrderRequest, decideRequest, getRequestById, type CreateOrderRequestInput } from '@/modules/shop/lib/db/order-requests'
+import { refundRouteForOrder } from '@/modules/shop/lib/payments/order-refund-route'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { sendShopEmail } from '@/modules/shop/lib/email'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { formatMoney } from '@/modules/shop/lib/money'
-import { netOffReturnCharge } from '@/modules/shop/lib/return-charge'
-import { coversWholeOrder, reasonLabel } from '@/modules/shop/lib/order-requests'
+import { netOffReturnCharge, type RefundLine } from '@/modules/shop/lib/return-charge'
+import { requestRefundLines, withinRemaining } from '@/modules/shop/lib/request-refund-lines'
+import { coversWholeOrder, heldUnits, reasonLabel } from '@/modules/shop/lib/order-requests'
+import { refundableDelivery } from '@/modules/shop/lib/refund-delivery'
 import type { ShpOrder, ShpOrderItem, ShpOrderRequestWithItems } from '@/modules/shop/lib/types'
 
 // What a cancel or return request actually DOES, as opposed to where it is
@@ -107,29 +109,60 @@ export async function submitOrderRequest(input: CreateOrderRequestInput): Promis
 
 // What a refund would cover: exactly the lines that were asked for, or - on a
 // request that named none, which is what a whole-order cancellation is -
-// everything not already refunded. Amounts use unitPrice x quantity, which is
-// what the admin refund modal has always sent - two different arithmetics for
-// the same lines would be worse than either.
-function refundLines(
+// everything not already refunded, each at what the customer actually paid for
+// those units. That used to be unitPrice x quantity, which on an EXCLUSIVE shop
+// is the net figure: every refund approved from the queue kept the VAT. See
+// lib/request-refund-lines.ts for the arithmetic.
+//
+// Kept inside what is left of the order's money, so penny rounding between the
+// lines and the order total cannot turn the right refund into a refused one.
+// Anything already refunded, or still in flight, counts as gone.
+//
+// A cancellation only ever refunds units still on the shelf. It is about goods
+// that have not gone, and the dispatch screen only warns about a waiting one -
+// so by the time it is approved some of what it named may be on a van, and a
+// refund for those is a refund for goods the customer is holding. They come
+// back through a return like anything else that arrived.
+async function refundLines(
   request: ShpOrderRequestWithItems,
   orderItems: ShpOrderItem[],
-): Array<{ orderItemId: string; quantity: number; amount: number }> {
-  const wanted = request.items.length === 0
-    ? orderItems.map((item) => ({ orderItemId: item.id, quantity: item.quantity - item.refundedQty }))
-    : request.items.map((line) => ({ orderItemId: line.orderItemId, quantity: line.quantity }))
-
-  const byId = new Map(orderItems.map((i) => [i.id, i]))
-  return wanted
-    .filter((line) => line.quantity > 0)
-    .map((line) => {
-      const item = byId.get(line.orderItemId)
-      const unitPrice = Number(item?.unitPrice ?? 0)
-      return {
-        orderItemId: line.orderItemId,
-        quantity: line.quantity,
-        amount: Number((unitPrice * line.quantity).toFixed(2)),
-      }
-    })
+  order: ShpOrder,
+): Promise<{ lines: RefundLine[]; delivery: number }> {
+  let asked: { items: ReadonlyArray<{ orderItemId: string; quantity: number }> } = request
+  let nothingSent = false
+  if (request.type === 'CANCEL') {
+    const summary = await getOrderDispatchSummary(order.id)
+    const dispatched = new Map(summary.lines.map((line) => [line.orderItemId, line.dispatchedQty]))
+    nothingSent = summary.lines.every((line) => line.dispatchedQty === 0)
+    const onShelf = (item: ShpOrderItem) =>
+      Math.max(item.quantity - item.refundedQty - heldUnits({ quantity: item.quantity, dispatchedQty: dispatched.get(item.id) ?? 0, refundedQty: item.refundedQty }), 0)
+    const byId = new Map(orderItems.map((item) => [item.id, item]))
+    const named = request.items.length === 0
+      ? orderItems.map((item) => ({ orderItemId: item.id, quantity: item.quantity - item.refundedQty }))
+      : request.items
+    asked = {
+      items: named.map((line) => {
+        const item = byId.get(line.orderItemId)
+        return { ...line, quantity: item ? Math.min(line.quantity, onShelf(item)) : 0 }
+      }),
+    }
+  }
+  const lines = requestRefundLines(asked, orderItems, order)
+  const refunds = await listRefundsForOrder(order.id)
+  const alreadyGone = refunds
+    .filter((refund) => refund.status === 'COMPLETED' || refund.status === 'PENDING')
+    .reduce((sum, refund) => sum + Number(refund.amount), 0)
+  // The delivery charge goes back with a cancellation of the WHOLE order made
+  // before anything was sent: the customer is owed the standard delivery on an
+  // order called off before it left, and nothing has been spent carrying it. A
+  // cancellation of some items, or of an order already partly on its way, keeps
+  // its delivery - that van ran, or will. The owner can still refund it from
+  // the order screen.
+  const wholeOrder = request.items.length === 0 || coversWholeOrder(request, orderItems)
+  const delivery = request.type === 'CANCEL' && wholeOrder && nothingSent
+    ? refundableDelivery(order, orderItems, refunds)
+    : 0
+  return { lines: withinRemaining(lines, Number(order.total) - alreadyGone - delivery), delivery }
 }
 
 async function issueRefund(
@@ -137,28 +170,36 @@ async function issueRefund(
   lines: Array<{ orderItemId: string; quantity: number; amount: number }>,
   reason: string,
   userId: string,
+  // The delivery charge going back with it, tax and all (see refundLines).
+  delivery = 0,
 ): Promise<{ ok: true; amount: number } | { ok: false; error: string }> {
-  if (lines.length === 0) return { ok: false, error: 'There is nothing left to refund on this order.' }
+  if (lines.length === 0 && !(delivery > 0)) return { ok: false, error: 'There is nothing left to refund on this order.' }
 
-  const provider = getPaymentProvider(order.paymentMethod)
+  // The same route the order screen's refund button takes (lib/payments/
+  // order-refund-route.ts): a card refund goes back through the card provider,
+  // and a bank transfer, cash or charged replacement part is recorded for the
+  // owner to send. Looking the parent's provider up directly sent a charged
+  // replacement's refund to a card provider that never took the money.
+  const provider = refundRouteForOrder(order)
   if (!provider) {
-    // Bank transfer, cash on collection and the like. Saying so is far better
+    // A method whose module has since been removed. Saying so is far better
     // than recording a refund that never happened.
     return {
       ok: false,
-      error: 'This order was not paid through a provider that can refund automatically. Approve without the refund and settle it by hand.',
+      error: 'This order was not paid through a method this shop can still refund. Approve without the refund and settle it by hand.',
     }
   }
-  if (!order.paymentReference) {
+  if (order.kind !== 'REPLACEMENT' && !order.paymentReference && (order.paymentMethod === 'STRIPE' || order.paymentMethod === 'PAYPAL')) {
     return { ok: false, error: 'This order has no payment reference to refund against.' }
   }
 
-  const total = lines.reduce((sum, line) => sum + line.amount, 0)
+  const total = lines.reduce((sum, line) => sum + line.amount, 0) + delivery
   const outcome = await processRefund({
     orderId: order.id,
     reason,
     createdBy: userId,
     items: lines,
+    shippingAmount: delivery,
     performRefund: async (idempotencyKey) => {
       const result = await provider.refundOrder({
         providerReference: order.paymentReference ?? '',
@@ -233,6 +274,23 @@ export type ApproveInput = {
  * through comes back in `refundError` and can be retried from the order screen,
  * where the refund UI already lives. */
 export async function approveOrderRequest(input: ApproveInput): Promise<DecideRequestOutcome> {
+  // A cancellation of the whole order is refused once any of it has gone out.
+  // Approving it would close an order with goods on the customer's doorstep,
+  // which is not a cancellation any more. The creation-time check cannot cover
+  // this: the dispatch screen only warns about a waiting request, so the goods
+  // can leave between the ask and the answer.
+  const pending = await getRequestById(input.requestId)
+  if (pending?.type === 'CANCEL' && pending.items.length === 0) {
+    const summary = await getOrderDispatchSummary(pending.orderId)
+    if (summary.lines.some((line) => line.dispatchedQty > 0)) {
+      return {
+        ok: false,
+        status: 409,
+        error: 'Part of this order has already been sent, so it can no longer be cancelled as a whole. Decline this, then refund what has not gone and arrange a return for what has.',
+      }
+    }
+  }
+
   const request = await decideRequest({
     requestId: input.requestId,
     status: 'APPROVED',
@@ -257,7 +315,8 @@ export async function approveOrderRequest(input: ApproveInput): Promise<DecideRe
   let refundError: string | undefined
   let refundedAmount: number | undefined
   if (input.refund) {
-    const netted = netOffReturnCharge(refundLines(request, orderItems), returnCharge)
+    const planned = await refundLines(request, orderItems, order)
+    const netted = netOffReturnCharge(planned.lines, returnCharge)
     if (!netted.ok) {
       // The approval stands and the charge is recorded; only the money has not
       // moved. Told plainly rather than swallowed, and retriable from the order
@@ -271,6 +330,7 @@ export async function approveOrderRequest(input: ApproveInput): Promise<DecideRe
           ? `${TYPE_WORD[request.type]} approved, less a ${formatMoney(netted.charge, config.currencySymbol)} return charge`
           : `${TYPE_WORD[request.type]} approved`,
         input.userId,
+        planned.delivery,
       )
       if (result.ok) refundedAmount = result.amount
       else refundError = result.error

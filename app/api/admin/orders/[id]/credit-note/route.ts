@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { listCreditNotesForOrder } from '@/modules/shop/lib/db/credit-notes'
+import { getCreditNoteById, listCreditNotesForOrder } from '@/modules/shop/lib/db/credit-notes'
 import { getInvoiceForOrder } from '@/modules/shop/lib/db/invoices'
-import { listRefundsForOrder } from '@/modules/shop/lib/db/refunds'
+import { getRefundById, listRefundsForOrder } from '@/modules/shop/lib/db/refunds'
 import { issueCreditNoteForRefund, resendCreditNoteToSinks } from '@/modules/shop/lib/credit-notes'
 import { hasCreditSinks } from '@/modules/shop/lib/invoice-sinks'
 import { signCreditNoteToken } from '@/modules/shop/lib/invoice-token'
@@ -78,11 +78,21 @@ const Body = z.object({
   creditNoteId: z.string().optional(),
 })
 
+// Acting needs shop.orders, as refunding does. Reading the panel is open to
+// shop access (the GET above), but a credit note is a numbered document that
+// goes to the customer and into the books, and shop.access is the "see but not
+// change" role.
+//
+// Both actions name a refund or a credit note by bare id, so each is checked
+// against the order in the URL before anything happens. The order screen only
+// ever sends a matching pair; nothing else made them match, and a request from
+// one order's URL could otherwise raise or re-send paperwork for another's.
+// Not found either way, so the answer says nothing about what belongs elsewhere.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const gate = await requireShopUser('shop.orders', { allowAccess: true })
+  const gate = await requireShopUser('shop.orders')
   if (gate.error) return gate.error
 
-  await params
+  const { id } = await params
   const parsed = Body.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   const { action, refundId, creditNoteId } = parsed.data
@@ -92,12 +102,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // the refund, so pressing it twice is not two credit notes.
   if (action === 'issue') {
     if (!refundId) return NextResponse.json({ error: 'Which refund?' }, { status: 400 })
+    const refund = await getRefundById(refundId)
+    if (!refund || refund.orderId !== id) {
+      return NextResponse.json({ error: 'That refund could not be found.' }, { status: 404 })
+    }
     const outcome = await issueCreditNoteForRefund(refundId, { issuedBy: 'MANUAL', userId: gate.user.id })
     if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
     return NextResponse.json({ creditNote: present(outcome.creditNote), created: outcome.created })
   }
 
   if (!creditNoteId) return NextResponse.json({ error: 'Which credit note?' }, { status: 400 })
+  const note = await getCreditNoteById(creditNoteId)
+  if (!note || note.orderId !== id) return NextResponse.json({ error: 'Credit note not found.' }, { status: 404 })
   const outcome = await resendCreditNoteToSinks(creditNoteId)
   if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
   return NextResponse.json({ creditNote: present(outcome.creditNote) })

@@ -31,17 +31,41 @@ async function extraItems(props: ShopCollectionBrowserProps): Promise<ShopCollec
       return []
     }
   }))
-  return lists.flat().map((item) => ({
-    id: item.id,
-    name: item.name,
-    // Only ever read through `href` below, but the card type carries a slug for
-    // shop's own rows; the href wins whenever it is set.
-    slug: item.id,
-    description: item.description,
-    productCount: item.productCount,
-    coverUrl: item.coverUrl,
-    href: item.href,
-  }))
+  return lists.flat().flatMap((item) => {
+    const href = safeSourceHref(item.href)
+    if (!href) return []
+    return [{
+      id: item.id,
+      name: item.name,
+      // Only ever read through `href` below, but the card type carries a slug for
+      // shop's own rows; the href wins whenever it is set.
+      slug: item.id,
+      description: item.description,
+      productCount: item.productCount,
+      coverUrl: item.coverUrl,
+      href,
+    }]
+  })
+}
+
+// A source's link is printed on the live index as something to press, so it is
+// checked here rather than taken on trust - the same stance the parcel tracking
+// link gets (lib/tracking-url.ts). The contract says a path on this site; a
+// whole http(s) address is let through as well. Anything else - a
+// "javascript:" address from a buggy or compromised module above all - costs
+// that one card, not the index.
+function safeSourceHref(href: unknown): string | null {
+  if (typeof href !== 'string') return null
+  const trimmed = href.trim()
+  // One leading slash is a path here; two (or a backslash, which browsers read
+  // as one) is somebody else's host.
+  if (/^\/(?![/\\])/.test(trimmed)) return trimmed
+  try {
+    const url = new URL(trimmed)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? trimmed : null
+  } catch {
+    return null
+  }
 }
 
 export async function ShopCollectionBrowserRsc(props: ShopCollectionBrowserProps) {

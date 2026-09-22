@@ -34,6 +34,22 @@ export async function getUnnotifiedSubscribers(productId: string): Promise<ShpBa
   return rows.map(mapSub)
 }
 
+// Claims one subscriber for sending: true only for the caller that flips
+// notified_at from empty, so two stock saves landing together cannot both email
+// the same person. Claimed BEFORE the send, released again if the send fails -
+// see dispatchNotifications in lib/back-in-stock-trigger.ts.
+export async function claimSubscriberForNotification(id: string): Promise<boolean> {
+  const claimed = await prisma.$executeRaw`
+    UPDATE "shp_back_in_stock_subscriptions" SET "notified_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${id} AND "notified_at" IS NULL
+  `
+  return claimed > 0
+}
+
+export async function releaseSubscriberNotification(id: string): Promise<void> {
+  await prisma.$executeRaw`UPDATE "shp_back_in_stock_subscriptions" SET "notified_at" = NULL WHERE "id" = ${id}`
+}
+
 export async function markSubscribersNotified(ids: string[]): Promise<void> {
   if (ids.length === 0) return
   await prisma.$executeRaw`

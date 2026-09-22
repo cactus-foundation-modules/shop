@@ -1,6 +1,8 @@
 import { headers } from 'next/headers'
 import { prisma } from '@/lib/db/prisma'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { summariseRevenue, type RevenueSummaryRow } from '@/modules/shop/lib/dashboard-revenue'
+import { formatMoney } from '@/modules/shop/lib/money'
 
 // Contributed to the core `core.admin-dashboard-widgets` extension point
 // (spec section 11): 30-day revenue/orders/AOV, low-stock count, pending
@@ -10,9 +12,17 @@ export async function shopDashboardWidget() {
   const config = await getShopConfigCached()
 
   const [summaryRows, lowStockRows, pendingManualRows, preOrderRows] = await Promise.all([
-    prisma.$queryRaw<Array<{ revenue: string | null; order_count: bigint }>>`
-      SELECT SUM("total") AS revenue, COUNT(*)::bigint AS order_count FROM "shp_orders"
-      WHERE "payment_status" = 'PAID' AND "created_at" > NOW() - interval '30 days'
+    // The same figures as app/api/admin/dashboard-widget, on the same rules:
+    // money follows payment_status, counts follow kind (migration 052). This one
+    // used to count every paid row, so each warranty part sent out read as
+    // another order and pulled the average down with it. Every paid state,
+    // refunded ones included, as while a refund left payment_status at PAID.
+    prisma.$queryRaw<RevenueSummaryRow[]>`
+      SELECT SUM("total") AS revenue,
+             SUM("total") FILTER (WHERE "kind" = 'SALE') AS sale_revenue,
+             COUNT(*) FILTER (WHERE "kind" = 'SALE')::bigint AS order_count
+      FROM "shp_orders"
+      WHERE "payment_status" IN ('PAID', 'PARTIALLY_REFUNDED', 'REFUNDED') AND "created_at" > NOW() - interval '30 days'
     `,
     prisma.$queryRaw<{ count: bigint }[]>`
       SELECT COUNT(*)::bigint AS count FROM "shp_products"
@@ -29,9 +39,7 @@ export async function shopDashboardWidget() {
     prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*)::bigint AS count FROM "shp_products" WHERE "is_pre_order" = true`,
   ])
 
-  const revenue = Number(summaryRows[0]?.revenue ?? 0)
-  const orderCount = Number(summaryRows[0]?.order_count ?? 0)
-  const aov = orderCount > 0 ? revenue / orderCount : 0
+  const { revenue, orderCount, averageOrderValue: aov } = summariseRevenue(summaryRows[0])
   const lowStockCount = Number(lowStockRows[0]?.count ?? 0)
   const pendingManualCount = Number(pendingManualRows[0]?.count ?? 0)
   const preOrderCount = Number(preOrderRows[0]?.count ?? 0)
@@ -40,9 +48,9 @@ export async function shopDashboardWidget() {
     <div className="card" style={{ padding: '1.25rem' }}>
       <h2 className="card-title" style={{ margin: '0 0 0.75rem' }}>Shop</h2>
       <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
-        <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{config.currencySymbol}{revenue.toFixed(2)}</div><div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>Revenue (30d)</div></div>
+        <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{formatMoney(revenue, config.currencySymbol)}</div><div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>Revenue (30d)</div></div>
         <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{orderCount}</div><div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>Orders (30d)</div></div>
-        <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{config.currencySymbol}{aov.toFixed(2)}</div><div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>Avg order value</div></div>
+        <div><div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{formatMoney(aov, config.currencySymbol)}</div><div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>Avg order value</div></div>
       </div>
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
         {lowStockCount > 0 && (

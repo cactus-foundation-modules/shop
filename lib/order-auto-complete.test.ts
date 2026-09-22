@@ -58,7 +58,7 @@ describe('completeOrderIfEveryParcelArrived', () => {
     expect(applyOrderStatusChange).not.toHaveBeenCalled()
   })
 
-  it.each(['COMPLETED', 'CANCELLED', 'REFUNDED'] as const)('never touches a %s order', async (status) => {
+  it.each(['COMPLETED', 'CANCELLED', 'REFUNDED', 'ON_HOLD'] as const)('never touches a %s order', async (status) => {
     state.status = status
     await expect(completeOrderIfEveryParcelArrived('o1')).resolves.toBe(false)
     expect(applyOrderStatusChange).not.toHaveBeenCalled()

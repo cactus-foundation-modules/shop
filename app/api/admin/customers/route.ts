@@ -19,7 +19,9 @@ export async function GET(request: NextRequest) {
       -- Counts follow kind, money follows payment_status (migration 052): a
       -- customer who has been sent two gas lifts has not placed two more orders.
       COUNT(*) FILTER (WHERE "kind" = 'SALE')::bigint AS order_count,
-      COALESCE(SUM("total") FILTER (WHERE "payment_status" = 'PAID'), 0) AS total_spent
+      -- Every paid state, refunded ones included, as while a refund left
+      -- payment_status at PAID (lib/payment-taken.ts).
+      COALESCE(SUM("total") FILTER (WHERE "payment_status" IN ('PAID', 'PARTIALLY_REFUNDED', 'REFUNDED')), 0) AS total_spent
     FROM "shp_orders"
     ${where}
     GROUP BY "customer_email"

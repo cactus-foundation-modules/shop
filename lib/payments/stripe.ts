@@ -6,15 +6,41 @@ import type {
 } from '@/modules/shop/lib/payments/provider'
 import { getOrderByPaymentReference } from '@/modules/shop/lib/db/orders'
 import { stripeLogo } from '@/modules/shop/lib/payments/logos'
+import { getSiteUrlOrNull } from '@/lib/config/env'
+
+// Which site took a payment, stamped on the intent. Stripe sends every event on
+// an account to every endpoint on it, so a second site sharing the account sees
+// this site's payments arrive at its webhook with order ids it has never heard
+// of. Only a payment carrying this site's own mark may be reported as one whose
+// order has gone missing (recordOrphanedPayment); anything else is somebody
+// else's sale.
+function siteMarker(): string | null {
+  const url = getSiteUrlOrNull()
+  if (!url) return null
+  try {
+    return new URL(url).host
+  } catch {
+    return null
+  }
+}
 
 let stripeClient: import('stripe').default | null = null
 
 async function getStripe(): Promise<import('stripe').default> {
   if (stripeClient) return stripeClient
+  // Said in plain words, and before the SDK is asked. Handed an empty key it
+  // refuses with "Neither apiKey nor config.authenticator provided", which is
+  // what an owner saw in the refund box, and what a card order still in flight
+  // when the key was taken out hit on its way to being confirmed. The checkout
+  // itself never gets here - it stops offering card payments the moment the
+  // key is missing (see isStripeConfigured) - so this is only ever read by
+  // someone looking after an order that already exists.
+  const secretKey = process.env.STRIPE_SECRET_KEY
+  if (!secretKey) throw new Error('Stripe is not set up on this site: the Stripe secret key is missing.')
   const { default: Stripe } = await import('stripe')
   // No apiVersion pinned - uses the account's dashboard-configured default
   // rather than guessing a literal date string the installed SDK major might reject.
-  stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY ?? '')
+  stripeClient = new Stripe(secretKey)
   return stripeClient
 }
 
@@ -28,7 +54,7 @@ async function createIntent(order: ShpOrderDraft): Promise<ShpPaymentIntent> {
     amount: toMinorUnits(order.amount),
     currency: order.currency.toLowerCase(),
     receipt_email: order.customerEmail,
-    metadata: { shpOrderId: order.orderId, shpOrderNumber: order.orderNumber },
+    metadata: { shpOrderId: order.orderId, shpOrderNumber: order.orderNumber, ...(siteMarker() ? { shpSite: siteMarker() as string } : {}) },
   })
   return { clientSecret: intent.client_secret ?? undefined, providerOrderId: intent.id }
 }
@@ -44,9 +70,24 @@ async function confirmPayment(order: ShpOrderDraft, payload: unknown): Promise<S
   const stripe = await getStripe()
   const intent = await stripe.paymentIntents.retrieve(paymentIntentId)
   if (intent.metadata?.shpOrderId !== order.orderId) return { success: false, error: 'Payment intent does not match this order' }
-  if (intent.status !== 'succeeded') return { success: false, error: `Payment not completed (status: ${intent.status})` }
+  // Declined only where Stripe says so about this order's own intent: an attempt
+  // that was made and refused (it drops back to needing a payment method, with
+  // the refusal recorded on it), or an intent that has been cancelled. An intent
+  // still 'processing' is not a failure at all - the webhook settles it - and
+  // one nobody has tried to pay yet has not failed either.
+  if (intent.status !== 'succeeded' && intent.status !== 'processing') {
+    const declined = intent.status === 'canceled' || (intent.status === 'requires_payment_method' && intent.last_payment_error != null)
+    return { success: false, declined, error: `Payment not completed (status: ${intent.status})` }
+  }
   if (intent.amount !== toMinorUnits(order.amount)) return { success: false, error: 'Payment amount does not match this order' }
   if (intent.currency !== order.currency.toLowerCase()) return { success: false, error: 'Payment currency does not match this order' }
+
+  // Still processing: the money is committed and settling, and the webhook marks
+  // the order paid (or failed) when Stripe knows. Reported as pending, so the
+  // order waits at AWAITING_CONFIRMATION and the shopper is told it is on its
+  // way - answering "payment not completed" here told somebody who had paid that
+  // they had not, which is how a shopper ends up paying twice.
+  if (intent.status === 'processing') return { success: true, pending: true, providerReference: intent.id }
 
   return { success: true, providerReference: intent.id }
 }
@@ -125,7 +166,16 @@ async function handleWebhook(req: Request): Promise<ShpWebhookResult> {
     const intent = event.data.object as import('stripe').default.PaymentIntent
     const orderId = intent.metadata?.shpOrderId
     if (!orderId) return { error: 'Missing shpOrderId metadata' }
-    return { orderId, status: 'PAID', providerReference: intent.id }
+    // What was actually taken, not what was asked for, so the route can hold
+    // the order if it is not the order's total (see webhook-amount.ts).
+    return {
+      orderId,
+      status: 'PAID',
+      providerReference: intent.id,
+      paidAmount: { minorUnits: intent.amount_received, currency: intent.currency },
+      // Only for a payment this site took - see siteMarker.
+      orderNumber: intent.metadata?.shpSite && intent.metadata.shpSite === siteMarker() ? intent.metadata.shpOrderNumber : undefined,
+    }
   }
 
   if (event.type === 'payment_intent.payment_failed') {
@@ -145,7 +195,12 @@ async function handleWebhook(req: Request): Promise<ShpWebhookResult> {
     if (!paymentIntentId) return {}
     const order = await getOrderByPaymentReference(paymentIntentId)
     if (!order) return {}
-    return { orderId: order.id, status: charge.refunded ? 'REFUNDED' : 'PARTIALLY_REFUNDED' }
+    return {
+      orderId: order.id,
+      status: charge.refunded ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
+      // Stripe's running total of everything refunded on this charge, in pence.
+      refundedTotal: (charge.amount_refunded / 100).toFixed(2),
+    }
   }
 
   return {}

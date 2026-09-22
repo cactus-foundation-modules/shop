@@ -4,14 +4,16 @@ import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
 import { getClientIp } from '@/lib/auth/rate-limit'
 import { blockedLinesMessage, resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkout'
 import { resolveShippingZoneForPostcode, listShippingRatesForZone } from '@/modules/shop/lib/db/tax-shipping'
-import { excludedPostcodeMessage } from '@/modules/shop/lib/excluded-postcode'
+import { excludedPostcodeMessage, refusesDelivery } from '@/modules/shop/lib/excluded-postcode'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
-import { formatMoney } from '@/modules/shop/lib/money'
+import { checkoutClosedResponse } from '@/modules/shop/lib/access'
+import { CheckoutLinesSchema, checkoutLinesRefusal } from '@/modules/shop/lib/checkout-lines'
+import { shopOrderValueRefusal } from '@/modules/shop/lib/order-value-gate'
 import { displayOrderTotals, type PriceDisplay } from '@/modules/shop/lib/tax-display-shared'
 
 const Body = z.object({
-  lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1), lineId: z.string().optional(), meta: z.record(z.unknown()).optional() })),
+  lines: CheckoutLinesSchema,
   postcode: z.string().optional(),
   shippingRateId: z.string().nullable().optional(),
   couponCode: z.string().nullable().optional(),
@@ -28,11 +30,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Too many requests - please wait a moment and try again.' }, { status: 429 })
   }
   const parsed = Body.safeParse(await request.json())
-  if (!parsed.success) return NextResponse.json({ error: 'Invalid checkout session request' }, { status: 400 })
+  if (!parsed.success) {
+    return NextResponse.json({ error: checkoutLinesRefusal(parsed.error) ?? 'Invalid checkout session request' }, { status: 400 })
+  }
   const { lines: rawLines, postcode, shippingRateId, couponCode, customerEmail } = parsed.data
 
   const config = await getShopConfigCached()
-  if (config.shopStatus !== 'OPEN') return NextResponse.json({ error: 'The shop is not currently accepting orders.' }, { status: 503 })
+  // Closed or browse-only turns shoppers away; staff walking their own checkout
+  // before reopening are let through. See checkoutClosedResponse.
+  const closed = await checkoutClosedResponse()
+  if (closed) return closed
   // Quote-only shops price nothing at checkout - see lib/commerce-mode.ts.
   const commerce = await resolveShopCommerceMode()
   if (commerce.mode === 'quote') return NextResponse.json({ error: commerce.blockedMessage }, { status: 503 })
@@ -54,7 +61,7 @@ export async function POST(request: NextRequest) {
   // the review step asks as soon as an address exists, so the shopper hears it
   // before they reach for a card rather than after.
   const resolvedZone = postcode ? await resolveShippingZoneForPostcode(postcode) : null
-  if (resolvedZone?.excluded) {
+  if (resolvedZone && refusesDelivery(resolvedZone, resolvedLines)) {
     return NextResponse.json({ error: excludedPostcodeMessage(config.excludedPostcodeMessage) }, { status: 400 })
   }
   const zone = resolvedZone?.zone ?? null
@@ -68,12 +75,10 @@ export async function POST(request: NextRequest) {
     customerEmail: customerEmail ?? null,
   })
 
-  if (config.minimumOrderValue != null && totals.subtotal < config.minimumOrderValue) {
-    return NextResponse.json({ error: `Minimum order value is ${formatMoney(config.minimumOrderValue, config.currencySymbol)}` }, { status: 400 })
-  }
-  if (config.maximumOrderValue != null && totals.subtotal > config.maximumOrderValue) {
-    return NextResponse.json({ error: `Maximum order value is ${formatMoney(config.maximumOrderValue, config.currencySymbol)}` }, { status: 400 })
-  }
+  // The shop's own minimum and maximum, measured the way payment-intent measures
+  // them - see lib/order-value-gate.ts for which figure that is, and why.
+  const orderValueRefusal = shopOrderValueRefusal(config, totals)
+  if (orderValueRefusal) return NextResponse.json({ error: orderValueRefusal }, { status: 400 })
 
   const hasPreOrderItems = resolvedLines.some((l) => l.isPreOrder)
 

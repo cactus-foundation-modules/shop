@@ -24,6 +24,7 @@ import {
   getPaymentProvider, getAllPaymentProviders, resolveProviderLabel, resolvePaymentMethodDescriptions,
 } from '@/modules/shop/lib/payments/registry'
 import { paymentOutstanding } from '@/modules/shop/lib/payment-instructions'
+import { paymentTaken } from '@/modules/shop/lib/payment-taken'
 import type { ShpPaymentLogo } from '@/modules/shop/lib/payments/provider'
 import type { ShpOrder } from '@/modules/shop/lib/types'
 
@@ -52,10 +53,11 @@ export type PayOnlineMethod = {
  * checkout: their bank details belong on the page for as long as a transfer is
  * one of the things they might do, even after they have started - and abandoned
  * - a card payment which moved `paymentMethod` on. Once it is paid, the honest
- * answer is whichever method actually paid it, because that is what happened.
+ * answer is whichever method actually paid it, because that is what happened -
+ * and still is once some or all of it has been refunded (lib/payment-taken.ts).
  */
 export function settlementMethod(order: PayableOrder): string {
-  if (order.paymentStatus === 'PAID') return order.paymentMethod
+  if (paymentTaken(order.paymentStatus)) return order.paymentMethod
   return order.originalPaymentMethod ?? order.paymentMethod
 }
 

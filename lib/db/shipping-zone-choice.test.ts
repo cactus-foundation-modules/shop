@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { decideShippingZone } from '@/modules/shop/lib/db/tax-shipping'
+import { refusesDelivery } from '@/modules/shop/lib/excluded-postcode'
 
 // Which zone a shopper lands in, and - the part that is new and the part that
 // can quietly cost money - what it means when they land in none of them.
@@ -34,7 +35,7 @@ describe('decideShippingZone', () => {
   // out of has to lose, or the carve-out carves nothing.
   it('takes an excluded postcode out of the catch-all', () => {
     const zones = [zone('Mainland UK', [], HIGHLANDS)]
-    expect(decideShippingZone(zones, 'IV51 9XX')).toEqual({ zone: null, excluded: true })
+    expect(decideShippingZone(zones, 'IV51 9XX')).toEqual({ zone: null, excluded: true, uncovered: false })
     expect(decideShippingZone(zones, 'M1 1AE').zone?.name).toBe('Mainland UK')
   })
 
@@ -42,7 +43,7 @@ describe('decideShippingZone', () => {
     // A contradictory pair on one zone. Excluded wins, which is the reading an
     // owner means when they add a line to the excluded box.
     const zones = [zone('Scotland', ['AB', 'IV'], ['AB30-AB32'])]
-    expect(decideShippingZone(zones, 'AB31 1AA')).toEqual({ zone: null, excluded: true })
+    expect(decideShippingZone(zones, 'AB31 1AA')).toEqual({ zone: null, excluded: true, uncovered: false })
     expect(decideShippingZone(zones, 'AB39 1AA').zone?.name).toBe('Scotland')
   })
 
@@ -64,31 +65,74 @@ describe('decideShippingZone', () => {
       zone('Mainland UK', [], HIGHLANDS),
       zone('Scotland', ['AB', 'IV', 'PH'], HIGHLANDS),
     ]
-    expect(decideShippingZone(zones, 'PH20 1AA')).toEqual({ zone: null, excluded: true })
+    expect(decideShippingZone(zones, 'PH20 1AA')).toEqual({ zone: null, excluded: true, uncovered: false })
   })
 
   // A new install has no zones at all. That is not a delivery-area decision and
   // must never show a shopper a "we do not deliver there" message.
   it('does not call a shop with no zones a refusal', () => {
-    expect(decideShippingZone([], 'IV51 9XX')).toEqual({ zone: null, excluded: false })
+    expect(decideShippingZone([], 'IV51 9XX')).toEqual({ zone: null, excluded: false, uncovered: false })
   })
 
-  // Likewise a shop with zones that simply do not reach this shopper, and no
-  // exclusion anywhere. Behaviour here is exactly what it was before exclusions
-  // existed: no zone, no tax, no delivery rates, order allowed.
-  it('does not call an unmatched postcode a refusal when nothing excluded it', () => {
+  // A shop with zones that simply do not reach this shopper, and no exclusion
+  // anywhere. Not an exclusion - nobody named the postcode - but off the edge of
+  // the map the owner drew, which the checkout needs told apart from both "no
+  // map yet" above and "named and refused". What it then does is refusesDelivery's.
+  it('calls an unmatched postcode uncovered, not excluded, when nothing excluded it', () => {
     const zones = [zone('London', ['SW', 'SE'])]
-    expect(decideShippingZone(zones, 'M1 1AE')).toEqual({ zone: null, excluded: false })
+    expect(decideShippingZone(zones, 'M1 1AE')).toEqual({ zone: null, excluded: false, uncovered: true })
+  })
+
+  it('never calls a postcode uncovered while a catch-all is there to take it', () => {
+    const zones = [zone('London', ['SW', 'SE']), zone('Everywhere else')]
+    const decision = decideShippingZone(zones, 'M1 1AE')
+    expect(decision.zone?.name).toBe('Everywhere else')
+    expect(decision.uncovered).toBe(false)
   })
 
   it('keeps PO3 on the mainland while excluding the Isle of Wight', () => {
     const zones = [zone('Mainland UK', [], HIGHLANDS)]
     expect(decideShippingZone(zones, 'PO3 5JT').zone?.name).toBe('Mainland UK')
-    expect(decideShippingZone(zones, 'PO31 8QU')).toEqual({ zone: null, excluded: true })
+    expect(decideShippingZone(zones, 'PO31 8QU')).toEqual({ zone: null, excluded: true, uncovered: false })
   })
 
   it('uses the first catch-all when an owner has left two lying about', () => {
     const zones = [zone('First'), zone('Second')]
     expect(decideShippingZone(zones, 'M1 1AE').zone?.name).toBe('First')
+  })
+})
+
+// What the checkout does with that decision. An order from off the edge of the
+// map used to go through with nothing charged to carry it and no zone to take a
+// VAT rate from; now it is turned away - but only where there is a parcel.
+describe('refusesDelivery', () => {
+  const physical = { product: { type: 'PHYSICAL' as const } }
+  const download = { product: { type: 'DIGITAL' as const } }
+  const service = { product: { type: 'SERVICE' as const } }
+  const landed = { excluded: false, uncovered: false }
+  const excluded = { excluded: true, uncovered: false }
+  const uncovered = { excluded: false, uncovered: true }
+
+  it('lets a postcode that landed in a zone through', () => {
+    expect(refusesDelivery(landed, [physical])).toBe(false)
+  })
+
+  it('refuses an excluded postcode whatever is in the basket, as it always has', () => {
+    expect(refusesDelivery(excluded, [physical])).toBe(true)
+    expect(refusesDelivery(excluded, [download])).toBe(true)
+  })
+
+  it('refuses an uncovered postcode when there is something to carry there', () => {
+    expect(refusesDelivery(uncovered, [download, physical])).toBe(true)
+  })
+
+  it('lets downloads and services through from anywhere', () => {
+    expect(refusesDelivery(uncovered, [download, service])).toBe(false)
+  })
+
+  // The shop-with-no-zones case, end to end: decideShippingZone never calls it
+  // uncovered, so a new install carries on taking orders.
+  it('never refuses a shop that has no zones yet', () => {
+    expect(refusesDelivery(decideShippingZone([], 'M1 1AE'), [physical])).toBe(false)
   })
 })

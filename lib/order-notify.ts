@@ -2,10 +2,11 @@ import { prisma } from '@/lib/db/prisma'
 import { isSmsAvailable, sendSmsTemplate } from '@/lib/sms/send'
 import { getMemberChannelPreference } from '@/lib/members/notification-prefs'
 import { orderUrlVars, sendShopEmail } from '@/modules/shop/lib/email'
-import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { getShopConfigCached, type ShpConfig } from '@/modules/shop/lib/config'
 import { orderTrackingUrl } from '@/modules/shop/lib/order-tracking'
+import { addOrderNote } from '@/modules/shop/lib/db/orders'
 import type { EmailAttachment } from '@/lib/email/index'
-import { SHOP_ORDER_UPDATES_CATEGORY, SHOP_TRIGGER_TO_SMS_KEY } from '@/modules/shop/lib/sms-templates'
+import { SHOP_ORDER_UPDATES_CATEGORY, SHOP_TRIGGER_TO_SMS_KEY, shopSmsTemplates } from '@/modules/shop/lib/sms-templates'
 import { parseUkPhone } from '@/modules/shop/lib/phone'
 import type { ShpEmailTemplateTrigger, ShpOrder } from '@/modules/shop/lib/types'
 
@@ -130,14 +131,55 @@ export async function notifyOrderCustomer(
     ...vars,
   }
 
+  // A failed email is held until the text has had its turn, then passed on
+  // exactly as before. It used to leave straight away, so a customer who asked
+  // for both lost the text as well whenever the email service was down - the one
+  // time the text mattered most.
+  let emailFailure: { error: unknown } | null = null
   if (channels.email) {
-    await sendShopEmail(trigger, order.customerEmail, withTracking, { orderId: order.id, attachments: opts?.attachments })
+    try {
+      await sendShopEmail(trigger, order.customerEmail, withTracking, { orderId: order.id, attachments: opts?.attachments })
+    } catch (error) {
+      emailFailure = { error }
+    }
   }
 
+  await sendOrderText(trigger, order, channels, config, withTracking)
+
+  if (emailFailure) throw emailFailure.error
+}
+
+async function sendOrderText(
+  trigger: ShpEmailTemplateTrigger,
+  order: ShpOrder,
+  channels: OrderNotifyChannels,
+  config: Pick<ShpConfig, 'smsUpdatesEnabled'>,
+  vars: Record<string, string>,
+): Promise<void> {
   const smsKey = SHOP_TRIGGER_TO_SMS_KEY[trigger]
   if (!channels.sms || !smsKey || !channels.phone) return
   if (!config.smsUpdatesEnabled) return
   if (!(await isSmsAvailable())) return
 
-  await sendSmsTemplate(channels.phone, smsKey, withTracking)
+  const result = await sendSmsTemplate(channels.phone, smsKey, vars)
+  // Only a text that was actually attempted is worth a line: one the owner has
+  // switched off was never meant to go.
+  if (result.sent || result.reason === 'failed') await noteOrderText(order.id, smsKey, channels.phone, result.sent)
+}
+
+// Texts have no log of their own - the order's email log is emails only, and
+// widening it is a schema change - so each one attempted goes on the order's
+// timeline as a system note instead. Without it staff had no way to tell
+// whether a customer who asked for texts ever got the dispatch one. Best-effort:
+// the note is a record, and its failing must not read as the text failing.
+async function noteOrderText(orderId: string, smsKey: string, phone: string, sent: boolean): Promise<void> {
+  const label = shopSmsTemplates.find((t) => t.key === smsKey)?.label ?? 'Order update'
+  const note = sent
+    ? `Text message sent to ${phone}: ${label}.`
+    : `Text message not sent: "${label}" to ${phone} did not go through, so it has not arrived and nothing will retry it.`
+  try {
+    await addOrderNote(orderId, note, true, null)
+  } catch (err) {
+    console.error(`[shop] could not note a text message on order ${orderId}`, err)
+  }
 }

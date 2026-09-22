@@ -118,6 +118,56 @@ describe('invoice document style scope', () => {
   })
 })
 
+// The colour and font boxes take typed text, and the style block writes it into a
+// <style> element as it stands. Whatever is typed must stay a value: it cannot
+// close the rule, close the element, or have the printer fetch something.
+describe('invoice document style values', () => {
+  it('keeps the colours and font stacks an owner can genuinely type', () => {
+    const css = emitted(renderToStaticMarkup(
+      <ShopInvoiceStyle
+        accent="light-dark(var(--color-2), #fafafa)"
+        labelColour="rgb(10 20 30 / 50%)"
+        bodyFont={'"Playfair Display", Georgia, serif'}
+      />,
+    ))
+    expect(css).toContain('--shp-inv-accent: light-dark(var(--color-2), #fafafa);')
+    expect(css).toContain('--shp-inv-label: rgb(10 20 30 / 50%);')
+    expect(css).toContain('--shp-inv-body-font: "Playfair Display", Georgia, serif;')
+  })
+
+  it('cannot close the rule or the style element from a colour box', () => {
+    const html = renderToStaticMarkup(
+      <ShopInvoiceStyle accent="red} body{display:none" titleColour="</style><script>alert(1)</script>" />,
+    )
+    expect(html).not.toContain('<script>')
+    const css = emitted(html)
+    // One rule, opened once and closed once: nothing typed got to add another.
+    expect(css.match(/\{/g)).toHaveLength(1)
+    expect(css.match(/\}/g)).toHaveLength(1)
+    expect(css).not.toContain('display:none')
+  })
+
+  it('drops a url() or expression() outright rather than passing it to the printer', () => {
+    const css = emitted(renderToStaticMarkup(
+      <ShopInvoiceStyle accent="url(http://169.254.169.254/)" labelColour="expression(alert(1))" titleColour="navy" />,
+    ))
+    expect(css).not.toContain('--shp-inv-accent')
+    expect(css).not.toContain('--shp-inv-label')
+    expect(css).toContain('--shp-inv-title-ink: navy;')
+  })
+
+  it('keeps a typed colour on the divider and page number to one property', () => {
+    const divider = visible(renderToStaticMarkup(<ShopInvoiceDivider colour="red; background: url(x)" />))
+    expect(divider).not.toContain('background')
+    expect(divider).not.toContain('url(')
+    // What is left is one odd-looking value on the one property, not a second
+    // declaration beside it.
+    const pageNo = visible(renderToStaticMarkup(<ShopInvoicePageNumber _ctx={ctx} colour="blue; position: fixed" />))
+    expect(pageNo).not.toMatch(/position\s*:/)
+    expect(pageNo).not.toMatch(/;\s*position/)
+  })
+})
+
 describe('invoice document tokens', () => {
   const tokens = invoiceTokens(ctx)
 

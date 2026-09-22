@@ -3,18 +3,16 @@ import { z } from 'zod'
 import { errorResponse } from '@/lib/utils'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { updateSavedAddress, deleteSavedAddress, getSavedAddressById } from '@/modules/shop/lib/db/addresses'
+import { BoundedAddressSchema } from '@/modules/shop/lib/address-limits'
 
 // No company field: the organisation a shopper buys on behalf of is a contact
 // detail kept on their account, not something repeated on every door they have
 // ever ordered to. Rows written before that moved keep theirs in the stored
 // JSON; nothing reads it back, and a company that belongs on the delivery label
 // goes in line 1.
-const AddressSchema = z.object({
-  firstName: z.string().min(1), lastName: z.string().min(1),
-  line1: z.string().min(1), line2: z.string().optional(), city: z.string().min(1), county: z.string().optional(),
-  postcode: z.string().min(1), country: z.string().min(2).default('GB'), phone: z.string().optional(),
-})
-const Body = z.object({ label: z.string().max(60).nullable().optional(), address: AddressSchema.optional(), isDefault: z.boolean().optional() })
+//
+// Bounded by the same shared shape as the create route (lib/address-limits.ts).
+const Body = z.object({ label: z.string().max(60).nullable().optional(), address: BoundedAddressSchema.optional(), isDefault: z.boolean().optional() })
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const member = await getMemberFromCookie()

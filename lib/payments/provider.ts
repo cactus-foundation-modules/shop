@@ -182,6 +182,18 @@ export type ShpPaymentResult = {
   // is authorised and awaiting settlement). The confirm route parks the order at
   // AWAITING_CONFIRMATION and lets the provider's webhook flip it to PAID.
   pending?: boolean
+  // Only alongside `success: false`, and only when the provider has said so
+  // itself about a payment it has shown to belong to THIS order - a card
+  // declined on this order's own intent, say. It is what lets the confirm route
+  // mark the order's payment as failed.
+  //
+  // Everything else that is not a success - a payload with nothing in it, an id
+  // belonging to some other order, a payment still settling - leaves the order
+  // exactly as it was. The confirm route answers to anybody holding an order id,
+  // and a request that proves nothing must not be able to fail somebody else's
+  // order. Absent means not declined, so a provider that never sets it simply
+  // leaves an unsuccessful order unpaid, which is what an abandoned one is.
+  declined?: boolean
   providerReference?: string
   error?: string
 }
@@ -208,5 +220,20 @@ export type ShpWebhookResult = {
   orderId?: string
   status?: ShpPaymentStatus
   providerReference?: string
+  // On a PAID result: what the provider says it actually took, in minor units
+  // (pence) and an ISO currency code. The webhook route checks it against the
+  // order before trusting the payment in full (lib/payments/webhook-amount.ts).
+  // Optional, so a provider that cannot say is settled as it always was.
+  paidAmount?: { minorUnits: number; currency: string }
+  // The order number the payment was taken for - set only where the provider
+  // can tell the payment was taken by THIS site, since a payment account can be
+  // shared. Only used to name a payment whose order no longer exists (see
+  // recordOrphanedPayment), which is raised for nothing without it.
+  orderNumber?: string
+  // On a refund: how much the provider has refunded on this payment IN TOTAL,
+  // as a decimal string in the order's currency - every refund so far, the
+  // shop's own included. The webhook route takes off what the shop recorded
+  // itself to find money refunded outside it (lib/provider-refund-ingest.ts).
+  refundedTotal?: string
   error?: string
 }

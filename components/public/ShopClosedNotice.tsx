@@ -39,7 +39,18 @@ export function ShopStockHiddenBanner() {
   )
 }
 
-export function ShopDraftPreviewBanner() {
+// A spare part shares the draft's gate (lib/product-page-gate.ts) but not its
+// cure: setting a part to Active changes nothing for customers, so it gets its
+// own sentence.
+export function ShopDraftPreviewBanner({ sparePart = false }: { sparePart?: boolean }) {
+  if (sparePart) {
+    return (
+      <p style={bannerStyle}>
+        This product is marked as a spare part, so it stays out of the shop. Only signed-in staff can see this page -
+        everyone else gets a page-not-found. Untick &ldquo;This is a spare part&rdquo; if you want customers to be able to buy it.
+      </p>
+    )
+  }
   return (
     <p style={bannerStyle}>
       This product is still a draft. Only signed-in staff can see this page - everyone else gets a page-not-found.

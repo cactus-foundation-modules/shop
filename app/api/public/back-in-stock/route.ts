@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { subscribeBackInStock, unsubscribeBackInStock } from '@/modules/shop/lib/db/back-in-stock'
 import { getProductById } from '@/modules/shop/lib/db/products'
+import { getProductStorefrontReachability } from '@/modules/shop/lib/product-page-gate'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { verifyUnsubscribeToken } from '@/modules/shop/lib/unsubscribe-token'
 import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
@@ -23,8 +24,15 @@ export async function POST(request: NextRequest) {
   const parsed = SubscribeBody.safeParse(await request.json())
   if (!parsed.success) return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
 
+  // Only a product whose page this visitor could be standing on - the same test
+  // the page itself makes (lib/product-page-gate.ts). A draft, a variation child
+  // or a spare part has no form to subscribe from, so an alert against one is a
+  // list entry nobody asked for and, if its stock ever moves, an email about
+  // something the shop is not selling.
   const product = await getProductById(parsed.data.productId)
-  if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
+  if (!product || !(await getProductStorefrontReachability(product)).reachable) {
+    return NextResponse.json({ error: 'Product not found' }, { status: 404 })
+  }
 
   const member = await getMemberFromCookie().catch(() => null)
   await subscribeBackInStock(product.id, parsed.data.email, member?.id ?? null)

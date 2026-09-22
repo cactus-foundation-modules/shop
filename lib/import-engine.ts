@@ -150,7 +150,12 @@ async function resolveTagIds(names: string[]): Promise<string[]> {
 // stores image_urls as IMAGE-type media rows pointing at the external URL
 // (Q13 - not re-uploaded). Runs inside Next's after() (Q7), progress tracked
 // on the shp_import_jobs row so the admin can poll it.
-export async function processImportJob(jobId: string, csvText: string, adminEmail: string, columnMap: Record<string, string> | null, opts?: { notify?: boolean; mode?: ImportMode; onRow?: (progress: ImportRowProgress) => void | Promise<void> }): Promise<void> {
+//
+// `deadline` (epoch ms) is for a caller running the whole file inside one
+// request's time limit: the run stops before the next row once it passes, and
+// the job is closed as FAILED saying where it stopped. A caller feeding its own
+// bounded chunks (the Google-Sheet Pull) leaves it out and nothing changes.
+export async function processImportJob(jobId: string, csvText: string, adminEmail: string, columnMap: Record<string, string> | null, opts?: { notify?: boolean; mode?: ImportMode; deadline?: number; onRow?: (progress: ImportRowProgress) => void | Promise<void> }): Promise<void> {
   const updateOnly = opts?.mode === 'UPDATE_ONLY'
   const rows = parseCsv(csvText)
   const header = rows[0] ?? []
@@ -217,7 +222,14 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
     return ids
   }
 
+  // The index of the first row NOT imported, when the run stopped for time.
+  let stoppedAt: number | null = null
+
   for (let i = 0; i < dataRows.length; i++) {
+    // Out of time: stop cleanly between two rows rather than be cut off by the
+    // platform part-way through one, so the job can say how far it got. Only a
+    // caller that passes a deadline gets this; see the stopped branch below.
+    if (opts?.deadline !== undefined && Date.now() >= opts.deadline) { stoppedAt = i; break }
     const row = dataRows[i]!
     const rowNumber = i + 2 // 1-indexed + header row
     // Announce the row before writing it, so a caller reporting progress names
@@ -455,6 +467,32 @@ export async function processImportJob(jobId: string, csvText: string, adminEmai
     if ((i + 1) % 25 === 0 || i === dataRows.length - 1) {
       await updateImportJobProgress(jobId, { processedRows: i + 1, createdCount: created, updatedCount: updated, skippedCount: skipped, errors })
     }
+  }
+
+  // The in-loop progress write sits at the bottom of the loop, and a row skipped
+  // with `continue` never reaches it - so a file (or a Sheet pull's chunk) ending
+  // on a bad row left the job showing a batch-old tally, and the pull, which
+  // reads each chunk's figures back off this row, added its own running totals
+  // in a second time. Written once more here, whatever the last row did.
+  if (stoppedAt === null && dataRows.length > 0) {
+    await updateImportJobProgress(jobId, { processedRows: dataRows.length, createdCount: created, updatedCount: updated, skippedCount: skipped, errors })
+  }
+
+  if (stoppedAt !== null) {
+    // Everything above this row is written and stays written. Importing the same
+    // file again carries on from here in effect: rows already in match their
+    // product and compare unchanged, so they cost a lookup and write nothing.
+    // First in the list, because the stored list is capped and this is the one
+    // entry that explains the rest. No completion email - it would say the
+    // import had finished, and it has not.
+    const stoppedRow = stoppedAt + 2
+    errors.unshift({
+      row: stoppedRow,
+      reason: `Stopped at row ${stoppedRow} because the import ran out of time. Everything before it was saved. Import the same file again to carry on - rows already in are left as they are.`,
+    })
+    await updateImportJobProgress(jobId, { processedRows: stoppedAt, createdCount: created, updatedCount: updated, skippedCount: skipped, errors })
+    await markImportJobCompleted(jobId, 'FAILED')
+    return
   }
 
   await markImportJobCompleted(jobId, 'COMPLETED')

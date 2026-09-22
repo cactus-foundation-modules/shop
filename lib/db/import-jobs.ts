@@ -1,11 +1,19 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import type { ShpImportJob } from '@/modules/shop/lib/types'
+import { capStoredImportErrors, effectiveImportJobStatus } from '@/modules/shop/lib/import-job-status'
 
 function mapJob(r: Record<string, unknown>): ShpImportJob {
   return {
     id: r.id as string,
-    status: r.status as ShpImportJob['status'],
+    // A run killed at the time ceiling never writes its own ending, so a row
+    // left PROCESSING long past any live run reads as FAILED. See
+    // lib/import-job-status.ts.
+    status: effectiveImportJobStatus({
+      status: r.status as ShpImportJob['status'],
+      startedAt: (r.started_at as Date | null) ?? null,
+      createdAt: r.created_at as Date,
+    }),
     filename: r.filename as string,
     totalRows: r.total_rows as number,
     processedRows: r.processed_rows as number,
@@ -55,13 +63,26 @@ export async function updateImportJobProgress(id: string, fields: {
   if (fields.createdCount !== undefined) sets.push(Prisma.sql`"created_count" = ${fields.createdCount}`)
   if (fields.updatedCount !== undefined) sets.push(Prisma.sql`"updated_count" = ${fields.updatedCount}`)
   if (fields.skippedCount !== undefined) sets.push(Prisma.sql`"skipped_count" = ${fields.skippedCount}`)
-  if (fields.errors !== undefined) sets.push(Prisma.sql`"errors" = ${JSON.stringify(fields.errors)}::jsonb`)
+  // Capped: the full list is rewritten on every tick, so an uncapped one grows
+  // the row (and every poll of it) with each bad line. See
+  // IMPORT_JOB_MAX_STORED_ERRORS.
+  if (fields.errors !== undefined) sets.push(Prisma.sql`"errors" = ${JSON.stringify(capStoredImportErrors(fields.errors))}::jsonb`)
   if (sets.length === 0) return
   await prisma.$executeRaw`UPDATE "shp_import_jobs" SET ${Prisma.join(sets, ', ')} WHERE "id" = ${id}`
 }
 
 export async function markImportJobCompleted(id: string, status: 'COMPLETED' | 'FAILED'): Promise<void> {
   await prisma.$executeRaw`UPDATE "shp_import_jobs" SET "status" = ${status}, "completed_at" = CURRENT_TIMESTAMP WHERE "id" = ${id}`
+}
+
+// For a run that threw. Only a job still open is touched: a throw AFTER the
+// engine wrote COMPLETED (the report email failing, say) must not turn a
+// finished import into a failed one.
+export async function failImportJobIfUnfinished(id: string): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "shp_import_jobs" SET "status" = 'FAILED', "completed_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${id} AND "status" IN ('PENDING', 'PROCESSING')
+  `
 }
 
 export async function pruneOldImportJobs(olderThanDays: number): Promise<number> {

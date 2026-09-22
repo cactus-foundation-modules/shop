@@ -7,8 +7,6 @@ import { getMemberAreaPath } from '@/lib/members/paths'
 import MemberAccountShell from '@/components/members/account/MemberAccountShell'
 import { listOrderSummariesForMember, type MemberOrderSummary } from '@/modules/shop/lib/member-orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { getShopGate } from '@/modules/shop/lib/access'
-import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { OrderSummaryCard } from '@/modules/shop/components/public/OrderSummaryCard'
 import { customerReferenceLabel } from '@/modules/shop/lib/customer-reference'
 
@@ -42,9 +40,9 @@ export default async function ShopAccountOrdersPage({ searchParams }: Props) {
   const membersConfig = await getMembersConfig()
   if (!membersConfig.enabled) notFound()
 
-  const gate = await getShopGate()
-  if (gate.blocked) return <ShopClosedNotice message={gate.message} />
-
+  // Deliberately NOT behind the shop gate: the list of orders a member has
+  // already placed is how they reach each one's page, and those stay open
+  // while the shop is closed (see getShopGate in lib/access.ts).
   const member = await getMemberFromCookie()
   if (!member) redirect(`/${getMemberAreaPath()}/login?redirect=/shop/account/orders`)
 
@@ -59,7 +57,6 @@ export default async function ShopAccountOrdersPage({ searchParams }: Props) {
 
   return (
     <MemberAccountShell member={member} maxWidth={880}>
-      {gate.staffPreview && <ShopStaffPreviewBanner />}
 
       <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-semibold)', margin: '0 0 var(--space-4)', color: 'var(--color-text)' }}>
         Your orders

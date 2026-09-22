@@ -50,10 +50,13 @@ export async function resolveAutomaticRecommendations(productId: string, limit: 
     ? Prisma.sql`AND NOT ${await outOfStockSql()}`
     : Prisma.empty
 
+  // parts_only: a spare part filed in the same category is still not something
+  // to suggest - its page is not open to shoppers (lib/product-page-gate.ts).
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT p."id" FROM "shp_products" p
     JOIN "shp_product_categories" pc ON pc."product_id" = p."id"
-    WHERE pc."category_id" = ${categoryId} AND p."status" = 'ACTIVE' AND p."id" NOT IN (${Prisma.join(excludeList)})
+    WHERE pc."category_id" = ${categoryId} AND p."status" = 'ACTIVE' AND p."parts_only" = false
+      AND p."id" NOT IN (${Prisma.join(excludeList)})
       ${inStockOnly}
     ORDER BY p."created_at" DESC
     LIMIT ${limit}
@@ -64,9 +67,13 @@ export async function resolveAutomaticRecommendations(productId: string, limit: 
 // A hand-picked list, with anything the shop is hiding taken out. Filtered
 // before the limit is applied, so a strip of four that has one sold-out entry
 // shows the next one down rather than a gap.
+// A spare part picked by hand goes too: it would be a card leading to a page
+// shoppers are not shown.
 async function visibleRecommendations(products: ShpProduct[], limit?: number): Promise<ShpProduct[]> {
   const { filterHiddenOutOfStock } = await import('@/modules/shop/lib/stock-visibility')
-  const visible = await filterHiddenOutOfStock(products)
+  // Only live listings: a manual pick is kept when the product it points at is
+  // put back to draft or archived, and a card for it led to a page that 404s.
+  const visible = await filterHiddenOutOfStock(products.filter((p) => !p.partsOnly && p.status === 'ACTIVE'))
   return limit == null ? visible : visible.slice(0, limit)
 }
 

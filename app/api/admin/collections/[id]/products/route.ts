@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { listCollectionProducts, addProductsToCollection, setCollectionProducts } from '@/modules/shop/lib/db'
+import { COLLECTION_MAX_PRODUCT_IDS, formatLimit } from '@/modules/shop/lib/admin-input-limits'
 
 // What is in one collection, and the two ways the admin screen changes it.
 //
@@ -18,7 +19,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   return NextResponse.json({ products: await listCollectionProducts(id) })
 }
 
-const Body = z.object({ productIds: z.array(z.string()) })
+// Ceilinged, not paged: a PUT carries the whole collection by design, so the
+// ceiling is set far above any collection the panel could draw (see
+// lib/admin-input-limits.ts) and only stops a list nobody built by hand.
+const Body = z.object({
+  productIds: z.array(z.string()).max(
+    COLLECTION_MAX_PRODUCT_IDS,
+    `A collection can hold at most ${formatLimit(COLLECTION_MAX_PRODUCT_IDS)} products.`,
+  ),
+})
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireShopUser('shop.products')

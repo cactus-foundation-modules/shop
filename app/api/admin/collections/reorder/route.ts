@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { reorderCollections } from '@/modules/shop/lib/db'
+import { CATALOGUE_REORDER_MAX_IDS, formatLimit } from '@/modules/shop/lib/admin-input-limits'
 
 // Persists the order collections list in. The admin screen sends every
 // collection id in its new order; position is written as the array index.
 // Mirrors the categories reorder route, minus the re-parenting - collections
-// are a flat list, so there is no tree to keep honest.
-const Body = z.object({ orderedIds: z.array(z.string()).min(1) })
+// are a flat list, so there is no tree to keep honest. Same ceiling as that
+// route, since this is one transaction too.
+const Body = z.object({
+  orderedIds: z.array(z.string()).min(1)
+    .max(CATALOGUE_REORDER_MAX_IDS, `That is more than ${formatLimit(CATALOGUE_REORDER_MAX_IDS)} collections to reorder at once.`),
+})
 
 export async function POST(request: NextRequest) {
   const gate = await requireShopUser('shop.products')

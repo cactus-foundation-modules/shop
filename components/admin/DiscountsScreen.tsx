@@ -9,13 +9,20 @@ import { useConfirm, useAlert } from '@/modules/shop/components/admin/dialogs'
 
 type DiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FREE_SHIPPING'
 
+// `startsOn` / `expiresOn` are the days the server worked out in the site's own
+// timezone (lib/discount-window.ts). The form reads and shows those rather than
+// slicing the stored instant, which is UTC and lands on the day before for a
+// London midnight. `expiresOn` is the LAST day the discount works - the day
+// before the stored expiry instant - and goes back up as exactly that.
 type Coupon = {
   id: string; code: string; type: DiscountType; value: string | null; usageCount: number; usageLimit: number | null
   perCustomerLimit: number | null; minimumOrderValue: string | null; startsAt: string | null; expiresAt: string | null; isActive: boolean
+  startsOn: string | null; expiresOn: string | null
 }
 type AutoDiscount = {
   id: string; name: string; type: DiscountType; value: string | null; priority: number; isActive: boolean
   minimumOrderValue: string | null; freeShippingThreshold: string | null; startsAt: string | null; expiresAt: string | null
+  startsOn: string | null; expiresOn: string | null
 }
 
 type CouponForm = {
@@ -39,8 +46,23 @@ function formatDiscountValue(type: DiscountType, value: string | null, symbol: s
   if (type === 'FIXED_AMOUNT') return value == null ? '—' : formatMoney(value, symbol)
   return '—'
 }
+// The picked day goes up as the day itself ("2026-09-28"), and the server makes
+// it midnight in the shop's timezone - the start of a start day, the end of a
+// last day. Converting it here with `new Date(v)` read it as midnight UTC, which
+// is 1am in London all summer.
 function dateOrNull(v: string): string | null {
-  return v.trim() === '' ? null : new Date(v).toISOString()
+  return v.trim() === '' ? null : v.trim()
+}
+// A "YYYY-MM-DD" day as the table prints it. Formatted in UTC because the value
+// is already a calendar day - letting the browser's zone near it could only
+// move it.
+function formatDay(day: string): string {
+  return new Date(`${day}T00:00:00Z`).toLocaleDateString('en-GB', { timeZone: 'UTC' })
+}
+// The Last day column on both tables. No last day means the discount runs until
+// it is switched off, and saying so beats a dash that could mean "not set up".
+function formatLastDay(day: string | null): string {
+  return day ? formatDay(day) : 'No end'
 }
 
 export function DiscountsScreen() {
@@ -67,7 +89,7 @@ export function DiscountsScreen() {
       setCouponForm({
         code: c.code, type: c.type, value: c.value ?? '', minimumOrderValue: c.minimumOrderValue ?? '',
         usageLimit: c.usageLimit?.toString() ?? '', perCustomerLimit: c.perCustomerLimit?.toString() ?? '',
-        startsAt: c.startsAt?.slice(0, 10) ?? '', expiresAt: c.expiresAt?.slice(0, 10) ?? '',
+        startsAt: c.startsOn ?? '', expiresAt: c.expiresOn ?? '',
       })
     } else {
       setEditingCouponId(null)
@@ -107,7 +129,7 @@ export function DiscountsScreen() {
       setAutoForm({
         name: d.name, type: d.type, value: d.value ?? '', minimumOrderValue: d.minimumOrderValue ?? '',
         freeShippingThreshold: d.freeShippingThreshold ?? '', priority: d.priority.toString(),
-        startsAt: d.startsAt?.slice(0, 10) ?? '', expiresAt: d.expiresAt?.slice(0, 10) ?? '',
+        startsAt: d.startsOn ?? '', expiresAt: d.expiresOn ?? '',
       })
     } else {
       setEditingAutoId(null)
@@ -155,13 +177,13 @@ export function DiscountsScreen() {
         <div>
           <button onClick={() => startEditCoupon()} className="btn btn-primary" style={{ marginBottom: '1rem' }}>New coupon</button>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}><th style={{ padding: '0.5rem' }}>Code</th><th>Type</th><th>Value</th><th>Usage</th><th>Expires</th><th>Active</th><th /></tr></thead>
+            <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}><th style={{ padding: '0.5rem' }}>Code</th><th>Type</th><th>Value</th><th>Usage</th><th>Last day</th><th>Active</th><th /></tr></thead>
             <tbody>
               {coupons.map((c) => (
                 <tr key={c.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                   <td style={{ padding: '0.5rem' }}>{c.code}</td><td>{c.type}</td><td>{formatDiscountValue(c.type, c.value, currencySymbol)}</td>
                   <td>{c.usageCount}{c.usageLimit ? ` / ${c.usageLimit}` : ''}</td>
-                  <td>{c.expiresAt ? new Date(c.expiresAt).toLocaleDateString('en-GB') : '—'}</td>
+                  <td>{formatLastDay(c.expiresOn)}</td>
                   <td><button onClick={() => toggleCoupon(c)} style={linkButton}>{c.isActive ? 'Deactivate' : 'Activate'}</button></td>
                   <td style={{ display: 'flex', gap: '0.5rem' }}>
                     <button onClick={() => startEditCoupon(c)} style={linkButton}>Edit</button>
@@ -191,7 +213,7 @@ export function DiscountsScreen() {
               <label>Usage limit (total uses)<input type="number" value={couponForm.usageLimit} onChange={(e) => setCouponForm({ ...couponForm, usageLimit: e.target.value })} style={inputStyle} /></label>
               <label>Per-customer limit<input type="number" value={couponForm.perCustomerLimit} onChange={(e) => setCouponForm({ ...couponForm, perCustomerLimit: e.target.value })} style={inputStyle} /></label>
               <label>Starts<input type="date" value={couponForm.startsAt} onChange={(e) => setCouponForm({ ...couponForm, startsAt: e.target.value })} style={inputStyle} /></label>
-              <label>Expires<input type="date" value={couponForm.expiresAt} onChange={(e) => setCouponForm({ ...couponForm, expiresAt: e.target.value })} style={inputStyle} /></label>
+              <label>Last day<input type="date" value={couponForm.expiresAt} onChange={(e) => setCouponForm({ ...couponForm, expiresAt: e.target.value })} style={inputStyle} /><span className="field-hint" style={hintStyle}>{EXPIRY_HINT}</span></label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button onClick={saveCoupon} className="btn btn-primary">Save</button>
                 <button onClick={() => setCouponForm(null)} className="btn btn-secondary">Cancel</button>
@@ -205,11 +227,12 @@ export function DiscountsScreen() {
         <div>
           <button onClick={() => startEditAuto()} className="btn btn-primary" style={{ marginBottom: '1rem' }}>New automatic discount</button>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}><th style={{ padding: '0.5rem' }}>Name</th><th>Type</th><th>Value</th><th>Priority</th><th>Active</th><th /></tr></thead>
+            <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}><th style={{ padding: '0.5rem' }}>Name</th><th>Type</th><th>Value</th><th>Priority</th><th>Last day</th><th>Active</th><th /></tr></thead>
             <tbody>
               {autoDiscounts.map((d) => (
                 <tr key={d.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                   <td style={{ padding: '0.5rem' }}>{d.name}</td><td>{d.type}</td><td>{formatDiscountValue(d.type, d.value, currencySymbol)}</td><td>{d.priority}</td>
+                  <td>{formatLastDay(d.expiresOn)}</td>
                   <td><button onClick={() => toggleAutoDiscount(d)} style={linkButton}>{d.isActive ? 'Deactivate' : 'Activate'}</button></td>
                   <td style={{ display: 'flex', gap: '0.5rem' }}>
                     <button onClick={() => startEditAuto(d)} style={linkButton}>Edit</button>
@@ -241,7 +264,7 @@ export function DiscountsScreen() {
               )}
               <label>Priority (higher applies first)<input type="number" value={autoForm.priority} onChange={(e) => setAutoForm({ ...autoForm, priority: e.target.value })} style={inputStyle} /></label>
               <label>Starts<input type="date" value={autoForm.startsAt} onChange={(e) => setAutoForm({ ...autoForm, startsAt: e.target.value })} style={inputStyle} /></label>
-              <label>Expires<input type="date" value={autoForm.expiresAt} onChange={(e) => setAutoForm({ ...autoForm, expiresAt: e.target.value })} style={inputStyle} /></label>
+              <label>Last day<input type="date" value={autoForm.expiresAt} onChange={(e) => setAutoForm({ ...autoForm, expiresAt: e.target.value })} style={inputStyle} /><span className="field-hint" style={hintStyle}>{EXPIRY_HINT}</span></label>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button onClick={saveAutoDiscount} className="btn btn-primary">Save</button>
                 <button onClick={() => setAutoForm(null)} className="btn btn-secondary">Cancel</button>
@@ -257,4 +280,9 @@ export function DiscountsScreen() {
 }
 
 const inputStyle: React.CSSProperties = { display: 'block', width: '100%', padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--color-border)', marginTop: '0.25rem' }
+const hintStyle: React.CSSProperties = { display: 'block', fontSize: '0.75rem', marginTop: '0.25rem' }
+// What the Last day means, said where it is picked. It used to be the day a
+// discount stopped, so "expires Friday" meant it last worked on Thursday; it is
+// now the last day it works, which is what nearly everybody picking one meant.
+const EXPIRY_HINT = 'Works right through this day and stops at midnight at the end of it, in your site’s timezone. Leave it empty to run until you switch it off.'
 const linkButton: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-primary)', padding: 0 }

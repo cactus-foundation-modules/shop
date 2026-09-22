@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { announceConversion } from '@/lib/analytics/conversion'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { paymentTaken } from '@/modules/shop/lib/payment-taken'
 import { sortLinesByGroup } from '@/modules/shop/lib/cart-group'
 import { ORDER_CONFIRMATION_CSS } from '@/modules/shop/components/public/order-confirmation-css'
 import { TRACK_ORDER_CSS } from '@/modules/shop/components/public/track-order-css'
@@ -189,6 +190,62 @@ async function clearPlacedOrderState(orderNumber: string, paymentStatus: string)
   clearCart()
   clearOrderSpecificState()
   return true
+}
+
+// The shopper coming back from PayPal, having approved the payment there. PayPal
+// takes nothing on approval alone: the money moves when the shop captures, and
+// this page is where it lands them, so this page asks for the capture. The
+// shop's order id rides in on our own parameter (set by lib/payments/paypal.ts,
+// spelled out here rather than imported, since that file holds the secrets) and
+// PayPal adds `token`, its own order id, and `PayerID` beside it.
+//
+// Exactly once. The promise is kept at module level, so React running the
+// effect twice, or the receipt gate sending it round again, reuses the one
+// request rather than capturing twice. Once the confirm route has given a
+// definite answer the PayPal parameters come off the address, so a reload is an
+// ordinary look at the receipt. A request that never got an answer leaves them
+// on: a reload then asks again, and PayPal saying the order was already
+// captured is read as the success it is (see confirmPayment).
+const PAYPAL_RETURN_PARAM = 'paypalReturn'
+const PAYPAL_RETURN_QUERY_KEYS = [PAYPAL_RETURN_PARAM, 'token', 'PayerID']
+
+type PayPalReturnOutcome = 'captured' | 'refused' | 'unknown'
+
+let paypalReturnInFlight: { key: string; outcome: Promise<PayPalReturnOutcome> } | null = null
+
+function forgetPayPalReturnParams(): void {
+  const url = new URL(window.location.href)
+  for (const key of PAYPAL_RETURN_QUERY_KEYS) url.searchParams.delete(key)
+  window.history.replaceState(window.history.state, '', url)
+}
+
+function finishPayPalReturn(params: URLSearchParams): Promise<PayPalReturnOutcome> | null {
+  const orderId = params.get(PAYPAL_RETURN_PARAM)
+  const paypalOrderId = params.get('token')
+  if (!orderId || !paypalOrderId) return null
+  const key = `${orderId}:${paypalOrderId}`
+  if (paypalReturnInFlight?.key === key) return paypalReturnInFlight.outcome
+
+  const outcome = (async (): Promise<PayPalReturnOutcome> => {
+    try {
+      const res = await fetch('/api/m/shop/public/checkout/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, payload: { paypalOrderId } }),
+      })
+      // 402 is the confirm route's "the provider said no" - PayPal refused the
+      // capture. The order is left unpaid rather than failed (see paypal.ts), so
+      // the buyer can go back and pay another way. Anything else - a timeout, a
+      // throttle, a server that fell over - says nothing about the money.
+      if (res.ok) { forgetPayPalReturnParams(); return 'captured' }
+      if (res.status === 402) { forgetPayPalReturnParams(); return 'refused' }
+      return 'unknown'
+    } catch {
+      return 'unknown'
+    }
+  })()
+  paypalReturnInFlight = { key, outcome }
+  return outcome
 }
 
 const ICON_TICK = <path d="m4 12 5.5 5.5L20 7" />
@@ -423,6 +480,9 @@ export function OrderConfirmationClient() {
   const [watched, setWatched] = useState(false)
   const [pollGaveUp, setPollGaveUp] = useState(false)
   const [basketCleared, setBasketCleared] = useState(false)
+  // PayPal refused the capture on the way back (see finishPayPalReturn). Held
+  // here because the address no longer says so once the answer is in.
+  const [paypalRefused, setPaypalRefused] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -547,8 +607,17 @@ export function OrderConfirmationClient() {
       if (!body || isSettling(body)) schedule()
     }
 
-    load().then((body) => {
+    // Capture first, where PayPal has just handed the shopper back, so the
+    // first read of the order already shows what became of it.
+    const paypalReturn = finishPayPalReturn(params) ?? Promise.resolve(null)
+    paypalReturn.then(async (outcome) => {
+      if (cancelled) return
+      if (outcome === 'refused') setPaypalRefused(true)
+      const body = await load()
       if (cancelled || !body) return
+      // Refused and still unpaid is an answer, not a wait: nothing is going to
+      // settle it, so there is nothing to poll for.
+      if (outcome === 'refused' && body.order.paymentStatus === 'PENDING') return
       if (isSettling(body)) { setWatched(true); schedule() }
     })
 
@@ -588,8 +657,16 @@ export function OrderConfirmationClient() {
   const money = (amount: string | number) => formatMoney(amount, data.currencySymbol)
   const isManual = isManualPayment(data)
   const awaiting = order.paymentStatus === 'AWAITING_CONFIRMATION'
-  const failed = order.paymentStatus === 'FAILED'
-  const paid = order.paymentStatus === 'PAID'
+  // Refused by PayPal counts as not taken for everything this page says, but
+  // only while the order really is still unpaid: a capture that went through
+  // some other way (a second tab, say) outranks the refusal this tab heard.
+  const paypalNotTaken = paypalRefused && order.paymentStatus === 'PENDING'
+  const failed = order.paymentStatus === 'FAILED' || paypalNotTaken
+  // Paid means the money arrived, whatever has gone back since: a refund moves
+  // the payment on to part refunded or refunded, and this page used to call
+  // either of those "Pending".
+  const paid = paymentTaken(order.paymentStatus)
+  const refundedLabel = order.paymentStatus === 'REFUNDED' ? 'Refunded' : order.paymentStatus === 'PARTIALLY_REFUNDED' ? 'Part refunded' : null
   // Announced only to the shopper who sat here through the wait. Someone opening
   // the same link later just sees an ordinary confirmed order.
   const settledWhileWatching = watched && paid
@@ -641,7 +718,9 @@ export function OrderConfirmationClient() {
           <div className="soc-note soc-note-bad" role="alert">
             <Icon>{ICON_ALERT}</Icon>
             <p>
-              Your bank didn&apos;t complete the payment, so this order hasn&apos;t been placed and you haven&apos;t been charged.{' '}
+              {paypalNotTaken
+                ? <>PayPal didn&apos;t take the payment, so this order hasn&apos;t been placed and you haven&apos;t been charged.</>
+                : <>Your bank didn&apos;t complete the payment, so this order hasn&apos;t been placed and you haven&apos;t been charged.</>}{' '}
               {basketCleared ? (
                 <>Do start again from <Link href="/shop">the shop</Link> whenever you&apos;re ready - and sorry for the runaround.</>
               ) : (
@@ -840,7 +919,7 @@ export function OrderConfirmationClient() {
             <h3>Payment</h3>
             <p>{order.paymentMethodLabel}</p>
             <p className="soc-dim">
-              {paid ? 'Paid' : awaiting && isManual ? 'Awaiting your payment' : awaiting ? 'Clearing' : failed ? 'Not taken' : 'Pending'}
+              {refundedLabel ?? (paid ? 'Paid' : awaiting && isManual ? 'Awaiting your payment' : awaiting ? 'Clearing' : failed ? 'Not taken' : 'Pending')}
             </p>
           </div>
         </div>

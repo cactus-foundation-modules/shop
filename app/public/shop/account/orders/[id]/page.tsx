@@ -14,8 +14,6 @@ import { orderTrackingBasePath } from '@/modules/shop/lib/order-tracking'
 import OrderAccessGate from '@/modules/shop/components/public/OrderAccessGate'
 import GuestOrderAccountOffer from '@/modules/shop/components/public/GuestOrderAccountOffer'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { getShopGate } from '@/modules/shop/lib/access'
-import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { formatMoney } from '@/modules/shop/lib/money'
 import {
   SHP_CANCEL_REASONS,
@@ -153,9 +151,9 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   // asking this page to open its delivery questions on arrival.
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const gate = await getShopGate()
-  if (gate.blocked) return <ShopClosedNotice message={gate.message} />
-
+  // Deliberately NOT behind the shop gate: an order already placed is still
+  // owed its tracking, its payment details and its paperwork while the shop is
+  // closed (see getShopGate in lib/access.ts).
   const { id } = await params
   // The order alone first, and only then everything hanging off it. Who may
   // look at this is decided from the order's own memberId and a cookie, and a
@@ -538,7 +536,6 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   const body = (
     <>
       <style dangerouslySetInnerHTML={{ __html: ORDER_DETAIL_CSS }} />
-      {gate.staffPreview && <ShopStaffPreviewBanner />}
 
       <div className="sod">
         <Link href={backHref} prefetch={false} className="sod-back">

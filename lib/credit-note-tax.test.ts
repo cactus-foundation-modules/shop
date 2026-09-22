@@ -154,3 +154,33 @@ describe('named charges on a credit note', () => {
     expect(money.lines[0]!.charges).toBeUndefined()
   })
 })
+
+describe('buildCreditNoteMoney and delivery', () => {
+  it('credits refunded delivery in the rate rows and totals, not as a line', () => {
+    // A £12 delivery refund on an EXCLUSIVE shop: £10 net and £2 VAT at 20%.
+    const money = buildCreditNoteMoney([line()], ['item-1'], [], 'EXCLUSIVE', [
+      { ratePercent: '20', rate: 0.2, net: 10, tax: 2, gross: 12 },
+    ])
+    expect(money.lines).toHaveLength(0)
+    expect(money.shippingAmount).toBe('10.00')
+    expect(money.subtotal).toBe('0.00')
+    expect(money.taxAmount).toBe('2.00')
+    expect(money.total).toBe('12.00')
+    expect(money.taxBreakdown).toEqual([{ ratePercent: '20', net: '10.00', tax: '2.00', gross: '12.00' }])
+  })
+
+  it('adds delivery to the goods on a mixed refund, and prints it gross on an INCLUSIVE shop', () => {
+    const money = buildCreditNoteMoney(
+      [line({ net: '436.00', tax: '87.20', gross: '523.20' })],
+      ['item-1'],
+      [{ orderItemId: 'item-1', quantity: 1, amount: 261.6 }],
+      'INCLUSIVE',
+      [{ ratePercent: '20', rate: 0.2, net: 10, tax: 2, gross: 12 }],
+    )
+    expect(money.shippingAmount).toBe('12.00')
+    expect(money.subtotal).toBe('261.60')
+    expect(money.total).toBe('273.60')
+    expect(money.taxAmount).toBe('45.60')
+  })
+})
+

@@ -127,6 +127,80 @@ export type InvoiceMoney = {
   taxBreakdown: ShpInvoiceTaxRow[]
 }
 
+/** One VAT rate's share of the delivery charge. */
+export type DeliverySlice = { ratePercent: string; rate: number; net: number; tax: number; gross: number }
+
+/**
+ * The delivery charge split across the order's VAT rates, as an invoice prints
+ * it - and as a credit note that hands some of it back has to, or the two
+ * documents disagree about which rate the delivery was charged at.
+ *
+ * Its tax is whatever the order carries over and above the goods', which keeps
+ * this tied to the charged figure instead of re-deriving a rate that may since
+ * have been edited in the tax table. The CHARGE is split by the goods' value
+ * after discount; the TAX on each slice is that slice's own rate, scaled to the
+ * delivery tax the order actually carries. Splitting the tax by value instead
+ * would hand a zero-rated row a share of VAT, which is not a rounding quibble -
+ * it is a wrong return. Empty on an order with no delivery charge.
+ */
+export function deliverySlices(
+  order: Pick<ShpOrder, 'taxMode' | 'subtotal' | 'discountAmount' | 'shippingAmount' | 'taxAmount'>,
+  items: Pick<ShpOrderItem, 'taxRate' | 'total' | 'taxAmount'>[],
+): DeliverySlice[] {
+  const inclusive = order.taxMode === 'INCLUSIVE'
+  const subtotal = Number(order.subtotal)
+  const shippingAmount = Number(order.shippingAmount)
+  const discountRatio = subtotal > 0 ? Math.min(Number(order.discountAmount) / subtotal, 1) : 0
+
+  const taxableByKey = new Map<string, { rate: number; taxable: number }>()
+  let goodsTax = 0
+  let taxableTotal = 0
+  for (const item of items) {
+    const rate = Number(item.taxRate) || 0
+    const taxable = (Number(item.total) || 0) * (1 - discountRatio)
+    goodsTax += Number(item.taxAmount) || 0
+    taxableTotal += taxable
+    const key = formatRatePercent(rate)
+    const entry = taxableByKey.get(key) ?? { rate, taxable: 0 }
+    entry.taxable += taxable
+    taxableByKey.set(key, entry)
+  }
+
+  const deliveryTax = Math.max(0, round2(Number(order.taxAmount) - goodsTax))
+  if (!(shippingAmount > 0) && !(deliveryTax > 0)) return []
+
+  const shares: { key: string; rate: number; share: number }[] = []
+  if (taxableTotal > 0) {
+    for (const [key, entry] of taxableByKey) shares.push({ key, rate: entry.rate, share: entry.taxable / taxableTotal })
+  }
+  if (shares.length === 0) {
+    // Delivery on its own (a zero-value basket, or an order whose lines have
+    // all been priced at nothing). It still needs a row, and the rate it
+    // implies is the honest one to print.
+    const impliedRate = shippingAmount > 0 && deliveryTax > 0
+      ? (inclusive ? deliveryTax / Math.max(shippingAmount - deliveryTax, 0.01) : deliveryTax / shippingAmount)
+      : 0
+    shares.push({ key: formatRatePercent(impliedRate), rate: impliedRate, share: 1 })
+  }
+  const raw = shares.map(({ key, rate, share }) => {
+    const charge = shippingAmount * share
+    const tax = inclusive ? charge - charge / (1 + rate) : charge * rate
+    return { key, rate, charge, tax }
+  })
+  const rawTax = raw.reduce((sum, slice) => sum + slice.tax, 0)
+  const scale = rawTax > 0 ? deliveryTax / rawTax : 0
+  return raw.map(({ key, rate, charge, tax: unscaled }) => {
+    const tax = unscaled * scale
+    return {
+      ratePercent: key,
+      rate,
+      tax,
+      net: inclusive ? charge - tax : charge,
+      gross: inclusive ? charge : charge + tax,
+    }
+  })
+}
+
 /**
  * Turns an order and its items into invoice lines and a net/tax/gross summary
  * per rate.
@@ -143,18 +217,15 @@ export function buildInvoiceMoney(
   const inclusive = order.taxMode === 'INCLUSIVE'
   const subtotal = Number(order.subtotal)
   const discountAmount = Number(order.discountAmount)
-  const shippingAmount = Number(order.shippingAmount)
   const orderTax = Number(order.taxAmount)
   const orderTotal = Number(order.total)
 
   // The same ratio resolveOrderTotals used to spread the discount across lines.
   const discountRatio = subtotal > 0 ? Math.min(discountAmount / subtotal, 1) : 0
 
-  type Bucket = { rate: number; net: number; tax: number; gross: number; taxable: number }
+  type Bucket = { rate: number; net: number; tax: number; gross: number }
   const buckets = new Map<string, Bucket>()
   const lines: ShpInvoiceLine[] = []
-  let goodsTax = 0
-  let taxableTotal = 0
 
   for (const item of items) {
     const rate = Number(item.taxRate) || 0
@@ -168,15 +239,12 @@ export function buildInvoiceMoney(
     const net = inclusive ? taxable - tax : taxable
     const gross = inclusive ? taxable : taxable + tax
 
-    goodsTax += tax
-    taxableTotal += taxable
 
     const key = formatRatePercent(rate)
-    const bucket = buckets.get(key) ?? { rate, net: 0, tax: 0, gross: 0, taxable: 0 }
+    const bucket = buckets.get(key) ?? { rate, net: 0, tax: 0, gross: 0 }
     bucket.net += net
     bucket.tax += tax
     bucket.gross += gross
-    bucket.taxable += taxable
     buckets.set(key, bucket)
 
     lines.push({
@@ -201,47 +269,13 @@ export function buildInvoiceMoney(
     })
   }
 
-  // Delivery. Its tax is whatever the order carries over and above the goods',
-  // which keeps this tied to the charged figure instead of re-deriving a rate
-  // that may since have been edited in the tax table.
-  const deliveryTax = Math.max(0, round2(orderTax - goodsTax))
-  if (shippingAmount > 0 || deliveryTax > 0) {
-    const shares: { key: string; share: number }[] = []
-    if (taxableTotal > 0) {
-      for (const [key, bucket] of buckets) shares.push({ key, share: bucket.taxable / taxableTotal })
-    }
-    if (shares.length === 0) {
-      // Delivery on its own (a zero-value basket, or an order whose lines have
-      // all been priced at nothing). It still needs a row, and the rate it
-      // implies is the honest one to print.
-      const impliedRate = shippingAmount > 0 && deliveryTax > 0
-        ? (inclusive ? deliveryTax / Math.max(shippingAmount - deliveryTax, 0.01) : deliveryTax / shippingAmount)
-        : 0
-      shares.push({ key: formatRatePercent(impliedRate), share: 1 })
-      if (!buckets.has(shares[0]!.key)) {
-        buckets.set(shares[0]!.key, { rate: impliedRate, net: 0, tax: 0, gross: 0, taxable: 0 })
-      }
-    }
-    // The CHARGE is split by value; the TAX on each slice is that slice's own
-    // rate. Splitting the tax by value instead would hand a zero-rated row a
-    // share of VAT, which is not a rounding quibble - it is a wrong return.
-    const slices = shares.map(({ key, share }) => {
-      const bucket = buckets.get(key)!
-      const charge = shippingAmount * share
-      const tax = inclusive ? charge - charge / (1 + bucket.rate) : charge * bucket.rate
-      return { key, charge, tax }
-    })
-    // Scaled to the delivery tax the order actually carries, so the rows still
-    // sum to the charged figure when the rate table has moved since.
-    const sliceTax = slices.reduce((sum, slice) => sum + slice.tax, 0)
-    const scale = sliceTax > 0 ? deliveryTax / sliceTax : 0
-    for (const slice of slices) {
-      const bucket = buckets.get(slice.key)!
-      const tax = slice.tax * scale
-      bucket.tax += tax
-      bucket.net += inclusive ? slice.charge - tax : slice.charge
-      bucket.gross += inclusive ? slice.charge : slice.charge + tax
-    }
+  // Delivery, split across the rates the way deliverySlices describes.
+  for (const slice of deliverySlices(order, items)) {
+    const bucket = buckets.get(slice.ratePercent) ?? { rate: slice.rate, net: 0, tax: 0, gross: 0 }
+    bucket.tax += slice.tax
+    bucket.net += slice.net
+    bucket.gross += slice.gross
+    buckets.set(slice.ratePercent, bucket)
   }
 
   // Rows out, biggest first - which is the order an invoice reads in, and the

@@ -1,5 +1,8 @@
-import { prisma } from '@/lib/db/prisma'
+import { prisma, type PrismaTransactionClient } from '@/lib/db/prisma'
 import type { ShpRefund, ShpRefundItem } from '@/modules/shop/lib/types'
+import { paymentTaken } from '@/modules/shop/lib/payment-taken'
+import { restockRefundedUnits } from '@/modules/shop/lib/db/order-stock'
+import { refundableDelivery } from '@/modules/shop/lib/refund-delivery'
 
 function mapRefund(r: Record<string, unknown>): ShpRefund {
   return {
@@ -13,6 +16,8 @@ function mapRefund(r: Record<string, unknown>): ShpRefund {
     // same as "no invoice has taken this off its face" and is the right answer
     // for every refund written before the column existed.
     nettedOffInvoiceId: (r.netted_off_invoice_id as string | null) ?? null,
+    // Absent before migration 060, when no refund could carry delivery.
+    shippingAmount: r.shipping_amount != null ? (r.shipping_amount as { toString(): string }).toString() : '0.00',
     createdBy: r.created_by as string,
     createdAt: r.created_at as Date,
   }
@@ -96,12 +101,40 @@ export async function listUncreditedRefundLines(
   }))
 }
 
+/**
+ * The delivery money on those same refunds - settled, not credited, not netted
+ * off another invoice - which an invoice leaves off its delivery charge the way
+ * it leaves refunded lines off its goods. Its own query because a refund of
+ * delivery alone has no lines, and the one above only sees refunds that do.
+ */
+export async function listUncreditedRefundDelivery(
+  orderId: string,
+  alsoNettedOffInvoiceId?: string | null,
+): Promise<Array<{ refundId: string; shippingAmount: string }>> {
+  const rows = await prisma.$queryRaw<{ refund_id: string; shipping_amount: string }[]>`
+    SELECT r."id" AS refund_id, r."shipping_amount"::text AS shipping_amount
+    FROM "shp_refunds" r
+    LEFT JOIN "shp_credit_notes" cn ON cn."refund_id" = r."id"
+    WHERE r."order_id" = ${orderId} AND r."status" = 'COMPLETED' AND cn."id" IS NULL
+      AND r."shipping_amount" > 0
+      AND (r."netted_off_invoice_id" IS NULL OR r."netted_off_invoice_id" = ${alsoNettedOffInvoiceId ?? null})
+    ORDER BY r."created_at" ASC
+  `
+  return rows.map((r) => ({ refundId: r.refund_id, shippingAmount: String(r.shipping_amount ?? '0') }))
+}
+
 /** Records that an invoice was raised with these refunds already taken off it,
  *  so nothing credits them a second time. Written after the invoice row exists,
- *  because that is what it points at. */
-export async function markRefundsNettedOff(refundIds: string[], invoiceId: string): Promise<void> {
+ *  because that is what it points at - and on the same transaction as that row
+ *  where the caller has one, so the two cannot come apart (see
+ *  issueInvoiceForOrder). */
+export async function markRefundsNettedOff(
+  refundIds: string[],
+  invoiceId: string,
+  tx?: PrismaTransactionClient,
+): Promise<void> {
   if (refundIds.length === 0) return
-  await prisma.$executeRaw`
+  await (tx ?? prisma).$executeRaw`
     UPDATE "shp_refunds" SET "netted_off_invoice_id" = ${invoiceId}
     WHERE "id" = ANY(${refundIds}::text[])
   `
@@ -109,9 +142,10 @@ export async function markRefundsNettedOff(refundIds: string[], invoiceId: strin
 
 /** Undoes those marks when the invoice that carried them is voided. The document
  *  that absorbed the refunds is gone, so they are undealt-with again and the
- *  next invoice takes them off as this one did. */
-export async function clearRefundsNettedOff(invoiceId: string): Promise<void> {
-  await prisma.$executeRaw`
+ *  next invoice takes them off as this one did. Takes the void's transaction
+ *  for the same reason the mark takes the insert's. */
+export async function clearRefundsNettedOff(invoiceId: string, tx?: PrismaTransactionClient): Promise<void> {
+  await (tx ?? prisma).$executeRaw`
     UPDATE "shp_refunds" SET "netted_off_invoice_id" = NULL WHERE "netted_off_invoice_id" = ${invoiceId}
   `
 }
@@ -155,6 +189,11 @@ export type ProcessRefundInput = {
   reason: string | null
   createdBy: string
   items: Array<{ orderItemId: string; quantity: number; amount: number }>
+  // The delivery charge handed back with the lines, tax and all. Optional and
+  // zero by default - a refund of goods alone, which is what every refund was
+  // before delivery could be refunded at all. May be the whole refund, with no
+  // lines, where only the delivery is going back.
+  shippingAmount?: number
   // Performs the actual provider-side refund, given the freshly-created refund
   // row id to use as the provider idempotency key. Invoked with NO database
   // transaction open - see processRefund for how concurrent refunds on one
@@ -199,10 +238,23 @@ async function prepareRefund(input: ProcessRefundInput): Promise<PreparedRefund 
     `
     if (!locked[0]?.locked) return { ok: false, status: 409, error: REFUND_IN_PROGRESS_ERROR }
 
-    const orderRows = await tx.$queryRaw<{ total: string; tax_mode: string }[]>`
-      SELECT "total"::text AS total, "tax_mode" FROM "shp_orders" WHERE "id" = ${input.orderId}
+    const orderRows = await tx.$queryRaw<{ total: string; tax_mode: string; payment_status: string; shipping_amount: string; tax_amount: string }[]>`
+      SELECT "total"::text AS total, "tax_mode", "payment_status",
+             "shipping_amount"::text AS shipping_amount, "tax_amount"::text AS tax_amount
+      FROM "shp_orders" WHERE "id" = ${input.orderId}
     `
     if (!orderRows[0]) return { ok: false, status: 404, error: 'Order not found' }
+    // Nothing comes back off an order nothing was paid on. A bank transfer still
+    // awaiting its money, or a card payment that failed, would otherwise take a
+    // "refund" that moves no money but still counts the units off, sets the
+    // order to refunded and raises a credit note for a payment that never came.
+    if (!paymentTaken(orderRows[0].payment_status)) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'This order has not been marked as paid, so there is nothing to refund yet. If the money did arrive, mark it as paid first.',
+      }
+    }
     const orderTotal = Number(orderRows[0].total)
     // On an EXCLUSIVE shop a line's `total` is its NET value and the tax sits
     // beside it; on an INCLUSIVE one the tax is already inside. The caps below
@@ -224,15 +276,27 @@ async function prepareRefund(input: ProcessRefundInput): Promise<PreparedRefund 
     const strandedAmount = pending.reduce((sum, p) => sum + Number(p.amount), 0)
 
     // Validate each line against its current refunded_qty, read under the lock.
-    let totalAmount = 0
+    //
+    // Folded per line first, as createShipment folds its lines. Two entries for
+    // the same line each checked on their own both pass against the same
+    // starting refunded_qty - two lots of "all 2 chairs" on a two-chair line -
+    // and the provider was then asked for both lots of money. The settle step's
+    // own cap stopped the counter running past what was bought, but by then the
+    // money had gone.
+    const merged = new Map<string, { quantity: number; amount: number }>()
     for (const item of input.items) {
+      const sofar = merged.get(item.orderItemId) ?? { quantity: 0, amount: 0 }
+      merged.set(item.orderItemId, { quantity: sofar.quantity + item.quantity, amount: sofar.amount + item.amount })
+    }
+    let totalAmount = 0
+    for (const [orderItemId, item] of merged) {
       const rows = await tx.$queryRaw<
         { order_id: string; product_name: string; quantity: number; refunded_qty: number; total: string; unit_price: string; tax_amount: string }[]
       >`
         SELECT "order_id", "product_name", "quantity", "refunded_qty",
                "total"::text AS total, "unit_price"::text AS unit_price,
                "tax_amount"::text AS tax_amount
-        FROM "shp_order_items" WHERE "id" = ${item.orderItemId}
+        FROM "shp_order_items" WHERE "id" = ${orderItemId}
       `
       const oi = rows[0]
       if (!oi || oi.order_id !== input.orderId) return { ok: false, status: 404, error: 'Order item not found' }
@@ -255,6 +319,37 @@ async function prepareRefund(input: ProcessRefundInput): Promise<PreparedRefund 
       totalAmount += item.amount
     }
 
+    // Delivery, where some is going back: never more than is left of what the
+    // customer paid for it (lib/refund-delivery.ts), with the same penny of
+    // tolerance the lines get. Stranded PENDING delivery counts as gone, as its
+    // money does below.
+    const shippingAmount = Math.round(Math.max(input.shippingAmount ?? 0, 0) * 100) / 100
+    if (shippingAmount > 0) {
+      const lineTax = await tx.$queryRaw<{ tax_amount: string }[]>`
+        SELECT "tax_amount"::text AS tax_amount FROM "shp_order_items" WHERE "order_id" = ${input.orderId}
+      `
+      const deliveryRefunds = await tx.$queryRaw<{ status: string; shipping_amount: string }[]>`
+        SELECT "status", "shipping_amount"::text AS shipping_amount FROM "shp_refunds"
+        WHERE "order_id" = ${input.orderId} AND "status" IN ('COMPLETED', 'PENDING')
+      `
+      const left = refundableDelivery(
+        { taxMode: orderRows[0].tax_mode, shippingAmount: orderRows[0].shipping_amount, taxAmount: orderRows[0].tax_amount },
+        lineTax.map((row) => ({ taxAmount: row.tax_amount })),
+        deliveryRefunds.map((row) => ({ status: row.status, shippingAmount: row.shipping_amount })),
+      )
+      if (shippingAmount > left + 0.01) {
+        return {
+          ok: false,
+          status: 400,
+          error: left > 0
+            ? `Only ${left.toFixed(2)} of the delivery charge is left to refund.`
+            : 'The delivery charge on this order has already been refunded, or there was none.',
+        }
+      }
+      totalAmount += shippingAmount
+    }
+    if (!(totalAmount > 0) && merged.size === 0) return { ok: false, status: 400, error: 'There is nothing in this refund.' }
+
     // Cumulative cap: prior COMPLETED refunds plus this one can't exceed the
     // order total, so a run of partials can't sum past what was charged.
     // Stranded PENDING amounts count too - their provider outcome is unknown, and
@@ -272,9 +367,9 @@ async function prepareRefund(input: ProcessRefundInput): Promise<PreparedRefund 
     // reservation - it has to be committed before the provider is called, which
     // is exactly why the call can safely happen outside a transaction.
     const created = await tx.$queryRaw<[{ id: string }]>`
-      INSERT INTO "shp_refunds" ("order_id", "amount", "reason", "status", "created_by", "intended_items")
+      INSERT INTO "shp_refunds" ("order_id", "amount", "shipping_amount", "reason", "status", "created_by", "intended_items")
       VALUES (
-        ${input.orderId}, ${totalAmount}, ${input.reason}, 'PENDING', ${input.createdBy},
+        ${input.orderId}, ${totalAmount}, ${shippingAmount}, ${input.reason}, 'PENDING', ${input.createdBy},
         -- Park what this refund is meant to cover. If the process dies before the
         -- outcome is recorded, this is the only surviving record of which units
         -- were involved, and reconcileStaleRefunds needs it to settle the row.
@@ -286,6 +381,11 @@ async function prepareRefund(input: ProcessRefundInput): Promise<PreparedRefund 
   })
 }
 
+// What settling did: whether THIS call was the one to resolve the row (false
+// when somebody else already had), and which lines' refunded_qty it actually
+// moved on a success - the units the stock restock may consider, and no others.
+type SettleOutcome = { claimed: boolean; bumped: Array<{ orderItemId: string; quantity: number }> }
+
 // Settle half: records the provider's answer and, only when it succeeded, the
 // refund items, the refunded_qty bump and the order status. Also short, and it
 // re-takes the order's advisory lock so the read-modify-write of the order
@@ -294,9 +394,9 @@ async function settleRefund(
   input: ProcessRefundInput,
   refundId: string,
   result: { success: boolean; providerRefundId: string | null; error?: string }
-): Promise<void> {
-  await prisma.$transaction(
-    async (tx) => {
+): Promise<SettleOutcome> {
+  return prisma.$transaction(
+    async (tx): Promise<SettleOutcome> => {
       // Blocking rather than try-lock: settling is not optional, and nothing
       // holds this lock for longer than one of these short transactions.
       //
@@ -310,12 +410,20 @@ async function settleRefund(
       // in prepareRefund above is fine because its variant returns boolean.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${REFUND_LOCK_NAMESPACE}::int4, hashtext(${input.orderId}))`
 
-      await tx.$executeRaw`
+      // Only a row still PENDING is this call's to settle. The reconcile job and
+      // a second run of it can both pick up the same stale row; without this
+      // guard both went on to insert its refund items and bump refunded_qty
+      // again, and with stock now following refunds, would have put the same
+      // units back on the shelf twice. The loser finds nothing to claim and
+      // stops here, under the same lock the winner held.
+      const claimed = await tx.$executeRaw`
         UPDATE "shp_refunds" SET "status" = ${result.success ? 'COMPLETED' : 'FAILED'}, "provider_refund_id" = ${result.providerRefundId}
-        WHERE "id" = ${refundId}
+        WHERE "id" = ${refundId} AND "status" = 'PENDING'
       `
-      if (!result.success) return
+      if (claimed === 0) return { claimed: false, bumped: [] }
+      if (!result.success) return { claimed: true, bumped: [] }
 
+      const bumped: SettleOutcome['bumped'] = []
       for (const item of input.items) {
         await tx.$executeRaw`
           INSERT INTO "shp_refund_items" ("refund_id", "order_item_id", "quantity", "amount")
@@ -324,10 +432,14 @@ async function settleRefund(
         // The quantity cap is re-asserted in the UPDATE itself, so even if the
         // reservation were somehow bypassed the counter can't run past what was
         // bought. Under the reservation this always matches one row.
-        await tx.$executeRaw`
+        const moved = await tx.$executeRaw`
           UPDATE "shp_order_items" SET "refunded_qty" = "refunded_qty" + ${item.quantity}
           WHERE "id" = ${item.orderItemId} AND "refunded_qty" + ${item.quantity} <= "quantity"
         `
+        // Units the cap turned away were not refunded, so they hand back no
+        // allocation slot and no stock either.
+        if (moved === 0) continue
+        bumped.push({ orderItemId: item.orderItemId, quantity: item.quantity })
         // Refunding a pre-order unit hands its allocation slot back, otherwise a
         // refunded pre-order eats the cap forever. Mirrors decrementPreOrderCount
         // in products.ts, inlined so it runs on the transaction client. The cancel
@@ -359,10 +471,32 @@ async function settleRefund(
         SELECT "quantity", "refunded_qty" FROM "shp_order_items" WHERE "order_id" = ${input.orderId}
       `
       const fullyRefunded = allItems.every((i) => i.refunded_qty >= i.quantity)
+      const refundState = fullyRefunded ? 'REFUNDED' : 'PARTIALLY_REFUNDED'
+      // The payment follows the refund as well as the lifecycle does. It used to
+      // stay PAID, so a fully refunded order still read "Paid" beside
+      // "Refunded" and still turned up under the Paid filter (see
+      // lib/payment-taken.ts for what reads it). Moved only from a paid state -
+      // a chargeback's FAILED is a louder fact than a refund - and never back
+      // down from REFUNDED, which a provider's own report may already have set.
+      //
+      // A part refund on an order already COMPLETED leaves it completed: the
+      // payment now says "part refunded", and dropping the lifecycle back to
+      // PARTIALLY_REFUNDED was what let the completion sweep complete it again,
+      // thank-you email and all, after every refund.
       await tx.$executeRaw`
-        UPDATE "shp_orders" SET "status" = ${fullyRefunded ? 'REFUNDED' : 'PARTIALLY_REFUNDED'}, "updated_at" = CURRENT_TIMESTAMP
+        UPDATE "shp_orders" SET
+          "status" = CASE
+            WHEN ${refundState} = 'PARTIALLY_REFUNDED' AND "status" = 'COMPLETED' THEN "status"
+            ELSE ${refundState}
+          END,
+          "payment_status" = CASE
+            WHEN "payment_status" IN ('PAID', 'PARTIALLY_REFUNDED') THEN ${refundState}
+            ELSE "payment_status"
+          END,
+          "updated_at" = CURRENT_TIMESTAMP
         WHERE "id" = ${input.orderId}
       `
+      return { claimed: true, bumped }
     },
     // Money has already moved by the time we get here, so be generous about
     // waiting for a connection and about finishing once we have one.
@@ -395,7 +529,12 @@ export async function processRefund(input: ProcessRefundInput): Promise<ProcessR
   // A throw from here on leaves the row PENDING on purpose: the provider's
   // outcome is genuinely unknown, and PENDING is the state that both blocks
   // immediate retries and counts against the caps once it goes stale.
-  await settleRefund(input, prepared.refundId, result)
+  const settled = await settleRefund(input, prepared.refundId, result)
+
+  // Stock follows the money back, for whatever never left the building (see
+  // lib/refund-stock.ts). After the settle rather than inside it, so a stock
+  // count that cannot be written never costs the refund its record.
+  if (settled.claimed && result.success) await restockRefundedUnits(input.orderId, settled.bumped)
 
   return { ok: true, refundId: prepared.refundId, success: result.success, error: result.error }
 }
@@ -410,15 +549,30 @@ export async function processRefund(input: ProcessRefundInput): Promise<ProcessR
 //
 // Safe to run repeatedly and concurrently: settleRefund takes the order's
 // advisory lock, and a row that has already left PENDING is skipped.
+//
+// The one exception to "ask the provider" is a method that moves no money of its
+// own (refundMode 'manual' - bank transfer, cash). Its refund call does nothing
+// but return success, so a row it left PENDING cannot have moved any money
+// through the shop: the request died before the refund was written down, and
+// that is certain, not a guess. Such a row is set aside as FAILED - nothing
+// recorded, nothing claimed - and the owner is told to record it again if they
+// did send the money. Left PENDING it could never be resolved by anything, and
+// its amount counted against the order for ever, so the very refund the owner
+// was trying to record could not be recorded again.
 export type ReconcileOutcome = {
   refundId: string
   orderId: string
+  /** The number the owner knows the order by, for anything they are told. */
+  orderNumber: string
   resolved: 'COMPLETED' | 'FAILED' | 'STILL_UNKNOWN'
+  /** A manual method's refund that never finished saving - see above. */
+  setAside?: boolean
   reason?: string
 }
 
 export async function reconcileStaleRefunds(
   lookup: (providerId: string) => {
+    refundMode?: 'provider' | 'manual'
     getRefundStatus?: (refundRowId: string, providerReference: string | null) => Promise<
       { status: 'succeeded'; providerRefundId: string | null } | { status: 'failed' } | { status: 'unknown' }
     >
@@ -429,9 +583,11 @@ export async function reconcileStaleRefunds(
     {
       id: string
       order_id: string
+      order_number: string
       intended_items: unknown
       payment_method: string | null
       payment_reference: string | null
+      kind: string
       reason: string | null
       created_by: string
     }[]
@@ -441,7 +597,7 @@ export async function reconcileStaleRefunds(
     -- hourly reconcile cron 500'd on every single run. The value is the payment
     -- METHOD id (STRIPE, PAYPAL, ...), which is exactly what the registry keys on.
     SELECT r."id", r."order_id", r."intended_items", r."reason", r."created_by",
-           o."payment_method", o."payment_reference"
+           o."order_number", o."payment_method", o."payment_reference", o."kind"
     FROM "shp_refunds" r
     JOIN "shp_orders" o ON o."id" = r."order_id"
     WHERE r."status" = 'PENDING'
@@ -452,11 +608,43 @@ export async function reconcileStaleRefunds(
   const outcomes: ReconcileOutcome[] = []
 
   for (const row of stale) {
-    const base = { refundId: row.id, orderId: row.order_id }
+    const base = { refundId: row.id, orderId: row.order_id, orderNumber: row.order_number }
 
     const items = Array.isArray(row.intended_items)
       ? (row.intended_items as Array<{ orderItemId: string; quantity: number; amount: number }>)
       : null
+    // A replacement's refund is recorded, never sent (lib/payments/order-refund-route.ts),
+    // whatever method its parent was paid with.
+    const provider: ReturnType<typeof lookup> = row.kind === 'REPLACEMENT'
+      ? { refundMode: 'manual' }
+      : row.payment_method ? lookup(row.payment_method) : null
+
+    // A method that records refunds without moving money (see above): nothing
+    // went back through the shop, so the row is set aside. Settled as FAILED
+    // through the ordinary path, which records nothing else on a failure.
+    if (provider?.refundMode === 'manual' && !provider.getRefundStatus) {
+      const settled = await settleRefund(
+        {
+          orderId: row.order_id,
+          reason: row.reason,
+          createdBy: row.created_by,
+          items: items ?? [],
+          performRefund: async () => ({ success: false, providerRefundId: null }),
+        },
+        row.id,
+        { success: false, providerRefundId: null, error: 'The refund was never finished recording' },
+      )
+      if (settled.claimed) {
+        outcomes.push({
+          ...base,
+          resolved: 'FAILED',
+          setAside: true,
+          reason: 'Recorded by hand, but the request stopped before it was saved - nothing was refunded through the shop',
+        })
+      }
+      continue
+    }
+
     if (!items || items.length === 0) {
       // Predates the intended_items column, or was written without it. There is
       // no honest way to work out which units it covered, so it stays for a human.
@@ -464,7 +652,6 @@ export async function reconcileStaleRefunds(
       continue
     }
 
-    const provider = row.payment_method ? lookup(row.payment_method) : null
     if (!provider?.getRefundStatus) {
       outcomes.push({
         ...base,
@@ -489,7 +676,8 @@ export async function reconcileStaleRefunds(
 
     // Reuse the ordinary settle path so the refunded_qty bump, the refund-items
     // insert and the order-status recompute all stay in exactly one place.
-    await settleRefund(
+    const succeeded = status.status === 'succeeded'
+    const settled = await settleRefund(
       {
         orderId: row.order_id,
         reason: row.reason,
@@ -502,8 +690,13 @@ export async function reconcileStaleRefunds(
         ? { success: true, providerRefundId: status.providerRefundId }
         : { success: false, providerRefundId: null, error: 'Provider has no record of this refund' }
     )
+    // Another run got there first and has already reported it.
+    if (!settled.claimed) continue
 
-    outcomes.push({ ...base, resolved: status.status === 'succeeded' ? 'COMPLETED' : 'FAILED' })
+    // Stock follows the money back, exactly as it does on the ordinary path.
+    if (succeeded) await restockRefundedUnits(row.order_id, settled.bumped)
+
+    outcomes.push({ ...base, resolved: succeeded ? 'COMPLETED' : 'FAILED' })
   }
 
   return outcomes

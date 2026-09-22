@@ -671,6 +671,11 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               <input type="number" step="0.01" min={0} value={config.maximumOrderValue ?? ''} onChange={(e) => set('maximumOrderValue', e.target.value ? Number(e.target.value) : null)} placeholder="No maximum" />
             </div>
           </div>
+          <p className="field-hint" style={{ marginTop: '0.25rem', marginBottom: '0.5rem' }}>
+            Measured on the goods before any discount, not counting delivery - so a coupon can never be what stops
+            somebody paying. A {config.currencySymbol}60 basket with {config.currencySymbol}20 off counts as
+            {config.currencySymbol}60.
+          </p>
 
           <div className="field">
             <label>What to say about a postcode you do not deliver to</label>

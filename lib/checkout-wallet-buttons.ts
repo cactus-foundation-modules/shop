@@ -11,6 +11,12 @@
 // Keyed by payment method id, exactly as the payment-fields map is: a module
 // registers under 'SQUARE' because that is what its provider's `id` is, and the
 // review step only mounts the entry for the method the shopper has picked.
+//
+// Read from the whole generated map rather than filtered through the installed
+// manifests, and that is deliberate: the methods themselves come from the same
+// map (lib/payments/registry.ts, getAllPaymentProviders), so this always agrees
+// with the list of methods a shopper can pick. Gating only this half would let
+// the two disagree - a method on offer with its buttons filtered away.
 import type { ComponentType } from 'react'
 import { modulePublicExtensionPointComponents as moduleExtensionPointComponents } from '@/lib/modules/extension-points.public'
 import type { ShopCheckoutWalletButtonsProps } from '@/modules/shop/components/public/checkout-wallet-buttons'

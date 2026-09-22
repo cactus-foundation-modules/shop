@@ -866,6 +866,36 @@ export function invalidateShopConfigCache(): void {
   cachedConfigAt = 0
 }
 
+/** As long as the bank transfer or cash wording may be. Room for a full set of
+ *  bank details and a page of explanation several times over. */
+export const PAYMENT_INSTRUCTIONS_MAX_LENGTH = 10_000
+
+// The manual payment wording is printed on the checkout, the thank-you page, the
+// shopper's order page, the proforma and the "here is how to pay" email, so it
+// has a ceiling. It is checked where settings are SAVED and deliberately not on
+// ShpConfigSchema: that schema also reads the stored row, and a stored value
+// past a ceiling there would fail the whole parse - parseShpConfig answers a
+// failed parse with the out-of-the-box settings, so one long box would quietly
+// reset the entire shop. Only a value being CHANGED is held to it, for the same
+// reason: a shop already carrying longer wording can still save its other
+// settings, and it is the next edit to that box that has to fit.
+export function paymentInstructionsTooLong(
+  patch: Partial<Pick<ShpConfig, 'bankTransferInstructions' | 'cashInstructions'>>,
+  current: Pick<ShpConfig, 'bankTransferInstructions' | 'cashInstructions'>,
+): string | null {
+  const boxes = [
+    ['bankTransferInstructions', 'The bank transfer wording'],
+    ['cashInstructions', 'The cash wording'],
+  ] as const
+  for (const [key, label] of boxes) {
+    const next = patch[key]
+    if (next !== undefined && next !== current[key] && next.length > PAYMENT_INSTRUCTIONS_MAX_LENGTH) {
+      return `${label} is too long - ${PAYMENT_INSTRUCTIONS_MAX_LENGTH.toLocaleString('en-GB')} characters at most.`
+    }
+  }
+  return null
+}
+
 // Merge-then-validate partial update (MembersConfig pattern).
 export async function updateShopConfig(patch: Partial<ShpConfig>): Promise<ShpConfig> {
   const current = await getShopConfig()

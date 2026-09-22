@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { toCsvRow } from '@/modules/shop/lib/csv'
-import { getOrderById, getOrderRowMetrics, listOrders } from '@/modules/shop/lib/db/orders'
+import { getOrderById, getOrderRowMetrics, listOrders, type OrderRowMetrics } from '@/modules/shop/lib/db/orders'
 import { parseOrderListFilter } from '@/modules/shop/lib/order-filters'
 import { orderCompanyName } from '@/modules/shop/lib/order-display'
-import type { ShpAddress } from '@/modules/shop/lib/types'
+import type { ShpAddress, ShpOrder } from '@/modules/shop/lib/types'
+
+// Most orders one file holds. Capped rather than unbounded so one click can
+// never try to pull the whole history at once; past it the FILENAME says so
+// (see below), because a spreadsheet that is quietly short reads as the lot.
+const EXPORT_MAX_ORDERS = 5000
+
+// listOrders serves the screen and clamps a page to 200 whatever it is asked
+// for, so the export walks pages of that size. Asking it for 5000 in one go
+// used to return the first 200 and nothing to say the rest were missing.
+const EXPORT_PAGE_SIZE = 200
 
 // A download of whatever the orders screen is currently showing - same filters,
 // same order, read through the same parser (lib/order-filters.ts) so the file
@@ -40,10 +50,31 @@ export async function GET(request: NextRequest) {
 
   const filter = parseOrderListFilter(request.nextUrl.searchParams)
   // Paging belongs to the screen, not to the file: an export of "page 2 of the
-  // unpaid orders" is nobody's idea of a useful spreadsheet. Capped rather than
-  // unbounded so one click can never try to stream the whole history at once.
-  const { orders } = await listOrders({ ...filter, page: 1, perPage: 5000 })
-  const metrics = await getOrderRowMetrics(orders.map((o) => o.id))
+  // unpaid orders" is nobody's idea of a useful spreadsheet. So the file starts
+  // at the top of the list and takes pages until it has them all, or the cap.
+  const orders: ShpOrder[] = []
+  const metrics: Record<string, OrderRowMetrics> = {}
+  const seen = new Set<string>()
+  let total = 0
+  for (let page = 1; orders.length < EXPORT_MAX_ORDERS; page++) {
+    const batch = await listOrders({ ...filter, page, perPage: EXPORT_PAGE_SIZE })
+    total = batch.total
+    // An order placed while the file is being built shifts the pages along by
+    // one, and the row at the join would otherwise appear twice.
+    const fresh = batch.orders.filter((o) => !seen.has(o.id)).slice(0, EXPORT_MAX_ORDERS - orders.length)
+    for (const o of fresh) seen.add(o.id)
+    orders.push(...fresh)
+    // Counts only: the file has no column for the next delivery day, and
+    // working it out calls every installed due-date provider over every open
+    // line - most of the cost of a big export, for nothing.
+    Object.assign(metrics, await getOrderRowMetrics(fresh.map((o) => o.id), { dueDates: false }))
+    if (batch.orders.length < EXPORT_PAGE_SIZE || page * EXPORT_PAGE_SIZE >= total) break
+  }
+  // The filename says when the file is not the whole list, so it cannot be
+  // mistaken for it in a downloads folder or an accountant's inbox.
+  const filename = total > orders.length
+    ? `orders-export-first-${orders.length}-of-${total}.csv`
+    : 'orders-export.csv'
 
   // The parents named by any replacements in the export, so the file can print
   // a number rather than an id. One query, and none at all on the export that
@@ -107,6 +138,6 @@ export async function GET(request: NextRequest) {
 
   const csv = [toCsvRow([...COLUMNS]), ...rows].join('\r\n')
   return new NextResponse(csv, {
-    headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="orders-export.csv"' },
+    headers: { 'Content-Type': 'text/csv', 'Content-Disposition': `attachment; filename="${filename}"` },
   })
 }

@@ -11,14 +11,21 @@ import { getCheckoutDraft, materialiseDraftOrder } from '@/modules/shop/lib/chec
 
 const Body = z.object({ orderId: z.string(), payload: z.unknown() })
 
+// How long a checkout draft's figures are good for on the on-page path. A day
+// is far longer than anybody takes between finishing the form and pressing
+// "Place order", and matches how long an unpaid card order is kept before the
+// daily prune clears it. See confirmDraft.
+const DRAFT_QUOTE_LIFETIME_MS = 24 * 60 * 60 * 1000
+
 // PROTECTED - confirms payment server-side via the provider, never trusting
 // the client's own claim that payment succeeded (spec 7).
 export async function POST(request: NextRequest) {
   // Unauthenticated by necessity - a guest finishing a checkout has no session -
-  // so the only thing standing between an order id and a stranger is this. The
-  // provider decides whether money moved, so nobody can fake a payment here; what
-  // they COULD do unthrottled is walk order ids and drive other people's pending
-  // orders to PAYMENT_FAILED, one call each.
+  // so anybody holding an order id can call this. The provider decides whether
+  // money moved, so nobody can fake a payment here; and an order is only marked
+  // failed on the provider's own word about a payment that belongs to it (see
+  // `declined` on ShpPaymentResult), so an id alone cannot fail somebody else's
+  // order either. The throttle is for everything else a script could run up.
   const ip = await getClientIp()
   if (!checkInMemoryRateLimit(`checkout-confirm:${ip}`, 20, 15 * 60 * 1000)) {
     return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
@@ -40,6 +47,14 @@ export async function POST(request: NextRequest) {
   // Manual providers (bank transfer, cash) have no automated confirmation - park
   // the order for an admin to clear once the money actually arrives.
   if (provider.confirmMode === 'manual') {
+    // Once only. The first call is the shopper finishing their checkout; any
+    // later one - a double press, a retried request, or whoever else has the
+    // order id - finds the order already parked and changes nothing. Every
+    // repeat used to put it back to awaiting payment whatever had happened to it
+    // since, and send the customer and the owner the how-to-pay email again.
+    if (order.paymentStatus !== 'PENDING') {
+      return NextResponse.json({ orderNumber: order.orderNumber, status: order.paymentStatus })
+    }
     await markOrderAwaitingConfirmation(order.id)
     // The shopper has finished checking out even though the money has not
     // landed yet, so their address is saved now rather than whenever the shop
@@ -68,7 +83,12 @@ export async function POST(request: NextRequest) {
     parsed.data.payload
   )
   if (!result.success) {
-    await markOrderPaymentFailed(order.id)
+    // Failed only when the provider says this order's own payment was refused.
+    // A payload with nothing in it, or an intent belonging to another order, is
+    // an answer about the request rather than about the order, and it leaves the
+    // order where it was - still payable, and pruned in the usual way if nobody
+    // ever pays it.
+    if (result.declined) await markOrderPaymentFailed(order.id)
     return NextResponse.json({ error: result.error ?? 'Payment could not be confirmed' }, { status: 402 })
   }
 
@@ -97,6 +117,19 @@ export async function POST(request: NextRequest) {
 async function confirmDraft(orderId: string, payload: unknown): Promise<NextResponse> {
   const draft = await getCheckoutDraft(orderId)
   if (!draft) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+
+  // A draft is a quote: the prices, the delivery charge and the total as they
+  // stood when the shopper finished the form, and it is exactly what the
+  // provider is about to be asked to take. Kept for a month for the sake of
+  // bank payments settling by webhook (see lib/checkout-draft.ts), which never
+  // come through here - this is the on-page path, where asking the provider IS
+  // the payment. So a quote older than a day is refused before any money moves,
+  // rather than charged at figures the shop may have changed since.
+  if (Date.now() - draft.createdAt.getTime() > DRAFT_QUOTE_LIFETIME_MS) {
+    return NextResponse.json({
+      error: 'This checkout has been open for a while, so its prices may have changed. Please refresh the page to see your up-to-date total, then place your order.',
+    }, { status: 409 })
+  }
 
   const provider = getPaymentProvider(draft.paymentMethod)
   if (!provider) return NextResponse.json({ error: 'Payment method is no longer available.' }, { status: 400 })

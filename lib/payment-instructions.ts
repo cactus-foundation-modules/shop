@@ -35,11 +35,16 @@ export function manualPaymentInstructions(
 /** Whether this order still has money owing on it - as against settled or
  *  written off. A cancelled or refunded order asking to be paid would be worse
  *  than saying nothing at all, and both sit at PENDING for ever on a manual
- *  method, because nobody ever paid them. */
+ *  method, because nobody ever paid them.
+ *
+ *  Part refunded is written off too. An order with a refund against it is not
+ *  one to ask for money on, and the figure every pay-online surface quotes is
+ *  the order's whole total, which is the one thing it certainly no longer owes. */
 export function paymentOutstanding(order: Pick<ShpOrder, 'status' | 'paymentStatus'>): boolean {
   return (
     (order.paymentStatus === 'PENDING' || order.paymentStatus === 'AWAITING_CONFIRMATION') &&
     order.status !== 'CANCELLED' &&
-    order.status !== 'REFUNDED'
+    order.status !== 'REFUNDED' &&
+    order.status !== 'PARTIALLY_REFUNDED'
   )
 }

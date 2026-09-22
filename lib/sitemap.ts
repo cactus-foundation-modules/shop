@@ -27,13 +27,28 @@ export async function getPublicSitemapEntries(siteUrl: string): Promise<Metadata
     -- a search engine, and offering one for indexing is worse than useless.
     WHERE p."status" = 'ACTIVE' AND p."catalogue_hidden" = false AND p."parts_only" = false ${inStockOnly}
   `
+  // A category or collection earns its place by holding at least one product a
+  // shopper would actually find on it - the same test as the product list
+  // above. A link to a draft, a variation child or a spare part is not
+  // something on the shelf, and advertising the empty page it leads to is the
+  // thin page the supplier list below is careful to leave out.
   const categories = await prisma.$queryRaw<Array<{ slug: string; updated_at: Date }>>`
     SELECT c."slug", c."updated_at" FROM "shp_categories" c
-    WHERE EXISTS (SELECT 1 FROM "shp_product_categories" pc WHERE pc."category_id" = c."id")
+    WHERE EXISTS (
+      SELECT 1 FROM "shp_product_categories" pc
+      JOIN "shp_products" p ON p."id" = pc."product_id"
+      WHERE pc."category_id" = c."id"
+        AND p."status" = 'ACTIVE' AND p."catalogue_hidden" = false AND p."parts_only" = false ${inStockOnly}
+    )
   `
   const collections = await prisma.$queryRaw<Array<{ slug: string; updated_at: Date }>>`
     SELECT col."slug", col."updated_at" FROM "shp_collections" col
-    WHERE EXISTS (SELECT 1 FROM "shp_product_collections" pc WHERE pc."collection_id" = col."id")
+    WHERE EXISTS (
+      SELECT 1 FROM "shp_product_collections" pcol
+      JOIN "shp_products" p ON p."id" = pcol."product_id"
+      WHERE pcol."collection_id" = col."id"
+        AND p."status" = 'ACTIVE' AND p."catalogue_hidden" = false AND p."parts_only" = false ${inStockOnly}
+    )
   `
 
   // Published supplier pages, and only where the supplier actually has

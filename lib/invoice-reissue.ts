@@ -193,6 +193,12 @@ async function reissue(
   // nextval does not roll back, and a rolled-back attempt spending a number is
   // a gap in the run rather than a collision in it - which is the trade this
   // module has made everywhere else too.
+  // One date for both documents. The credit note cancelling the original and the
+  // invoice replacing it are one correction, and they have to land in the same
+  // VAT return to net each other off there - which they only do if they carry
+  // the same tax point. Today, because the quarter the original fell in has very
+  // likely been filed, and reopening it is not this feature's business.
+  const correctionDate = dateInZone(new Date(), timezone)
   const [creditNoteNumber, replacementBuild] = await Promise.all([
     generateCreditNoteNumber(),
     buildInvoiceInsertInput(order, config, {
@@ -205,17 +211,17 @@ async function reissue(
       // invoice's own marks back in means. Anything refunded since has a credit
       // note against the original and is dealt with there.
       alsoNettedOffInvoiceId: invoice.id,
+      // The credit note's date, so the two net off in one return (above) -
+      // not worked out again from despatch or payment, which could put the
+      // replacement in a different period from the credit that cancels it.
+      taxPointDate: correctionDate,
     }),
   ])
 
   const creditInput = buildFullCreditNoteInput(invoice, config, {
     creditNoteNumber,
-    // The tax point of the CREDIT is today, not the day of the sale: the
-    // quarter the invoice fell in has very likely been filed, and reopening it
-    // is not this feature's business. The replacement keeps the sale's own tax
-    // point (see buildInvoiceInsertInput), so the two land in the same return
-    // and net each other off there.
-    taxPointDate: dateInZone(new Date(), timezone),
+    // Today, the same date as the replacement - see correctionDate above.
+    taxPointDate: correctionDate,
     reason,
     issuedBy: opts.by === 'STAFF' ? 'MANUAL' : 'AUTO',
     userId: opts.userId ?? null,
@@ -233,6 +239,13 @@ async function reissue(
       if (!marked) throw new Error('invoice was no longer live')
       const fresh = await insertInvoice(replacementBuild.input, tx)
       await linkSupersedingInvoice(invoice.id, fresh.id, tx)
+      // The netting marks move to the document that now carries them, so the
+      // refunds the original was raised without stay dealt-with rather than
+      // reappearing as credit notes waiting to be raised against an invoice that
+      // no longer stands. Inside the transaction, as the ordinary issue path does
+      // it: marks left pointing at the superseded invoice would outlive a later
+      // void of this one, which releases only its own.
+      await markRefundsNettedOff(replacementBuild.nettedRefundIds, fresh.id, tx)
       return { creditNote: note, replacement: fresh }
     }, { timeout: 15_000 }))
   } catch (error) {
@@ -243,13 +256,6 @@ async function reissue(
     // pressing again will replace it.
     return { ok: false, status: 500, error: 'Your details are saved, but the new invoice could not be raised. Get in touch and we will send it over.' }
   }
-
-  // The netting marks move to the document that now carries them, so the refunds
-  // the original was raised without stay dealt-with rather than reappearing as
-  // credit notes waiting to be raised against an invoice that no longer stands.
-  await markRefundsNettedOff(replacementBuild.nettedRefundIds, replacement.id).catch((error) => {
-    console.error('[shop] could not move netting marks to invoice', replacement.invoiceNumber, error)
-  })
 
   // Past the point of no return for the paperwork. Everything below is telling
   // people about it, and none of it may undo any of the above.

@@ -14,6 +14,7 @@ import {
 } from '@/modules/shop/components/public/checkout-payment-slot'
 import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 import { publishCheckoutTotal } from '@/modules/shop/components/public/checkout-total-bus'
+import { formatMoney } from '@/modules/shop/lib/money'
 
 type SessionSummary = {
   subtotal: number; discountAmount: number; shippingAmount: number; taxAmount: number; total: number
@@ -380,8 +381,11 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
       // in one Puck zone, so nothing else puts air between the checkout steps.
       <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480, marginTop: '2rem' }}>
         <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Order review'}</h2>
+        {/* An alert, so a refusal that arrives while the shopper is typing in a
+            box further up the page is still heard: this line has replaced the
+            whole total, and the reason is the only thing left to say. */}
         {error
-          ? <p style={{ color: 'var(--color-danger)', margin: 0 }}>{error}</p>
+          ? <p role="alert" style={{ color: 'var(--color-danger)', margin: 0 }}>{error}</p>
           : <p style={{ color: 'var(--color-text-muted)', margin: 0 }}>Working out your order total…</p>}
         {notice}
         {/* Deliberately NO card-field slot in this branch. It is on screen only
@@ -395,7 +399,9 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
   }
 
 
-  const money = (n: number) => `${summary.currencySymbol}${n.toFixed(2)}`
+  // The same formatting as every other price in the shop, thousands grouped:
+  // "£1600.00" on the pay button reads as a typo on the one figure that must not.
+  const money = (n: number) => formatMoney(n, summary.currencySymbol)
   // Both halves hold the button shut: the boxes above, and the decisions on this
   // block. Neither hides the total any more, and both are said in the one line.
   const blocked = notice !== null
@@ -437,6 +443,13 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
         )}
         <dt style={{ fontWeight: 600 }}>Total</dt><dd style={{ margin: 0, fontWeight: 600 }}>{money(summary.total)}</dd>
       </dl>
+      {/* The total, said out loud when it moves. The list above changes in
+          silence when a postcode, a delivery choice or a coupon moves it, and a
+          shopper who cannot see it would otherwise find out from the button.
+          Polite, so it waits for them to finish typing; and it only speaks when
+          the figure actually changes, because the same text written again is
+          not a change. */}
+      <p className="sr-only" aria-live="polite" aria-atomic="true">{`Order total ${money(summary.total)}`}</p>
       {/* Said before the shopper works it out for themselves: a total with no
           postcode behind it is the goods, and delivery lands on it later. */}
       {awaitingDelivery && (
@@ -476,7 +489,10 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
           ))}
         </div>
       )}
-      {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
+      {/* An alert rather than a plain line: a declined card is reported while
+          focus is still on the button that was pressed, and a screen reader
+          would otherwise say nothing about it at all. */}
+      {error && <p role="alert" style={{ color: 'var(--color-danger)' }}>{error}</p>}
       {/* Sits above the button rather than below it, and appears before the
           click rather than after: what is left to do should be readable in the
           same glance as the button it is holding shut. */}

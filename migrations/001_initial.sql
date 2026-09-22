@@ -759,6 +759,9 @@ CREATE TABLE IF NOT EXISTS "shp_refunds" (
     -- before it goes out, never both, and this is the record of which happened.
     -- See migration 037 for why dates cannot answer it.
     "netted_off_invoice_id" TEXT,
+    -- The delivery part of the refund, tax and all, included in "amount".
+    -- See migration 060.
+    "shipping_amount" NUMERIC(10,2) NOT NULL DEFAULT 0,
     "created_by" TEXT NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getInvoiceByNumber } from '@/modules/shop/lib/db/invoices'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
+import { paymentTaken } from '@/modules/shop/lib/payment-taken'
 import { invoicePdfPath } from '@/modules/shop/lib/invoice-token'
 import { resolveDocumentAccess } from '@/modules/shop/lib/document-access'
 import DocumentAccessGate from '@/modules/shop/components/public/DocumentAccessGate'
@@ -104,7 +105,9 @@ export default async function ShopInvoicePage({
   const config = await getShopConfigCached()
   const ctx = invoiceDocContext(invoice, {
     print,
-    paid: order?.paymentStatus === 'PAID',
+    // Paid is paid, whatever has been refunded since - the refund has its own
+    // credit note (lib/payment-taken.ts).
+    paid: order ? paymentTaken(order.paymentStatus) : false,
     // Their own reference as it stands today, for an invoice raised before
     // they had a purchase order number to give. Only ever fills a blank -
     // see withOrderCustomerReference.

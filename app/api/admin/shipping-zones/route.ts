@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { listShippingZones, createShippingZone } from '@/modules/shop/lib/db'
+import { ZonePostcodeList } from '@/modules/shop/lib/zone-postcode-list'
 
 export async function GET() {
   const gate = await requireShopUser('shop.manage', { allowAccess: true })
@@ -12,8 +13,8 @@ export async function GET() {
 
 const Body = z.object({
   name: z.string().min(1),
-  postcodes: z.array(z.string()).default([]),
-  excludedPostcodes: z.array(z.string()).default([]),
+  postcodes: ZonePostcodeList.default([]),
+  excludedPostcodes: ZonePostcodeList.default([]),
 })
 
 export async function POST(request: NextRequest) {

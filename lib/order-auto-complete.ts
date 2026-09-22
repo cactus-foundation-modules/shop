@@ -14,8 +14,20 @@ import type { ShpOrderStatus } from '@/modules/shop/lib/types'
 
 /** An order in one of these is left alone however many parcels have landed.
  *  Completed is done already; a delivered parcel on a cancelled or refunded
- *  order is a conversation, not a completion. */
-const NOT_COMPLETABLE: ReadonlySet<ShpOrderStatus> = new Set(['COMPLETED', 'CANCELLED', 'REFUNDED'])
+ *  order is a conversation, not a completion.
+ *
+ *  Part refunded is NOT in here: an order with two of five chairs refunded
+ *  before dispatch is still an order for three, and when they arrive it is
+ *  complete - leaving it out stranded it on "Part refunded" for good, with no
+ *  completion email and, on a shop that invoices on completion, no invoice for
+ *  the three that were sold. The loop that once put it here (a completed order
+ *  part refunded for a broken chair, dropped back to Part refunded, completed
+ *  again with a second thank-you) is closed where it started: a part refund no
+ *  longer moves a completed order's status (settleRefund, recordProviderRefund).
+ *  On hold is somebody's deliberate stop (a chargeback, a payment that did not
+ *  match, stock that was not there) and only a person lifts it. Must match the
+ *  SQL in listOrdersAwaitingCompletion (lib/db/shipments.ts). */
+const NOT_COMPLETABLE: ReadonlySet<ShpOrderStatus> = new Set(['COMPLETED', 'CANCELLED', 'REFUNDED', 'ON_HOLD'])
 
 /**
  * Mark the order COMPLETED when every parcel on it has arrived AND nothing is

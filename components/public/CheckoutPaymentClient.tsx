@@ -81,17 +81,27 @@ type PreparedPayment = {
   // the provider's intent. Held on the prepared payment rather than in state of
   // its own so it can never outlive the attempt it belongs to.
   clientFields?: Record<string, unknown>
+  // The order this was prepared from - basket, contact, addresses, delivery
+  // choice, coupon - exactly as it was sent. The order and its payment are a
+  // snapshot of that, so "Place order" compares it with the checkout as it now
+  // stands and prepares again if the two have parted company. See placeOrder.
+  orderSnapshot: string
 }
 
 // Preferred display names for the built-in methods (kept here so the wording
 // stays exact); any other method falls back to the provider label from config,
 // then the raw code.
+// How long the checkout has to sit still before a chosen method is prepared on
+// its own - long enough to see out a burst of typing, short enough that the card
+// box is there by the time the shopper looks down for it.
+const PREPARE_PAUSE_MS = 800
+
 const BUILT_IN_METHOD_LABELS: Record<string, string> = { STRIPE: 'Card (Stripe)', PAYPAL: 'PayPal', BANK_TRANSFER: 'Bank transfer', CASH: 'Cash', NONE: 'No charge' }
 
 declare global {
   interface Window {
     Stripe?: (key: string) => {
-      elements: (opts: { clientSecret: string }) => { create: (type: string) => { mount: (el: HTMLElement) => void } }
+      elements: (opts: { clientSecret: string }) => { create: (type: string) => { mount: (el: HTMLElement) => void; destroy: () => void } }
       confirmPayment: (opts: { elements: unknown; confirmParams: { return_url: string }; redirect: 'if_required' }) => Promise<{ error?: { message: string }; paymentIntent?: { id: string; status: string } }>
     }
   }
@@ -173,6 +183,10 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
   const moduleSubmitRef = useRef<((config: Record<string, unknown>) => Promise<unknown>) | null>(null)
   const stripeInstanceRef = useRef<ReturnType<NonNullable<typeof window.Stripe>> | null>(null)
   const stripeElementsRef = useRef<unknown>(null)
+  // The card box itself, so a second prepare for the same method (the order
+  // changed underneath it - see placeOrder) can take the old one down before
+  // drawing its replacement in the same place, rather than stacking two.
+  const stripePaymentElementRef = useRef<{ destroy: () => void } | null>(null)
   const preparedRef = useRef<PreparedPayment | null>(null)
   const preparingRef = useRef(false)
   // Whether a "Place order" is already running. The Review block disables its
@@ -185,6 +199,13 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
   // real order and a real provider intent, so a choice gets exactly one - a
   // shopper still typing their address must not leave a trail of pending orders.
   const attemptedForRef = useRef<string | null>(null)
+  // A payment the provider has already been asked to take whose confirm never
+  // came back with an answer - a dropped connection, a timeout, a busy server.
+  // The money may well have gone, so the next press sends that same confirm
+  // again rather than preparing a fresh order and taking the money twice, even
+  // if the checkout has changed in between: an order paid for as it stood beats
+  // two charges. Cleared by any definite answer.
+  const submittedRef = useRef<{ orderId: string; payload: unknown } | null>(null)
   // Only a method picked during this mount is prepared on its own. One restored
   // from sessionStorage on a fresh page load is deliberately left alone: a
   // reload would otherwise create a pending order and a live provider intent
@@ -223,39 +244,55 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
   // approval URL is only visited from "Place order" (see placeOrder below), so
   // that picking a radio button cannot dump the shopper on someone else's site
   // before they have seen their total.
-  const prepareIntent = useCallback(async (next: string): Promise<PreparedPayment> => {
+  // The order as the checkout stands right now: what the order-creating route is
+  // sent, and the snapshot "Place order" later compares against to tell whether
+  // the order it prepared is still the one on screen (see placeOrder).
+  const orderRequest = useCallback((next: string): { body: string; snapshot: string } => {
     const state = getCheckoutState()
-    const lines = getCart()
+    const order = {
+      // Canonical form, not as typed: the number may have been written into
+      // storage by an older visit that never went through the contact box's
+      // own tidy-up. The route normalises it again regardless.
+      lines: getCart(), customerEmail: state.customerEmail, customerName: state.customerName,
+      customerOrganisation: state.customerOrganisation.trim() || undefined,
+      customerReference: state.customerReference.trim() || undefined,
+      customerPhone: (formatUkPhone(state.customerPhone) ?? state.customerPhone) || undefined,
+      shippingAddress: state.shippingAddress, shippingRateId: state.shippingRateId, couponCode: state.couponCode, paymentMethod: next,
+      // What the shopper told the driver, where the shop asks. Sent
+      // regardless of what this browser believes the setting to be - the
+      // route drops it if the shop is not asking, and a checkout drawn from
+      // a stale bundle should not be the thing that decides.
+      deliveryInstructions: state.deliveryInstructions.trim() || undefined,
+      // Only where the shop asks for one and the shopper has said theirs is
+      // different. Null otherwise, which is what an order that bills to the
+      // delivery address has always carried - and what every screen that
+      // prints one already falls back to.
+      billingAddress: config?.billingAddress?.enabled === true && state.billingAddressDifferent
+        ? state.billingAddress
+        : null,
+    }
+    return {
+      body: JSON.stringify({
+        ...order,
+        // Which tickboxes the shopper ticked on the review step. Sent as ids,
+        // never as statements: the wording the order records has to be the
+        // shop's own copy of it, not whatever the browser claims it read.
+        agreements: state.agreements,
+      }),
+      // The tickboxes are left out of the comparison on purpose. The compulsory
+      // ones cannot change without shutting the button, and an optional box
+      // ticked at the last moment is not worth wiping a typed card number over.
+      snapshot: JSON.stringify(order),
+    }
+  }, [config])
+
+  const prepareIntent = useCallback(async (next: string): Promise<PreparedPayment> => {
+    const request = orderRequest(next)
     setLoading(true)
     try {
       const res = await fetch('/api/m/shop/public/checkout/payment-intent', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          // Canonical form, not as typed: the number may have been written into
-          // storage by an older visit that never went through the contact box's
-          // own tidy-up. The route normalises it again regardless.
-          lines, customerEmail: state.customerEmail, customerName: state.customerName,
-          customerOrganisation: state.customerOrganisation.trim() || undefined,
-          customerReference: state.customerReference.trim() || undefined,
-          customerPhone: (formatUkPhone(state.customerPhone) ?? state.customerPhone) || undefined,
-          shippingAddress: state.shippingAddress, shippingRateId: state.shippingRateId, couponCode: state.couponCode, paymentMethod: next,
-          // What the shopper told the driver, where the shop asks. Sent
-          // regardless of what this browser believes the setting to be - the
-          // route drops it if the shop is not asking, and a checkout drawn from
-          // a stale bundle should not be the thing that decides.
-          deliveryInstructions: state.deliveryInstructions.trim() || undefined,
-          // Only where the shop asks for one and the shopper has said theirs is
-          // different. Null otherwise, which is what an order that bills to the
-          // delivery address has always carried - and what every screen that
-          // prints one already falls back to.
-          billingAddress: config?.billingAddress?.enabled === true && state.billingAddressDifferent
-            ? state.billingAddress
-            : null,
-          // Which tickboxes the shopper ticked on the review step. Sent as ids,
-          // never as statements: the wording the order records has to be the
-          // shop's own copy of it, not whatever the browser claims it read.
-          agreements: state.agreements,
-        }),
+        body: request.body,
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Could not start checkout')
@@ -268,6 +305,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         approvalUrl: data.approvalUrl,
         providerOrderId: data.providerOrderId,
         clientFields: data.clientFields && typeof data.clientFields === 'object' ? data.clientFields : undefined,
+        orderSnapshot: request.snapshot,
       }
 
       // The shopper may have switched method while this was in flight. The
@@ -298,7 +336,17 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         stripeInstanceRef.current = stripe
         const elements = stripe.elements({ clientSecret: data.clientSecret })
         stripeElementsRef.current = elements
-        if (elementsRef.current) elements.create('payment').mount(elementsRef.current)
+        // Any card box from an earlier prepare belongs to a payment that is no
+        // longer the one being made. Taken down first, or the new one is drawn
+        // underneath it in the same place. Harmless where it has already gone
+        // with the method that drew it.
+        try { stripePaymentElementRef.current?.destroy() } catch { /* already gone */ }
+        stripePaymentElementRef.current = null
+        if (elementsRef.current) {
+          const paymentElement = elements.create('payment')
+          paymentElement.mount(elementsRef.current)
+          stripePaymentElementRef.current = paymentElement
+        }
       } else if (prepared.clientFields && paymentFields?.[next]) {
         // A module's own fields. Nothing is mounted here - handing the config
         // over is enough, and the component below does its own loading when it
@@ -317,7 +365,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
     } finally {
       setLoading(false)
     }
-  }, [config, paymentFields])
+  }, [config, paymentFields, orderRequest])
 
   // What the order-creating route insists on before it will hand back an intent:
   // the details above filled in, and every compulsory tickbox on the review step
@@ -369,6 +417,13 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
   // details) as soon as the last box is done, rather than a radio button that
   // tells them off for the order they did things in.
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    // The checkout as it stood when a prepare was refused. The same checkout is
+    // not tried again - it would only be refused again, against a route that
+    // counts attempts - but the moment the shopper changes anything, it is, and
+    // the refusal's message comes down with it rather than sitting there after
+    // the postcode it was about has been put right.
+    let refusedFor: string | null = null
     function sync() {
       const state = getCheckoutState()
       // The choice is read from checkout state rather than from `method`:
@@ -383,23 +438,51 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
       // preparedRef is checked as well as the attempt marker because "Place
       // order" prepares by its own route: without this, a state change after
       // that would order the same thing twice.
+      if (refusedFor !== null && attemptedForRef.current === chosen && orderRequest(chosen).snapshot !== refusedFor) {
+        refusedFor = null
+        attemptedForRef.current = null
+        setError(null)
+      }
       if (outstanding || preparingRef.current || attemptedForRef.current === chosen || preparedRef.current?.method === chosen) return
 
-      attemptedForRef.current = chosen
-      preparingRef.current = true
-      prepareIntent(chosen)
-        .catch((err) => setError(err instanceof Error ? err.message : 'Could not start checkout'))
-        .finally(() => {
-          preparingRef.current = false
-          // A method chosen while that call was in flight cleared the attempt
-          // marker and found the door shut. Knock again.
-          sync()
-        })
+      // Not while the postcode is still being typed, and not on the keystroke
+      // itself. Every prepare is a real order at the delivery, price and address
+      // of that moment, and one made on the first letter of a postcode was an
+      // order to "S" - which "Place order" then has to throw away, because the
+      // checkout has changed since, asking a card shopper for their card again.
+      // So it waits for something postcode-shaped and a pause in the typing.
+      if (state.shippingAddress.postcode.replace(/\s/g, '').length < 5) return
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        timer = null
+        const now = getCheckoutState()
+        if (now.paymentMethod !== chosen || outstandingRequirement(now)) return
+        if (preparingRef.current || attemptedForRef.current === chosen || preparedRef.current?.method === chosen) return
+        const snapshot = orderRequest(chosen).snapshot
+        attemptedForRef.current = chosen
+        preparingRef.current = true
+        prepareIntent(chosen)
+          .then(() => setError(null))
+          .catch((err) => {
+            setError(err instanceof Error ? err.message : 'Could not start checkout')
+            if (!preparedRef.current) refusedFor = snapshot
+          })
+          .finally(() => {
+            preparingRef.current = false
+            // A method chosen while that call was in flight cleared the attempt
+            // marker and found the door shut. Knock again.
+            sync()
+          })
+      }, PREPARE_PAUSE_MS)
     }
 
     sync()
-    return subscribeCheckoutState(sync)
-  }, [config, method, outstandingRequirement, prepareIntent])
+    const unsubscribe = subscribeCheckoutState(sync)
+    return () => {
+      unsubscribe()
+      if (timer) clearTimeout(timer)
+    }
+  }, [config, method, orderRequest, outstandingRequirement, prepareIntent])
 
   // The methods this order may actually be paid with. A shop can say that a
   // method is only for orders above (or below) a certain size - a flat fee is
@@ -523,8 +606,18 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         // would wave the shopper through to the confirmation page without a penny
         // changing hands, so start a fresh payment instead.
         let prepared = preparedRef.current
+        const submitted = submittedRef.current
+        const resubmitting = submitted !== null && prepared !== null && prepared.method === method && submitted.orderId === prepared.orderId
         const freshlyPrepared = !prepared || prepared.method !== method
-        if (freshlyPrepared) prepared = await prepareIntent(method)
+        // Prepared, but for a checkout that has moved on since: a different
+        // delivery choice, a coupon on or off, a basket edited, a line of the
+        // address put right. The order and the payment behind it are a snapshot
+        // of the checkout as it was, so paying them would charge a total the
+        // button no longer shows and send the parcel to the address as it was.
+        // Prepared again instead, and the new order is the one paid for.
+        const changedSincePrepared = prepared !== null && !freshlyPrepared
+          && prepared.orderSnapshot !== orderRequest(method).snapshot
+        if (!resubmitting && (freshlyPrepared || changedSincePrepared)) prepared = await prepareIntent(method)
         if (!prepared) throw new Error('Could not start checkout')
 
         // Providers that authorise on their own site (PayPal, open banking).
@@ -559,7 +652,10 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         }
 
         let payload: unknown = {}
-        if (walletPayload !== undefined) {
+        if (resubmitting && submitted) {
+          // The same confirm as last time, word for word - see submittedRef.
+          payload = submitted.payload
+        } else if (walletPayload !== undefined) {
           // Straight through. The card fields are not asked for anything - they
           // may not even be on the page - and nothing here reads the token: the
           // confirm route hands it to the provider, which re-checks the amount
@@ -569,6 +665,8 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
           // A card form that was only just mounted is necessarily empty, so ask
           // rather than submit a blank card and relay Stripe's error for it.
           if (freshlyPrepared) throw new Error('Please enter your card details, then place your order.')
+          // The same, for a card box drawn afresh because the order changed.
+          if (changedSincePrepared) throw new Error('Your order has changed since you entered your card, so please enter your card details again, then place your order.')
           const stripe = stripeInstanceRef.current
           if (!stripe || !stripeElementsRef.current) throw new Error('Payment form not ready')
           const result = await stripe.confirmPayment({ elements: stripeElementsRef.current, confirmParams: { return_url: window.location.href }, redirect: 'if_required' })
@@ -613,9 +711,14 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
           }
         }
 
+        submittedRef.current = { orderId: prepared.orderId, payload }
         const res = await fetch('/api/m/shop/public/checkout/confirm', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: prepared.orderId, payload }),
         })
+        // A definite no - refused, not found, not valid - means this attempt is
+        // over and the next press may start afresh. A timeout or a server that
+        // fell over says nothing about the money, so the confirm stands.
+        if (!res.ok && res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) submittedRef.current = null
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? 'Payment could not be confirmed')
 
@@ -647,7 +750,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
 
     window.addEventListener('cactus-shop-place-order', placeOrder)
     return () => window.removeEventListener('cactus-shop-place-order', placeOrder)
-  }, [config, method, paymentFields, prepareIntent])
+  }, [config, method, paymentFields, prepareIntent, orderRequest])
 
   // The review step says when its slot appears or disappears. An empty basket
   // takes the whole step off the page, and a layout may have no review step at
@@ -721,7 +824,10 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
     // one Puck zone, so nothing else puts air between the checkout steps.
     <section style={{ display: 'grid', gap: '0.75rem', maxWidth: 480, marginTop: '2rem' }}>
       <h2 style={{ fontSize: '1.125rem', margin: 0 }}>{heading || 'Payment method'}</h2>
-      {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
+      {/* An alert, like the review step's: a method that could not be set up,
+          or a card box that refused, is news the shopper has to hear even with
+          focus somewhere else on the page. */}
+      {error && <p role="alert" style={{ color: 'var(--color-danger)' }}>{error}</p>}
       {/* The chosen method has just stopped being one this order may use. Said
           plainly, above the list, because the shopper is about to find their
           selection gone and should not have to work out why. */}

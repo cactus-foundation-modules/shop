@@ -6,8 +6,6 @@ import { loadOrderDetail } from '@/modules/shop/lib/member-orders'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { resolveOrderViewer } from '@/modules/shop/lib/order-viewer'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { getShopGate } from '@/modules/shop/lib/access'
-import { ShopClosedNotice } from '@/modules/shop/components/public/ShopClosedNotice'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { addressLines, formatOrderDate } from '@/modules/shop/lib/order-display'
 import { customerReferenceLabel } from '@/modules/shop/lib/customer-reference'
@@ -39,9 +37,9 @@ const PRINT_CSS = `
 `
 
 export default async function ShopAccountOrderReceiptPage({ params }: { params: Promise<{ id: string }> }) {
-  const gate = await getShopGate()
-  if (gate.blocked) return <ShopClosedNotice message={gate.message} />
-
+  // Deliberately NOT behind the shop gate, like the order page itself: a
+  // receipt for an order already placed stays reachable while the shop is
+  // closed (see getShopGate in lib/access.ts).
   const { id } = await params
   const order = await getOrderById(id)
   if (!order) notFound()

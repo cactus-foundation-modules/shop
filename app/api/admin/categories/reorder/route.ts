@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { reorderCategories, categoryReparentWouldCycle } from '@/modules/shop/lib/db'
 import { fileCategoryImage } from '@/modules/shop/lib/media/category-media'
+import { CATALOGUE_REORDER_MAX_IDS, formatLimit } from '@/modules/shop/lib/admin-input-limits'
 
 // Persists the order of one parent's children. The admin tree sends the sibling
 // group's ids in their new order; position is written as the array index.
@@ -11,8 +12,13 @@ import { fileCategoryImage } from '@/modules/shop/lib/media/category-media'
 // (drag-and-drop) to also re-file every id under that parent, which is how a
 // category is dragged into a new parent or back out to the top level. `null`
 // means the top level.
+//
+// The list is written in one transaction, and a re-parent checks and re-files
+// every id in it, so it has a ceiling - far above any real sibling group (see
+// lib/admin-input-limits.ts).
 const Body = z.object({
-  orderedIds: z.array(z.string()).min(1),
+  orderedIds: z.array(z.string()).min(1)
+    .max(CATALOGUE_REORDER_MAX_IDS, `That is more than ${formatLimit(CATALOGUE_REORDER_MAX_IDS)} categories to reorder at once.`),
   parentId: z.string().nullable().optional(),
 })
 

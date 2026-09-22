@@ -85,6 +85,15 @@ describe('settlementMethod', () => {
       total: '250.00',
     })).toBe('SQUARE')
   })
+
+  // A refund moves payment_status on from PAID; the method that paid is still
+  // the one the money went back through.
+  it.each(['PARTIALLY_REFUNDED', 'REFUNDED'] as const)('is still the method that paid once %s', (paymentStatus) => {
+    expect(settlementMethod({
+      status: paymentStatus, paymentStatus, paymentMethod: 'SQUARE', originalPaymentMethod: 'BANK_TRANSFER',
+      total: '250.00',
+    })).toBe('SQUARE')
+  })
 })
 
 describe('orderAcceptsOnlinePayment', () => {
@@ -106,6 +115,14 @@ describe('orderAcceptsOnlinePayment', () => {
   it('says no on a cancelled order, which would otherwise sit unpaid for ever', async () => {
     await expect(orderAcceptsOnlinePayment(
       { ...unpaidBankTransfer, status: 'CANCELLED' }, asConfig(),
+    )).resolves.toBe(false)
+  })
+
+  // The figure every pay-online surface quotes is the whole total, which an
+  // order with a refund against it certainly no longer owes.
+  it('says no on a part-refunded order', async () => {
+    await expect(orderAcceptsOnlinePayment(
+      { ...unpaidBankTransfer, status: 'PARTIALLY_REFUNDED' }, asConfig(),
     )).resolves.toBe(false)
   })
 

@@ -2,14 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { blockedLinesMessage, resolveCartLines, resolveOrderTotals, round2 } from '@/modules/shop/lib/checkout'
 import { resolveShippingZoneForPostcode, getShippingRateById } from '@/modules/shop/lib/db/tax-shipping'
-import { excludedPostcodeMessage } from '@/modules/shop/lib/excluded-postcode'
+import { excludedPostcodeMessage, refusesDelivery } from '@/modules/shop/lib/excluded-postcode'
 import { createPendingOrder, type CreateOrderInput } from '@/modules/shop/lib/db/orders'
 import { createCheckoutDraft } from '@/modules/shop/lib/checkout-draft'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
 import { getShopConfigCached, getAvailablePaymentMethods, orderValueRefusal, resolveCheckoutAgreements } from '@/modules/shop/lib/config'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { DELIVERY_INSTRUCTIONS_MAX_LENGTH } from '@/modules/shop/lib/delivery-instructions'
-import { formatMoney } from '@/modules/shop/lib/money'
+import { ADDRESS_NAME_MAX_LENGTH, BoundedAddressSchema, customerNameField, phoneField } from '@/modules/shop/lib/address-limits'
+import { BILLING_COMPANY_MAX_LENGTH } from '@/modules/shop/lib/customer-billing'
+import { CUSTOMER_REFERENCE_MAX_LENGTH } from '@/modules/shop/lib/customer-reference'
+import { CheckoutLinesSchema, checkoutLinesRefusal } from '@/modules/shop/lib/checkout-lines'
+import { checkoutClosedResponse } from '@/modules/shop/lib/access'
+import { shopOrderValueRefusal } from '@/modules/shop/lib/order-value-gate'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { applyOrderPaymentState, previewOrderPaymentNotes } from '@/modules/shop/lib/order-payment-state'
 import { signOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
@@ -25,38 +30,39 @@ import type { ShpAddress } from '@/modules/shop/lib/types'
 // part of an address. Older clients that still send one are simply ignored - zod
 // strips unknown keys - which is what keeps a shopper mid-checkout on a cached
 // page from being turned away by the deploy that moved the box.
-const AddressSchema = z.object({
-  firstName: z.string().min(1), lastName: z.string().min(1),
-  line1: z.string().min(1), line2: z.string().optional(), city: z.string().min(1), county: z.string().optional(),
-  postcode: z.string().min(1), country: z.string().min(2).default('GB'), phone: z.string().optional(),
-})
+//
+// Every box has a ceiling, shared with the manual order and the address book
+// (lib/address-limits.ts), so what the checkout writes onto an order is never
+// something the order hub would then refuse to save.
+const AddressSchema = BoundedAddressSchema
 
 // The billing address has no name boxes on the form - the name on the invoice is
 // the one the contact step already took - so the names are optional here and
 // default to blank. Kept on the shape rather than dropped so an order written
 // before they came off the form still reads back the same way, and so a cached
 // page mid-checkout that still sends a pair is not turned away by the deploy.
+const billingNameTooLong = (what: string) => `${what} is too long - ${ADDRESS_NAME_MAX_LENGTH} characters at most.`
 const BillingAddressSchema = AddressSchema.extend({
-  firstName: z.string().default(''), lastName: z.string().default(''),
+  firstName: z.string().max(ADDRESS_NAME_MAX_LENGTH, billingNameTooLong('First name')).default(''),
+  lastName: z.string().max(ADDRESS_NAME_MAX_LENGTH, billingNameTooLong('Last name')).default(''),
 })
 
 const Body = z.object({
-  lines: z.array(z.object({
-    productId: z.string(),
-    quantity: z.number().int().min(1),
-    lineId: z.string().optional(),
-    meta: z.record(z.unknown()).optional(),
-  })),
-  customerEmail: z.string().email(),
-  customerName: z.string().min(1),
+  // Capped as the basket stores cap them - see lib/checkout-lines.ts.
+  lines: CheckoutLinesSchema,
+  // 254 is the longest address the email standards allow.
+  customerEmail: z.string().email().max(254),
+  customerName: customerNameField,
+  // The organisation and the reference are measured below, once the shop's own
+  // name for each box is known, so the refusal can call it what the form does.
   customerOrganisation: z.string().optional(),
   customerReference: z.string().optional(),
-  customerPhone: z.string().optional(),
+  customerPhone: phoneField.optional(),
   shippingAddress: AddressSchema,
   // Never compulsory, so there is no rule to enforce below - only a ceiling, so
   // a route reachable without the box cannot be used to write an essay onto a
   // supplier's delivery label.
-  deliveryInstructions: z.string().max(DELIVERY_INSTRUCTIONS_MAX_LENGTH).optional(),
+  deliveryInstructions: z.string().max(DELIVERY_INSTRUCTIONS_MAX_LENGTH, `Delivery instructions are too long - ${DELIVERY_INSTRUCTIONS_MAX_LENGTH} characters at most.`).optional(),
   billingAddress: BillingAddressSchema.nullable().optional(),
   shippingRateId: z.string().nullable().optional(),
   couponCode: z.string().nullable().optional(),
@@ -87,11 +93,17 @@ export async function POST(request: NextRequest) {
   }
 
   const parsed = Body.safeParse(await request.json())
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 })
+  if (!parsed.success) {
+    return NextResponse.json({ error: checkoutLinesRefusal(parsed.error) ?? parsed.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 })
+  }
   const data = parsed.data
 
   const config = await getShopConfigCached()
-  if (config.shopStatus !== 'OPEN') return NextResponse.json({ error: 'The shop is not currently accepting orders.' }, { status: 503 })
+  // Closed or browse-only turns shoppers away. Staff with shop access get
+  // through, so an owner can place a test order before reopening - see
+  // checkoutClosedResponse.
+  const closed = await checkoutClosedResponse()
+  if (closed) return closed
   // This is where an order first exists, so this is the gate that matters on a
   // quote-only shop: refuse here and no order, and no payment, can be started.
   // /checkout/confirm is deliberately left alone - it only finishes an order that
@@ -111,6 +123,13 @@ export async function POST(request: NextRequest) {
     const label = config.organisationLabel.trim() || 'Organisation name'
     return NextResponse.json({ error: `${label} is required.` }, { status: 400 })
   }
+  // And no longer than the billing screen will let it be changed to afterwards.
+  // Only while the shop is asking - a box that is switched off is dropped below,
+  // whatever a stale page left in it.
+  if (config.organisationFieldEnabled && (data.customerOrganisation?.trim().length ?? 0) > BILLING_COMPANY_MAX_LENGTH) {
+    const label = config.organisationLabel.trim() || 'Organisation name'
+    return NextResponse.json({ error: `${label} is too long - ${BILLING_COMPANY_MAX_LENGTH} characters at most.` }, { status: 400 })
+  }
 
   // And the customer's own reference, where the owner has made it compulsory.
   // Same reasoning: the box on the contact step is a courtesy, this route is
@@ -118,6 +137,12 @@ export async function POST(request: NextRequest) {
   if (config.customerReferenceFieldEnabled && config.customerReferenceRequired && !data.customerReference?.trim()) {
     const label = config.customerReferenceLabel.trim() || 'Purchase order number'
     return NextResponse.json({ error: `${label} is required.` }, { status: 400 })
+  }
+  // The same ceiling the order hub puts on it, so a reference the checkout
+  // accepted is one the customer can still edit afterwards.
+  if (config.customerReferenceFieldEnabled && (data.customerReference?.trim().length ?? 0) > CUSTOMER_REFERENCE_MAX_LENGTH) {
+    const label = config.customerReferenceLabel.trim() || 'Purchase order number'
+    return NextResponse.json({ error: `${label} is too long - ${CUSTOMER_REFERENCE_MAX_LENGTH} characters at most.` }, { status: 400 })
   }
 
   // And the phone number, for the same reason: the contact step marks the box
@@ -172,12 +197,15 @@ export async function POST(request: NextRequest) {
   // Delivery area. An excluded postcode is a postcode the shop has said it does
   // not deliver to, and the order stops here - otherwise it would go through
   // with no delivery option and no delivery charge, which is the one outcome
-  // worse than refusing it. A shop with no zones set up at all is not excluded
-  // and carries on as before; see resolveShippingZoneForPostcode.
-  const { zone, excluded } = await resolveShippingZoneForPostcode(data.shippingAddress.postcode)
-  if (excluded) {
+  // worse than refusing it. The same goes for a postcode the shop's zones do
+  // not reach at all, where there are goods to carry there. A shop with no
+  // zones set up at all is neither, and carries on as before; see
+  // refusesDelivery.
+  const delivery = await resolveShippingZoneForPostcode(data.shippingAddress.postcode)
+  if (refusesDelivery(delivery, resolvedLines)) {
     return NextResponse.json({ error: excludedPostcodeMessage(config.excludedPostcodeMessage) }, { status: 400 })
   }
+  const { zone } = delivery
   const totals = await resolveOrderTotals({
     lines: resolvedLines,
     zoneId: zone?.id ?? null,
@@ -190,12 +218,9 @@ export async function POST(request: NextRequest) {
   // The session route only advises the browser; this route actually creates a
   // payable order, so a direct POST that skips the session step must be caught
   // here or a below-minimum (or over-maximum) cart yields a chargeable order.
-  if (config.minimumOrderValue != null && totals.subtotal < config.minimumOrderValue) {
-    return NextResponse.json({ error: `Minimum order value is ${formatMoney(config.minimumOrderValue, config.currencySymbol)}` }, { status: 400 })
-  }
-  if (config.maximumOrderValue != null && totals.subtotal > config.maximumOrderValue) {
-    return NextResponse.json({ error: `Maximum order value is ${formatMoney(config.maximumOrderValue, config.currencySymbol)}` }, { status: 400 })
-  }
+  // Measured before the discount - see lib/order-value-gate.ts.
+  const shopValueRefusal = shopOrderValueRefusal(config, totals)
+  if (shopValueRefusal) return NextResponse.json({ error: shopValueRefusal }, { status: 400 })
 
   // And the per-method size limits, against what this order actually comes to -
   // VAT and delivery included, discount taken off, which is the figure the
@@ -257,7 +282,9 @@ export async function POST(request: NextRequest) {
     // asking for one, so switching the box off stops orders carrying whatever a
     // stale page still had in it.
     customerReference: config.customerReferenceFieldEnabled ? (data.customerReference?.trim() || null) : null,
-    customerPhone: data.customerPhone ?? null,
+    // The trimmed number that was checked above, so what the courier and the
+    // text-message sender get is exactly what passed.
+    customerPhone: typedPhone || null,
     shippingAddress: data.shippingAddress as ShpAddress,
     // Same rule as the fields above: only kept while the shop is actually
     // asking, so switching the box off stops orders carrying whatever a stale

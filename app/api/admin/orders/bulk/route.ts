@@ -36,7 +36,9 @@ export async function POST(request: NextRequest) {
   const failures: Array<{ orderNumber: string; error: string }> = []
 
   for (const id of ids) {
-    const outcome = await applyOrderStatusChange({ orderId: id, status, sendEmail })
+    // byHand: the same money rules as the single order screen, so a paid order
+    // in a batch marked cancelled is named in the failures, not cancelled.
+    const outcome = await applyOrderStatusChange({ orderId: id, status, sendEmail, byHand: true })
     if (outcome.ok) {
       if (outcome.changed) updated += 1
       else unchanged += 1

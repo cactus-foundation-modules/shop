@@ -14,7 +14,8 @@ import {
 } from '@/modules/shop/lib/db/credit-notes'
 import { generateCreditNoteNumber } from '@/modules/shop/lib/credit-note-number'
 import { CreditNoteMoneyError, buildCreditNoteMoney } from '@/modules/shop/lib/credit-note-tax'
-import { ledgerItems } from '@/modules/shop/lib/invoice-tax'
+import { deliverySlices, ledgerItems } from '@/modules/shop/lib/invoice-tax'
+import { deliveryGross } from '@/modules/shop/lib/refund-delivery'
 import { invoicePdfFilename, printPath } from '@/modules/shop/lib/invoice-pdf'
 import { dispatchInvoiceCredited, type ShopInvoiceCreditedPayload } from '@/modules/shop/lib/invoice-sinks'
 import { creditNotePath, signCreditNoteToken } from '@/modules/shop/lib/invoice-token'
@@ -105,10 +106,13 @@ export function creditNoteSinkPayload(note: ShpCreditNote, full: boolean): ShopI
     },
     totals: { net: net.toFixed(2), tax: note.taxAmount, gross: note.total },
     taxBreakdown: note.taxBreakdown,
-    // What was actually handed back, line by line. No carriage label: a refund
-    // is against order lines and delivery never rides along on one, so anything
-    // left over here is the rounding penny and nothing else.
-    items: ledgerItems(note.lines, note.taxBreakdown),
+    // What was actually handed back, line by line - and the delivery, where
+    // some went back with it, as the leftover the invoice's own delivery is. On
+    // a credit note with no delivery anything left over is the rounding penny,
+    // and calling that "Delivery" would be a small lie in somebody's books.
+    items: ledgerItems(note.lines, note.taxBreakdown, {
+      carriageLabel: Number(note.shippingAmount) > 0 ? 'Delivery' : undefined,
+    }),
     full,
     reason: note.reason ?? '',
     description: `Shop order ${note.orderNumber}, credit note ${note.creditNoteNumber} against invoice ${note.invoiceNumber}`,
@@ -187,7 +191,8 @@ export async function issueCreditNoteForRefund(
     }
 
     const refundItems = await getRefundItems(refundId)
-    if (refundItems.length === 0) {
+    const refundedDelivery = Number(refund.shippingAmount) || 0
+    if (refundItems.length === 0 && !(refundedDelivery > 0)) {
       return { ok: false, status: 409, error: 'That refund has no lines recorded against it, so its tax cannot be worked out.' }
     }
 
@@ -196,6 +201,19 @@ export async function issueCreditNoteForRefund(
     const orderItems = await getOrderItems(refund.orderId)
     const orderItemIds = orderItems.map((item) => item.id)
 
+    // Delivery handed back with the refund, split across the rates exactly as
+    // the invoice charged it and scaled to the share that went back.
+    const paidForDelivery = deliveryGross(order, orderItems)
+    const deliveryShare = refundedDelivery > 0 && paidForDelivery > 0 ? Math.min(refundedDelivery / paidForDelivery, 1) : 0
+    const delivery = deliveryShare > 0
+      ? deliverySlices(order, orderItems).map((slice) => ({
+        ...slice,
+        net: slice.net * deliveryShare,
+        tax: slice.tax * deliveryShare,
+        gross: slice.gross * deliveryShare,
+      }))
+      : []
+
     let money
     try {
       money = buildCreditNoteMoney(
@@ -203,6 +221,7 @@ export async function issueCreditNoteForRefund(
         orderItemIds,
         refundItems.map((item) => ({ orderItemId: item.orderItemId, quantity: item.quantity, amount: Number(item.amount) })),
         order.taxMode,
+        delivery,
       )
     } catch (error) {
       // Never guessed around. A credit note carrying an invented VAT rate looks
@@ -238,10 +257,9 @@ export async function issueCreditNoteForRefund(
         currencySymbol: invoice.currencySymbol,
         taxMode: order.taxMode,
         subtotal: money.subtotal,
-        // A refund is against order lines; delivery is not one, so it never
-        // rides along. If a shop ever refunds delivery it will arrive as a line
-        // like any other.
-        shippingAmount: '0.00',
+        // The delivery that went back with this refund, printed where the
+        // invoice prints its delivery (see buildCreditNoteMoney).
+        shippingAmount: money.shippingAmount,
         taxAmount: money.taxAmount,
         total: money.total,
         seller: invoice.seller,

@@ -13,8 +13,12 @@ export async function getProductStorefrontReachability(
   product: ShpProduct,
 ): Promise<{ reachable: true; draftPreview: boolean } | { reachable: false }> {
   if (product.catalogueHidden) return { reachable: false }
-  if (product.status === 'ACTIVE') return { reachable: true, draftPreview: false }
-  if (product.status === 'DRAFT' && (await canPreviewDraftProducts())) {
+  // A spare part is kept off every storefront surface, and its own page is one
+  // of them: left reachable, anyone holding the address could open it and buy
+  // the part. Staff still see it, flagged and unindexed the same way as a
+  // draft, since checking what a part looks like is a fair thing to want.
+  if (product.status === 'ACTIVE' && !product.partsOnly) return { reachable: true, draftPreview: false }
+  if ((product.status === 'DRAFT' || product.status === 'ACTIVE') && (await canPreviewDraftProducts())) {
     return { reachable: true, draftPreview: true }
   }
   return { reachable: false }

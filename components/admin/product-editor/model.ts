@@ -9,6 +9,7 @@ import { returnsPolicy, type ReturnsPolicy } from '@/modules/shop/lib/returnable
 import type { ShpPriceType } from '@/modules/shop/lib/pricing'
 import { normaliseFaqSet, type ShpFaqSet } from '@/modules/shop/lib/faq'
 import type { PuckData } from '@/modules/shop/lib/types'
+import { RECOMMENDATION_MAX_PICKS, formatLimit } from '@/modules/shop/lib/admin-input-limits'
 
 export type ProductStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
 export type RecommendationMode = 'MANUAL' | 'AUTOMATIC'
@@ -437,12 +438,15 @@ export function validate(s: EditorState): Errors {
     e.preOrderMaxQuantity = 'Max quantity must be a whole number.'
   }
 
-  // The recommendations endpoints demand a positive whole number and reject
-  // anything else, so catch it here rather than half-way through a save.
+  // The recommendations endpoints demand a positive whole number no bigger than
+  // their ceiling and reject anything else, so catch it here rather than half-way
+  // through a save - where it only surfaced as "its recommendations did not".
   for (const key of ['relatedLimit', 'upsellLimit'] as const) {
     const n = Number(f[key])
     if (f[key].trim() === '' || !Number.isInteger(n) || n < 1) {
       e[key] = 'Show at least one, as a whole number.'
+    } else if (n > RECOMMENDATION_MAX_PICKS) {
+      e[key] = `Show at most ${formatLimit(RECOMMENDATION_MAX_PICKS)}.`
     }
   }
 

@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import {
   Style, FontLink, fontStyle, fontField, headingFontField, sizeField, radiusField, spaceField, sizeVars, cssLength,
-  colourField, yesNo, fillTokens, invoiceTokens, paragraphs, useCtx, TOKEN_HINT,
+  colourField, safeCssValue, yesNo, fillTokens, invoiceTokens, paragraphs, useCtx, TOKEN_HINT,
   type DocProps,
 } from '@/modules/shop/components/puck/invoice-shared'
 
@@ -101,11 +101,17 @@ type StyleProps = {
 
 /** `--name: value;` for every field an owner actually set. A blank field emits
  *  nothing at all rather than an empty value, so the CSS fallback stands and the
- *  document keeps whatever it had. */
+ *  document keeps whatever it had.
+ *
+ *  Every value goes through safeCssValue on the way in, because this string is
+ *  written into a <style> element as it stands (see there). The lengths and the
+ *  presets are already clean and come through untouched; it is the typed colours
+ *  and font names that could otherwise close the rule, or the element. */
 function declarations(pairs: [string, string | undefined][]): string {
   return pairs
-    .filter(([, value]) => Boolean(value && value.trim()))
-    .map(([name, value]) => `${name}: ${value!.trim()};`)
+    .map(([name, value]) => [name, safeCssValue(value)] as const)
+    .filter((pair): pair is readonly [string, string] => Boolean(pair[1]))
+    .map(([name, value]) => `${name}: ${value};`)
     .join(' ')
 }
 
@@ -390,7 +396,7 @@ type DividerProps = {
 
 export function ShopInvoiceDivider(props: DividerProps) {
   const width = props.width === 'short' || props.width === 'centre' ? ` shp-inv-rule-${props.width}` : ''
-  const colour = props.colour?.trim()
+  const colour = safeCssValue(props.colour)
   return (
     <>
       <Style />
@@ -487,7 +493,7 @@ export function ShopInvoicePageNumber(props: PageNumberProps) {
   // the number filled in here and the page left for Chrome.
   const text = fillTokens(props.text?.trim() || 'Page {{PAGE}} of {{PAGES}}', invoiceTokens(ctx))
   const align = props.align === 'left' || props.align === 'right' ? props.align : 'center'
-  const colour = props.colour?.trim()
+  const colour = safeCssValue(props.colour)
   if (!text) return null
 
   return (

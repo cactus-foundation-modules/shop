@@ -98,6 +98,7 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
     [zonePostcodesText, zoneExcludedText],
   )
   const [zoneMessage, setZoneMessage] = useState('')
+  const [zoneError, setZoneError] = useState('')
 
   const [taxRateInputs, setTaxRateInputs] = useState<Record<string, string>>({})
   const [taxSavedClassId, setTaxSavedClassId] = useState<string | null>(null)
@@ -258,6 +259,7 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
     setZonePostcodesText(postcodes.join('\n'))
     setZoneExcludedText(excludedPostcodes.join('\n'))
     setZoneMessage('')
+    setZoneError('')
     setEditingRateId(null)
     fetch(`/api/m/shop/admin/tax-zone-rates?zoneId=${id}`).then(async (r) => {
       if (!r.ok) return
@@ -277,12 +279,19 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
   async function saveZone() {
     if (!openZoneId) return
     setZoneMessage('')
+    setZoneError('')
     const postcodes = zonePostcodesText.split('\n').map((s) => s.trim()).filter(Boolean)
     const excludedPostcodes = zoneExcludedText.split('\n').map((s) => s.trim()).filter(Boolean)
-    await fetch(`/api/m/shop/admin/shipping-zones/${openZoneId}`, {
+    const res = await fetch(`/api/m/shop/admin/shipping-zones/${openZoneId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: zoneName, postcodes, excludedPostcodes }),
     })
+    // A refused save (a blank name, a list past its ceiling) used to be
+    // answered "Zone saved." all the same, leaving the old lists in force.
+    if (!res.ok) {
+      setZoneError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That zone could not be saved.')
+      return
+    }
     setZoneMessage('Zone saved.')
     loadZones()
   }
@@ -579,11 +588,20 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
             Both boxes take the same two kinds of line. A <strong>prefix</strong> matches anything starting with it - &quot;SW&quot; covers all London SW postcodes, &quot;9&quot; covers US ZIP codes starting with 9. A <strong>range</strong> covers whole districts by number - &quot;AB30-AB32&quot; is AB30, AB31 and AB32 and nothing else. Use a range wherever the numbers matter: &quot;PO30-PO41&quot; is the Isle of Wight and leaves Portsmouth&apos;s PO3 alone, which no prefix can do.
           </p>
           <p className="field-hint" style={{ marginTop: '0.5rem' }}>
-            The excluded box wins over everything, this zone&apos;s own list included. That is how you say &quot;everywhere except the Highlands&quot;: leave the covered box empty and paste the Highlands into the excluded one. If a shopper&apos;s postcode is excluded everywhere, the checkout tells them you do not deliver there rather than taking the order for nothing - you can word that message under Settings.
+            The excluded box wins over everything, this zone&apos;s own list included. That is how you say &quot;everywhere except the Highlands&quot;: leave the covered box empty and paste the Highlands into the excluded one. If a shopper&apos;s postcode is excluded everywhere, or no zone reaches it and none is left empty to catch everything, the checkout tells them you do not deliver there rather than taking the order for nothing - you can word that message under Settings. A basket of only downloads and services is turned away from an excluded postcode too, since that postcode has no zone to take a tax rate from, but not from one that is simply outside every zone.
           </p>
         </details>
 
         {zones.length === 0 && <p style={{ color: 'var(--color-text-secondary)' }}>No zones yet. Create one to set tax and shipping rates.</p>}
+        {/* Said up front because the checkout acts on it: with zones but no
+            catch-all, a postcode none of them lists is turned away at checkout
+            (see refusesDelivery). An owner who meant "everywhere else too" finds
+            out here rather than from a customer who could not place an order. */}
+        {zones.length > 0 && !zones.some((z) => z.postcodes.length === 0) && (
+          <div className="alert alert-warning" style={{ marginBottom: '0.75rem' }}>
+            No zone covers everywhere else, so a shopper whose postcode is not on any list is told you do not deliver there. If you do, add a zone with its covered box left empty to catch everyone else.
+          </div>
+        )}
 
         {zones.map((z) => (
           <div key={z.id} style={{ border: '1px solid var(--color-border)', borderRadius: 8, marginBottom: '0.5rem', overflow: 'hidden' }}>
@@ -602,6 +620,7 @@ export function TaxShippingScreen({ extraTabs = [], initialTab }: {
             {openZoneId === z.id && (
               <div style={{ padding: '0.75rem', borderTop: '1px solid var(--color-border)' }}>
                 {zoneMessage && <div className="alert alert-success">{zoneMessage}</div>}
+                {zoneError && <div className="alert alert-danger">{zoneError}</div>}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
                   <div className="field" style={{ margin: 0 }}>
                     <label>Zone name</label>

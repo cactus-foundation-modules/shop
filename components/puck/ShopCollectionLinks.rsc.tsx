@@ -1,4 +1,5 @@
 import { connection } from 'next/server'
+import { sanitizeHref } from '@/lib/email-obfuscate'
 import { listRandomCollectionLinks } from '@/modules/shop/lib/db/catalogue'
 import { shopCollectionLinksCss, type ShopCollectionLinksProps } from './ShopCollectionLinks.shared'
 import { shopCollectionLinksPuckComponent } from './ShopCollectionLinks'
@@ -27,7 +28,10 @@ export async function ShopCollectionLinksRsc(props: RscProps) {
   // The "view all" link is its own destination: the individual links go to the
   // shop's collection pages, but the site's index of them is a page the owner
   // builds, so it is a field rather than `base` with the slug lopped off.
-  const allHref = typeof props.allHref === 'string' && props.allHref.trim() ? props.allHref.trim() : '/collections'
+  // Typed into a plain text box, so it goes through core's sanitiser like any
+  // owner-typed link: a "javascript:" address comes out with no href at all,
+  // leaving the wording in place and nothing to run.
+  const allHref = sanitizeHref(typeof props.allHref === 'string' && props.allHref.trim() ? props.allHref.trim() : '/collections')
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: shopCollectionLinksCss(props.id, props) }} />

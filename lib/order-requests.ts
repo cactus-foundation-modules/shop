@@ -196,6 +196,11 @@ export function reasonLabel(type: ShpOrderRequestType, code: string): string {
 // Statuses where there is nothing left to call off or send back. CANCELLED and
 // REFUNDED are already done; PENDING is an order whose payment never landed, so
 // there is nothing to cancel that abandonment will not clear up by itself.
+//
+// PARTIALLY_REFUNDED is left off on purpose. Money back on one line is no
+// reason to refuse the return of another, or the call-off of a line still on
+// the shelf; the per-line figures (cancellable, returnLines) already take every
+// refunded unit off what may be asked for, and say so when nothing is left.
 const CLOSED_STATUSES = new Set(['CANCELLED', 'REFUNDED'])
 
 export type RequestEligibility =
@@ -256,6 +261,18 @@ export type EligibilityInput = {
    * and gets the old whole-order answer rather than a silent "no".
    */
   cancellable?: CancelLinePosition[]
+  /**
+   * Per-line return position, where the caller has worked it out: units the
+   * customer is holding, has not been paid back for, and has not already asked
+   * to send back (see returnableQty). Always 0 on a line the shop does not take
+   * back.
+   *
+   * What stops a part-refunded order offering a return form with nothing on it.
+   * A refund on one line is no reason to refuse the return of another, so the
+   * order's status is not the test - the lines are. Absent means the caller has
+   * not looked, and gets today's answer rather than a silent "no".
+   */
+  returnLines?: Array<{ returnableQty: number }>
   /** The most recent parcel's ship date, or null if nothing has gone out. */
   lastShippedAt: Date | null
   config: {
@@ -347,6 +364,15 @@ export function canRequestReturn(input: EligibilityInput): RequestEligibility {
   if (input.anyReturnable === false) {
     return { allowed: false, reason: NOTHING_RETURNABLE_REASON }
   }
+  // Everything that arrived and can come back has already been paid back or
+  // asked for. Checked before the window for the same reason as the line above:
+  // a deadline is no help to an order with nothing left to send.
+  if (input.returnLines && !input.returnLines.some((line) => line.returnableQty > 0)) {
+    return {
+      allowed: false,
+      reason: 'Everything from this order that can come back is already being returned or has been refunded.',
+    }
+  }
   if (input.config.returnWindowDays === 0) {
     return { allowed: false, reason: 'This shop does not take returns through the website. Get in touch and we will help.' }
   }
@@ -378,6 +404,14 @@ export function canRequestReturn(input: EligibilityInput): RequestEligibility {
  * was the order of eight desks whose second carton is opened the next morning:
  * the button was gone, and the second fault arrived as an email attached to
  * nothing. See migration 053.
+ *
+ * The one thing that does close it is the money having gone back in full. An
+ * order refunded down to its last unit has nothing on it the shop still owes
+ * anybody a replacement for, and a report raised against it lands in the queue
+ * offering to send a part for goods already paid for twice. A PART-refunded
+ * order stays open: a refund on one line says nothing about a fault on the
+ * next, and a line that had a little money back as goodwill is still the chair
+ * the customer is sitting on.
  */
 export function canReportDamage(input: EligibilityInput): RequestEligibility {
   if (!input.config.damageReportsEnabled) {
@@ -385,6 +419,9 @@ export function canReportDamage(input: EligibilityInput): RequestEligibility {
   }
   if (input.order.status === 'CANCELLED') {
     return { allowed: false, reason: 'This order has been cancelled.' }
+  }
+  if (input.order.status === 'REFUNDED') {
+    return { allowed: false, reason: 'This order has been refunded in full. Get in touch if something is still not right and we will help.' }
   }
   if (!input.dispatch.some((line) => line.dispatchedQty > 0)) {
     return {
@@ -405,17 +442,104 @@ export function returnDeadline(lastShippedAt: Date, windowDays: number): Date {
   return deadline
 }
 
-/** How many units of each line may still be sent back: what arrived, less what
- * has already been refunded, less anything a live RETURN has spoken for.
+/**
+ * Units of a line the customer is holding and has not been paid back for.
+ *
+ * Not "dispatched less refunded", which is what this used to be, because a
+ * refund does not say WHICH units it paid for. A cancellation refunds units that
+ * never left the building, and taking those off what arrived refused the return
+ * of the very goods the customer was holding: two chairs ordered, one called off
+ * and refunded, the other delivered - and "there is nothing left to return".
+ *
+ * So refunds are counted against the units that never went out first, which is
+ * how every other sum in this module already treats them (outstandingUnits takes
+ * refunded units off the dispatch list), and only what is left over comes off
+ * what arrived. That is the smaller of what arrived and what has not been paid
+ * back.
+ */
+export function heldUnits(line: { quantity: number; dispatchedQty: number; refundedQty: number }): number {
+  return Math.max(Math.min(line.dispatchedQty, line.quantity - line.refundedQty), 0)
+}
+
+/** How many units of each line may still be sent back: what the customer is
+ * holding and has not been paid back for, less anything a waiting RETURN has
+ * spoken for.
+ *
+ * The two kinds of return are counted in different places, because an approved
+ * one is usually refunded too. An APPROVED return has taken its units back off
+ * the customer, so it comes off what was dispatched; a refund comes off what was
+ * bought (heldUnits). Taking an approved-and-refunded return off both - which is
+ * what one "already requested" figure did - counted the same chair twice, and a
+ * customer who had sent one of two chairs back could not return the other. A
+ * PENDING return has not happened yet, so it only reserves units out of what is
+ * left.
  *
  * Cancellations are deliberately not counted here. They spend undispatched
  * units and returns spend dispatched ones, so netting one off the other refuses
  * the return of goods the customer is holding because they called off the part
  * that had not been packed yet. */
 export function returnableQty(
-  line: Pick<ShpOrderItemDispatch, 'orderItemId' | 'dispatchedQty'>,
+  line: Pick<ShpOrderItemDispatch, 'quantity' | 'dispatchedQty'>,
   refundedQty: number,
-  alreadyRequested = 0,
+  pendingReturns = 0,
+  approvedReturns = 0,
 ): number {
-  return Math.max(line.dispatchedQty - refundedQty - alreadyRequested, 0)
+  const holding = heldUnits({ quantity: line.quantity, dispatchedQty: line.dispatchedQty - approvedReturns, refundedQty })
+  return Math.max(holding - pendingReturns, 0)
+}
+
+/**
+ * Where a customer's damage photographs are filed in the media library: under
+ * Orders / <order number> / issues, beside the order they belong to.
+ *
+ * One copy, because two routes have to agree on it. The photos route files the
+ * upload here, and the report route only accepts photographs it finds here - a
+ * media id is a global handle, and without the folder check a report on one
+ * order could hang somebody else's photograph, or anything else in the library,
+ * off it and have the owner's queue open it.
+ */
+export function damagePhotoFolderPath(orderNumber: string): string[] {
+  return ['Orders', orderNumber, 'issues']
+}
+
+/** Units of one line that open requests have asked about, for the dispatch screen. */
+export type PendingRequestUnits = { cancel: number; return: number }
+
+/**
+ * What customers have ASKED to call off or send back, line by line, that nobody
+ * has decided yet.
+ *
+ * Deliberately not a cap. A cancellation somebody has merely asked for must not
+ * stop the shop dispatching - the owner may yet say no, and holding the van on
+ * every ask would stall fulfilment on every disputed order. But the person
+ * packing ought to know before the goods go out, not after the refund has been
+ * approved and the carriage paid for twice. So this is what the dispatch screen
+ * warns with, and nothing more.
+ *
+ * A cancellation naming no lines asks for the whole order, so it counts against
+ * everything still to go out.
+ */
+export function pendingRequestUnits(
+  requests: ReadonlyArray<Pick<ShpOrderRequestWithItems, 'status' | 'type' | 'items'>>,
+  lines: ReadonlyArray<Pick<ShpOrderItemDispatch, 'orderItemId' | 'outstandingQty'>>,
+): Map<string, PendingRequestUnits> {
+  const out = new Map<string, PendingRequestUnits>()
+  const add = (orderItemId: string, kind: keyof PendingRequestUnits, quantity: number) => {
+    if (quantity <= 0) return
+    const current = out.get(orderItemId) ?? { cancel: 0, return: 0 }
+    current[kind] += quantity
+    out.set(orderItemId, current)
+  }
+  for (const request of requests) {
+    if (request.status !== 'PENDING') continue
+    // A damage report spends nothing and asks for nothing to be held back.
+    if (request.type === 'DAMAGE') continue
+    const kind = request.type === 'CANCEL' ? 'cancel' : 'return'
+    if (kind === 'cancel' && request.items.length === 0) {
+      for (const line of lines) add(line.orderItemId, 'cancel', line.outstandingQty)
+      continue
+    }
+    for (const item of request.items) add(item.orderItemId, kind, item.quantity)
+  }
+  return out
 }

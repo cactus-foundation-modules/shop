@@ -1,3 +1,5 @@
+import { sanitizeHref } from '@/lib/email-obfuscate'
+
 export type ShopPromoBannerProps = {
   heading?: string
   body?: string
@@ -35,8 +37,14 @@ export function ShopPromoBanner(props: ShopPromoBannerProps) {
       <div style={{ flex: 1, minWidth: 200, ...(centred ? { textAlign: 'center' as const } : null) }}>
         {props.heading && <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.5rem' }}>{props.heading}</h2>}
         {props.body && <p style={{ margin: '0 0 1rem', color: 'var(--color-text-muted)' }}>{props.body}</p>}
+        {/* The link is typed into a plain text box, so it goes through core's
+            sanitiser on its way out: a pasted "javascript:" address would
+            otherwise run for every shopper who pressed the button. A refused
+            one leaves the button showing with nothing to follow - the same
+            thing in the editor and on the live page, so the owner can see it
+            needs fixing. */}
         {props.ctaLabel && props.ctaHref && (
-          <a href={props.ctaHref} style={buttonStyles}>
+          <a href={sanitizeHref(props.ctaHref)} style={buttonStyles}>
             {props.ctaLabel}
           </a>
         )}

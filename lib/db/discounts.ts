@@ -47,6 +47,13 @@ export async function getCouponByCode(code: string): Promise<ShpCoupon | null> {
   return rows[0] ? mapCoupon(rows[0]) : null
 }
 
+// By id, which is what an order keeps: the code on a paid order may since have
+// been renamed.
+export async function getCouponById(id: string): Promise<ShpCoupon | null> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_coupons" WHERE "id" = ${id} LIMIT 1`
+  return rows[0] ? mapCoupon(rows[0]) : null
+}
+
 export async function createCoupon(data: {
   code: string; type: ShpDiscountType; value?: number | null; minimumOrderValue?: number | null
   usageLimit?: number | null; perCustomerLimit?: number | null; startsAt?: Date | null; expiresAt?: Date | null

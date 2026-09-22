@@ -3,7 +3,6 @@ import { getOrderByNumber, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { getProductMediaForProducts } from '@/modules/shop/lib/db/products'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getPaymentProvider, getPaymentMethodLabels } from '@/modules/shop/lib/payments/registry'
-import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
 import { getClientIp } from '@/lib/auth/rate-limit'
 import { verifyOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
@@ -41,10 +40,11 @@ const BUILT_IN_METHOD_LABELS: Record<string, string> = {
 // challenge here. Everything that is typed rather than clicked goes through
 // POST /orders/receipt-access - see that route, and lib/order-viewer.ts for the
 // rule this shares with the order page.
+//
+// Deliberately NOT behind the shop gate: an order already placed is still owed
+// its status, its payment instructions and its paperwork while the shop is
+// closed (see getShopGate in lib/access.ts).
 export async function GET(request: NextRequest) {
-  const closed = await shopClosedResponse()
-  if (closed) return closed
-
   // Order numbers are a prefix and a sequence (DW000123 - see lib/order-number),
   // so the number is not a secret at all. Unthrottled, whatever stands behind it
   // can be picked at whatever rate the network allows, and what falls out is the

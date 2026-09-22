@@ -10,9 +10,10 @@ import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { getCartSummaryNotes } from '@/modules/shop/lib/cart-summary'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { displayAmount, type PriceDisplay } from '@/modules/shop/lib/tax-display-shared'
+import { CheckoutLinesSchema, checkoutLinesRefusal } from '@/modules/shop/lib/checkout-lines'
 
 const Body = z.object({
-  lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1), lineId: z.string().optional(), meta: z.record(z.unknown()).optional() })),
+  lines: CheckoutLinesSchema,
 })
 
 // Revalidates client localStorage cart lines against live stock/price/status
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
   if (closed) return closed
 
   const parsed = Body.safeParse(await request.json())
-  if (!parsed.success) return NextResponse.json({ error: 'Invalid cart' }, { status: 400 })
+  if (!parsed.success) return NextResponse.json({ error: checkoutLinesRefusal(parsed.error) ?? 'Invalid cart' }, { status: 400 })
 
   // The media query needs only the product ids the client sent, so it runs in
   // parallel with the whole line resolution instead of after it (products that

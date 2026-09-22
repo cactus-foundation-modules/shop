@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { errorResponse } from '@/lib/utils'
 import { validateUpload, uploadMedia, buildLibraryUploadKey, saveMediaRecord } from '@/lib/media/upload'
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from '@/lib/media/limits'
+import { damagePhotoFolderPath } from '@/modules/shop/lib/order-requests'
 import { getOrCreateFolderByPath, resolveFolderPath } from '@/lib/media/organise'
 import { getActiveMediaProvider, isMediaProviderConfigured } from '@/lib/config/env'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
@@ -25,6 +27,12 @@ import { getClientIp } from '@/lib/auth/rate-limit'
 // the better.
 const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
+// Room for the multipart boundary and headers around the file itself, so a
+// photograph right at the limit is not refused for its envelope.
+const MULTIPART_OVERHEAD_BYTES = 64 * 1024
+
+const PHOTO_TOO_LARGE = `That photograph is too big - send one under ${MAX_UPLOAD_MB} MB.`
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Secondary guard only - the access check below is the real one. Tighter than
   // the request endpoint's because this one writes files.
@@ -48,6 +56,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return errorResponse('We cannot take photographs on the website at the moment. Reply to your order email with them instead.', 503)
   }
 
+  // Size first, before a byte is read. The library's own ceiling is checked
+  // inside validateUpload, but only once the whole file has been copied into
+  // memory - so an oversized upload, on a route a guest can reach with nothing
+  // but a postcode, was read in full before being turned away. The declared
+  // length stops an honest client before the body is parsed at all (with a
+  // little room for the form's own wrapping); the file's own size stops the
+  // rest before it is copied.
+  const declared = Number(request.headers.get('content-length') ?? NaN)
+  if (Number.isFinite(declared) && declared > MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES) {
+    return errorResponse(PHOTO_TOO_LARGE, 413)
+  }
+
   const formData = await request.formData()
   const file = formData.get('file')
   if (!(file instanceof File)) return errorResponse('No photograph was sent.')
@@ -55,6 +75,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!PHOTO_TYPES.includes(file.type)) {
     return errorResponse('Send a photograph - a JPEG, PNG or WebP.')
   }
+  if (file.size > MAX_UPLOAD_BYTES) return errorResponse(PHOTO_TOO_LARGE, 413)
 
   const buffer = Buffer.from(await file.arrayBuffer())
   const validation = await validateUpload(file.type, buffer.length, buffer)
@@ -67,7 +88,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // upload follows (modules/purchase-orders/lib/portal-upload.ts). buildLibraryUploadKey keeps
     // the name the customer's photograph already had, suffixing "-2" and so on
     // only if that exact name is already taken in this order's folder.
-    const folderId = await getOrCreateFolderByPath(['Orders', access.order.orderNumber, 'issues'])
+    // The same folder the report route checks a photograph is in before it will
+    // attach it - see damagePhotoFolderPath.
+    const folderId = await getOrCreateFolderByPath(damagePhotoFolderPath(access.order.orderNumber))
     const folderPath = folderId ? await resolveFolderPath(folderId) : undefined
     const presetKey = await buildLibraryUploadKey(provider, file.type, file.name, folderPath)
     const result = await uploadMedia(validation.buffer, file.type, provider, file.name, folderPath, false, presetKey)

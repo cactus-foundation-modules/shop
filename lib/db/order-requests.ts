@@ -6,8 +6,10 @@ import {
   cancellableQty,
   isValidReason,
   outstandingUnits,
+  returnableQty,
 } from '@/modules/shop/lib/order-requests'
 import type {
+  ShpPaymentStatus,
   ShpOrderRequest,
   ShpOrderRequestItem,
   ShpOrderRequestPhoto,
@@ -167,6 +169,7 @@ const linePositionQuery = (orderId: string) => Prisma.sql`
     oi."returnable"    AS returnable,
     COALESCE(d."dispatched", 0)::int        AS dispatched_qty,
     COALESCE(r."requested", 0)::int         AS requested_qty,
+    COALESCE(r."approved", 0)::int          AS return_approved_qty,
     COALESCE(c."requested", 0)::int         AS cancel_requested_qty,
     COALESCE(c."approved", 0)::int          AS cancel_approved_qty
   FROM "shp_order_items" oi
@@ -176,7 +179,9 @@ const linePositionQuery = (orderId: string) => Prisma.sql`
     GROUP BY si."order_item_id"
   ) d ON d."order_item_id" = oi."id"
   LEFT JOIN (
-    SELECT ri."order_item_id", SUM(ri."quantity") AS requested
+    SELECT ri."order_item_id",
+           SUM(ri."quantity") AS requested,
+           SUM(ri."quantity") FILTER (WHERE req."status" = 'APPROVED') AS approved
     FROM "shp_order_request_items" ri
     JOIN "shp_order_requests" req ON req."id" = ri."request_id"
     -- RETURNS only, and damage reports excluded on purpose: reporting a broken
@@ -208,8 +213,10 @@ type LinePosition = {
   /** Snapshotted when the order was placed - see migrations/043_returnable.sql. */
   returnable: boolean
   dispatched_qty: number
-  /** Units a live RETURN has spoken for. */
+  /** Units a live RETURN has spoken for, waiting or approved. */
   requested_qty: number
+  /** Of those, the units an APPROVED return has taken back. */
+  return_approved_qty: number
   /** Units a live cancellation has spoken for, decided or not. */
   cancel_requested_qty: number
   /** The approved subset of those, which is what has actually left the order. */
@@ -335,6 +342,36 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
         }
       }
 
+      // A cancellation naming no lines asks for the whole order, and "the whole
+      // order" is only a thing that can be called off while none of it has gone
+      // out and none of it is made to order. The storefront always names lines
+      // now; this is a hand-rolled POST, or an old page, and letting it through
+      // on a part-dispatched order recorded a request that approving would then
+      // refund in full - goods in the customer's hallway included - and close.
+      if (input.type === 'CANCEL' && merged.size === 0) {
+        const rows = await tx.$queryRaw<LinePosition[]>(linePositionQuery(input.orderId))
+        if (rows.some((row) => row.dispatched_qty > 0)) {
+          return {
+            ok: false,
+            status: 400,
+            error: 'Part of this order has already been dispatched. Choose the items you would like to call off.',
+          }
+        }
+        const committed = rows.find((row) => !row.returnable && outstandingUnits({
+          quantity: row.quantity,
+          refundedQty: row.refunded_qty,
+          dispatchedQty: row.dispatched_qty,
+          cancelledQty: row.cancel_approved_qty,
+        }) > 0)
+        if (committed) {
+          return {
+            ok: false,
+            status: 400,
+            error: `${committed.product_name} cannot be called off once it has been ordered. Choose the items you would like to call off.`,
+          }
+        }
+      }
+
       if (merged.size > 0) {
         const rows = await tx.$queryRaw<LinePosition[]>(linePositionQuery(input.orderId))
         const byId = new Map(rows.map((r) => [r.order_item_id, r]))
@@ -415,8 +452,16 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
           }
 
           // Only what actually arrived can go back, less anything already
-          // refunded and anything a live request has already spoken for.
-          const returnable = Math.max(row.dispatched_qty - row.refunded_qty - row.requested_qty, 0)
+          // refunded and anything a live request has already spoken for. The
+          // same sum the order page offers the form with - refunds come off the
+          // units that never went out first, so a line with one unit called off
+          // and refunded can still send back the one that was delivered.
+          const returnable = returnableQty(
+            { quantity: row.quantity, dispatchedQty: row.dispatched_qty },
+            row.refunded_qty,
+            row.requested_qty - row.return_approved_qty,
+            row.return_approved_qty,
+          )
           if (quantity > returnable) {
             if (returnable === 0) {
               return {
@@ -556,6 +601,13 @@ export type AdminRequestRow = ShpOrderRequestWithItems & {
   customerName: string
   customerEmail: string
   orderTotal: string
+  /** Whether any money was actually taken. The queue offers a refund pre-ticked
+   *  only where there is something to send back - an unpaid bank transfer has a
+   *  total and nothing behind it. */
+  paymentStatus: ShpPaymentStatus
+  /** What the order charged for delivery. A refund from the queue covers goods
+   *  only, so the owner is told when there was delivery it leaves behind. */
+  shippingAmount: string
   /**
    * Whether anything this request covers was sold on the understanding that
    * taking it back would be a favour rather than a right. The whole reason the
@@ -576,13 +628,21 @@ export type ListRequestsFilter = {
   offset?: number
 }
 
+/** A page size or offset as a whole number, or the default. `?limit=abc`
+ *  arrives as NaN, and NaN sails straight through Math.min and Math.max - so the
+ *  query went out as LIMIT NaN and the queue answered with a 500 instead of a
+ *  page. */
+function wholeNumberOr(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) ? Math.trunc(value) : fallback
+}
+
 /** The admin queue. Pending first and oldest first within that, because the
  * one waiting longest is the one somebody is most cross about. */
 export async function listRequestsForAdmin(
   filter: ListRequestsFilter = {},
 ): Promise<{ requests: AdminRequestRow[]; total: number; pendingCount: number }> {
-  const limit = Math.min(Math.max(filter.limit ?? 50, 1), 200)
-  const offset = Math.max(filter.offset ?? 0, 0)
+  const limit = Math.min(Math.max(wholeNumberOr(filter.limit, 50), 1), 200)
+  const offset = Math.max(wholeNumberOr(filter.offset, 0), 0)
 
   const conditions: Prisma.Sql[] = []
   if (filter.status && filter.status !== 'ALL') conditions.push(Prisma.sql`req."status" = ${filter.status}`)
@@ -593,6 +653,7 @@ export async function listRequestsForAdmin(
 
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
     SELECT req.*, o."order_number", o."customer_name", o."customer_email", o."total",
+      o."payment_status", o."shipping_amount"::text AS shipping_amount,
       rep."order_number" AS replacement_order_number,
       -- The lines this request covers: the ones it names, or - on a request
       -- that names none, which is what a whole-order cancellation is - every
@@ -640,6 +701,8 @@ export async function listRequestsForAdmin(
     customerName: rows[i]!.customer_name as string,
     customerEmail: rows[i]!.customer_email as string,
     orderTotal: String(rows[i]!.total),
+    paymentStatus: rows[i]!.payment_status as ShpPaymentStatus,
+    shippingAmount: String(rows[i]!.shipping_amount ?? '0'),
     discretionary: rows[i]!.discretionary === true,
     replacementOrderNumber: (rows[i]!.replacement_order_number as string | null) ?? null,
   }))

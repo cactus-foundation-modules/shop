@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { getOrderByNumber } from '@/modules/shop/lib/db/orders'
 import {
   clearOrderAccessFailures,
@@ -75,10 +74,10 @@ const LOCKED = 'Too many attempts on this order. Please try again in a little wh
  *  same amortised trick lib/rate-limit.ts uses on its own buckets. */
 const SWEEP_ODDS = 50
 
+// Deliberately NOT behind the shop gate: proving a receipt is yours is
+// post-purchase, and stays open while the shop is closed (see getShopGate in
+// lib/access.ts). The guards above are what protect it, and they still apply.
 export async function POST(request: NextRequest) {
-  const closed = await shopClosedResponse()
-  if (closed) return closed
-
   if (!checkInMemoryRateLimit(`order-receipt-access:${(await getClientIp())}`, 20, 15 * 60 * 1000)) {
     return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
   }

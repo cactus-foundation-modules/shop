@@ -1,55 +1,115 @@
 import { NextResponse } from 'next/server'
 import { errorResponse } from '@/lib/utils'
-import { getDownloadByToken, getDigitalFileById, incrementDownloadCount } from '@/modules/shop/lib/db/digital'
-import { getOrderItemById } from '@/modules/shop/lib/db/orders'
+import { getDownloadByToken, getDigitalFileById, releaseDownloadSlot, reserveDownloadSlot } from '@/modules/shop/lib/db/digital'
+import { getOrderById, getOrderItemById } from '@/modules/shop/lib/db/orders'
 import { getProductById } from '@/modules/shop/lib/db/products'
 import { contentDisposition } from '@/modules/shop/lib/download-name'
-import { shopClosedResponse } from '@/modules/shop/lib/access'
+import { DOWNLOAD_LIMIT_REACHED, downloadRefusal } from '@/modules/shop/lib/download-access'
 
-// PROTECTED - access control: token lookup, expiry + download-limit checks
-// before ever handing back a URL (spec 8.1 GET /downloads/[token]).
-export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
-  const closed = await shopClosedResponse()
-  if (closed) return closed
-
+// PROTECTED - access control: token lookup, expiry, the order still being paid
+// for and not refunded, and the download limit, all before a byte is handed
+// over (spec 8.1 GET /downloads/[token]). The rule itself is
+// lib/download-access.ts, shared with the page this route sits behind.
+//
+// Deliberately NOT behind the shop gate: a file somebody has paid for is theirs
+// to download whether or not the shop is open to new orders (see getShopGate
+// in lib/access.ts). Every check above still stands.
+export async function GET(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
   const download = await getDownloadByToken(token)
   if (!download) return errorResponse('This download link is not valid.', 404)
-  if (download.expiresAt && download.expiresAt < new Date()) return errorResponse('This download link has expired.', 410)
 
-  const orderItem = await getOrderItemById(download.orderItemId)
+  const [order, orderItem] = await Promise.all([getOrderById(download.orderId), getOrderItemById(download.orderItemId)])
   const product = orderItem?.productId ? await getProductById(orderItem.productId) : null
-  if (product?.downloadLimit != null && download.downloadCount >= product.downloadLimit) {
-    return errorResponse('This download link has reached its download limit.', 410)
-  }
+  const downloadLimit = product?.downloadLimit ?? null
+  const refusal = downloadRefusal({ download, order, item: orderItem, downloadLimit })
+  if (refusal) return errorResponse(refusal.message, refusal.status)
 
   const file = await getDigitalFileById(download.fileId)
   if (!file) return errorResponse('File not found.', 404)
 
+  // A HEAD asks what the file is without taking it, and the platform answers one
+  // by running this handler and throwing the body away unread - so the stream
+  // below never finishes and never cancels, and a reserved slot would be spent
+  // on nothing. A download manager or a link checker probing the link three
+  // times used up a limit of three before the customer had the file once.
+  if (request.method === 'HEAD') {
+    return new NextResponse(null, {
+      headers: {
+        'Content-Type': file.mimeType,
+        'Content-Disposition': contentDisposition(file.filename),
+        'X-Content-Type-Options': 'nosniff',
+      },
+    })
+  }
+
+  // The download is taken BEFORE the file is fetched, in one conditional UPDATE,
+  // because the check above is only a read: five tabs opened at once on the last
+  // download all pass it together. Whichever reaches the row second finds the
+  // slot already gone. See reserveDownloadSlot.
+  if (!(await reserveDownloadSlot(download.id, downloadLimit))) {
+    return errorResponse(DOWNLOAD_LIMIT_REACHED, 410)
+  }
+
+  // Taken up front, but still only KEPT once the bytes have actually gone. A
+  // customer gets a limited number of these, and a transfer that died on a train
+  // should not cost one of them - so every way a transfer can fail to finish
+  // hands the slot back, exactly once.
+  let settled = false
+  const giveBack = async () => {
+    if (settled) return
+    settled = true
+    try {
+      await releaseDownloadSlot(download.id)
+    } catch (error) {
+      // Lost a slot the customer should have kept. Worth a log line and not
+      // worth failing anything else over: the transfer has already gone wrong.
+      console.error(`[shop] failed to hand back download ${download.id}:`, error)
+    }
+  }
+
   // Stream the bytes through this gated endpoint rather than redirecting -
   // a redirect hands the browser the permanent underlying file URL, which
   // can then be reused directly to bypass the expiry/limit checks above.
-  const upstream = await fetch(file.url)
-  if (!upstream.ok || !upstream.body) return errorResponse('The file could not be retrieved.', 502)
+  let upstream: Response
+  try {
+    upstream = await fetch(file.url)
+  } catch (error) {
+    console.error(`[shop] could not fetch the file behind download ${download.id}:`, error)
+    await giveBack()
+    return errorResponse('The file could not be retrieved.', 502)
+  }
+  if (!upstream.ok || !upstream.body) {
+    await giveBack()
+    return errorResponse('The file could not be retrieved.', 502)
+  }
 
-  // Count the download once the bytes have actually gone, not once they have been
-  // asked for. A customer gets a limited number of these, and a transfer that
-  // died on a train should not cost one of them: flush() runs when the body ends
-  // normally, and not at all when the client gives up partway.
-  const counted = upstream.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      async flush() {
-        try {
-          await incrementDownloadCount(download.id)
-        } catch (error) {
-          // The bytes are already delivered by this point, so throwing here would
-          // only error the tail of a download that succeeded. An uncounted
-          // download is the lesser of those two.
-          console.error(`[shop] failed to record download ${download.id}:`, error)
+  // Relayed by hand rather than piped through a TransformStream, because the
+  // case that matters is the customer giving up partway - and a transform has no
+  // dependable hook for that. A ReadableStream's cancel() is called when the
+  // response is abandoned, and an error from the storage side lands in pull().
+  // Reaching the end is the one outcome that keeps the slot.
+  const reader = upstream.body.getReader()
+  const counted = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read()
+        if (done) {
+          settled = true
+          controller.close()
+          return
         }
-      },
-    }),
-  )
+        controller.enqueue(value)
+      } catch (error) {
+        await giveBack()
+        controller.error(error)
+      }
+    },
+    async cancel(reason) {
+      await giveBack()
+      await reader.cancel(reason).catch(() => undefined)
+    },
+  })
 
   const headers = new Headers({
     'Content-Type': file.mimeType,

@@ -2,9 +2,7 @@ import { notFound } from 'next/navigation'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { getMembersConfig } from '@/lib/members/config'
 import { getMemberAreaPath } from '@/lib/members/paths'
-import { getShopGate } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import OrderAccessForm from '@/modules/shop/components/public/OrderAccessForm'
 import { TRACK_ORDER_CSS } from '@/modules/shop/components/public/track-order-css'
 
@@ -23,10 +21,11 @@ export const dynamic = 'force-dynamic'
 // renders exactly the same thing at exactly the same moment (app/root/[slug]).
 // Two copies would be two things to keep in step for no gain.
 
+//
+// Deliberately NOT behind the shop gate: finding an order already placed is
+// post-purchase, and stays open while the shop is closed (see getShopGate in
+// lib/access.ts). The tracking switch below still rules.
 export async function TrackOrderPageView({ orderNumber }: { orderNumber?: string } = {}) {
-  const gate = await getShopGate()
-  if (gate.blocked) return <ShopClosedNotice message={gate.message} />
-
   const config = await getShopConfigCached()
   // A shop that has switched guest tracking off has no such page, rather than a
   // page that turns everyone away. See lib/config.ts.
@@ -43,7 +42,6 @@ export async function TrackOrderPageView({ orderNumber }: { orderNumber?: string
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '2rem 1.5rem' }}>
       <style dangerouslySetInnerHTML={{ __html: TRACK_ORDER_CSS }} />
-      {gate.staffPreview && <ShopStaffPreviewBanner />}
 
       <div className="sot">
         <header className="sot-head">

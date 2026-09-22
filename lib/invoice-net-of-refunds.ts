@@ -64,8 +64,12 @@ export function netOrderOfRefunds(
   order: ShpOrder,
   items: ShpOrderItem[],
   refunded: NettableRefundLine[],
+  // Delivery money already handed back, tax and all (shp_refunds
+  // .shipping_amount). The invoice's delivery charge comes down by the same
+  // share, its VAT with it.
+  refundedDelivery = 0,
 ): OrderNetOfRefunds {
-  if (refunded.length === 0) return { order, items, refundedTotal: '0.00' }
+  if (refunded.length === 0 && !(refundedDelivery > 0)) return { order, items, refundedTotal: '0.00' }
 
   // Several refunds can touch the same line - a unit this week, another the
   // week after - so they are summed per line before anything is worked out.
@@ -152,8 +156,14 @@ export function netOrderOfRefunds(
   // on at checkout exactly where it was.
   const keptRatio = subtotalBefore > 0 ? Math.min(round2(subtotal) / subtotalBefore, 1) : 0
   const discountAmount = round2((Number(order.discountAmount) || 0) * keptRatio)
-  const shippingAmount = Number(order.shippingAmount) || 0
-  const taxAmount = round2(goodsTax + deliveryTax)
+  // What is left of the delivery charge once any refunded share is off it.
+  const shippingBefore = Number(order.shippingAmount) || 0
+  const deliveryGrossBefore = shippingBefore > 0 ? shippingBefore + (inclusive ? 0 : deliveryTax) : 0
+  const deliveryTaken = Math.min(Math.max(refundedDelivery, 0), deliveryGrossBefore)
+  const deliveryKept = deliveryGrossBefore > 0 ? (deliveryGrossBefore - deliveryTaken) / deliveryGrossBefore : 1
+  refundedTotal += deliveryTaken
+  const shippingAmount = round2(shippingBefore * deliveryKept)
+  const taxAmount = round2(goodsTax + deliveryTax * deliveryKept)
   const total = round2(round2(subtotal) - discountAmount + shippingAmount + (inclusive ? 0 : taxAmount))
 
   return {

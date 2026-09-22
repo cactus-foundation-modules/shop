@@ -11,8 +11,10 @@ import {
   voidInvoice,
   type InsertInvoiceInput,
 } from '@/modules/shop/lib/db/invoices'
-import { clearRefundsNettedOff, listUncreditedRefundLines, markRefundsNettedOff } from '@/modules/shop/lib/db/refunds'
+import { clearRefundsNettedOff, listUncreditedRefundDelivery, listUncreditedRefundLines, markRefundsNettedOff } from '@/modules/shop/lib/db/refunds'
+import { getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
 import { generateInvoiceNumber } from '@/modules/shop/lib/invoice-number'
+import { invoiceTaxPointDay } from '@/modules/shop/lib/invoice-tax-point'
 import { netOrderOfRefunds } from '@/modules/shop/lib/invoice-net-of-refunds'
 import { buildInvoiceMoney, ledgerItems } from '@/modules/shop/lib/invoice-tax'
 import { invoicePdfFilename, printPath } from '@/modules/shop/lib/invoice-pdf'
@@ -238,10 +240,14 @@ export async function siteTimezone(): Promise<string> {
  * replacement whose totals or tax point drifted from the original's would be a
  * quiet correction to a sale nobody asked to correct.
  *
- * The tax point is the ORDER's - when it was paid for where that is known, and
- * today otherwise - so a replacement raised weeks later still belongs to the
- * quarter the sale happened in. An unpaid order invoiced on despatch is dated
- * the despatch, which is the ordinary rule for goods sent before payment.
+ * The tax point is the SALE's, not the paperwork's: the day it was paid for
+ * where that came first, otherwise the day the goods left - or the invoice's own
+ * day, where it is raised before they go or within a fortnight after. The rule
+ * and why is lib/invoice-tax-point.ts. It used to be "today" for anything
+ * unpaid, which is right on the day of despatch and filed a pay-later order
+ * invoiced a month on in the wrong month. A reissue passes `taxPointDate`
+ * straight through instead - the date of the credit note it comes with, so the
+ * two net each other off in the same return (lib/invoice-reissue.ts).
  *
  * Money already handed back is taken off first. A line refunded before the order
  * ever reached invoicing was never supplied and never paid for, and putting it
@@ -269,20 +275,39 @@ export async function buildInvoiceInsertInput(
     userId: string | null
     timezone?: string
     alsoNettedOffInvoiceId?: string | null
+    /** The tax point to carry over rather than work out - the reissue path's,
+     *  which is the document it replaces. */
+    taxPointDate?: string
   },
 ): Promise<BuiltInvoiceInput> {
-  const [rawItems, timezone, refundLines] = await Promise.all([
+  const [rawItems, timezone, refundLines, refundDelivery, shipments] = await Promise.all([
     getOrderItems(order.id),
     opts.timezone ? Promise.resolve(opts.timezone) : siteTimezone(),
     listUncreditedRefundLines(order.id, opts.alsoNettedOffInvoiceId ?? null),
+    listUncreditedRefundDelivery(order.id, opts.alsoNettedOffInvoiceId ?? null),
+    // Oldest first, and only the first parcel is wanted: the earliest any of the
+    // order was supplied. Not read at all when the tax point is carried over.
+    opts.taxPointDate ? Promise.resolve(null) : getShipmentsForOrder(order.id),
   ])
-  const taxPointDate = dateInZone(order.paidAt ?? new Date(), timezone)
-  const dueDate = config.invoicePaymentTermsDays > 0 ? addDays(taxPointDate, config.invoicePaymentTermsDays) : null
+  const issuedDay = dateInZone(new Date(), timezone)
+  const paidDay = order.paidAt ? dateInZone(order.paidAt, timezone) : null
+  const firstDespatch = shipments?.[0]?.shippedAt ?? null
+  const taxPointDate = opts.taxPointDate || invoiceTaxPointDay({
+    issuedDay,
+    paidDay,
+    despatchDay: firstDespatch ? dateInZone(firstDespatch, timezone) : null,
+  })
+  // Terms run from the invoice, or from the payment where there was one - the
+  // anchor the due date has always had - and not from the tax point: dating a
+  // sale back to its despatch must not make a fresh invoice overdue the moment
+  // it lands.
+  const dueDate = config.invoicePaymentTermsDays > 0 ? addDays(paidDay ?? issuedDay, config.invoicePaymentTermsDays) : null
 
   const net = netOrderOfRefunds(
     order,
     rawItems,
     refundLines.map((line) => ({ orderItemId: line.orderItemId, quantity: line.quantity, amount: Number(line.amount) })),
+    refundDelivery.reduce((sum, row) => sum + Number(row.shippingAmount), 0),
   )
 
   const { lines, taxBreakdown } = buildInvoiceMoney(net.order, net.items)
@@ -312,7 +337,7 @@ export async function buildInvoiceInsertInput(
     createdByUserId: opts.userId,
   }
 
-  return { input, nettedRefundIds: [...new Set(refundLines.map((line) => line.refundId))] }
+  return { input, nettedRefundIds: [...new Set([...refundLines.map((line) => line.refundId), ...refundDelivery.map((row) => row.refundId)])] }
 }
 
 /**
@@ -350,9 +375,21 @@ export async function issueInvoiceForOrder(
     timezone,
   })
 
+  // The invoice and the marks on the refunds it was raised net of go in together
+  // or not at all. They used to be two writes with the second one allowed to
+  // fail quietly, and a refund left unmarked beside an invoice that had already
+  // left it off is one the order screen then offers to credit - handing the same
+  // money back twice in the books and reclaiming VAT that was never declared.
+  // Nothing a caller could see would say so. Rolled back together, the worst
+  // case is the ordinary one: no invoice yet, a logged refusal, and the button on
+  // the order screen to try again.
   let invoice: ShpInvoice
   try {
-    invoice = await insertInvoice(built.input)
+    invoice = await prisma.$transaction(async (tx) => {
+      const inserted = await insertInvoice(built.input, tx)
+      await markRefundsNettedOff(built.nettedRefundIds, inserted.id, tx)
+      return inserted
+    })
   } catch (error) {
     if (error instanceof InvoiceAlreadyIssuedError) {
       // Somebody beat us to it between the read above and the insert. Their
@@ -365,15 +402,6 @@ export async function issueInvoiceForOrder(
     console.error('[shop] could not issue an invoice for order', orderId, error)
     return { ok: false, status: 500, error: 'The invoice could not be raised. Please try again.' }
   }
-
-  // The refunds this document was raised without. Marked now the invoice exists,
-  // so the order screen can say they need no credit note and the credit note
-  // path refuses to raise one - money handed back once must not be relieved
-  // twice. Never fatal: the invoice is out, and an unmarked refund shows up as a
-  // credit note somebody can decline rather than as a lost sale.
-  await markRefundsNettedOff(built.nettedRefundIds, invoice.id).catch((error) => {
-    console.error('[shop] could not mark refunds netted off invoice', invoice.invoiceNumber, error)
-  })
 
   const settledDate = order.paidAt ? dateInZone(order.paidAt, timezone) : null
   const results = await dispatchInvoiceIssued(invoiceSinkPayload(invoice, order.orderNumber, settledDate))
@@ -430,15 +458,22 @@ export async function resendInvoiceToSinks(invoiceId: string): Promise<IssueInvo
  * the order screen, and the button there says it again if one was down.
  */
 export async function voidInvoiceAndTellSinks(invoiceId: string, reason: string): Promise<IssueInvoiceResult> {
-  const done = await voidInvoice(invoiceId, reason)
-  if (!done) return { ok: false, status: 409, error: 'That invoice was not there to void.' }
-
   // Any refunds this invoice was raised net of are undealt-with again: the
   // document that took them off its face has been withdrawn, so the next
   // invoice takes them off as this one did.
-  await clearRefundsNettedOff(invoiceId).catch((error) => {
-    console.error('[shop] could not release refunds netted off voided invoice', invoiceId, error)
+  //
+  // In the void's own transaction, not after it. Left marked against a voided
+  // invoice, a refund is neither taken off the next invoice nor creditable (the
+  // credit note path turns it away as already dealt with), so the next invoice
+  // charges VAT on money already handed back and nothing on any screen can put
+  // it right. A void that cannot release them is refused whole instead, and
+  // pressing again is all it takes.
+  const done = await prisma.$transaction(async (tx) => {
+    const voided = await voidInvoice(invoiceId, reason, tx)
+    if (voided) await clearRefundsNettedOff(invoiceId, tx)
+    return voided
   })
+  if (!done) return { ok: false, status: 409, error: 'That invoice was not there to void.' }
 
   const invoice = await getInvoiceById(invoiceId)
   if (!invoice) return { ok: false, status: 404, error: 'Invoice not found.' }

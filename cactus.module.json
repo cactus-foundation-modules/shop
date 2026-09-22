@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.451",
+  "version": "0.1.452",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1642",
@@ -59,6 +59,7 @@
   "teardown": [
     "shp_stock_movements",
     "shp_products",
+    "shp_product_slug_redirects",
     "shp_product_media",
     "shp_categories",
     "shp_product_categories",
@@ -75,6 +76,7 @@
     "shp_coupons",
     "shp_automatic_discounts",
     "shp_invoices",
+    "shp_credit_notes",
     "shp_stranded_payments",
     "shp_checkout_drafts",
     "shp_orders",
@@ -91,6 +93,7 @@
     "shp_order_access_attempts",
     "shp_saved_addresses",
     "shp_member_carts",
+    "shp_guest_carts",
     "shp_email_templates",
     "shp_back_in_stock_subscriptions",
     "shp_product_questions",
@@ -109,7 +112,7 @@
     },
     {
       "path": "/api/m/shop/cron/reconcile-refunds",
-      "schedule": "30 6 * * *"
+      "schedule": "30 * * * *"
     },
     {
       "path": "/api/m/shop/cron/delivery-tracking",

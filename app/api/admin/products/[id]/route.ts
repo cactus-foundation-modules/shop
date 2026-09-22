@@ -17,6 +17,7 @@ import {
   recordProductSlugRedirectTarget,
 } from '@/modules/shop/lib/db/slug-redirects'
 import { getProductBySlug } from '@/modules/shop/lib/db/products'
+import { PRODUCT_MAX_MEDIA, PRODUCT_MAX_TAXONOMY_IDS, formatLimit } from '@/modules/shop/lib/admin-input-limits'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireShopUser('shop.products', { allowAccess: true })
@@ -111,11 +112,22 @@ const Body = z.object({
   partsOnly: z.boolean().optional(),
   featuredHidden: z.boolean().optional(),
   regenerateSlug: z.boolean().optional(),
-  media: z.array(MediaItem).optional(),
-  categoryIds: z.array(z.string()).optional(),
+  // The four lists are each rewritten in full on a save - the media one making
+  // each photograph's copies as it goes - so each has a ceiling well past
+  // anything the editor builds (lib/admin-input-limits.ts).
+  media: z.array(MediaItem)
+    .max(PRODUCT_MAX_MEDIA, `A product can have at most ${PRODUCT_MAX_MEDIA} photographs and videos.`)
+    .optional(),
+  categoryIds: z.array(z.string())
+    .max(PRODUCT_MAX_TAXONOMY_IDS, `A product can be in at most ${formatLimit(PRODUCT_MAX_TAXONOMY_IDS)} categories.`)
+    .optional(),
   masterCategoryId: z.string().nullable().optional(),
-  tagIds: z.array(z.string()).optional(),
-  collectionIds: z.array(z.string()).optional(),
+  tagIds: z.array(z.string())
+    .max(PRODUCT_MAX_TAXONOMY_IDS, `A product can carry at most ${formatLimit(PRODUCT_MAX_TAXONOMY_IDS)} tags.`)
+    .optional(),
+  collectionIds: z.array(z.string())
+    .max(PRODUCT_MAX_TAXONOMY_IDS, `A product can be in at most ${formatLimit(PRODUCT_MAX_TAXONOMY_IDS)} collections.`)
+    .optional(),
 })
 
 // How long after the request arrived the background copying stops starting new

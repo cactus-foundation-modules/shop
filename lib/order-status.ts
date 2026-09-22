@@ -17,6 +17,7 @@ import { formatMoney } from '@/modules/shop/lib/money'
 import { getSiteUrl } from '@/lib/config/env'
 import { escapeHtml } from '@/lib/email/blocks'
 import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
+import { statusChangeRefusal } from '@/modules/shop/lib/order-status-money'
 import type { ShpEmailTemplateTrigger, ShpOrder, ShpOrderItem, ShpOrderStatus } from '@/modules/shop/lib/types'
 
 // Everything that happens when an order's status changes, in one place.
@@ -179,7 +180,7 @@ export async function orderStatusEmailVars(
   }
 }
 
-export async function applyOrderStatusChange({ orderId, status, sendEmail, emailOnlyIfChanged }: {
+export async function applyOrderStatusChange({ orderId, status, sendEmail, emailOnlyIfChanged, byHand }: {
   orderId: string
   status: ShpOrderStatus
   sendEmail?: boolean
@@ -189,9 +190,20 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail, email
    *  moments apart, and only the one that actually moved the order should
    *  tell the customer about it. */
   emailOnlyIfChanged?: boolean
+  /** The owner picking this status off the menu - the single order screen or
+   *  the bulk bar. Only then are the money rules in lib/order-status-money.ts
+   *  applied: a paid order cannot be cancelled, or called refunded, without
+   *  the money going back through Refund. The other callers move an order for
+   *  reasons of their own and are left alone. */
+  byHand?: boolean
 }): Promise<ApplyOrderStatusResult> {
   const order = await getOrderById(orderId)
   if (!order) return { ok: false, status: 404, error: 'Order not found' }
+
+  if (byHand && order.status !== status) {
+    const refusal = statusChangeRefusal(order, await getOrderItems(orderId), status)
+    if (refusal) return { ok: false, status: 409, error: refusal }
+  }
 
   const config = await getShopConfigCached()
 
@@ -247,6 +259,11 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail, email
 
     // Cancelling hands the pre-order allocation back, so the slot can be sold
     // again instead of being held by an order that is never going to happen.
+    //
+    // Stock is not touched here. It follows the money: a normal line's units
+    // go back on the shelf when their refund is recorded (lib/db/order-stock.ts),
+    // an unpaid order never took any, and a cancellation somebody approved while
+    // its refund failed gives the units back when the refund is retried.
     if (status === 'CANCELLED') {
       await releasePreOrderAllocationForOrder(orderId)
     }

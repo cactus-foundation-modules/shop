@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { findOrdersByNumberCandidates, getOrderById } from '@/modules/shop/lib/db/orders'
@@ -52,10 +51,10 @@ const NO_MATCH = 'We could not find an order with that number and postcode. Chec
  *  same amortised trick lib/rate-limit.ts uses on its own buckets. */
 const SWEEP_ODDS = 50
 
+// Deliberately NOT behind the shop gate: finding an order that has already been
+// placed is post-purchase, and stays open while the shop is closed (see
+// getShopGate in lib/access.ts). The owner's tracking switch below still rules.
 export async function POST(request: NextRequest) {
-  const closed = await shopClosedResponse()
-  if (closed) return closed
-
   const config = await getShopConfigCached()
   if (!config.guestOrderTrackingEnabled) {
     return NextResponse.json({ error: 'Order tracking is not available on this shop.' }, { status: 404 })

@@ -11,18 +11,22 @@ import type {
 } from '@/modules/shop/lib/types'
 
 // ---------------------------------------------------------------------------
-// STOCK: this layer records dispatch and NOTHING ELSE.
+// STOCK: where shp_products.stock_count moves, and why each line only moves once.
 //
-// createShipment deliberately does not touch shp_products.stock_count. Stock
-// already moves in exactly two places and neither of them is here:
-//   1. Normal lines decrement at PAYMENT           (lib/order-fulfillment.ts)
-//   2. Pre-order lines decrement when an admin sets the order to SHIPPED
-//      (app/api/admin/orders/[id]/status/route.ts -> decrementStockOnShip)
-// Adding a decrement to this file would double-count against one of those and
-// silently oversell - the failure only shows up as a customer buying stock that
-// was never there. If dispatch is ever meant to own the pre-order decrement,
-// the decrement has to MOVE off the status route in the same change, not be
-// added alongside it.
+//   1. Normal lines come off at PAYMENT (lib/order-fulfillment.ts ->
+//      takeStockForPaidOrder in lib/db/order-stock.ts, which writes the stock
+//      ledger), and undispatched units go back when a refund settles
+//      (restockRefundedUnits, same file).
+//   2. Pre-order lines come off per PARCEL, in createShipment below, and go back
+//      if that parcel is deleted. Setting an order to SHIPPED by hand records an
+//      implicit parcel for whatever is left, which lands back here rather than
+//      being a second decrement (lib/order-status.ts).
+//   3. A replacement part comes off when it is raised (settleReplacement in
+//      lib/replacements.ts): it is born paid, so there is no payment for step 1
+//      to hang off.
+// Adding a normal-line decrement to dispatch would double-count against step 1
+// and silently oversell - the failure only shows up as a customer buying stock
+// that was never there.
 // ---------------------------------------------------------------------------
 
 function mapShipment(r: Record<string, unknown>): ShpShipment {
@@ -827,13 +831,15 @@ export async function recordReceipt(shipmentId: string, input: {
  * So each run also sweeps for the leftovers. Bounded, oldest first, and it
  * settles itself: the order completes and stops matching. Cancelled and
  * refunded orders are excluded, because a delivered parcel on a refunded order
- * is a conversation, not a completion.
+ * is a conversation, not a completion - and so are ones on hold. A part-refunded
+ * order is NOT excluded: what is left of it still completes. The reasons are on
+ * NOT_COMPLETABLE in lib/order-auto-complete.ts, which this list must match.
  */
 export async function listOrdersAwaitingCompletion(limit: number): Promise<string[]> {
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT o."id"
     FROM "shp_orders" o
-    WHERE o."status" NOT IN ('COMPLETED', 'CANCELLED', 'REFUNDED')
+    WHERE o."status" NOT IN ('COMPLETED', 'CANCELLED', 'REFUNDED', 'ON_HOLD')
       AND EXISTS (SELECT 1 FROM "shp_shipments" s WHERE s."order_id" = o."id")
       AND NOT EXISTS (
         SELECT 1 FROM "shp_shipments" s

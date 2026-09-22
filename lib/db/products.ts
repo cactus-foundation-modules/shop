@@ -763,16 +763,54 @@ export async function markLowStockAlerted(productIds: string[]): Promise<void> {
   await prisma.$executeRaw`UPDATE "shp_products" SET "low_stock_alerted_at" = CURRENT_TIMESTAMP WHERE "id" IN (${Prisma.join(productIds)})`
 }
 
-export async function incrementPreOrderCount(productId: string, qty: number): Promise<void> {
-  await prisma.$executeRaw`
-    UPDATE "shp_products" SET "pre_order_count" = "pre_order_count" + ${qty}, "updated_at" = CURRENT_TIMESTAMP
+// Claims one product's low-stock alert BEFORE the email goes: true only for the
+// run that flips low_stock_alerted_at from empty, so two runs of the daily job
+// overlapping (a "Run now" beside the scheduled one) cannot both send it. A
+// failed send hands it back with releaseLowStockAlert, to go out next time.
+export async function claimLowStockAlert(productId: string): Promise<boolean> {
+  const claimed = await prisma.$executeRaw`
+    UPDATE "shp_products" SET "low_stock_alerted_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${productId} AND "low_stock_alerted_at" IS NULL
+  `
+  return claimed > 0
+}
+
+export async function releaseLowStockAlert(productId: string): Promise<void> {
+  await prisma.$executeRaw`UPDATE "shp_products" SET "low_stock_alerted_at" = NULL WHERE "id" = ${productId}`
+}
+
+/** Where a product's pre-order allocation stands after an order took from it. */
+export type PreOrderCounted = { productName: string; count: number; limit: number | null }
+
+// Counts a paid pre-order against its product's allocation, and auto-flips the
+// product off pre-order once the cap is reached (addendum B.4) - one statement,
+// so the count and the flag can never be read disagreeing.
+//
+// The cap was only ever checked at checkout, against a count read before either
+// of two overlapping checkouts had paid, so both could be sold the last slot.
+// The money has landed by the time this runs and the order cannot be refused,
+// so the count still goes up - it is a real order the shop owes - and the
+// figures come back for the caller to see whether the cap was passed and say
+// so (lib/order-fulfillment.ts). Null when the product has gone.
+export async function incrementPreOrderCount(productId: string, qty: number): Promise<PreOrderCounted | null> {
+  const rows = await prisma.$queryRaw<{ name: string; pre_order_count: number; pre_order_max_quantity: number | null }[]>`
+    UPDATE "shp_products" SET
+      "pre_order_count" = "pre_order_count" + ${qty},
+      "is_pre_order" = CASE
+        WHEN "pre_order_max_quantity" IS NOT NULL AND "pre_order_count" + ${qty} >= "pre_order_max_quantity" THEN false
+        ELSE "is_pre_order"
+      END,
+      "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${productId}
+    RETURNING "name", "pre_order_count", "pre_order_max_quantity"
   `
-  // Auto-flip off pre-order once the cap is reached (addendum B.4)
-  await prisma.$executeRaw`
-    UPDATE "shp_products" SET "is_pre_order" = false
-    WHERE "id" = ${productId} AND "pre_order_max_quantity" IS NOT NULL AND "pre_order_count" >= "pre_order_max_quantity"
-  `
+  const row = rows[0]
+  if (!row) return null
+  return {
+    productName: row.name,
+    count: Number(row.pre_order_count),
+    limit: row.pre_order_max_quantity === null ? null : Number(row.pre_order_max_quantity),
+  }
 }
 
 // The counterpart to incrementPreOrderCount, for a pre-order that is cancelled

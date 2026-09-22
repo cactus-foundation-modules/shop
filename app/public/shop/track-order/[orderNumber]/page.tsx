@@ -1,7 +1,5 @@
 import { notFound, redirect } from 'next/navigation'
-import { getShopGate } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { ShopClosedNotice, ShopStaffPreviewBanner } from '@/modules/shop/components/public/ShopClosedNotice'
 import { getOrderByNumber } from '@/modules/shop/lib/db/orders'
 import { resolveOrderViewer } from '@/modules/shop/lib/order-viewer'
 import { orderTrackingBasePath, verifyOrderTrackingToken } from '@/modules/shop/lib/order-tracking'
@@ -41,9 +39,9 @@ export default async function ShopTrackOrderNumberPage({
   params: Promise<{ orderNumber: string }>
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const gate = await getShopGate()
-  if (gate.blocked) return <ShopClosedNotice message={gate.message} />
-
+  // Deliberately NOT behind the shop gate: this is where every order email
+  // lands, and an order already placed is owed its tracking while the shop is
+  // closed (see getShopGate in lib/access.ts). The tracking switch still rules.
   const config = await getShopConfigCached()
   if (!config.guestOrderTrackingEnabled) notFound()
 
@@ -74,7 +72,6 @@ export default async function ShopTrackOrderNumberPage({
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '2rem 1.5rem' }}>
       <style dangerouslySetInnerHTML={{ __html: TRACK_ORDER_CSS }} />
-      {gate.staffPreview && <ShopStaffPreviewBanner />}
 
       <div className="sot">
         <header className="sot-head">

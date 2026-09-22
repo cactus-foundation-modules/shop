@@ -25,29 +25,67 @@ const NIGHTLY_LIMIT = 60
 // count is what tells an owner whether this is keeping up.
 const BUDGET_MS = 40_000
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
 async function handle(request: NextRequest) {
   const secret = process.env.CRON_SECRET
   if (!secret) return errorResponse('CRON_SECRET is not configured', 503)
   const auth = request.headers.get('authorization')
   if (auth !== `Bearer ${secret}`) return errorResponse('Unauthorized', 401)
 
-  const pendingBefore = await countProductThumbsPending().catch(() => 0)
+  // A failure is answered with an error status and says what it was: core's
+  // Schedules page records a job as failed only on one, and shows `error`
+  // beside it. Both of these used to be swallowed - a count that could not be
+  // read looked like "nothing to do", and a pass that threw ended the run with
+  // `ok: true` - so a store that had stopped taking copies read as a quiet night.
+  let pendingBefore: number
+  try {
+    pendingBefore = await countProductThumbsPending()
+  } catch (err) {
+    console.error('[shop] thumb top-up could not count the pictures waiting', err)
+    return NextResponse.json({ ok: false, error: `Could not see which pictures still need small copies: ${errorMessage(err)}` }, { status: 500 })
+  }
   if (pendingBefore === 0) return NextResponse.json({ ok: true, pending: 0, copied: 0, rowsUpdated: 0 })
 
   const startedAt = Date.now()
   let copied = 0
   let rowsUpdated = 0
   let seen = 0
+  let failure: string | null = null
 
   // In small passes rather than one big one, so the budget can be honoured between
   // them: a single pass has no way to stop partway and keep what it has done.
   while (seen < NIGHTLY_LIMIT && Date.now() - startedAt < BUDGET_MS) {
-    const result = await backfillProductThumbs({ limit: 10, concurrency: 3 }).catch(() => null)
-    if (!result || result.seen === 0) break
+    let result: Awaited<ReturnType<typeof backfillProductThumbs>>
+    try {
+      result = await backfillProductThumbs({ limit: 10, concurrency: 3 })
+    } catch (err) {
+      // What the passes before this one did is kept - each is written as it
+      // goes - so the run stops here and says so rather than pressing on into
+      // the same fault.
+      console.error('[shop] thumb top-up pass failed', err)
+      failure = errorMessage(err)
+      break
+    }
+    if (result.seen === 0) break
     seen += result.seen
     copied += result.copied
     rowsUpdated += result.rowsUpdated
     if (!result.more) break
+  }
+
+  if (failure) {
+    return NextResponse.json({
+      ok: false,
+      error: `Making small copies of product pictures stopped after ${seen} of ${pendingBefore}: ${failure}`,
+      pending: pendingBefore,
+      seen,
+      copied,
+      rowsUpdated,
+      ms: Date.now() - startedAt,
+    }, { status: 500 })
   }
 
   return NextResponse.json({

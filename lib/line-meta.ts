@@ -207,6 +207,27 @@ export type CartLineMinOrder = {
   quantity?: number | null
 }
 
+// The concurrency contract, which every resolver has to keep:
+//
+// resolveCartLines resolves a basket's lines CONCURRENTLY (one Promise.all over
+// the lines - walking a full cart one line at a time made it take seconds), so
+// a resolver can be mid-way through several lines at once. Within one line the
+// resolvers still run one after another, in manifest order. Every prefetcher is
+// awaited before the first line starts.
+//
+// So a per-line resolve must be a READ: of its arguments, and of whatever its
+// prefetcher left in its request-scoped store. Anything that depends on another
+// line, or that writes state a second line could see half-written, belongs in
+// the prefetcher, which runs once and sees the whole basket. Filling a cache
+// slot on a miss is fine provided any line would fill it with the same answer -
+// the worst a race then costs is a duplicate read. A resolver that calls out to
+// something rate-limited must batch the call in its prefetcher, not make it once
+// per line.
+//
+// Every resolver installed today keeps this (advanced-shipping-for-shop,
+// product-addons-for-shop, modular-configurator-for-shop, shop-variations): each
+// per-line resolve reads its own request store and at most repeats an idempotent
+// lookup when no prefetch ran.
 export type CartLineResolver = (
   product: ShpProduct,
   meta: Record<string, unknown> | undefined,

@@ -5,6 +5,7 @@ import { buildCustomer, buildSeller, addDays, dateInZone } from '@/modules/shop/
 import { buildInvoiceMoney } from '@/modules/shop/lib/invoice-tax'
 import { manualPaymentInstructions } from '@/modules/shop/lib/payment-instructions'
 import { settlementMethod } from '@/modules/shop/lib/order-pay-online'
+import { paymentTaken } from '@/modules/shop/lib/payment-taken'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import type { InvoiceDocContext } from '@/modules/shop/lib/invoice-doc-context'
 import type { ShpInvoice, ShpInvoiceWording, ShpOrder, ShpOrderItem } from '@/modules/shop/lib/types'
@@ -120,7 +121,8 @@ export async function proformaDocContext(
     .findUnique({ where: { id: 'singleton' }, select: { timezone: true } })
     .catch(() => null)
   const timezone = site?.timezone || 'UTC'
-  const paid = order.paymentStatus === 'PAID'
+  // Paid is paid, whatever has been refunded since (lib/payment-taken.ts).
+  const paid = paymentTaken(order.paymentStatus)
 
   const issuedOn = dateInZone(order.paidAt ?? new Date(), timezone)
   const dueDate = !paid && config.invoicePaymentTermsDays > 0

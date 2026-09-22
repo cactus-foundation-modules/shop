@@ -12,11 +12,14 @@
 // before. And a rating with no reviews behind it is never published at all -
 // schema.org reads a count of nought as a score nobody gave, and rich results
 // built on one are the kind of thing a manual action is for.
+import { getInstalledManifests } from '@/lib/modules/live-status'
 import type { ShopProductRating } from '@/modules/shop/lib/product-jsonld'
 
 const POINT = 'shop.product-rating-summary'
 
 type RatingProvider = (productIds: string[]) => Promise<Record<string, unknown>>
+
+type ExtensionPointEntry = { point: string; id: string }
 
 /** How many decimal places a published average carries. One is what every shop
  *  prints beside the stars, and a mean quoted to six is a machine talking. */
@@ -51,15 +54,30 @@ export async function resolveProductRating(productId: string): Promise<ShopProdu
   const { modulePublicExtensionPointComponents: moduleExtensionPointComponents } =
     await import('@/lib/modules/extension-points.public')
   const registered: Record<string, unknown> = moduleExtensionPointComponents[POINT] ?? {}
-  const provider = Object.values(registered).find((e): e is RatingProvider => typeof e === 'function')
-  if (!provider) return null
+  if (Object.keys(registered).length === 0) return null
 
-  try {
-    const answered = await provider([productId])
-    if (typeof answered !== 'object' || answered === null) return null
-    return readRating((answered as Record<string, unknown>)[productId])
-  } catch (error) {
-    console.error(`[shop] rating-summary provider failed for product ${productId}:`, error)
-    return null
+  // Walked in installed-modules order and gated by the manifests, as
+  // lib/card-price.ts is, rather than taking whichever function the generated
+  // map happens to list first: that order is the build's, so two reviews
+  // modules could swap places in the structured data between two deploys, and
+  // an uninstalled module still in the map could go on publishing stars. The
+  // first provider with a rating that survives the checks wins.
+  const modules = await getInstalledManifests()
+  for (const mod of modules) {
+    const manifest = mod.manifest as { extensionPoints?: ExtensionPointEntry[] } | null
+    for (const entry of manifest?.extensionPoints ?? []) {
+      if (entry.point !== POINT) continue
+      const provider = registered[entry.id]
+      if (typeof provider !== 'function') continue
+      try {
+        const answered = await (provider as RatingProvider)([productId])
+        if (typeof answered !== 'object' || answered === null) continue
+        const rating = readRating((answered as Record<string, unknown>)[productId])
+        if (rating) return rating
+      } catch (error) {
+        console.error(`[shop] rating-summary provider "${entry.id}" failed for product ${productId}:`, error)
+      }
+    }
   }
+  return null
 }

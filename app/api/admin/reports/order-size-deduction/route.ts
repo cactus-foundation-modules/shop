@@ -10,8 +10,13 @@ import { isPriceTypeEnabled } from '@/modules/shop/lib/pricing'
 // catalogue SAYS, and a catalogue is filled by imports and scripts rather than
 // by anything a typecheck can see. See listOrderSizeDeductionChecks for what
 // each list means.
+//
+// Gated on shop.reports, the key the Reports page itself checks. It used to ask
+// for shop.products, so a reports-only role opened the page, had this request
+// turned away, and simply never saw the tab - while the only role it did let in
+// could not open the page it lives on.
 export async function GET() {
-  const gate = await requireShopUser('shop.products')
+  const gate = await requireShopUser('shop.reports')
   if (gate.error) return gate.error
 
   const config = await getShopConfigCached()

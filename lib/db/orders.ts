@@ -1,6 +1,6 @@
 import { prisma, type PrismaTransactionClient } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
-import { decrementPreOrderCount, getProductById } from '@/modules/shop/lib/db/products'
+import { decrementPreOrderCount, getProductsByIds } from '@/modules/shop/lib/db/products'
 import { normaliseStoredPhone } from '@/modules/shop/lib/phone'
 import { nextDueDate, resolveOrderLineDueDates, type DueParcel } from '@/modules/shop/lib/order-line-due-date'
 import type { LineMeta, ShpAddress, ShpOrder, ShpOrderAgreement, ShpOrderItem, ShpOrderKind, ShpOrderStatus, ShpPaymentMethod, ShpPaymentStatus } from '@/modules/shop/lib/types'
@@ -142,6 +142,20 @@ export async function getOrderByPaymentReference(reference: string): Promise<Shp
 export async function getOrderItems(orderId: string): Promise<ShpOrderItem[]> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_order_items" WHERE "order_id" = ${orderId} ORDER BY "id" ASC`
   return rows.map(mapOrderItem)
+}
+
+/** The lines of many orders in one query, keyed by order id - every id asked
+ *  for is present, with an empty list when it has no lines. Each list is in the
+ *  same order getOrderItems gives. For a caller walking a long list of orders,
+ *  where a query per order is the cost that grows. */
+export async function getOrderItemsForOrders(orderIds: string[]): Promise<Map<string, ShpOrderItem[]>> {
+  const byOrder = new Map<string, ShpOrderItem[]>(orderIds.map((id) => [id, []]))
+  if (orderIds.length === 0) return byOrder
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "shp_order_items" WHERE "order_id" = ANY(${orderIds}::text[]) ORDER BY "id" ASC
+  `
+  for (const row of rows) byOrder.get(row.order_id as string)?.push(mapOrderItem(row))
+  return byOrder
 }
 
 export async function getOrderItemById(id: string): Promise<ShpOrderItem | null> {
@@ -351,8 +365,17 @@ export async function updateOrderStatus(id: string, status: ShpOrderStatus): Pro
 // dispatch route EXPLAINS the hold to the owner with it. Two copies of a rule
 // that decides whether an order may go out would drift, and the two would then
 // disagree about whether the shop is holding the order.
+//
+// The undated lines' products are read in one query rather than one per line:
+// a big mixed order being marked dispatched under HOLD_ALL otherwise asked for
+// the same handful of products over and over before it could say no.
 export async function outstandingPreOrderItems(items: ShpOrderItem[]): Promise<ShpOrderItem[]> {
   const now = Date.now()
+  const undatedProductIds = [...new Set(items.flatMap((item) =>
+    item.isPreOrder && !item.preOrderDispatchDate && item.productId ? [item.productId] : []))]
+  // Asks nothing of the database when every pre-order line carries its date.
+  const products = await getProductsByIds(undatedProductIds)
+
   const outstanding: ShpOrderItem[] = []
   for (const item of items) {
     if (!item.isPreOrder) continue
@@ -361,8 +384,7 @@ export async function outstandingPreOrderItems(items: ShpOrderItem[]): Promise<S
       continue
     }
     if (!item.productId) continue
-    const product = await getProductById(item.productId)
-    if (product?.isPreOrder) outstanding.push(item)
+    if (products.get(item.productId)?.isPreOrder) outstanding.push(item)
   }
   return outstanding
 }
@@ -396,13 +418,53 @@ export async function releasePreOrderAllocationForOrder(orderId: string): Promis
 // Idempotent - replayed webhook events must be no-ops (spec 7.1/7.2). Only
 // transitions PENDING → PAID; a second call with the same event is a no-op
 // because the WHERE clause no longer matches.
+//
+// "Already paid" means every state that follows a payment, not PAID alone: a
+// refund now moves payment_status on to PARTIALLY_REFUNDED or REFUNDED (see
+// lib/payment-taken.ts), and a guard on PAID alone would let a replayed success
+// webhook for a refunded order mark it paid again and run fulfilment a second
+// time - stock, coupon, downloads and the confirmation email all over again.
 export async function markOrderPaid(id: string, paymentReference: string): Promise<boolean> {
-  const result = await prisma.$executeRaw`
-    UPDATE "shp_orders" SET "payment_status" = 'PAID', "paid_at" = CURRENT_TIMESTAMP,
-      "payment_reference" = ${paymentReference}, "status" = 'PROCESSING', "updated_at" = CURRENT_TIMESTAMP
-    WHERE "id" = ${id} AND "payment_status" != 'PAID'
+  return recordPayment(id, paymentReference)
+}
+
+// The one place an order becomes paid, for markOrderPaid and
+// confirmManualPayment alike. True only for the order's FIRST payment, which is
+// what callers read as "run fulfilment now".
+//
+// An order paid once already - charged back, which leaves it FAILED and on hold
+// (markOrderPaymentFailed), and then paid again, a bank payment that bounced and
+// went through at the second attempt - used to pass the guard as if it had never
+// been paid, and fulfilment ran a second time: stock taken twice, the coupon
+// counted twice, the confirmation email sent again. paid_at is only ever set on
+// a first payment, so it tells the two apart: the money goes back on the order,
+// its status is left where the chargeback put it, and the owner gets a note.
+async function recordPayment(id: string, paymentReference: string | null): Promise<boolean> {
+  const rows = await prisma.$queryRaw<{ first_payment: boolean }[]>`
+    UPDATE "shp_orders" AS o SET
+      "payment_status" = 'PAID',
+      "paid_at" = COALESCE(o."paid_at", CURRENT_TIMESTAMP),
+      "payment_reference" = COALESCE(${paymentReference}::text, o."payment_reference"),
+      "status" = CASE WHEN o."paid_at" IS NULL THEN 'PROCESSING' ELSE o."status" END,
+      "updated_at" = CURRENT_TIMESTAMP
+    FROM (SELECT "id", "paid_at" AS "was_paid_at" FROM "shp_orders" WHERE "id" = ${id}) AS prior
+    WHERE o."id" = prior."id" AND o."payment_status" NOT IN ('PAID', 'PARTIALLY_REFUNDED', 'REFUNDED')
+    RETURNING prior."was_paid_at" IS NULL AS "first_payment"
   `
-  return result > 0
+  const row = rows[0]
+  if (!row) return false
+  if (!row.first_payment) {
+    await prisma.$executeRaw`
+      INSERT INTO "shp_order_notes" ("order_id", "content", "is_internal", "created_by")
+      VALUES (
+        ${id},
+        ${'Payment arrived again after it had been reversed. It is recorded as paid, but the order stays as it was and nothing has been taken from stock or sent to the customer a second time - check it over and move it on by hand.'},
+        true,
+        ${null}
+      )
+    `
+  }
+  return row.first_payment
 }
 
 // Two distinct events land here:
@@ -419,12 +481,13 @@ export async function markOrderPaid(id: string, paymentReference: string): Promi
 //    settled payment is later charged back or fails at the bank): the money has
 //    been clawed back AFTER the order was marked PAID, and the goods may already
 //    have shipped. That must be loud, not a silent no-op - flip the order to a
-//    visible reversed state and leave the owner a note.
+//    visible reversed state and leave the owner a note. A part-refunded order
+//    counts as paid here: the rest of its money is just as clawed back.
 export async function markOrderPaymentFailed(id: string, reason: 'FAILED' | 'CHARGEBACK' = 'FAILED'): Promise<void> {
   if (reason === 'CHARGEBACK') {
     const reversed = await prisma.$executeRaw`
       UPDATE "shp_orders" SET "payment_status" = 'FAILED', "status" = 'ON_HOLD', "updated_at" = CURRENT_TIMESTAMP
-      WHERE "id" = ${id} AND "payment_status" = 'PAID'
+      WHERE "id" = ${id} AND "payment_status" IN ('PAID', 'PARTIALLY_REFUNDED')
     `
     // Only when a PAID order actually flipped (guards against a replayed webhook
     // re-noting an order that has already been reversed).
@@ -448,21 +511,21 @@ export async function markOrderPaymentFailed(id: string, reason: 'FAILED' | 'CHA
   `
 }
 
+// Never over a payment that has already landed. Its callers check for PAID
+// before calling, and a refunded order is just as paid - a late "still
+// settling" event for one used to park it back at awaiting payment.
 export async function markOrderAwaitingConfirmation(id: string): Promise<void> {
   await prisma.$executeRaw`
-    UPDATE "shp_orders" SET "payment_status" = 'AWAITING_CONFIRMATION', "updated_at" = CURRENT_TIMESTAMP WHERE "id" = ${id}
+    UPDATE "shp_orders" SET "payment_status" = 'AWAITING_CONFIRMATION', "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${id} AND "payment_status" NOT IN ('PAID', 'PARTIALLY_REFUNDED', 'REFUNDED')
   `
 }
 
-// Idempotent like markOrderPaid: the `payment_status != 'PAID'` guard makes a
-// second confirm a no-op and returns false, so callers only run the exactly-once
-// fulfilment side-effects when this returns true.
+// Idempotent like markOrderPaid, and guarded the same way: a second confirm, or
+// one on an order since refunded, is a no-op and returns false, so callers only
+// run the exactly-once fulfilment side-effects when this returns true.
 export async function confirmManualPayment(id: string): Promise<boolean> {
-  const result = await prisma.$executeRaw`
-    UPDATE "shp_orders" SET "payment_status" = 'PAID', "paid_at" = CURRENT_TIMESTAMP, "status" = 'PROCESSING', "updated_at" = CURRENT_TIMESTAMP
-    WHERE "id" = ${id} AND "payment_status" != 'PAID'
-  `
-  return result > 0
+  return recordPayment(id, null)
 }
 
 // Point an unpaid order at the method that is actually going to pay for it.
@@ -498,14 +561,70 @@ export async function adoptOrderPaymentMethod(id: string, method: string): Promi
 // looking for a card payment that does not exist.
 //
 // Only while the money is still owed. Once an order is PAID the method on it is
-// the one that paid, and nothing here may quietly rewrite that.
+// the one that paid, and nothing here may quietly rewrite that - nor once it has
+// been refunded, when it is the method the refund went back through.
 export async function restoreOriginalPaymentMethod(id: string): Promise<void> {
   await prisma.$executeRaw`
     UPDATE "shp_orders"
        SET "payment_method" = "original_payment_method",
            "original_payment_method" = NULL,
            "updated_at" = CURRENT_TIMESTAMP
-     WHERE "id" = ${id} AND "original_payment_method" IS NOT NULL AND "payment_status" <> 'PAID'
+     WHERE "id" = ${id} AND "original_payment_method" IS NOT NULL
+       AND "payment_status" NOT IN ('PAID', 'PARTIALLY_REFUNDED', 'REFUNDED')
+  `
+}
+
+// A refund the payment provider told us about by webhook - one made in the
+// Stripe or PayPal dashboard, or the provider's echo of one made here.
+//
+// Both columns move, as they do when a refund is recorded here (settleRefund in
+// lib/db/refunds.ts): the lifecycle used to move alone, so an order refunded
+// from the dashboard read "Refunded" beside a payment that still said "Paid".
+// Only an order that was paid is touched, and nothing is moved backwards: the
+// provider's own echo of a refund recorded here reports on the money, and on
+// an order whose goods were all refunded but whose delivery charge was kept it
+// says "partial" - which must not undo the REFUNDED the refund itself set.
+//
+// The provider does not say which lines the money was for, so this records no
+// refund lines, credit note or stock movement - those need the Refund button.
+export async function recordProviderRefund(id: string, state: 'REFUNDED' | 'PARTIALLY_REFUNDED'): Promise<void> {
+  if (state === 'REFUNDED') {
+    await prisma.$executeRaw`
+      UPDATE "shp_orders" SET "status" = 'REFUNDED', "payment_status" = 'REFUNDED', "updated_at" = CURRENT_TIMESTAMP
+      WHERE "id" = ${id} AND "payment_status" IN ('PAID', 'PARTIALLY_REFUNDED', 'REFUNDED')
+        AND ("status" <> 'REFUNDED' OR "payment_status" <> 'REFUNDED')
+    `
+    return
+  }
+  await prisma.$executeRaw`
+    UPDATE "shp_orders" SET
+      "status" = CASE WHEN "status" IN ('REFUNDED', 'COMPLETED') THEN "status" ELSE 'PARTIALLY_REFUNDED' END,
+      "payment_status" = 'PARTIALLY_REFUNDED',
+      "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${id} AND "payment_status" IN ('PAID', 'PARTIALLY_REFUNDED')
+  `
+}
+
+// Something about a paid order a person has to look at before it goes out:
+// stock that was not there, a pre-order past its limit, a payment that does not
+// match the order, a coupon used past its limit. Written as an internal note,
+// where the owner reads the order's history - and, where the order cannot
+// simply be sent, the order is put ON_HOLD as well, which shows on the orders
+// list and pauses it on the customer's own page. The chargeback path in
+// markOrderPaymentFailed does the same for the same reason.
+//
+// The hold only lands on an order that has not moved on: one somebody has
+// already dispatched, completed or cancelled keeps its status and gets the note.
+export async function flagOrderForAttention(orderId: string, note: string, opts: { hold: boolean }): Promise<void> {
+  if (opts.hold) {
+    await prisma.$executeRaw`
+      UPDATE "shp_orders" SET "status" = 'ON_HOLD', "updated_at" = CURRENT_TIMESTAMP
+      WHERE "id" = ${orderId} AND "status" IN ('PENDING', 'PROCESSING')
+    `
+  }
+  await prisma.$executeRaw`
+    INSERT INTO "shp_order_notes" ("order_id", "content", "is_internal", "created_by")
+    VALUES (${orderId}, ${note}, true, ${null})
   `
 }
 
@@ -630,13 +749,17 @@ export type OrderSort = 'newest' | 'oldest' | 'total-desc' | 'total-asc' | 'cust
 // invoice disagree about whose order it is.
 const ORDER_COMPANY_SQL = Prisma.sql`COALESCE(NULLIF(btrim(o."customer_organisation"), ''), NULLIF(btrim(o."billing_address"->>'company'), ''), CASE WHEN o."billing_address" IS NULL THEN NULLIF(btrim(o."shipping_address"->>'company'), '') END)`
 
+// Every order ends on the id, so two rows that tie on everything else still come
+// back in the same order every time. Without it, paging through a list - which
+// the CSV export does, 200 at a time - could see a tied row on two pages and
+// another on none, and the missing order simply was not in the file.
 const SORT_CLAUSE: Record<OrderSort, Prisma.Sql> = {
-  newest: Prisma.sql`ORDER BY o."created_at" DESC`,
-  oldest: Prisma.sql`ORDER BY o."created_at" ASC`,
-  'total-desc': Prisma.sql`ORDER BY o."total" DESC, o."created_at" DESC`,
-  'total-asc': Prisma.sql`ORDER BY o."total" ASC, o."created_at" DESC`,
-  'customer-asc': Prisma.sql`ORDER BY lower(COALESCE(${ORDER_COMPANY_SQL}, o."customer_name")) ASC, o."created_at" DESC`,
-  status: Prisma.sql`ORDER BY o."status" ASC, o."created_at" DESC`,
+  newest: Prisma.sql`ORDER BY o."created_at" DESC, o."id" DESC`,
+  oldest: Prisma.sql`ORDER BY o."created_at" ASC, o."id" ASC`,
+  'total-desc': Prisma.sql`ORDER BY o."total" DESC, o."created_at" DESC, o."id" DESC`,
+  'total-asc': Prisma.sql`ORDER BY o."total" ASC, o."created_at" DESC, o."id" DESC`,
+  'customer-asc': Prisma.sql`ORDER BY lower(COALESCE(${ORDER_COMPANY_SQL}, o."customer_name")) ASC, o."created_at" DESC, o."id" DESC`,
+  status: Prisma.sql`ORDER BY o."status" ASC, o."created_at" DESC, o."id" DESC`,
 }
 
 export type ListOrdersFilter = {
@@ -663,6 +786,26 @@ export type ListOrdersFilter = {
 const OPEN_ONLY_SQL = Prisma.sql`o."status" <> 'CANCELLED'`
 const UNPAID_SQL = Prisma.sql`o."payment_status" IN ('PENDING', 'AWAITING_CONFIRMATION')`
 
+// The payment filters that a refund bears on, read as the money stands.
+//
+// payment_status now follows refunds (lib/payment-taken.ts), but an order
+// refunded before it did still says PAID beside a refunded lifecycle, and there
+// is no rewriting history in place. So each of these also recognises that older
+// shape, rather than listing a fully refunded order under "Paid" and leaving
+// "Refunded" empty.
+//
+// "Paid" is the money the shop is still holding: paid in full, or paid with
+// part of it refunded since. A part-refunded order with goods still to send is
+// exactly the order the "to send" tile exists for - it links through with this
+// filter, and counts with it (see getOrdersOverview) - so it cannot drop out of
+// "Paid" the moment one line is refunded.
+const PAID_FILTER_SQL = Prisma.sql`(o."payment_status" IN ('PAID', 'PARTIALLY_REFUNDED') AND o."status" <> 'REFUNDED')`
+const PAYMENT_FILTER_SQL: Partial<Record<ShpPaymentStatus, Prisma.Sql>> = {
+  PAID: PAID_FILTER_SQL,
+  PARTIALLY_REFUNDED: Prisma.sql`(o."payment_status" = 'PARTIALLY_REFUNDED' OR (o."payment_status" = 'PAID' AND o."status" = 'PARTIALLY_REFUNDED'))`,
+  REFUNDED: Prisma.sql`(o."payment_status" = 'REFUNDED' OR (o."payment_status" = 'PAID' AND o."status" = 'REFUNDED'))`,
+}
+
 export async function listOrders(filter: ListOrdersFilter): Promise<{ orders: ShpOrder[]; total: number }> {
   const page = Math.max(1, Math.floor(Number(filter.page)) || 1)
   const perPage = Math.min(200, Math.max(1, Math.floor(Number(filter.perPage)) || 25))
@@ -671,7 +814,9 @@ export async function listOrders(filter: ListOrdersFilter): Promise<{ orders: Sh
   const conditions: Prisma.Sql[] = []
   if (filter.status) conditions.push(Prisma.sql`o."status" = ${filter.status}`)
   if (filter.paymentStatus === 'UNPAID') conditions.push(UNPAID_SQL)
-  else if (filter.paymentStatus) conditions.push(Prisma.sql`o."payment_status" = ${filter.paymentStatus}`)
+  else if (filter.paymentStatus) {
+    conditions.push(PAYMENT_FILTER_SQL[filter.paymentStatus] ?? Prisma.sql`o."payment_status" = ${filter.paymentStatus}`)
+  }
   if (filter.openOnly) conditions.push(OPEN_ONLY_SQL)
   // Company is searched as well as the person's name: on a trade shop the name
   // on the order is whoever in the office typed it, and "Acme" is what the
@@ -695,7 +840,7 @@ export async function listOrders(filter: ListOrdersFilter): Promise<{ orders: Sh
   const orderBy = filter.sort
     ? SORT_CLAUSE[filter.sort]
     : filter.preOrder
-      ? Prisma.sql`ORDER BY (SELECT MIN("pre_order_dispatch_date") FROM "shp_order_items" WHERE "order_id" = o."id") ASC NULLS LAST`
+      ? Prisma.sql`ORDER BY (SELECT MIN("pre_order_dispatch_date") FROM "shp_order_items" WHERE "order_id" = o."id") ASC NULLS LAST, o."created_at" DESC, o."id" DESC`
       : SORT_CLAUSE.newest
 
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
@@ -734,10 +879,24 @@ export type OrderRowMetrics = {
 // Orders nothing is still due on, whatever their parcels say. A completed order
 // with a parcel the courier never confirmed is done with all the same, and a
 // date hanging off it would read as a van still owed.
+//
+// PARTIALLY_REFUNDED is left out on purpose. A part refund is routinely taken
+// on an order whose other lines are still to go out - two chairs of five called
+// off before dispatch - and those lines' due dates are exactly what the list is
+// for. One with nothing left to send is dateless already: every line's
+// outstanding count is nought and nextDueDate skips it.
 const SETTLED_ORDER_STATUSES = ['COMPLETED', 'CANCELLED', 'REFUNDED']
 
-export async function getOrderRowMetrics(orderIds: string[]): Promise<Record<string, OrderRowMetrics>> {
+export async function getOrderRowMetrics(
+  orderIds: string[],
+  // `dueDates: false` is for a caller that never shows nextDeliveryDate - the
+  // CSV export, thousands of orders at a time. It skips the open-lines read and
+  // every shop.order-line-due-date provider, which is most of the cost of a big
+  // batch, and nextDeliveryDate comes back null. Everything else is unchanged.
+  opts?: { dueDates?: boolean },
+): Promise<Record<string, OrderRowMetrics>> {
   if (orderIds.length === 0) return {}
+  const withDueDates = opts?.dueDates !== false
   const [rows, parcels, openLines] = await Promise.all([
     prisma.$queryRaw<Array<{
       order_id: string
@@ -783,7 +942,7 @@ export async function getOrderRowMetrics(orderIds: string[]): Promise<Record<str
     // The lines of orders still in progress, with what each still has to send
     // and its snapshot, for the providers to read their promises back out of.
     // Settled orders are left out here, which is what keeps them dateless.
-    prisma.$queryRaw<Array<{
+    withDueDates ? prisma.$queryRaw<Array<{
       item_id: string
       order_id: string
       outstanding: number
@@ -803,7 +962,7 @@ export async function getOrderRowMetrics(orderIds: string[]): Promise<Record<str
       ) sent ON sent."order_item_id" = oi."id"
       WHERE oi."order_id" IN (${Prisma.join(orderIds)})
         AND o."status" NOT IN (${Prisma.join(SETTLED_ORDER_STATUSES)})
-    `,
+    ` : Promise.resolve([]),
   ])
 
   const dueByItem = await resolveOrderLineDueDates(openLines.map((l) => ({
@@ -872,8 +1031,9 @@ export async function getOrdersOverview(): Promise<OrdersOverview> {
   }>>`
     SELECT
       COUNT(*) FILTER (WHERE ${UNPAID_SQL} AND ${OPEN_ONLY_SQL})::int AS awaiting_payment,
+      -- The "Paid" filter itself, so the tile and the list it opens agree.
       COUNT(*) FILTER (
-        WHERE o."payment_status" = 'PAID'
+        WHERE ${PAID_FILTER_SQL}
           AND ${OPEN_ONLY_SQL}
           AND ${FULFILMENT_CONDITION.UNDISPATCHED}
       )::int AS to_dispatch,
@@ -886,13 +1046,15 @@ export async function getOrdersOverview(): Promise<OrdersOverview> {
       )::int AS pre_orders_outstanding,
       -- Money follows payment_status, counts follow kind (migration 052): a
       -- part sent out free is settled the moment it is raised, and without this
-      -- every warranty job would read as another sale on the dashboard.
+      -- every warranty job would read as another sale on the dashboard. Every
+      -- paid state counts, refunded ones included, exactly as it did while a
+      -- refund left payment_status at PAID (lib/payment-taken.ts).
       COUNT(*) FILTER (
-        WHERE o."payment_status" = 'PAID' AND o."paid_at" >= NOW() - INTERVAL '30 days'
+        WHERE o."payment_status" IN ('PAID', 'PARTIALLY_REFUNDED', 'REFUNDED') AND o."paid_at" >= NOW() - INTERVAL '30 days'
           AND o."kind" = 'SALE'
       )::int AS paid_orders_30d,
       COALESCE(SUM(o."total") FILTER (
-        WHERE o."payment_status" = 'PAID' AND o."paid_at" >= NOW() - INTERVAL '30 days'
+        WHERE o."payment_status" IN ('PAID', 'PARTIALLY_REFUNDED', 'REFUNDED') AND o."paid_at" >= NOW() - INTERVAL '30 days'
       ), 0) AS revenue_30d
     FROM "shp_orders" o
   `
@@ -913,12 +1075,14 @@ export type CustomerSummary = { orderCount: number; paidOrderCount: number; tota
 
 export async function getCustomerSummary(email: string): Promise<CustomerSummary> {
   const rows = await prisma.$queryRaw<Array<{ order_count: number; paid_order_count: number; total_spent: { toString(): string }; first_order_at: Date | null }>>`
+    -- Every paid state, refunded ones included, as while a refund left
+    -- payment_status at PAID (lib/payment-taken.ts).
     SELECT COUNT(*) FILTER (WHERE "kind" = 'SALE')::int AS order_count,
-           COUNT(*) FILTER (WHERE "payment_status" = 'PAID' AND "kind" = 'SALE')::int AS paid_order_count,
+           COUNT(*) FILTER (WHERE "payment_status" IN ('PAID', 'PARTIALLY_REFUNDED', 'REFUNDED') AND "kind" = 'SALE')::int AS paid_order_count,
            -- Not filtered on kind, and deliberately: a replacement the customer
            -- was charged for is money they have spent with this shop. A free
            -- one adds nothing to a sum, so it needs no exception here.
-           COALESCE(SUM("total") FILTER (WHERE "payment_status" = 'PAID'), 0) AS total_spent,
+           COALESCE(SUM("total") FILTER (WHERE "payment_status" IN ('PAID', 'PARTIALLY_REFUNDED', 'REFUNDED')), 0) AS total_spent,
            MIN("created_at") FILTER (WHERE "kind" = 'SALE') AS first_order_at
     FROM "shp_orders" WHERE lower("customer_email") = lower(${email})
   `
@@ -971,10 +1135,13 @@ export async function claimGuestOrdersForMember(memberId: string, email: string)
   return result
 }
 
+// Every paid state counts, refunded ones included - a refunded order was still
+// placed and paid for, and it counted as one while a refund left
+// payment_status at PAID (lib/payment-taken.ts).
 export async function countPriorOrdersByEmail(email: string, excludeOrderId?: string): Promise<number> {
   const rows = await prisma.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*)::bigint AS count FROM "shp_orders"
-    WHERE lower("customer_email") = lower(${email}) AND "payment_status" = 'PAID'
+    WHERE lower("customer_email") = lower(${email}) AND "payment_status" IN ('PAID', 'PARTIALLY_REFUNDED', 'REFUNDED')
       AND "id" != ${excludeOrderId ?? ''}
   `
   return Number(rows[0]?.count ?? 0)
@@ -985,11 +1152,13 @@ export async function countPriorOrdersByEmail(email: string, excludeOrderId?: st
 // counts every order regardless of coupon, which both over- and under-counts).
 // Keyed on the resolved coupon_id, never the raw coupon_code: a code is only
 // stored on an order when it genuinely resolved to a coupon, and the id is
-// immune to a coupon later being renamed.
+// immune to a coupon later being renamed. A use that was refunded afterwards is
+// still a use, as it was while a refund left payment_status at PAID - the same
+// rule the paid-order check in lib/order-fulfillment.ts counts by.
 export async function countPriorCouponOrdersByEmail(email: string, couponId: string): Promise<number> {
   const rows = await prisma.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*)::bigint AS count FROM "shp_orders"
-    WHERE lower("customer_email") = lower(${email}) AND "payment_status" = 'PAID'
+    WHERE lower("customer_email") = lower(${email}) AND "payment_status" IN ('PAID', 'PARTIALLY_REFUNDED', 'REFUNDED')
       AND "coupon_id" = ${couponId}
   `
   return Number(rows[0]?.count ?? 0)

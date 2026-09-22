@@ -4,23 +4,20 @@ import { useState } from 'react'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { refundNoticeText, type ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
+import { paidPerUnit } from '@/modules/shop/lib/request-refund-lines'
 
 type OrderItem = { id: string; productName: string; quantity: number; unitPrice: string; total: string; taxAmount: string; refundedQty: number; isPreOrder: boolean }
 
-// What one unit of a line actually cost the customer.
-//
-// On an EXCLUSIVE shop `unitPrice` and `total` are net and the tax sits beside
-// them, so refunding at the unit price hands back four fifths of the money and
-// keeps the VAT. The refund is the money going back, not the net sale being
-// unwound, so it is the gross figure every time.
-function grossPerUnit(item: OrderItem, taxOnTop: boolean): number {
-  const gross = Number(item.total) + (taxOnTop ? Number(item.taxAmount) : 0)
-  return item.quantity > 0 ? gross / item.quantity : Number(item.unitPrice)
-}
+// What one unit of a line actually cost the customer - VAT included on an
+// EXCLUSIVE shop, and less its share of any order-level discount. The same
+// figure approving a customer's cancellation sends back (paidPerUnit in
+// lib/request-refund-lines.ts has the reasoning). Without the discount, a full
+// refund of a discounted order asked for more than the order took, and the
+// refund caps turned the whole thing down.
 
 // Per-item refund modal: quantity per item pre-filled against the remaining
 // refundable amount, a reason, and provider-aware copy for manual methods.
-export function RefundModal({ orderId, items, paymentMethod, refundNotice, taxMode, onClose, onDone }: {
+export function RefundModal({ orderId, items, paymentMethod, refundNotice, taxMode, subtotal, discountAmount, refundableDelivery, onClose, onDone }: {
   orderId: string
   items: OrderItem[]
   paymentMethod: string
@@ -30,10 +27,16 @@ export function RefundModal({ orderId, items, paymentMethod, refundNotice, taxMo
   // guessing, which is the whole point of the change.
   refundNotice?: ShpRefundNoticeSource
   taxMode: 'INCLUSIVE' | 'EXCLUSIVE'
+  /** The order's goods subtotal and discount, which decide each line's share. */
+  subtotal: string
+  discountAmount: string
+  /** How much of the delivery charge is still the customer's to be given back,
+   *  tax included. Zero where there was none or it has all gone back. */
+  refundableDelivery: number
   onClose: () => void
   onDone: () => void
 }) {
-  const taxOnTop = taxMode === 'EXCLUSIVE'
+  const perUnit = (item: OrderItem) => paidPerUnit(item, { taxMode, subtotal, discountAmount })
   const currencySymbol = useCurrencySymbol()
   const notice = refundNoticeText(paymentMethod, refundNotice ?? null)
   // A refund somebody has to send themselves is the one worth reading, so it
@@ -46,14 +49,24 @@ export function RefundModal({ orderId, items, paymentMethod, refundNotice, taxMo
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The delivery charge, all of what is left of it or none. A cancelled order
+  // is owed its delivery back; a single returned chair usually is not - so it
+  // is the owner's tick, never assumed.
+  const [withDelivery, setWithDelivery] = useState(false)
+  // A refund already made in the provider's own dashboard. The provider never
+  // says which items it was for, so this is how the owner tells the shop - and
+  // then the stock, the credit note and the books follow as for any refund,
+  // without asking the provider for the money a second time.
+  const [alreadyRefunded, setAlreadyRefunded] = useState(false)
 
   const selected = refundable
     .map((item) => ({ item, quantity: quantities[item.id] ?? 0 }))
     .filter((x) => x.quantity > 0)
-  const totalAmount = selected.reduce((sum, x) => sum + grossPerUnit(x.item, taxOnTop) * x.quantity, 0)
+  const deliveryAmount = withDelivery ? refundableDelivery : 0
+  const totalAmount = selected.reduce((sum, x) => sum + perUnit(x.item) * x.quantity, 0) + deliveryAmount
 
   async function submit() {
-    if (selected.length === 0) return
+    if (selected.length === 0 && !(deliveryAmount > 0)) return
     setSaving(true)
     setError(null)
     const res = await fetch(`/api/m/shop/admin/orders/${orderId}/refund`, {
@@ -63,8 +76,10 @@ export function RefundModal({ orderId, items, paymentMethod, refundNotice, taxMo
         items: selected.map((x) => ({
           orderItemId: x.item.id,
           quantity: x.quantity,
-          amount: Number((grossPerUnit(x.item, taxOnTop) * x.quantity).toFixed(2)),
+          amount: Number((perUnit(x.item) * x.quantity).toFixed(2)),
         })),
+        shippingAmount: deliveryAmount > 0 ? Number(deliveryAmount.toFixed(2)) : undefined,
+        alreadyRefunded: alreadyRefunded || undefined,
       }),
     })
     setSaving(false)
@@ -115,12 +130,29 @@ export function RefundModal({ orderId, items, paymentMethod, refundNotice, taxMo
               })}
             </tbody>
           </table>
+          {refundableDelivery > 0 && (
+            <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input type="checkbox" checked={withDelivery} onChange={(e) => setWithDelivery(e.target.checked)} />
+              Refund the delivery charge too ({formatMoney(refundableDelivery, currencySymbol)})
+            </label>
+          )}
+          {!isManualRefund && (
+            <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', fontSize: '0.875rem' }}>
+              <input type="checkbox" checked={alreadyRefunded} onChange={(e) => setAlreadyRefunded(e.target.checked)} style={{ marginTop: '0.2rem' }} />
+              <span>
+                Already refunded in {refundNotice?.label ?? 'the payment provider'}&rsquo;s own dashboard - just record it here.
+                <span style={{ display: 'block', color: 'var(--color-text-secondary)' }}>
+                  No money is sent. The items, stock and credit note follow as for any refund.
+                </span>
+              </span>
+            </label>
+          )}
           <label>Reason (optional)<textarea value={reason} onChange={(e) => setReason(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: 6, border: '1px solid var(--color-border)', marginTop: '0.25rem' }} /></label>
           <p style={{ fontWeight: 600 }}>Total refund: {formatMoney(totalAmount, currencySymbol)}</p>
         </div>
         <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
           <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn-primary" disabled={saving || selected.length === 0} onClick={submit}>{saving ? 'Refunding…' : 'Confirm refund'}</button>
+          <button type="button" className="btn btn-primary" disabled={saving || (selected.length === 0 && !(deliveryAmount > 0))} onClick={submit}>{saving ? 'Refunding…' : alreadyRefunded ? 'Record refund' : 'Confirm refund'}</button>
         </div>
       </div>
     </div>

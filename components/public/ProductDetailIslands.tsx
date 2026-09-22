@@ -34,6 +34,35 @@ function pct(offset: number, size: number): string {
   return `${Math.min(100, Math.max(0, (offset / size) * 100))}%`
 }
 
+// An <img> the server sent can fail before React has attached onError to it - a
+// missing picture's 404 usually comes back well before the page's scripts do -
+// and that error is never replayed. So each gallery picture is also checked the
+// moment it mounts: finished loading with no width is the failed case (the same
+// test core's MemberAvatar makes), confirmed with decode() so an SVG with no
+// size of its own is not mistaken for a broken one.
+function catchEarlyFailure(node: HTMLImageElement | null, onFail: () => void): void {
+  if (!node?.complete || node.naturalWidth > 0) return
+  node.decode().catch(onFail)
+}
+
+type ThumbAttempt = 'thumb' | 'original'
+
+// One picture in the thumbnail strip, reporting which copy it was drawing when
+// it failed so the gallery can step to the next.
+function GalleryThumbImg({ src, alt, onFail }: { src: { attempt: ThumbAttempt; url: string }; alt: string; onFail: (attempt: ThumbAttempt) => void }) {
+  return (
+    /* eslint-disable-next-line @next/next/no-img-element -- a media-library rendition url, drawn as the stage image beside it is; next/image would re-host it */
+    <img
+      ref={(node) => catchEarlyFailure(node, () => onFail(src.attempt))}
+      src={src.url}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      onError={() => onFail(src.attempt)}
+    />
+  )
+}
+
 // `zoom` is the shop-wide setting (shop settings > General > Product images).
 // Mouse: the magnifier follows the pointer while it's over the stage. Touch: a
 // tap magnifies at the tapped point and a drag then moves the magnified area
@@ -54,7 +83,34 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
   // when a plain image is showing. The provider id is part of it because two
   // modules could contribute items keyed the same way without knowing it.
   const [picked, setPicked] = useState<{ id: string; key: string } | null>(null)
+  // Pictures that would not load, by address, and how far down the fallbacks
+  // each has gone. A stale resized copy, a deleted file or a blocked address
+  // used to leave the browser's broken-picture icon on the product page. The
+  // stage steps back from the resized set to the original, then to a plain
+  // tile; a thumbnail from its 300px copy to the original, then to an empty
+  // button, which is still something to press.
+  const [stageFallback, setStageFallback] = useState<Record<string, 'original' | 'placeholder'>>({})
+  const [thumbFallback, setThumbFallback] = useState<Record<string, 'original' | 'hidden'>>({})
   const colClass = `spd-stage-col${thumbPosition === 'beside' ? ' beside' : ''}`
+
+  // Told which attempt failed, not just that something did, so a late or
+  // repeated report about an address already stepped past cannot skip a rung.
+  // The original failing is the end of the line wherever it was tried from -
+  // the magnifier asks for it directly.
+  function stageFailed(url: string, attempt: 'resized' | 'original') {
+    setStageFallback((s) => {
+      if (s[url] === 'placeholder') return s
+      if (attempt === 'original') return { ...s, [url]: 'placeholder' }
+      return s[url] ? s : { ...s, [url]: 'original' }
+    })
+  }
+  function thumbFailed(url: string, attempt: ThumbAttempt) {
+    setThumbFallback((s) => {
+      if (s[url] === 'hidden') return s
+      if (attempt === 'original') return { ...s, [url]: 'hidden' }
+      return s[url] ? s : { ...s, [url]: 'original' }
+    })
+  }
 
   // An empty gallery is still worth rendering when a module has contributed
   // something to it: a product whose only picture is a 3D model would otherwise
@@ -68,12 +124,18 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
   }
 
   const current = images[Math.min(active, images.length - 1)] ?? null
+  const currentFallback = current ? stageFallback[current.url] : undefined
   const activeExtra = picked ? extras.find((e) => e.id === picked.id) ?? null : null
   // Magnifying applies to shop's own image. A contributed stage owns its whole
   // box - a 3D viewer does its own zooming, with its own controls - so the
   // pointer must reach it untouched rather than through a transform of ours.
-  const magnified = Boolean(zoom) && !activeExtra && (hovering || tapped)
-  const zoomable = Boolean(zoom) && !activeExtra
+  // A plain tile standing in for a picture that would not load has nothing to
+  // magnify.
+  const zoomable = Boolean(zoom) && !activeExtra && currentFallback !== 'placeholder'
+  const magnified = zoomable && (hovering || tapped)
+  // Which copy of the picture the stage is asking for: the original while
+  // magnified (see below) or once the resized set has failed, else the set.
+  const stageAttempt = magnified || currentFallback === 'original' ? 'original' : 'resized'
 
   function track(e: ReactPointerEvent<HTMLDivElement>) {
     const box = e.currentTarget.getBoundingClientRect()
@@ -116,6 +178,9 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
       >
         {activeExtra && picked ? (
           <activeExtra.Stage payload={activeExtra.payload} itemKey={picked.key} activeProductId={null} />
+        ) : current && currentFallback === 'placeholder' ? (
+          // The stage's own tile, still named for anyone who cannot see it.
+          <div className="spd-stage-img" role="img" aria-label={current.alt || productName} />
         ) : current ? (
           /* The stage draws the picture at the size of the stage - about 630px on a
              desktop - rather than the 1,920px original, which was 81 KB to fill a
@@ -130,10 +195,12 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
              everyone who does not. */
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
+            ref={(node) => catchEarlyFailure(node, () => stageFailed(current.url, stageAttempt))}
             className="spd-stage-img"
-            {...(magnified
+            {...(stageAttempt === 'original'
               ? { src: current.url }
               : responsiveImg(current.url, '(max-width: 900px) 100vw, 640px', HALF_WIDTH_LADDER, resizing))}
+            onError={() => stageFailed(current.url, stageAttempt)}
             alt={current.alt || productName}
             // The one picture on a product page that is urgent. It is the page's
             // largest paint nearly every time, and without a priority a browser
@@ -190,14 +257,15 @@ export function ProductGallery({ images, productName, thumbPosition, zoom, extra
                   a 64px square, and handing it the original meant a product with
                   twenty photographs pulled twenty full-size studio shots down to
                   fill a strip the size of a postage stamp. Falls back to the
-                  original, which is heavier but never wrong. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={img.thumbUrl ?? img.url}
-                alt={img.alt || `${productName} thumbnail ${i + 1}`}
-                loading="lazy"
-                decoding="async"
-              />
+                  original, which is heavier but never wrong - and to it as
+                  well when the copy will not load. */}
+              {thumbFallback[img.url] !== 'hidden' && (
+                <GalleryThumbImg
+                  src={img.thumbUrl && !thumbFallback[img.url] ? { attempt: 'thumb', url: img.thumbUrl } : { attempt: 'original', url: img.url }}
+                  alt={img.alt || `${productName} thumbnail ${i + 1}`}
+                  onFail={(attempt) => thumbFailed(img.url, attempt)}
+                />
+              )}
             </button>
           ))}
         </GalleryThumbStrip>

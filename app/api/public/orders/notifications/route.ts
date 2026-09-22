@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getOrderByNumber } from '@/modules/shop/lib/db/orders'
-import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
 import { getClientIp } from '@/lib/auth/rate-limit'
 import { mayOpenReceipt } from '@/modules/shop/lib/order-viewer'
@@ -30,10 +29,12 @@ const Body = z.object({
   phone: z.string().optional(),
 })
 
+//
+// Deliberately NOT behind the shop gate, like the order status route beside it:
+// how a customer hears about an order already placed is post-purchase, and
+// stays theirs to change while the shop is closed (see getShopGate in
+// lib/access.ts).
 export async function POST(request: NextRequest) {
-  const closed = await shopClosedResponse()
-  if (closed) return closed
-
   const ip = await getClientIp()
   if (!checkInMemoryRateLimit(`order-notifications:${ip}`, 20, 15 * 60 * 1000)) {
     return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })

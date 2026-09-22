@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { errorResponse } from '@/lib/utils'
 import { getMemberFromCookie } from '@/lib/members/session'
+import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
 import { getMemberCart, saveMemberCart, MEMBER_CART_MAX_LINES } from '@/modules/shop/lib/db/member-cart'
 
 // The signed-in shopper's basket, so one started on a phone is waiting on the
@@ -46,6 +47,16 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   const member = await getMemberFromCookie()
   if (!member) return errorResponse('Not authenticated', 401)
+
+  // The guest basket's ceiling, per member rather than per address: a session
+  // is the thing that could be scripted here, and one lifted from a browser
+  // travels to whatever address the script runs on. Generous, because the
+  // browser saves on every basket change - it stops a loop writing this row
+  // hundreds of times a minute, not a shopper. The browser leaves the basket
+  // alone on a 429 and saves it again on the next change.
+  if (!checkInMemoryRateLimit(`shop_member_cart_store:${member.id}`, 120, 60_000)) {
+    return NextResponse.json({ error: 'Too many requests - please wait a moment and try again.' }, { status: 429 })
+  }
 
   let raw: unknown
   try {

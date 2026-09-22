@@ -185,7 +185,7 @@ export async function ShopProductPageView({ params, searchParams }: Props) {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 1.5rem 2rem' }}>
       {gate.staffPreview && <ShopStaffPreviewBanner />}
-      {draftPreview && <ShopDraftPreviewBanner />}
+      {draftPreview && <ShopDraftPreviewBanner sparePart={product.partsOnly && product.status === 'ACTIVE'} />}
       {stock.staffPreview && <ShopStockHiddenBanner />}
       <CactusRender config={getModuleLayoutPuckRscConfig('shopProduct') as any} data={data as Data} />
     </div>

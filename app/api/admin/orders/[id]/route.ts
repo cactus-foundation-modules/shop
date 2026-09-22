@@ -8,7 +8,8 @@ import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOr
 import { listRefundsForOrder, listRefundItemsForOrder } from '@/modules/shop/lib/db/refunds'
 import { listDownloadsForOrder } from '@/modules/shop/lib/db/digital'
 import { listRequestsForOrder } from '@/modules/shop/lib/db/order-requests'
-import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
+import { refundRouteForOrder } from '@/modules/shop/lib/payments/order-refund-route'
+import { refundableDelivery as deliveryLeftToRefund } from '@/modules/shop/lib/refund-delivery'
 import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
 
 // Everything the order screen shows in one call, apart from dispatch progress -
@@ -93,12 +94,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   // defaults to 'provider', exactly as the contract says. Null where no provider
   // is registered for the method at all - the contributing module has been
   // removed, say - and the modal then promises nothing in either direction.
-  const provider = getPaymentProvider(order.paymentMethod)
+  const provider = refundRouteForOrder(order)
   const refundNotice: ShpRefundNoticeSource = provider
     ? { mode: provider.refundMode ?? 'provider', label: provider.label }
     : null
 
-  return NextResponse.json({ order, items, notes, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, deliveryInstructionsLabel: deliveryInstructionsLabelText, refundNotice, replacements, replacementLines, parentOrder, requests })
+  // How much of the delivery charge the refund box may still offer, tax and all.
+  const refundableDelivery = deliveryLeftToRefund(order, items, refunds)
+
+  return NextResponse.json({ order, items, notes, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, deliveryInstructionsLabel: deliveryInstructionsLabelText, refundNotice, refundableDelivery, replacements, replacementLines, parentOrder, requests })
 }
 
 const PatchBody = z.object({

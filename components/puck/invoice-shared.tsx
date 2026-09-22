@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
-import { googleFontHrefForFamily } from '@/lib/design/tokens'
+import { cssValue, googleFontHrefForFamily } from '@/lib/design/tokens'
 import { SiteColourField, SiteFontField } from '@/lib/puck/fields/registry'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { INVOICE_DOC_CSS } from '@/modules/shop/components/public/invoice-doc-css'
@@ -34,8 +34,24 @@ export function Style() {
 // against anything inherited).
 // ---------------------------------------------------------------------------
 
+/** An owner's colour or font family, cut down to what a CSS value can honestly
+ *  hold, or undefined when nothing is left of it.
+ *
+ *  These fields take typed text - a hex, `var(--color-2)`, `light-dark(…)`, a
+ *  font stack - and the Document style block writes them into a <style> element,
+ *  where `red} body{display:none}` or `</style><script>` would be read as markup
+ *  rather than as a colour. Inline, a `;` would smuggle in a second property,
+ *  and a url() would have the PDF printer fetch whatever it pointed at. So every
+ *  one goes through core's cssValue, the guard the site's own design tokens use:
+ *  it keeps the characters a value needs and drops `< > { } ; : @ \` and any
+ *  url() or expression(). A layout also arrives from a restored backup or an
+ *  imported template, and neither of those is a trusted author. */
+export function safeCssValue(raw: string | undefined | null): string | undefined {
+  return cssValue(raw ?? undefined) || undefined
+}
+
 export function fontStyle(props: { fontFamily?: string }): CSSProperties | undefined {
-  const family = props.fontFamily?.trim()
+  const family = safeCssValue(props.fontFamily)
   return family ? { fontFamily: family } : undefined
 }
 

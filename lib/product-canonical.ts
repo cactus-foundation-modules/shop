@@ -35,6 +35,10 @@ type ExtensionPointEntry = { point: string; id: string }
 
 const POINT = 'shop.product-canonical-query'
 
+// A provider that throws is skipped, the same as shop.product-selected-variation
+// does: this runs inside generateMetadata, so an uncaught failure here took the
+// whole product page down with it, where the bare product URL - the canonical
+// every shop had before this point existed - was a perfectly good answer.
 export async function resolveProductCanonicalQuery(product: ShpProduct): Promise<string | null> {
   const providers = moduleExtensionPointComponents[POINT] ?? {}
   if (Object.keys(providers).length === 0) return null
@@ -48,8 +52,12 @@ export async function resolveProductCanonicalQuery(product: ShpProduct): Promise
       if (entry.point !== POINT) continue
       const provider = providers[entry.id] as ShopProductCanonicalQueryProvider | undefined
       if (!provider) continue
-      const resolved = await provider.resolve(product)
-      if (resolved) return resolved
+      try {
+        const resolved = await provider.resolve(product)
+        if (resolved) return resolved
+      } catch (error) {
+        console.error(`[shop] canonical-query provider "${entry.id}" failed:`, error)
+      }
     }
   }
   return null

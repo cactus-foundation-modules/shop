@@ -87,6 +87,8 @@ type OrderDetail = {
   // server where the provider registry lives. Optional so a response from an
   // older deployment still renders.
   refundNotice?: ShpRefundNoticeSource
+  /** Delivery still refundable, tax included. Optional for an older response. */
+  refundableDelivery?: number
   /** Parts sent out to put this order right. Empty on almost every order. */
   replacements?: Array<{ id: string; orderNumber: string; status: string; total: string; createdAt: string }>
   /** Those parts, line by line, each naming the line of THIS order it was sent
@@ -438,7 +440,9 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
       body: JSON.stringify({ content: note.trim() }),
     })
     setBusy(false)
-    if (!res.ok) { await alert('That note could not be saved.'); return }
+    // The route's own words where it has some - "too long" is worth saying as
+    // such, since the note is still in the box to be trimmed.
+    if (!res.ok) { await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That note could not be saved.'); return }
     setNote('')
     refresh()
   }
@@ -584,7 +588,8 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   const requests = data.requests ?? []
   const waitingRequests = requests.filter((r) => r.status === 'PENDING').length
   const replacementNumbers = new Map((data.replacements ?? []).map((r) => [r.id, r.orderNumber]))
-  const hasRefundableItems = data.items.some((i) => i.refundedQty < i.quantity)
+  // Something left to hand back: a line not yet refunded, or the delivery charge.
+  const hasRefundableItems = data.items.some((i) => i.refundedQty < i.quantity) || (data.refundableDelivery ?? 0) > 0
   const hasOutstandingItems = (dispatch?.summary.lines ?? []).some((l) => l.outstandingQty > 0)
   const hold = dispatch?.preOrderHold
   const totalUnits = data.items.reduce((sum, i) => sum + i.quantity, 0)
@@ -1457,6 +1462,9 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
           paymentMethod={order.paymentMethod}
           refundNotice={data.refundNotice}
           taxMode={order.taxMode === 'INCLUSIVE' ? 'INCLUSIVE' : 'EXCLUSIVE'}
+          subtotal={order.subtotal}
+          discountAmount={order.discountAmount}
+          refundableDelivery={data.refundableDelivery ?? 0}
           onClose={() => setRefundOpen(false)}
           onDone={() => { setRefundOpen(false); refresh() }}
         />

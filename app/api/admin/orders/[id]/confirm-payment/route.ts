@@ -3,6 +3,7 @@ import { requireShopUser } from '@/modules/shop/lib/access'
 import { getOrderById, confirmManualPayment, restoreOriginalPaymentMethod } from '@/modules/shop/lib/db/orders'
 import { fulfillPaidOrder } from '@/modules/shop/lib/order-fulfillment'
 import { settlementMethod } from '@/modules/shop/lib/order-pay-online'
+import { paymentTaken } from '@/modules/shop/lib/payment-taken'
 
 // Manually confirm bank transfer / cash payment once it clears (spec 8.3).
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -26,7 +27,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (placed !== 'BANK_TRANSFER' && placed !== 'CASH') {
     return NextResponse.json({ error: 'Only bank transfer and cash payments are confirmed manually' }, { status: 400 })
   }
-  if (order.paymentStatus === 'PAID') return NextResponse.json({ success: true })
+  // Already paid - and a refunded order was paid too (lib/payment-taken.ts), so
+  // it must not be marked paid a second time or have its method rewritten.
+  if (paymentTaken(order.paymentStatus)) return NextResponse.json({ success: true })
 
   // Gate fulfilment on the atomic flip so two overlapping confirm clicks can't
   // both run the exactly-once side-effects (stock/coupon/downloads/emails).

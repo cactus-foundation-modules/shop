@@ -5,6 +5,7 @@ import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { createProductQuestion } from '@/modules/shop/lib/db/product-questions'
 import { getProductById } from '@/modules/shop/lib/db/products'
+import { getProductStorefrontReachability } from '@/modules/shop/lib/product-page-gate'
 import { syncProductQuestionsNotification } from '@/modules/shop/lib/product-question-notify'
 import { sendProductQuestionNotice } from '@/modules/shop/lib/product-question-emails'
 import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
@@ -53,8 +54,14 @@ export async function POST(request: NextRequest) {
   // bot it was caught only teaches whoever wrote it to stop filling the field.
   if (parsed.data.website) return NextResponse.json({ submitted: true })
 
+  // Only a product whose page this visitor could have asked from - the page's
+  // own test (lib/product-page-gate.ts), so staff previewing a draft can still
+  // try the form. A question against a page nobody can reach is one nobody can
+  // be shown the answer to.
   const product = await getProductById(parsed.data.productId)
-  if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
+  if (!product || !(await getProductStorefrontReachability(product)).reachable) {
+    return NextResponse.json({ error: 'Product not found' }, { status: 404 })
+  }
 
   const member = await getMemberFromCookie().catch(() => null)
   const name = parsed.data.name?.trim() || null

@@ -18,6 +18,7 @@ import {
   type OrderSizeDeductionState,
 } from '@/modules/shop/lib/order-size-deduction'
 import { isOnSale } from '@/modules/shop/lib/pricing'
+import { formatMoney } from '@/modules/shop/lib/money'
 import type { CartLine } from '@/modules/shop/components/public/cart'
 import type { LineMeta, ShpProduct } from '@/modules/shop/lib/types'
 
@@ -107,10 +108,18 @@ function attributeCharges(
   return scaled.length ? scaled : null
 }
 
+export type ResolveCartLinesOptions = {
+  // Staff entering an order by hand may put a spare part on it - selling one
+  // over the phone is an ordinary sale. Every basket a shopper built leaves
+  // this off, which is what keeps a part out of the shop entirely, as the
+  // "This is a spare part" switch promises.
+  includeParts?: boolean
+}
+
 // Re-checks stock/price/status for every cart line - the only source of
 // truth the checkout flow trusts (spec 8.1 POST /cart/validate).
-export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLine[]> {
-  return (await resolveCartLinesWithDeduction(cart)).lines
+export async function resolveCartLines(cart: CartLine[], opts?: ResolveCartLinesOptions): Promise<ResolvedCartLine[]> {
+  return (await resolveCartLinesWithDeduction(cart, opts)).lines
 }
 
 /**
@@ -123,7 +132,7 @@ export async function resolveCartLines(cart: CartLine[]): Promise<ResolvedCartLi
  * again. Anything wanting the states has to get them from the one pass that
  * produced the lines, which is what this is for.
  */
-export async function resolveCartLinesWithDeduction(cart: CartLine[]): Promise<{
+export async function resolveCartLinesWithDeduction(cart: CartLine[], opts?: ResolveCartLinesOptions): Promise<{
   lines: ResolvedCartLine[]
   orderSizeDeduction: OrderSizeDeductionState[]
 }> {
@@ -154,18 +163,28 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[]): Promise<{
     await Promise.all(prefetchers.map((prefetch) => prefetch(cartProducts, prefetchLines)))
   }
 
+  // How many of each product the whole basket asks for. The same product can sit
+  // on two lines - two sets of options, a personalised one beside a plain one -
+  // and stock is per product, not per line: checked line by line, two lines of
+  // three against five in stock each passed, and the shortfall only surfaced
+  // once both had been paid for.
+  const wantedByProduct = new Map<string, number>()
+  for (const line of cart) wantedByProduct.set(line.productId, (wantedByProduct.get(line.productId) ?? 0) + line.quantity)
+
   // Resolve every line concurrently. Each line is now an independent set of cache
   // reads (product from the batch map + any cart-line resolvers reading their
   // warmed caches); walking the cart sequentially multiplied that by the line
   // count and made a full cart take seconds. Order is preserved (Promise.all
   // keeps input order); a skipped line returns null and is filtered out, exactly
-  // as the old `continue` dropped it.
+  // as the old `continue` dropped it. What this asks of every cart-line resolver
+  // is written down on CartLineResolver in lib/line-meta.ts.
   const resolved = await Promise.all(cart.map(async (line): Promise<PoolingLine | null> => {
     const product = products.get(line.productId)
     if (!product || product.status !== 'ACTIVE') return null
 
     let available = true
     let availabilityReason: string | undefined
+    const wanted = wantedByProduct.get(line.productId) ?? line.quantity
     if (product.trackInventory) {
       const stock = product.stockCount ?? 0
       if (stock <= 0) {
@@ -175,7 +194,7 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[]): Promise<{
           available = false
           availabilityReason = 'Out of stock'
         }
-      } else if (line.quantity > stock && product.outOfStockBehaviour === 'BLOCK' && !product.isPreOrder) {
+      } else if (wanted > stock && product.outOfStockBehaviour === 'BLOCK' && !product.isPreOrder) {
         available = false
         availabilityReason = `Only ${stock} left in stock`
       }
@@ -183,7 +202,7 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[]): Promise<{
     if (
       product.isPreOrder &&
       product.preOrderMaxQuantity != null &&
-      product.preOrderCount + line.quantity > product.preOrderMaxQuantity
+      product.preOrderCount + wanted > product.preOrderMaxQuantity
     ) {
       available = false
       availabilityReason = 'Pre-order is no longer available'
@@ -197,6 +216,15 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[]): Promise<{
     if (!metaResolution.valid) {
       available = false
       availabilityReason = metaResolution.reason ?? 'Please check the options on this item'
+    }
+    // A spare part never reaches a basket through the shop - it has no grid,
+    // no search result and no page - so one arriving here came by a saved link
+    // or a hand-built request. Refused out loud rather than dropped, so the
+    // shopper sees which line it was instead of a basket that quietly shrank.
+    // Last, so this is the reason given whatever else is wrong with the line.
+    if (product.partsOnly && !opts?.includeParts) {
+      available = false
+      availabilityReason = 'No longer available'
     }
 
     // The minimum this line answers to: its own product row, or the resolver's
@@ -437,6 +465,22 @@ export type DiscountResolution = {
 
 // Coupon (explicit) + automatic discounts (priority order) - free shipping
 // thresholds apply after coupon discounts (spec 19).
+//
+// Two kinds of threshold, one rule each, and the stacking tests
+// (lib/discount-stacking.test.ts) pin both:
+//
+// - A MINIMUM ORDER VALUE is the gate to a discount, so it reads the basket
+//   before that discount comes off - measured after it, "£10 off orders over
+//   £50" could never be used on a £55 basket. It does read every discount taken
+//   before it. The coupon goes first, so its minimum reads the whole goods
+//   subtotal; each automatic rule then reads what the coupon and any
+//   higher-priority rule left. Same rule for both, applied in the one order.
+// - A FREE-SHIPPING THRESHOLD reads what the goods cost once the discounts are
+//   off, which is what a shipping rate's own "free over" figure reads in
+//   resolveOrderTotals, so "free delivery over £100" means the same thing
+//   wherever an owner sets it. It used to read the undiscounted subtotal, so a
+//   coupon could take a £110 basket to £80 and still collect free delivery
+//   "over £100".
 export async function resolveDiscounts(subtotal: number, couponCode: string | null, customerEmail: string | null): Promise<DiscountResolution> {
   let discountAmount = 0
   let freeShipping = false
@@ -451,7 +495,8 @@ export async function resolveDiscounts(subtotal: number, couponCode: string | nu
     if (coupon.expiresAt && coupon.expiresAt < now) return { discountAmount: 0, freeShipping: false, couponId: null, couponCode: null, error: 'Coupon has expired' }
     if (coupon.usageLimit != null && coupon.usageCount >= coupon.usageLimit) return { discountAmount: 0, freeShipping: false, couponId: null, couponCode: null, error: 'Coupon usage limit reached' }
     if (coupon.minimumOrderValue != null && subtotal < Number(coupon.minimumOrderValue)) {
-      return { discountAmount: 0, freeShipping: false, couponId: null, couponCode: null, error: `Minimum order value for this coupon is ${coupon.minimumOrderValue}` }
+      const { currencySymbol } = await getShopConfigCached()
+      return { discountAmount: 0, freeShipping: false, couponId: null, couponCode: null, error: `Minimum order value for this coupon is ${formatMoney(coupon.minimumOrderValue, currencySymbol)}` }
     }
     // Q14: per-customer limit enforced by prior PAID orders BY THIS EMAIL THAT
     // USED THIS COUPON - not every order the customer has ever placed.
@@ -470,18 +515,36 @@ export async function resolveDiscounts(subtotal: number, couponCode: string | nu
   // Track the remaining (post-discount) subtotal as we go so each stacked
   // discount only bites into what's actually left - a FIXED_AMOUNT discount
   // must never exceed the remainder, and later discounts see the reduced base.
+  // The comparisons below round the remainder to the penny first, so a basket
+  // that comes to exactly £100.00 once a discount is off is not refused a £100
+  // threshold over a floating-point crumb (128.01 - 28.01 is 99.99999999999999).
   let remainingSubtotal = Math.max(subtotal - discountAmount, 0)
   const autoDiscounts = await listAutomaticDiscounts(true)
+  // Free-delivery thresholds are judged once every discount is off, not at the
+  // rule's own place in the priority order: a lower-priority "10% off" coming
+  // after it still takes the goods under the line, and a delivery rate's own
+  // "free over" figure reads the final total too.
+  const freeShippingThresholds: number[] = []
   for (const disc of autoDiscounts) {
-    if (disc.minimumOrderValue != null && remainingSubtotal < Number(disc.minimumOrderValue)) continue
+    if (disc.minimumOrderValue != null && round2(remainingSubtotal) < Number(disc.minimumOrderValue)) continue
+    // Only a free-shipping rule has a threshold the owner can see: the form
+    // offers the box on that type alone, but keeps whatever was typed in it when
+    // a rule is switched to another type. Read off any rule, that hidden figure
+    // quietly gave "10% off" free delivery as well.
+    const threshold = disc.type === 'FREE_SHIPPING' && disc.freeShippingThreshold != null ? Number(disc.freeShippingThreshold) : null
     let applied = 0
     if (disc.type === 'PERCENTAGE') applied = remainingSubtotal * (Number(disc.value ?? 0) / 100)
     else if (disc.type === 'FIXED_AMOUNT') applied = Math.min(Number(disc.value ?? 0), remainingSubtotal)
-    else if (disc.type === 'FREE_SHIPPING') freeShipping = true
+    // A free-shipping rule with a threshold waits for it. It used to hand out
+    // free shipping the moment it was considered, whatever the threshold said -
+    // and the admin form only offers the threshold on a free-shipping rule, so
+    // "free delivery over £100" was free delivery on every order.
+    else if (disc.type === 'FREE_SHIPPING' && threshold == null) freeShipping = true
     discountAmount += applied
     remainingSubtotal = Math.max(remainingSubtotal - applied, 0)
-    if (disc.freeShippingThreshold != null && subtotal >= Number(disc.freeShippingThreshold)) freeShipping = true
+    if (threshold != null) freeShippingThresholds.push(threshold)
   }
+  if (freeShippingThresholds.some((threshold) => round2(remainingSubtotal) >= threshold)) freeShipping = true
 
   return { discountAmount: Math.min(round2(discountAmount), subtotal), freeShipping, couponId, couponCode: resolvedCode }
 }

@@ -13,6 +13,9 @@ import {
   getShipmentsForOrder,
   updateShipmentDetails,
 } from '@/modules/shop/lib/db/shipments'
+import { listRequestsForOrder } from '@/modules/shop/lib/db/order-requests'
+import { pendingRequestUnits } from '@/modules/shop/lib/order-requests'
+import { ORDER_LINE_BATCH_MAX, ORDER_LINE_BATCH_MAX_MESSAGE } from '@/modules/shop/lib/order-line-limits'
 import { sendShipmentDispatchedEmail } from '@/modules/shop/lib/shipment-email'
 import { hasFollowableTracking, sendTrackingAddedEmail } from '@/modules/shop/lib/tracking-added-email'
 import { sendDeliverySlotEmail } from '@/modules/shop/lib/delivery-slot-email'
@@ -22,6 +25,24 @@ import type { ShpConfig } from '@/modules/shop/lib/config'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 import type { ShpOrderItem, ShpOrderStatus, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
+// Ceilings on what a parcel record may carry. Every one of these is stored on
+// the shipment, sent back on every read of the order and, bar the notes, put in
+// front of the customer by the dispatch email - so a pasted page of text is
+// refused here rather than printed there. Generous against anything real: the
+// longest carrier number is a few dozen characters, and several for one
+// consignment still fit.
+const TRACKING_NUMBER_MAX_LENGTH = 200
+const TRACKING_URL_MAX_LENGTH = 2000
+const SHIPMENT_NOTES_MAX_LENGTH = 2000
+
+const TrackingNumber = z
+  .string()
+  .max(TRACKING_NUMBER_MAX_LENGTH, `The tracking number is too long - ${TRACKING_NUMBER_MAX_LENGTH} characters at most.`)
+
+const ShipmentNotes = z
+  .string()
+  .max(SHIPMENT_NOTES_MAX_LENGTH, `The parcel notes are too long - keep them under ${SHIPMENT_NOTES_MAX_LENGTH} characters.`)
+
 // A tracking link is offered to the customer as something to click, so only a
 // web address is accepted: anything else (a javascript: URL above all) would be
 // put in front of a shopper by the dispatch email. Blank comes through as null
@@ -29,6 +50,7 @@ import type { ShpOrderItem, ShpOrderStatus, ShpShipmentWithItems } from '@/modul
 const TrackingUrl = z
   .string()
   .trim()
+  .max(TRACKING_URL_MAX_LENGTH, `The tracking link is too long - ${TRACKING_URL_MAX_LENGTH} characters at most.`)
   .refine((value) => {
     try {
       const parsed = new URL(value)
@@ -53,7 +75,7 @@ const SlotTime = z.string().trim().refine(isSlotTime, 'A delivery time looks lik
  * from being a link to nowhere. Anything that is neither is rejected here
  * rather than saved and quietly ignored by the poller.
  */
-const TrackingShortCode = z.string().trim().transform((value, ctx) => {
+const TrackingShortCode = z.string().trim().max(TRACKING_URL_MAX_LENGTH, `The follow-my-parcel link is too long - ${TRACKING_URL_MAX_LENGTH} characters at most.`).transform((value, ctx) => {
   if (!value) return null
   const code = dpdShortCodeFromUrl(value)
   if (!code) {
@@ -77,12 +99,15 @@ const DeliveryFields = {
 }
 
 const Body = z.object({
-  items: z.array(z.object({ orderItemId: z.string(), quantity: z.number().int().min(1) })).min(1),
-  trackingNumber: z.string().nullable().optional(),
+  items: z
+    .array(z.object({ orderItemId: z.string(), quantity: z.number().int().min(1) }))
+    .min(1)
+    .max(ORDER_LINE_BATCH_MAX, ORDER_LINE_BATCH_MAX_MESSAGE),
+  trackingNumber: TrackingNumber.nullable().optional(),
   trackingUrl: TrackingUrl.nullable().optional(),
   trackingShortCode: TrackingShortCode.nullable().optional(),
   ...DeliveryFields,
-  notes: z.string().nullable().optional(),
+  notes: ShipmentNotes.nullable().optional(),
   // Owners back-date a parcel that went out on Friday and is only being
   // recorded on Monday, so a plain date string from the admin is accepted and
   // coerced here rather than being rejected as "not an ISO timestamp".
@@ -140,12 +165,20 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const order = await getOrderById(id)
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
-  const [summary, shipments, config, items] = await Promise.all([
+  const [summary, shipments, config, items, requests] = await Promise.all([
     getOrderDispatchSummary(id),
     getShipmentsForOrder(id),
     getShopConfigCached(),
     getOrderItems(id),
+    listRequestsForOrder(id),
   ])
+
+  // What the customer has asked to call off or send back that nobody has
+  // decided yet, per line. Deliberately not a cap - the owner may yet say no,
+  // and createShipment only holds back what has been APPROVED - but the
+  // dispatch modal warns with it, so goods somebody has asked to cancel are not
+  // packed, sent and then refunded with the carriage paid for nothing.
+  const pending = pendingRequestUnits(requests, summary.lines)
 
   const holdAll = config.preOrderMixedCartBehaviour === 'HOLD_ALL'
   const outstanding = holdAll ? await outstandingPreOrderItems(items) : []
@@ -157,7 +190,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     .sort((a, b) => b.getTime() - a.getTime())[0]
 
   return NextResponse.json({
-    summary,
+    summary: {
+      ...summary,
+      lines: summary.lines.map((line) => ({
+        ...line,
+        pendingCancelQty: pending.get(line.orderItemId)?.cancel ?? 0,
+        pendingReturnQty: pending.get(line.orderItemId)?.return ?? 0,
+      })),
+    },
     shipments,
     // The dispatch modal's courier list. It rides on this call rather than
     // being fetched separately because every screen that offers dispatch is
@@ -243,11 +283,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 // recording it again, under the lock, with all the arithmetic re-checked.
 const PatchBody = z.object({
   shipmentId: z.string().min(1),
-  trackingNumber: z.string().nullable().optional(),
+  trackingNumber: TrackingNumber.nullable().optional(),
   trackingUrl: TrackingUrl.nullable().optional(),
   trackingShortCode: TrackingShortCode.nullable().optional(),
   ...DeliveryFields,
-  notes: z.string().nullable().optional(),
+  notes: ShipmentNotes.nullable().optional(),
   /** Whether saving a newly-confirmed window emails the customer about it.
    *  Defaults to on: a window nobody was told about is a window nobody can
    *  plan around. Sent at most once per parcel - see claimSlotNotification. */

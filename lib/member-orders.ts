@@ -13,6 +13,7 @@ import {
   canRequestReturn,
   cancellableQty,
   returnDeadline,
+  returnableQty,
   type RequestEligibility,
 } from '@/modules/shop/lib/order-requests'
 import { returnsPolicy, returnsPolicyNote, type ReturnsPolicy } from '@/modules/shop/lib/returnable'
@@ -191,7 +192,10 @@ function buildLines(
   // wrong in both directions: a customer who calls off the half that has not
   // been packed would lose the right to send back the half they are holding,
   // and vice versa.
+  // Returns in two piles again - waiting and approved - for returnableQty,
+  // which takes each off a different figure (see there).
   const returnsSpokenFor = new Map<string, number>()
+  const returnsApproved = new Map<string, number>()
   const cancelsSpokenFor = new Map<string, number>()
   for (const request of requests) {
     if (request.status !== 'PENDING' && request.status !== 'APPROVED') continue
@@ -202,7 +206,7 @@ function buildLines(
     // dispatch summary, so only a PENDING one is still to be netted off here.
     const tally = request.type === 'CANCEL'
       ? (request.status === 'PENDING' ? cancelsSpokenFor : null)
-      : returnsSpokenFor
+      : (request.status === 'APPROVED' ? returnsApproved : returnsSpokenFor)
     if (!tally) continue
     for (const line of request.items) {
       tally.set(line.orderItemId, (tally.get(line.orderItemId) ?? 0) + line.quantity)
@@ -222,8 +226,11 @@ function buildLines(
       imageUrl: image?.url ?? null,
       dispatchedQty,
       outstandingQty,
+      // The one sum lib/db/order-requests.ts checks the POST against, so the form
+      // cannot offer a unit the endpoint then refuses. Refunds come off the
+      // units that never went out first - see heldUnits.
       returnableQty: item.returnable
-        ? Math.max(dispatchedQty - item.refundedQty - (returnsSpokenFor.get(item.id) ?? 0), 0)
+        ? returnableQty({ quantity: item.quantity, dispatchedQty }, item.refundedQty, returnsSpokenFor.get(item.id) ?? 0, returnsApproved.get(item.id) ?? 0)
         : 0,
       cancellableQty: cancellableQty(
         { outstandingQty, returnable: item.returnable },
@@ -369,7 +376,22 @@ export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetai
       outstandingQty: line.outstandingQty,
       returnable: line.returnable,
     })),
+    // And the same for sending back, so a part-refunded order whose returnable
+    // goods have all gone back already is told so, rather than offered a form
+    // with nothing on it.
+    returnLines: lines.map((line) => ({ returnableQty: line.returnableQty })),
   }
+
+  // Only links that still hand a file over. One for a line since refunded (or
+  // on an order refunded as a whole) now only opens a page saying so - see
+  // lib/download-access.ts - so offering it here just sent the customer to be
+  // told no.
+  const itemById = new Map(items.map((item) => [item.id, item]))
+  const orderRefunded = order.status === 'REFUNDED' || order.paymentStatus === 'REFUNDED'
+  const liveDownloads = orderRefunded ? [] : downloads.filter((download) => {
+    const item = itemById.get(download.orderItemId)
+    return item !== undefined && item.refundedQty < item.quantity
+  })
 
   return {
     order,
@@ -377,7 +399,7 @@ export async function loadOrderDetail(orderId: string): Promise<MemberOrderDetai
     shipments,
     refunds,
     refundItems,
-    downloads,
+    downloads: liveDownloads,
     requests,
     openRequest,
     openDamageRequests,

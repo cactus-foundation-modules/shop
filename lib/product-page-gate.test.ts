@@ -50,6 +50,27 @@ describe('getProductStorefrontReachability', () => {
     expect(await getProductStorefrontReachability(product({ catalogueHidden: true }))).toEqual({ reachable: false })
     expect(canPreviewDraftProducts).not.toHaveBeenCalled()
   })
+
+  // "It stays out of the shop entirely" is what the switch promises, and a page
+  // anyone can open by its address is in the shop.
+  it('404s an active spare part for shoppers', async () => {
+    vi.mocked(canPreviewDraftProducts).mockResolvedValue(false)
+    expect(await getProductStorefrontReachability(product({ status: 'ACTIVE', partsOnly: true }))).toEqual({ reachable: false })
+  })
+
+  it('lets staff look at a spare part, flagged as a preview', async () => {
+    vi.mocked(canPreviewDraftProducts).mockResolvedValue(true)
+    expect(await getProductStorefrontReachability(product({ status: 'ACTIVE', partsOnly: true }))).toEqual({
+      reachable: true,
+      draftPreview: true,
+    })
+  })
+
+  it('never previews an archived row, spare part or not', async () => {
+    vi.mocked(canPreviewDraftProducts).mockResolvedValue(true)
+    expect(await getProductStorefrontReachability(product({ status: 'ARCHIVED' }))).toEqual({ reachable: false })
+    expect(await getProductStorefrontReachability(product({ status: 'ARCHIVED', partsOnly: true }))).toEqual({ reachable: false })
+  })
 })
 
 describe('resolveProductForProductPage', () => {

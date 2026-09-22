@@ -5,9 +5,10 @@ import { getClientIp } from '@/lib/auth/rate-limit'
 import { resolveCartLines } from '@/modules/shop/lib/checkout'
 import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { previewOrderPaymentNotes } from '@/modules/shop/lib/order-payment-state'
+import { CheckoutLinesSchema, checkoutLinesRefusal } from '@/modules/shop/lib/checkout-lines'
 
 const Body = z.object({
-  lines: z.array(z.object({ productId: z.string(), quantity: z.number().int().min(1), lineId: z.string().optional(), meta: z.record(z.unknown()).optional() })),
+  lines: CheckoutLinesSchema,
   paymentMethod: z.string().min(1),
 })
 
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
   if (closed) return closed
 
   const parsed = Body.safeParse(await request.json())
-  if (!parsed.success) return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+  if (!parsed.success) return NextResponse.json({ error: checkoutLinesRefusal(parsed.error) ?? 'Invalid request' }, { status: 400 })
 
   const lines = await resolveCartLines(parsed.data.lines)
   const notes = await previewOrderPaymentNotes(parsed.data.paymentMethod, lines.filter((l) => l.available))

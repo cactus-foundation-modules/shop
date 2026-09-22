@@ -144,6 +144,18 @@ export type ShippingZoneResolution = {
    * state of a new install and must not be mistaken for a refusal to deliver.
    */
   excluded: boolean
+  /**
+   * True when the shop HAS drawn its delivery map and this postcode is off the
+   * edge of it: there are zones, none lists the postcode, and none is a
+   * catch-all. Never true alongside `excluded`, and never true on a shop with
+   * no zones at all.
+   *
+   * Kept apart from `excluded` because the checkout treats it differently: an
+   * exclusion refuses the order outright, whereas an uncovered postcode only
+   * refuses one that has something to deliver - a basket of downloads has no
+   * parcel to be off the map with. See lib/excluded-postcode.ts.
+   */
+  uncovered: boolean
 }
 
 // Longest matching postcode pattern (case-insensitive) wins - a shopper's
@@ -163,7 +175,7 @@ export async function resolveShippingZoneForPostcode(postcode: string): Promise<
 }
 
 /** The decision itself, with the zones already in hand. Pure, so it is tested. */
-export function decideShippingZone<Z extends ZoneLists>(zones: Z[], postcode: string): { zone: Z | null; excluded: boolean } {
+export function decideShippingZone<Z extends ZoneLists>(zones: Z[], postcode: string): { zone: Z | null; excluded: boolean; uncovered: boolean } {
   let best: { zone: Z; score: number } | null = null
   let catchAll: Z | null = null
   let excludedAnywhere = false
@@ -174,7 +186,14 @@ export function decideShippingZone<Z extends ZoneLists>(zones: Z[], postcode: st
     if (score !== null && (!best || score > best.score)) best = { zone, score }
   }
   const zone = best?.zone ?? catchAll
-  return { zone, excluded: zone === null && excludedAnywhere }
+  // No zone and no exclusion, on a shop that has zones, can only mean none of
+  // them reaches this postcode and none is a catch-all - a catch-all that had
+  // not excluded the shopper would have been picked up just above.
+  return {
+    zone,
+    excluded: zone === null && excludedAnywhere,
+    uncovered: zone === null && !excludedAnywhere && zones.length > 0,
+  }
 }
 
 /** The zone alone, for callers with nothing useful to do about an exclusion. */
