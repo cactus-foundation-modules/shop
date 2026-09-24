@@ -603,6 +603,17 @@ export type ShpOrderItem = {
   productId: string | null
   productName: string
   productSku: string | null
+  /**
+   * The supplier's clearance code, snapshotted ONLY when the line was actually
+   * charged at the sale price (see lib/pricing.ts isOnSale). Null on every
+   * ordinary line, and null on a sale-eligible product bought at full price -
+   * this is a record of what happened, not of what the product carries now.
+   *
+   * Read by the purchase-orders module so a re-order buys the SAME stock the
+   * customer was sold, under the code and price a supplier's clearance list
+   * actually honours - see migration 061_order_item_sale_sku.sql.
+   */
+  saleSku: string | null
   productType: ShpProductType
   quantity: number
   unitPrice: string

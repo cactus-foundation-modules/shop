@@ -32,6 +32,7 @@ const line = ({ productId, quantity, min, group = null, available = true, reason
   returnable: true,
   returnsDiscretionary: false,
   nonReturnableNote: null,
+  saleSku: null,
 })
 
 describe('applyMinimumOrderQuantities', () => {

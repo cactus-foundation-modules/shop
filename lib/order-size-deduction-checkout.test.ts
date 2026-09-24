@@ -66,6 +66,7 @@ const line = ({
     returnsDiscretionary: false,
     nonReturnableNote: null,
     lineMeta: null,
+    saleSku: null,
   }
 }
 

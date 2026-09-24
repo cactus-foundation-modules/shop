@@ -196,6 +196,7 @@ function prospectiveItems(lines: ResolvedCartLine[]): ShpOrderItem[] {
     productId: line.product.id,
     productName: line.product.name,
     productSku: line.product.sku,
+    saleSku: line.saleSku,
     productType: line.product.type,
     quantity: line.quantity,
     unitPrice: '0', taxRate: '0', taxAmount: '0', total: '0',

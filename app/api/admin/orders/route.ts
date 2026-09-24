@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
     currency: config.currency,
     paymentMethod: data.paymentMethod,
     items: totals.lineItems.map((l) => ({
-      productId: l.product.id, productName: l.product.name, productSku: l.product.sku, productType: l.product.type,
+      productId: l.product.id, productName: l.product.name, productSku: l.product.sku, saleSku: l.saleSku, productType: l.product.type,
       quantity: l.quantity, unitPrice: l.unitPrice, taxRate: l.taxRate, taxAmount: l.taxAmount, total: l.lineTotal,
       isPreOrder: l.isPreOrder, preOrderDispatchDate: l.product.preOrderDispatchDate, lineMeta: l.lineMeta,
       orderSizeDeduction: l.orderSizeDeduction ?? null,

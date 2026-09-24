@@ -1,7 +1,7 @@
 import { cache } from 'react'
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
-import { notifyProductSaved } from '@/modules/shop/lib/product-saved'
+import { notifyProductSaved, notifyProductsSaved } from '@/modules/shop/lib/product-saved'
 import { recordProductSlugRedirect } from '@/modules/shop/lib/db/slug-redirects'
 import { normaliseFaqSet, type ShpFaqSet } from '@/modules/shop/lib/faq'
 import type { PuckData, ShpProduct, ShpProductMedia, ShpProductStatus, ShpProductType } from '@/modules/shop/lib/types'
@@ -806,6 +806,11 @@ export async function incrementPreOrderCount(productId: string, qty: number): Pr
   `
   const row = rows[0]
   if (!row) return null
+  // This statement can flip `is_pre_order` to false on reaching the cap, and
+  // availability is read straight off that flag - so a pre-order selling out
+  // changes what an outside listing should say. Announced for the same reason
+  // a price change is.
+  await notifyProductSaved(productId, ['isPreOrder', 'preOrderCount'])
   return {
     productName: row.name,
     count: Number(row.pre_order_count),
@@ -837,7 +842,7 @@ export async function incrementPreOrderCount(productId: string, qty: number): Pr
 // auto-disabled it, so the flag is the owner's and stays the owner's.
 export async function decrementPreOrderCount(productId: string, qty: number): Promise<void> {
   if (qty <= 0) return
-  await prisma.$executeRaw`
+  const changed = await prisma.$executeRaw`
     UPDATE "shp_products" SET
       "pre_order_count" = GREATEST("pre_order_count" - ${qty}, 0),
       "is_pre_order" = CASE
@@ -851,8 +856,18 @@ export async function decrementPreOrderCount(productId: string, qty: number): Pr
       "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${productId}
   `
+  // Releasing slots can switch `is_pre_order` back ON, which changes the
+  // availability an outside listing should be showing. Same announcement the
+  // increment makes, for the same reason.
+  if (changed > 0) await notifyProductSaved(productId, ['isPreOrder', 'preOrderCount'])
 }
 
+// NO LIVE CALLER as of 2026-09-23 - the pre-order decrement on dispatch moved
+// to createShipment (lib/db/shipments.ts) and only comments mention this now.
+// Left in place rather than deleted (module wiring is referenced by string at
+// runtime), and deliberately NOT announcing on `shop.product-saved`: a
+// pre-order product's availability comes from the `is_pre_order` flag and not
+// from its count, so this moves nothing a listener reads.
 export async function decrementStockOnShip(orderItemIds: string[]): Promise<void> {
   if (orderItemIds.length === 0) return
   // Aggregate the ordered quantity per product FIRST, then join that one row per
@@ -888,9 +903,14 @@ export async function bulkDeleteProducts(ids: string[]): Promise<number> {
 
 export async function bulkSetProductStatus(ids: string[], status: ShpProductStatus): Promise<number> {
   if (ids.length === 0) return 0
-  return prisma.$executeRaw`
+  const changed = await prisma.$executeRaw`
     UPDATE "shp_products" SET "status" = ${status}, "updated_at" = CURRENT_TIMESTAMP WHERE "id" IN (${Prisma.join(ids)})
   `
+  // Same announcement updateProduct makes, for the same reason: a status change
+  // is what takes a product off a shop's storefront, and anything keeping an
+  // outside listing in step with it has no other way to hear.
+  await notifyProductsSaved(ids, ['status'])
+  return changed
 }
 
 // One representative image per product for the admin list thumbnails. Prefers

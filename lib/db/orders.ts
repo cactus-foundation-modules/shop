@@ -65,6 +65,7 @@ function mapOrderItem(r: Record<string, unknown>): ShpOrderItem {
     productId: (r.product_id as string | null) ?? null,
     productName: r.product_name as string,
     productSku: (r.product_sku as string | null) ?? null,
+    saleSku: (r.sale_sku as string | null) ?? null,
     productType: r.product_type as ShpOrderItem['productType'],
     quantity: r.quantity as number,
     unitPrice: (r.unit_price as { toString(): string }).toString(),
@@ -225,6 +226,9 @@ export type CreateOrderInput = {
     productId: string | null
     productName: string
     productSku: string | null
+    /** The supplier's clearance code, ONLY when this line was actually charged
+     *  at the sale price - see ShpOrderItem.saleSku. */
+    saleSku?: string | null
     productType: ShpOrderItem['productType']
     quantity: number
     unitPrice: number
@@ -300,12 +304,12 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
   for (const item of data.items) {
     await tx.$executeRaw`
       INSERT INTO "shp_order_items" (
-        "order_id", "product_id", "product_name", "product_sku", "product_type",
+        "order_id", "product_id", "product_name", "product_sku", "sale_sku", "product_type",
         "quantity", "unit_price", "tax_rate", "tax_amount", "total", "is_pre_order", "pre_order_dispatch_date",
         "line_meta", "order_size_deduction", "returnable", "non_returnable_note", "returns_discretionary",
         "replaces_order_item_id"
       ) VALUES (
-        ${orderId}, ${item.productId}, ${item.productName}, ${item.productSku}, ${item.productType},
+        ${orderId}, ${item.productId}, ${item.productName}, ${item.productSku}, ${item.saleSku ?? null}, ${item.productType},
         ${item.quantity}, ${item.unitPrice}, ${item.taxRate}, ${item.taxAmount}, ${item.total},
         ${item.isPreOrder}, ${item.preOrderDispatchDate},
         ${item.lineMeta ? JSON.stringify(item.lineMeta) : null}::jsonb, ${item.orderSizeDeduction ?? null}, ${item.returnable ?? true}, ${item.nonReturnableNote ?? null}, ${item.returnsDiscretionary ?? false},

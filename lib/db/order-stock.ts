@@ -4,6 +4,7 @@ import { recordStockMovement } from '@/modules/shop/lib/db/stock-movements'
 import { ORDER_LOCK_NAMESPACE } from '@/modules/shop/lib/db/shipments'
 import { restockByProduct, type RefundedLine, type StockLedger } from '@/modules/shop/lib/refund-stock'
 import type { StockShortfall } from '@/modules/shop/lib/order-attention'
+import { notifyProductsSaved } from '@/modules/shop/lib/product-saved'
 
 // The two stock moves an ORDER makes on a normal line, and the ledger that
 // keeps them honest with each other.
@@ -25,6 +26,12 @@ import type { StockShortfall } from '@/modules/shop/lib/order-attention'
 //
 // Orders paid before this ledger was kept have no payment row, so their refunds
 // put nothing back - the same as before, and the safe direction for a count.
+//
+// Both moves announce themselves on `shop.product-saved` once they have
+// committed (lib/product-saved.ts). Neither goes through updateProduct, so
+// without that a module keeping a price or an availability in step with the
+// shop would never hear about the one moment that matters most - the last one
+// selling.
 
 const PAID_REASON = 'order.paid'
 const REFUNDED_REASON = 'order.refunded'
@@ -41,7 +48,10 @@ const REFUNDED_REASON = 'order.refunded'
  */
 export async function takeStockForPaidOrder(orderNumber: string, orderItemIds: string[]): Promise<StockShortfall[]> {
   if (orderItemIds.length === 0) return []
-  return prisma.$transaction(
+  // Filled inside the transaction, announced after it commits - see the call to
+  // notifyProductsSaved at the bottom.
+  const moved: string[] = []
+  const shortfalls = await prisma.$transaction(
     async (tx): Promise<StockShortfall[]> => {
       // Summed per product first: a personalised basket may carry two lines of
       // the same product, and each must count (see decrementStockOnShip).
@@ -72,6 +82,7 @@ export async function takeStockForPaidOrder(orderNumber: string, orderItemIds: s
           UPDATE "shp_products" SET "stock_count" = ${after}, "updated_at" = CURRENT_TIMESTAMP
           WHERE "id" = ${product.id}
         `
+        moved.push(product.id)
         await recordStockMovement(tx, {
           productId: product.id,
           delta: -ordered,
@@ -95,6 +106,14 @@ export async function takeStockForPaidOrder(orderNumber: string, orderItemIds: s
     // waiting for a connection, as settleRefund is.
     { maxWait: 10000, timeout: 15000 },
   )
+
+  // After the commit, deliberately: a listener calls out to other modules and
+  // must not be holding row locks on the product table while it does. It cannot
+  // take the stock move down with it either - the units are off the shelf and
+  // the order is paid whatever a listener makes of it (notifyProductsSaved
+  // swallows its own failures).
+  await notifyProductsSaved(moved, ['stockCount'])
+  return shortfalls
 }
 
 type RefundLineRow = {
@@ -127,6 +146,8 @@ export async function restockRefundedUnits(
   }
   if (refunding.size === 0) return
 
+  // Filled inside the transaction, announced after it commits.
+  const restored: string[] = []
   try {
     await prisma.$transaction(
       async (tx) => {
@@ -201,6 +222,7 @@ export async function restockRefundedUnits(
             UPDATE "shp_products" SET "stock_count" = ${after}, "updated_at" = CURRENT_TIMESTAMP
             WHERE "id" = ${productId}
           `
+          restored.push(productId)
           await recordStockMovement(tx, {
             productId,
             delta: units,
@@ -218,5 +240,17 @@ export async function restockRefundedUnits(
     )
   } catch (err) {
     console.error('[shop] a refund was recorded but its stock could not be put back', orderId, err)
+    // A throw anywhere in the callback above rolls back the WHOLE transaction,
+    // not just the line that failed - so `restored` may already hold product
+    // ids from earlier iterations whose stock_count update was undone along
+    // with everything else. None of it is really on the shelf, so there is
+    // nothing here to tell a listener about. Still returns normally: this
+    // function never throws to its caller, the refund is recorded whatever
+    // happens to the stock count.
+    return
   }
+
+  // Reached only when the transaction genuinely committed, so every id in
+  // `restored` really did go back on the shelf.
+  await notifyProductsSaved(restored, ['stockCount'])
 }

@@ -318,6 +318,7 @@ export async function POST(request: NextRequest) {
       productId: l.product.id,
       productName: l.product.name,
       productSku: l.product.sku,
+      saleSku: l.saleSku,
       productType: l.product.type,
       quantity: l.quantity,
       // Rounded here rather than left to the column. These are floats until they

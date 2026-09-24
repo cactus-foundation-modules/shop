@@ -2,6 +2,7 @@ import { prisma, type PrismaTransactionClient } from '@/lib/db/prisma'
 import type { ShpRefund, ShpRefundItem } from '@/modules/shop/lib/types'
 import { paymentTaken } from '@/modules/shop/lib/payment-taken'
 import { restockRefundedUnits } from '@/modules/shop/lib/db/order-stock'
+import { notifyProductsSaved } from '@/modules/shop/lib/product-saved'
 import { refundableDelivery } from '@/modules/shop/lib/refund-delivery'
 
 function mapRefund(r: Record<string, unknown>): ShpRefund {
@@ -395,7 +396,12 @@ async function settleRefund(
   refundId: string,
   result: { success: boolean; providerRefundId: string | null; error?: string }
 ): Promise<SettleOutcome> {
-  return prisma.$transaction(
+  // Pre-order products whose allocation slot this refund hands back. Filled
+  // inside the transaction, announced after it commits: releasing a slot can
+  // switch `is_pre_order` back ON, and that is a change of availability that
+  // anything keeping an outside listing in step needs to hear about.
+  const preOrderReleased: string[] = []
+  const outcome = await prisma.$transaction(
     async (tx): Promise<SettleOutcome> => {
       // Blocking rather than try-lock: settling is not optional, and nothing
       // holds this lock for longer than one of these short transactions.
@@ -450,6 +456,7 @@ async function settleRefund(
         `
         const preOrderProductId = preOrderLine[0]?.product_id
         if (preOrderProductId) {
+          preOrderReleased.push(preOrderProductId)
           await tx.$executeRaw`
             UPDATE "shp_products" SET
               "pre_order_count" = GREATEST("pre_order_count" - ${item.quantity}, 0),
@@ -502,6 +509,12 @@ async function settleRefund(
     // waiting for a connection and about finishing once we have one.
     { maxWait: 10000, timeout: 15000 }
   )
+
+  // Outside the transaction, and never able to take the refund down with it
+  // (notifyProductsSaved swallows its own failures). The money has gone back
+  // and the refund is recorded whatever a listener makes of this.
+  await notifyProductsSaved(preOrderReleased, ['isPreOrder'])
+  return outcome
 }
 
 // Runs a refund as three steps rather than one long transaction: validate and

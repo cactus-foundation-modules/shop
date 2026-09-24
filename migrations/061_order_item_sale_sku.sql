@@ -1,0 +1,13 @@
+-- The sale SKU an order line was actually bought under, snapshotted.
+--
+-- shp_products.sale_sku (018_sale_sku.sql) is a live field: an owner can clear
+-- it or turn the sale price type off at any time, and by the time a purchase
+-- order gets raised off an old sale that may already have happened. Reading
+-- the product's CURRENT sale_sku at that point would silently buy under the
+-- ordinary code for a customer who was genuinely sold the clearance stock.
+--
+-- So this is set once, at checkout, and never re-derived: the code the
+-- customer's line was actually charged under, or NULL when the line was not
+-- on sale. Same discipline as product_sku, returnable and the rest of this
+-- table's snapshot columns.
+ALTER TABLE "shp_order_items" ADD COLUMN IF NOT EXISTS "sale_sku" TEXT;

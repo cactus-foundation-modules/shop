@@ -86,6 +86,10 @@ export type ResolvedCartLine = {
   // same strict way as the flag above: either source saying "at our discretion"
   // settles it, so nothing can quietly upgrade a maybe into a promise.
   returnsDiscretionary: boolean
+  // The supplier's clearance code, set only when this line is being charged at
+  // the sale price right now (see isOnSale below). Snapshotted onto the order
+  // item unchanged - see ShpOrderItem.saleSku for why it is never re-derived.
+  saleSku: string | null
 }
 
 // Turns a resolver's per-unit charge attributions into this line's own totals,
@@ -269,6 +273,10 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[], opts?: Res
     // price. Resolved here rather than at display time so the figure charged is
     // the one the server worked out, never one the client sent.
     const unitPrice = effectivePrice(product, enabledPriceTypes) + metaResolution.priceAdjust
+    // Settled here, alongside the price it goes with, and nowhere else - see
+    // ShpOrderItem.saleSku for why every order-item builder just carries this
+    // through rather than asking the product again.
+    const saleSku = isOnSale(product, enabledPriceTypes) ? (product.saleSku?.trim() || null) : null
     return {
       product,
       quantity: line.quantity,
@@ -281,6 +289,7 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[], opts?: Res
       returnable,
       nonReturnableNote,
       returnsDiscretionary,
+      saleSku,
       // Filled in by the pooling pass below - a resolver's key decides it, and
       // the requirement itself can rise there too.
       minOrderPooled: false,

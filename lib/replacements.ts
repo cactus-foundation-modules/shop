@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { round2 } from '@/modules/shop/lib/checkout'
+import { isOnSale } from '@/modules/shop/lib/pricing'
 import { getShopConfigCached, type ShpConfig } from '@/modules/shop/lib/config'
 import { createDigitalDownload } from '@/modules/shop/lib/db/digital'
 import { getProductById } from '@/modules/shop/lib/db/products'
@@ -203,6 +204,12 @@ export async function createReplacementOrder(input: CreateReplacementInput): Pro
       productId: line.product?.id ?? null,
       productName: line.name,
       productSku: line.sku,
+      // Resolved fresh against the part actually being sent, not copied from
+      // whatever the original order line carried - a replacement is a new
+      // procurement decision (a different part may go out entirely), so it
+      // earns its own answer to "is this currently on sale" rather than
+      // inheriting one that may no longer apply.
+      saleSku: line.product && isOnSale(line.product, config.enabledPriceTypes) ? (line.product.saleSku?.trim() || null) : null,
       productType: line.type,
       quantity: line.input.quantity,
       unitPrice: line.unitPrice,

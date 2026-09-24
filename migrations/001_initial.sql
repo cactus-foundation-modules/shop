@@ -640,6 +640,11 @@ CREATE TABLE IF NOT EXISTS "shp_order_items" (
     -- they send the gas lift out of it - so the part needs to name the line it
     -- belongs to or the original order can never say where it went.
     "replaces_order_item_id" TEXT,
+    -- The supplier's clearance code the line was actually charged under,
+    -- snapshotted at checkout (061_order_item_sale_sku.sql). NULL on every
+    -- ordinary line, and NULL on a sale-eligible product bought at full price -
+    -- read back off the product it would drift as the sale is turned on and off.
+    "sale_sku" TEXT,
 
     CONSTRAINT "shp_order_items_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "shp_order_items_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE,

@@ -14,6 +14,22 @@
 // the Google-Sheet Pull, which write products by the hundred without going near a
 // route handler, are covered by the same three lines.
 //
+// It is also fired from the places that move a product WITHOUT going through
+// updateProduct, because a listener keeping something in step with a price or a
+// stock count cannot tell the difference and should not have to:
+//   lib/stock.ts          the inventory adjuster (purchasing, stocktakes)
+//   lib/db/order-stock.ts an order taking units off the shelf, and a refund
+//                         putting them back
+//   lib/db/products.ts    a bulk status change from the admin list, and the two
+//                         pre-order counters, which flip `is_pre_order` when a
+//                         pre-order sells out or a refund hands a slot back
+//   lib/db/refunds.ts     the same pre-order release, inlined there to run on
+//                         the transaction client, announced after it commits
+// Deliberately NOT decrementStockOnShip: that moves a pre-order line's units on
+// dispatch, and a pre-order product's availability comes from the `is_pre_order`
+// flag and not from its count - nothing a listener reads has changed. (It has no
+// live caller left either.)
+//
 // Providers MUST be server-safe (this runs inside lib/db) and MUST NOT throw the
 // caller's save away: anything raised here is logged and swallowed, because a
 // listener falling over is never a good enough reason to fail the owner's edit.
@@ -79,6 +95,37 @@ export async function notifyProductSaved(productId: string, changed: readonly st
       await hook(productId, changed)
     } catch (err) {
       console.error('[shop] product-saved hook failed', err)
+    }
+  }
+}
+
+/**
+ * Tell every listener that SEVERAL products were written, with the same set of
+ * fields. Never rejects.
+ *
+ * The hooks are gathered once rather than once per product, which is the whole
+ * point: an order taking six lines off the shelf, or a bulk status change over
+ * a hundred products, would otherwise read the installed manifests a hundred
+ * times to answer the same question.
+ */
+export async function notifyProductsSaved(productIds: readonly string[], changed: readonly string[]): Promise<void> {
+  if (changed.length === 0 || productIds.length === 0) return
+  const ids = [...new Set(productIds)]
+  let hooks: ProductSavedHook[]
+  try {
+    hooks = await getProductSavedHooks()
+  } catch (err) {
+    console.error('[shop] could not read product-saved hooks', err)
+    return
+  }
+  if (hooks.length === 0) return
+  for (const hook of hooks) {
+    for (const productId of ids) {
+      try {
+        await hook(productId, changed)
+      } catch (err) {
+        console.error('[shop] product-saved hook failed', err)
+      }
     }
   }
 }
