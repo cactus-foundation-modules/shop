@@ -68,6 +68,9 @@ type OrderDetail = {
     // which is a different fact from "asked and ticked nothing", so it renders
     // as no section at all rather than an empty one.
     agreements?: Array<{ id: string; statement: string; linkUrl: string; required: boolean; accepted: boolean; acceptedAt: string | null }> | null
+    // Their answer about marketing emails on this order. Null means nobody asked
+    // it, which is not the same as a no. Optional for an older response.
+    marketingConsent?: boolean | null
   }
   items: OrderItem[]
   notes: Array<{ id: string; content: string; isInternal: boolean; createdBy: string | null; createdAt: string }>
@@ -1141,6 +1144,14 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                     <dd><a href={`tel:${order.customerPhone.replace(/\s+/g, '')}`}>{order.customerPhone}</a></dd>
                   </div>
                 )}
+                <div className="sox-detail-row">
+                  <dt>Marketing emails</dt>
+                  <dd>
+                    {order.marketingConsent === true && 'Happy to receive them'}
+                    {order.marketingConsent === false && 'Asked not to receive them'}
+                    {(order.marketingConsent === null || order.marketingConsent === undefined) && <span className="sox-muted">Not asked</span>}
+                  </dd>
+                </div>
                 <div className="sox-detail-row">
                   <dt>History</dt>
                   <dd>
