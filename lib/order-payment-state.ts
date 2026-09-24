@@ -178,6 +178,7 @@ function prospectiveOrder(paymentMethod: string): ShpOrder {
     paymentStatus: 'PENDING',
     paymentReference: null, paidAt: null, shippingRateId: null, shippingRateName: null,
     agreements: null,
+    marketingConsent: null,
     // Nobody has been asked how they want to hear about an order that does not
     // exist, so this is the default an order is born with.
     notifyEmail: true, notifySms: false, notifyPhone: null,

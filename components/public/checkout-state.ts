@@ -63,7 +63,6 @@ export type CheckoutState = {
 
 const STORAGE_KEY = 'cactus_shop_checkout'
 const EVENT = 'cactus-shop-checkout-changed'
-
 export const EMPTY_ADDRESS: ShpAddressForm = {
   firstName: '', lastName: '', line1: '', line2: '', city: '', county: '', postcode: '', country: 'GB', phone: '',
 }

@@ -47,6 +47,9 @@ function mapOrder(r: Record<string, unknown>): ShpOrder {
     // jsonb comes back already parsed; NULL on an order placed before the shop
     // asked anything.
     agreements: (r.agreements as ShpOrderAgreement[] | null) ?? null,
+    // Migration 062. Null means nothing asked this checkout (module absent, or
+    // shown but never touched) - not the same as an explicit no.
+    marketingConsent: (r.marketing_consent as boolean | null) ?? null,
     // Columns added by migration 020. Defaulted here as well as in the DDL so a
     // row read through an older cached query shape still answers "email only"
     // rather than undefined.
@@ -222,6 +225,9 @@ export type CreateOrderInput = {
   shippingRateId?: string | null
   shippingRateName?: string | null
   agreements?: ShpOrderAgreement[] | null
+  /** True/false answer to shop's well-known marketing-consent checkout key, or
+   *  null when nothing asked it this checkout - see checkout-state.ts. */
+  marketingConsent?: boolean | null
   items: Array<{
     productId: string | null
     productName: string
@@ -277,7 +283,7 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
       "tax_amount", "total", "tax_mode", "currency", "coupon_id", "coupon_code",
       "payment_method", "shipping_rate_id", "shipping_rate_name", "agreements",
       "kind", "parent_order_id", "status", "payment_status", "paid_at",
-      "notify_email", "notify_sms", "notify_phone"
+      "notify_email", "notify_sms", "notify_phone", "marketing_consent"
     ) VALUES (
       -- An id the caller decided earlier, or the one the column would have
       -- given it anyway. Written as a value rather than left to the default
@@ -296,7 +302,8 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
       -- replacement and a checkout both go through this one statement.
       ${data.kind ?? 'SALE'}, ${data.parentOrderId ?? null},
       ${data.status ?? 'PENDING'}, ${data.paymentStatus ?? 'PENDING'}, ${data.paidAt ?? null},
-      ${data.notifyEmail ?? true}, ${data.notifySms ?? false}, ${normaliseStoredPhone(data.notifyPhone)}
+      ${data.notifyEmail ?? true}, ${data.notifySms ?? false}, ${normaliseStoredPhone(data.notifyPhone)},
+      ${data.marketingConsent ?? null}
     )
     RETURNING "id"
   `
@@ -1136,6 +1143,7 @@ export async function claimGuestOrdersForMember(memberId: string, email: string)
     SET "member_id" = ${memberId}, "updated_at" = CURRENT_TIMESTAMP
     WHERE "member_id" IS NULL AND lower("customer_email") = lower(${email})
   `
+
   return result
 }
 

@@ -21,6 +21,8 @@ import { signOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
 import { grantReceiptAccess } from '@/modules/shop/lib/receipt-access-cookie'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { fillBlankMemberContactDetails } from '@/lib/members/contact'
+import { syncMemberMarketingConsent } from '@/lib/members/marketing-consent'
+import { marketingConsentFromAgreements } from '@/modules/shop/lib/marketing-consent'
 import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
 import { getClientIp } from '@/lib/auth/rate-limit'
 import { isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
@@ -171,6 +173,8 @@ export async function POST(request: NextRequest) {
   if (unticked) {
     return NextResponse.json({ error: 'Please tick the boxes marked required before placing your order.' }, { status: 400 })
   }
+  const marketingConsent = marketingConsentFromAgreements(ticked)
+
   const now = new Date().toISOString()
   const agreementRecord = requiredAgreements.length > 0
     ? requiredAgreements.map((a) => ({
@@ -314,6 +318,7 @@ export async function POST(request: NextRequest) {
     shippingRateId: shippingRate?.id ?? null,
     shippingRateName: shippingRate?.name ?? null,
     agreements: agreementRecord,
+    marketingConsent,
     items: totals.lineItems.map((l) => ({
       productId: l.product.id,
       productName: l.product.name,
@@ -367,6 +372,14 @@ export async function POST(request: NextRequest) {
   }
 
   const { id: orderId } = await createPendingOrder(orderInput)
+
+  // "Last order wins": a signed-in shopper's standing account preference always
+  // moves to match whatever they just answered here. The drafted/off-site path
+  // does the same thing once its order actually materialises - see
+  // lib/checkout-draft.ts.
+  if (member && marketingConsent !== null) {
+    await syncMemberMarketingConsent(member.id, marketingConsent, data.customerEmail)
+  }
 
   // The order now exists AND knows how it is being paid for, which is the first
   // moment anything can say what that means for these lines. A method that takes

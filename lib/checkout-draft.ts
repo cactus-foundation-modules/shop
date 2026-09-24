@@ -21,6 +21,19 @@ import { randomUUID } from 'crypto'
 import { getOrderById, insertOrderRows, type CreateOrderInput } from '@/modules/shop/lib/db/orders'
 import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
 import { clearStrandedPayment, recordStrandedPayment } from '@/modules/shop/lib/stranded-payments'
+import { syncMemberMarketingConsent } from '@/lib/members/marketing-consent'
+
+// What a freshly-materialised order hands back beyond id/orderNumber - just
+// enough for the caller to sync the account-level marketing preference, since
+// this is a different creation path from payment-intent's immediate one and
+// would otherwise never run that side effect at all.
+type DraftMaterialisation = {
+  id: string
+  orderNumber: string
+  memberId?: string | null
+  customerEmail?: string
+  marketingConsent?: boolean | null
+}
 
 // How long a draft is kept before it is swept. Deliberately generous: a bank
 // payment can take days to confirm, and a draft thrown away while its money is
@@ -122,7 +135,7 @@ export async function getCheckoutDraft(id: string): Promise<ShpCheckoutDraft | n
  * that - the payment provider is the only thing that can know it, so the check
  * belongs on the settlement path that has the payment in its hand.
  */
-export async function materialiseDraftOrder(id: string): Promise<{ id: string; orderNumber: string } | null> {
+export async function materialiseDraftOrder(id: string): Promise<DraftMaterialisation | null> {
   const existing = await getOrderById(id)
   if (existing) {
     await clearStrandedPayment(id)
@@ -140,6 +153,15 @@ export async function materialiseDraftOrder(id: string): Promise<{ id: string; o
       return { id: settled.id, orderNumber: settled.orderNumber }
     }
     return null
+  }
+
+  // Same "last order wins" sync the immediate payment-intent path does the
+  // moment its order is created - this is the equivalent moment for a method
+  // that settles on somebody else's site. Ahead of everything that can throw
+  // below: a retry finds the order already there and takes the early return at
+  // the top, which never gets back to this line.
+  if (created.memberId && created.customerEmail && typeof created.marketingConsent === 'boolean') {
+    await syncMemberMarketingConsent(created.memberId, created.marketingConsent, created.customerEmail)
   }
 
   // Whatever went wrong before, it did not stop this order existing. An alarm
@@ -168,7 +190,7 @@ export async function materialiseDraftOrder(id: string): Promise<{ id: string; o
  * The error still propagates, unchanged. The provider's webhook should keep
  * retrying, and a retry that succeeds clears the record on its way past.
  */
-async function createFromDraft(id: string): Promise<{ id: string; orderNumber: string } | null> {
+async function createFromDraft(id: string): Promise<DraftMaterialisation | null> {
   try {
     return await runDraftTransaction(id)
   } catch (err) {
@@ -177,7 +199,7 @@ async function createFromDraft(id: string): Promise<{ id: string; orderNumber: s
   }
 }
 
-async function runDraftTransaction(id: string): Promise<{ id: string; orderNumber: string } | null> {
+async function runDraftTransaction(id: string): Promise<DraftMaterialisation | null> {
   return prisma.$transaction(async (tx) => {
     // FOR UPDATE is what makes the double call safe. The second caller blocks
     // here until the first commits, and then finds no draft - because deleting
@@ -191,6 +213,6 @@ async function runDraftTransaction(id: string): Promise<{ id: string; orderNumbe
     const input = reviveOrderInput(rows[0].payload)
     const order = await insertOrderRows(tx, { ...input, id })
     await tx.$executeRaw`DELETE FROM "shp_checkout_drafts" WHERE "id" = ${id}`
-    return order
+    return { ...order, memberId: input.memberId ?? null, customerEmail: input.customerEmail, marketingConsent: input.marketingConsent ?? null }
   })
 }

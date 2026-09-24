@@ -6,6 +6,8 @@ import { listDownloadsForOrder } from '@/modules/shop/lib/db/digital'
 import { listRequestsForOrder } from '@/modules/shop/lib/db/order-requests'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { fillBlankMemberContactDetails } from '@/lib/members/contact'
+import { syncMemberMarketingConsent } from '@/lib/members/marketing-consent'
+import { latestMarketingConsent } from '@/modules/shop/lib/marketing-consent'
 import { orderCompanyName } from '@/modules/shop/lib/order-display'
 import {
   canReportDamage,
@@ -45,7 +47,7 @@ import type {
 // verification switched off therefore claim nothing, which is the right way
 // round - a missing order history is a nuisance, the alternative is a leak.
 export async function listOrdersForMember(
-  member: { id: string; email: string; emailVerified: boolean },
+  member: { id: string; email: string; emailVerified: boolean; marketingConsent?: boolean | null },
 ): Promise<ShpOrder[]> {
   if (member.emailVerified) await claimGuestOrdersForMember(member.id, member.email)
   const orders = await listOrdersByMemberId(member.id)
@@ -71,6 +73,16 @@ export async function listOrdersForMember(
       fullName: newest.customerName,
       organisation: orderCompanyName(newest),
     })
+  }
+
+  // The account's standing marketing answer follows the newest order that
+  // carries one, so a guest who ticks the box and only makes an account later
+  // still ends up with it. Done here for the same reason as the details above:
+  // the claim is a one-off, and a sync that failed on that single visit would
+  // otherwise never be tried again. Nothing is written once the two agree.
+  const consent = latestMarketingConsent(orders, member.email)
+  if (consent !== null && consent !== member.marketingConsent) {
+    await syncMemberMarketingConsent(member.id, consent, member.email)
   }
 
   return orders
@@ -124,7 +136,7 @@ export type MemberOrderSummary = {
 /** The list page: every order with enough on it to be recognised at a glance,
  * gathered in a handful of queries rather than a handful per order. */
 export async function listOrderSummariesForMember(
-  member: { id: string; email: string; emailVerified: boolean },
+  member: { id: string; email: string; emailVerified: boolean; marketingConsent?: boolean | null },
 ): Promise<MemberOrderSummary[]> {
   const orders = await listOrdersForMember(member)
   if (orders.length === 0) return []
