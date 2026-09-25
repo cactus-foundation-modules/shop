@@ -178,6 +178,50 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     transactional: false,
   },
   {
+    // An extra charge raised on an order after it was placed - a redelivery
+    // fee, typically - and the two ways out of it: pay it, or cancel and be
+    // refunded less the fee. See lib/order-charges.ts. {{cancelRefund}} is
+    // worked out at send time, and the whole cancel paragraph drops out where
+    // the order has nothing left to refund.
+    key: 'shop.charge-raised',
+    label: 'Extra charge to pay',
+    subject: '{{chargeReason}} to pay on your order {{orderNumber}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>There is a charge to pay on your order <strong>{{orderNumber}}</strong>: <strong>{{chargeReason}}, {{chargeTotal}}</strong>{{#if hasChargeTax}} ({{chargeNet}} plus {{chargeTax}} {{taxLabel}}){{/if}}.</p>{{#if hasChargeNote}}<p>{{chargeNote}}</p>{{/if}}{{#if isOnHold}}<p>We have put your order on hold until it is sorted.</p>{{/if}}{{#if hasChargeUrl}}<p><a href="{{chargeUrl}}">Pay it from your order page</a></p>{{/if}}{{#if canCancel}}<p>If you would rather not, you can cancel the order from the same page instead. We would refund {{cancelRefund}}, which is what you paid less the {{chargeTotal}}.</p>{{/if}}<p>Any questions, just reply to this email - {{shopName}}.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'chargeReason', 'chargeNote', 'hasChargeNote', 'chargeNet', 'chargeTax', 'chargeTotal', 'hasChargeTax', 'taxLabel', 'chargeUrl', 'hasChargeUrl', 'isOnHold', 'canCancel', 'cancelRefund', 'shopName', 'orderUrl', 'hasOrderUrl'],
+    transactional: false,
+  },
+  {
+    key: 'shop.charge-paid',
+    label: 'Extra charge paid',
+    subject: 'Thank you - {{chargeReason}} paid on order {{orderNumber}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>Thank you - we have received {{chargeTotal}} for the {{chargeReason}} on your order <strong>{{orderNumber}}</strong>.</p><p>Your order is moving again, and we will be in touch about what happens next.</p><p>{{shopName}}</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'chargeReason', 'chargeNote', 'hasChargeNote', 'chargeNet', 'chargeTax', 'chargeTotal', 'hasChargeTax', 'taxLabel', 'shopName', 'orderUrl', 'hasOrderUrl'],
+    transactional: false,
+  },
+  {
+    key: 'shop.charge-order-cancelled',
+    label: 'Order cancelled instead of paying an extra charge',
+    subject: 'Your order {{orderNumber}} has been cancelled',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>As you asked, we have cancelled your order <strong>{{orderNumber}}</strong>.</p><p>We are refunding <strong>{{refundAmount}}</strong>. That is the {{paidAmount}} you paid, less the {{chargeTotal}} {{chargeReason}}. Refunds usually take a few working days to reach you.</p><p>Sorry it did not work out this time - {{shopName}}.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'chargeReason', 'chargeNote', 'hasChargeNote', 'chargeNet', 'chargeTax', 'chargeTotal', 'hasChargeTax', 'taxLabel', 'refundAmount', 'paidAmount', 'shopName', 'orderUrl', 'hasOrderUrl'],
+    transactional: false,
+  },
+  {
+    // The owner's alert when the customer settles an extra charge themselves,
+    // either way. {{chargeOutcome}} is the rest of the sentence, and says what
+    // is left for the owner to do.
+    key: 'shop.admin-charge-update',
+    label: 'Extra charge settled by the customer (admin alert)',
+    subject: '{{orderNumber}}: {{chargeReason}} settled by the customer',
+    bodyHtml:
+      '<p>{{customerName}} ({{customerEmail}}) has {{chargeOutcome}}</p><p>Order <strong>{{orderNumber}}</strong>, {{chargeReason}} of {{chargeTotal}}.</p>{{#if hasAdminOrderUrl}}<p><a href="{{adminOrderUrl}}">Open the order</a></p>{{/if}}',
+    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'chargeReason', 'chargeNote', 'hasChargeNote', 'chargeNet', 'chargeTax', 'chargeTotal', 'hasChargeTax', 'taxLabel', 'chargeOutcome', 'adminOrderUrl', 'hasAdminOrderUrl', 'shopName'],
+    transactional: false,
+  },
+  {
     key: 'shop.admin-new-order',
     label: 'New order (admin alert)',
     subject: 'New order received: {{orderNumber}}',
@@ -465,6 +509,10 @@ export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   PARTIAL_SHIPPED: 'shop.partial-shipped',
   DELIVERY_SLOT_CONFIRMED: 'shop.delivery-slot-confirmed',
   DELIVERY_FAILED: 'shop.delivery-failed',
+  CHARGE_RAISED: 'shop.charge-raised',
+  CHARGE_PAID: 'shop.charge-paid',
+  CHARGE_ORDER_CANCELLED: 'shop.charge-order-cancelled',
+  ADMIN_CHARGE_UPDATE: 'shop.admin-charge-update',
   ADMIN_NEW_ORDER: 'shop.admin-new-order',
   ADMIN_NEW_ORDER_UNPAID: 'shop.admin-new-order-unpaid',
   LOW_STOCK: 'shop.low-stock',

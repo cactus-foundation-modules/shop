@@ -11,6 +11,7 @@ import { listRequestsForOrder } from '@/modules/shop/lib/db/order-requests'
 import { refundRouteForOrder } from '@/modules/shop/lib/payments/order-refund-route'
 import { refundableDelivery as deliveryLeftToRefund } from '@/modules/shop/lib/refund-delivery'
 import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
+import { CUSTOMER_REFUND_CREATED_BY } from '@/modules/shop/lib/order-charges'
 
 // Everything the order screen shows in one call, apart from dispatch progress -
 // that rides on its own route so the dispatch block can refresh itself after a
@@ -77,7 +78,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const authorRows = authorIds.length
     ? await prisma.user.findMany({ where: { id: { in: authorIds } }, select: { id: true, displayName: true, username: true } })
     : []
-  const authors = Object.fromEntries(authorRows.map((u) => [u.id, u.displayName || u.username]))
+  const authors: Record<string, string> = Object.fromEntries(authorRows.map((u) => [u.id, u.displayName || u.username]))
+  // A refund the customer started themselves - cancelling instead of paying an
+  // extra charge (lib/order-charges.ts) - is signed with this rather than a
+  // user id, and "a member of staff" would be the wrong answer.
+  if (refunds.some((r) => r.createdBy === CUSTOMER_REFUND_CREATED_BY)) authors[CUSTOMER_REFUND_CREATED_BY] = 'The customer'
 
   // What this shop calls the customer's own reference. Sent with the order so
   // the screen labels the box the way the checkout does, rather than the admin

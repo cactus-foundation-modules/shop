@@ -58,6 +58,9 @@ import { payOnlineMethodsForOrder, settlementMethod } from '@/modules/shop/lib/o
 import { getPaymentMethodLabels, getPaymentMethodClientFields } from '@/modules/shop/lib/payments/registry'
 import { resolveCheckoutPaymentFields } from '@/modules/shop/lib/checkout-payment-fields'
 import { OrderPayOnlinePanel } from '@/modules/shop/components/public/OrderPayOnlinePanel'
+import { ChargeCancelOrderButton } from '@/modules/shop/components/public/ChargeCancelOrderButton'
+import { listChargesForOrder } from '@/modules/shop/lib/db/order-charges'
+import { chargePayMethods, pendingCharge, planCancellation } from '@/modules/shop/lib/order-charges'
 import { proformaAvailable } from '@/modules/shop/lib/proforma'
 import OrderRequestPanel from '@/modules/shop/components/public/OrderRequestPanel'
 import OrderReferencePanel from '@/modules/shop/components/public/OrderReferencePanel'
@@ -280,7 +283,14 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   // method's own on-page fields need to draw. Only looked up while money is
   // actually owed, so a settled order's page costs exactly what it always did.
   const payOnline = outstanding ? await payOnlineMethodsForOrder(order, config) : []
-  const payOnlineFields = payOnline.length > 0 ? await getPaymentMethodClientFields() : {}
+  // An extra charge raised since - a redelivery fee, say - and the two ways out
+  // of it: pay it here, or cancel and be refunded less it. Each lookup only runs
+  // while one is actually waiting. See lib/order-charges.ts.
+  const charges = await listChargesForOrder(order.id)
+  const openCharge = pendingCharge(charges)
+  const chargeMethods = openCharge ? await chargePayMethods(config) : []
+  const cancelPlan = openCharge ? await planCancellation(order, openCharge) : null
+  const payOnlineFields = payOnline.length > 0 || chargeMethods.length > 0 ? await getPaymentMethodClientFields() : {}
   // Every registered method's name, so a method a module contributed is named
   // rather than shouted in upper case.
   const methodLabels = await getPaymentMethodLabels()
@@ -592,12 +602,73 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           <DeliveryLiveMap orderId={order.id} shipmentId={liveShipment.id} initial={liveDelivery} />
         )}
 
-        {order.status === 'ON_HOLD' && (
+        {/* The charge says why the order is on hold, in its own words, so the
+            general "on hold" note would only be saying it twice. */}
+        {order.status === 'ON_HOLD' && !(openCharge?.holdOrder) && (
           <OrderNote tone="warn">
             <p>
               <strong>This order is on hold.</strong> We have paused it while something is sorted
               out, and we will be in touch as soon as it is moving again.
             </p>
+          </OrderNote>
+        )}
+
+        {/* An extra charge to pay, and the way out of it. Above everything but
+            the order's own state: while it is waiting, it is the only thing on
+            this page the customer has to do anything about. */}
+        {openCharge && (
+          <OrderNote tone="warn">
+            <p>
+              <strong>{openCharge.reason} - {formatMoney(openCharge.total, symbol)} to pay</strong>
+            </p>
+            {Number(openCharge.taxAmount) > 0 && (
+              <p className="sod-dim">
+                {formatMoney(openCharge.netAmount, symbol)} plus {formatMoney(openCharge.taxAmount, symbol)}{' '}
+                {config.invoiceTaxLabel || 'VAT'}
+              </p>
+            )}
+            {openCharge.note && <p className="sod-instructions">{openCharge.note}</p>}
+            {openCharge.holdOrder && (
+              <p>Your order is on hold until this is sorted.</p>
+            )}
+            {chargeMethods.length > 0 ? (
+              <>
+                <div className="sod-note-sep" />
+                <OrderPayOnlinePanel
+                  orderId={order.id}
+                  payPath={`/api/m/shop/member/orders/${encodeURIComponent(order.id)}/charges/${encodeURIComponent(openCharge.id)}/pay`}
+                  heading={`Pay ${formatMoney(openCharge.total, symbol)} now`}
+                  intro="Pay it here and we will get your order moving again."
+                  amount={formatMoney(openCharge.total, symbol)}
+                  methods={chargeMethods}
+                  payer={{
+                    email: order.customerEmail,
+                    name: order.customerName,
+                    address: order.billingAddress ?? order.shippingAddress,
+                  }}
+                  methodClientFields={payOnlineFields}
+                  paymentFields={resolveCheckoutPaymentFields()}
+                />
+              </>
+            ) : (
+              <p>Get in touch with us to pay it, and we will get your order moving again.</p>
+            )}
+            {cancelPlan?.ok && (
+              <>
+                <div className="sod-note-sep" />
+                <p>
+                  <strong>Rather not pay it?</strong> You can cancel the order instead, and we will refund{' '}
+                  {formatMoney(cancelPlan.refund, symbol)} - the {formatMoney(cancelPlan.held, symbol)} you paid, less
+                  the {formatMoney(cancelPlan.kept, symbol)}.
+                </p>
+                <ChargeCancelOrderButton
+                  orderId={order.id}
+                  chargeId={openCharge.id}
+                  refund={formatMoney(cancelPlan.refund, symbol)}
+                  charge={formatMoney(cancelPlan.kept, symbol)}
+                />
+              </>
+            )}
           </OrderNote>
         )}
 
@@ -967,6 +1038,17 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           <OrderCard title="Payment">
             <p><strong>{methodName}</strong></p>
             {paymentWhen && <p className="sod-dim">{paymentWhen}</p>}
+            {/* Extra charges already settled, so the money on a bank statement
+                has something on this page to match it to. A waived one is left
+                off: nothing was paid, and nothing is owed. */}
+            {charges.filter((charge) => charge.status === 'PAID' || charge.status === 'KEPT').map((charge) => (
+              <p key={charge.id} className="sod-dim">
+                {charge.reason}, {formatMoney(charge.total, symbol)}:{' '}
+                {charge.status === 'PAID'
+                  ? `paid${charge.paidAt ? ` on ${formatOrderDate(charge.paidAt, timezone)}` : ''}`
+                  : 'kept back from your refund'}
+              </p>
+            ))}
             {/* Their own reference for the order, under the money rather than in
                 a card of its own. It exists so an accounts department can match
                 this order to the payment it made for it, which is the same

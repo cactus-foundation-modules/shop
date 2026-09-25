@@ -1468,3 +1468,40 @@ CREATE TABLE IF NOT EXISTS "shp_product_slug_redirects" (
 CREATE INDEX IF NOT EXISTS "shp_product_slug_redirects_target_slug_idx"
     ON "shp_product_slug_redirects" ("target_slug")
     WHERE "target_slug" IS NOT NULL;
+
+-- Mirror of 064_order_charges.sql. An extra charge raised on an order after it
+-- was placed - a redelivery fee, say - which the customer pays from their order
+-- page, or has kept back out of their refund if they cancel instead.
+CREATE TABLE IF NOT EXISTS "shp_order_charges" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "order_id" TEXT NOT NULL,
+    "reason" TEXT NOT NULL,
+    "note" TEXT,
+    "net_amount" NUMERIC(10,2) NOT NULL,
+    "tax_rate" NUMERIC(6,3) NOT NULL DEFAULT 0,
+    "tax_amount" NUMERIC(10,2) NOT NULL DEFAULT 0,
+    "total" NUMERIC(10,2) NOT NULL,
+    "currency" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "hold_order" BOOLEAN NOT NULL DEFAULT true,
+    "held_from_status" TEXT,
+    "payment_method" TEXT,
+    "payment_reference" TEXT,
+    "paid_at" TIMESTAMP(3),
+    "refund_id" TEXT,
+    "resolved_at" TIMESTAMP(3),
+    "resolved_by" TEXT,
+    "created_by" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "shp_order_charges_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "shp_order_charges_order_id_fkey"
+        FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE,
+    CONSTRAINT "shp_order_charges_status_check" CHECK ("status" IN ('PENDING', 'PAID', 'KEPT', 'WAIVED')),
+    CONSTRAINT "shp_order_charges_total_check" CHECK ("total" > 0 AND "net_amount" > 0 AND "tax_amount" >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS "shp_order_charges_order_id_idx" ON "shp_order_charges" ("order_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "shp_order_charges_one_pending_key"
+    ON "shp_order_charges" ("order_id") WHERE "status" = 'PENDING';

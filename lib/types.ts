@@ -677,6 +677,44 @@ export type ShpOrderItem = {
   replacesOrderItemId: string | null
 }
 
+// An extra charge raised on an order after it was placed - a redelivery fee
+// after a failed delivery, say. See lib/order-charges.ts and migration 064.
+//   PENDING - owed; at most one per order
+//   PAID    - settled, online or recorded by staff
+//   KEPT    - the customer cancelled instead, and it came off their refund
+//   WAIVED  - staff let it go
+export type ShpOrderChargeStatus = 'PENDING' | 'PAID' | 'KEPT' | 'WAIVED'
+export type ShpOrderCharge = {
+  id: string
+  orderId: string
+  /** What it is for, in the customer's words: "Redelivery fee". */
+  reason: string
+  /** A longer explanation for the customer, where the owner wrote one. */
+  note: string | null
+  netAmount: string
+  /** A percentage, e.g. "20.000". */
+  taxRate: string
+  taxAmount: string
+  /** What the customer pays, and what comes off a refund if they cancel. */
+  total: string
+  currency: string
+  status: ShpOrderChargeStatus
+  holdOrder: boolean
+  /** The status the order had before this charge put it on hold. Null where
+   *  it did not. */
+  heldFromStatus: ShpOrderStatus | null
+  paymentMethod: string | null
+  paymentReference: string | null
+  paidAt: Date | null
+  /** On KEPT: the refund the fee was held back from. */
+  refundId: string | null
+  resolvedAt: Date | null
+  resolvedBy: string | null
+  createdBy: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
 export type ShpRefundStatus = 'PENDING' | 'COMPLETED' | 'FAILED'
 export type ShpRefund = {
   id: string
@@ -1232,6 +1270,11 @@ export type ShpEmailTemplateTrigger =
   // delivered, and here is how a new day gets booked - or, where staff have
   // said so, that the courier will be in touch. See lib/failed-delivery-email.ts.
   | 'DELIVERY_FAILED'
+  // An extra charge on an order (a redelivery fee, say): raised - pay it or
+  // cancel instead; paid; and the order cancelled with it kept back out of the
+  // refund. ADMIN_CHARGE_UPDATE tells the owner which way the customer went.
+  // See lib/order-charges.ts.
+  | 'CHARGE_RAISED' | 'CHARGE_PAID' | 'CHARGE_ORDER_CANCELLED' | 'ADMIN_CHARGE_UPDATE'
   // Sent at checkout on a method nobody has been paid on yet (bank transfer,
   // cash): the order is placed, here is how to pay for it, and nothing moves
   // until it does. Every other method has ORDER_CONFIRMED doing that job

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { RefundModal } from '@/modules/shop/components/admin/RefundModal'
+import { OrderChargesPanel } from '@/modules/shop/components/admin/OrderChargesPanel'
 import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
 import { DispatchModal } from '@/modules/shop/components/admin/DispatchModal'
 import { EditParcelModal } from '@/modules/shop/components/admin/EditParcelModal'
@@ -1126,6 +1127,10 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
               )}
             </div>
           </section>
+
+          {/* Something the customer owes on top of the order - a redelivery
+              fee - and their choice of paying it or cancelling instead. */}
+          <OrderChargesPanel orderId={orderId} orderStatus={order.status} currencySymbol={currencySymbol} onChanged={refresh} />
 
           <section className="sox-card">
             <div className="sox-card-head"><h2>Customer</h2></div>

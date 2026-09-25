@@ -165,14 +165,16 @@ async function refundLines(
   return { lines: withinRemaining(lines, Number(order.total) - alreadyGone - delivery), delivery }
 }
 
-async function issueRefund(
+// Exported for lib/order-charges.ts, whose "cancel and keep the fee" is the same
+// money going back down the same route, and needs the refund's id to point at.
+export async function issueRefund(
   order: ShpOrder,
   lines: Array<{ orderItemId: string; quantity: number; amount: number }>,
   reason: string,
   userId: string,
   // The delivery charge going back with it, tax and all (see refundLines).
   delivery = 0,
-): Promise<{ ok: true; amount: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; amount: number; refundId: string } | { ok: false; error: string }> {
   if (lines.length === 0 && !(delivery > 0)) return { ok: false, error: 'There is nothing left to refund on this order.' }
 
   // The same route the order screen's refund button takes (lib/payments/
@@ -217,7 +219,7 @@ async function issueRefund(
   // A refund approved off the back of a return is the same money going back as
   // one done from the order screen, and needs the same paperwork.
   await creditNoteForSettledRefund(outcome.refundId, { userId })
-  return { ok: true, amount: total }
+  return { ok: true, amount: total, refundId: outcome.refundId }
 }
 
 /**

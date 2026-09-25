@@ -25,7 +25,7 @@ import {
 } from '@/modules/shop/lib/payments/registry'
 import { paymentOutstanding } from '@/modules/shop/lib/payment-instructions'
 import { paymentTaken } from '@/modules/shop/lib/payment-taken'
-import type { ShpPaymentLogo } from '@/modules/shop/lib/payments/provider'
+import type { ShpPaymentLogo, ShpPaymentProvider } from '@/modules/shop/lib/payments/provider'
 import type { ShpOrder } from '@/modules/shop/lib/types'
 
 /** Enough of an order to decide any of this. Kept narrow so the checks can be
@@ -102,15 +102,31 @@ export async function payOnlineMethodsForOrder(
     Number(order.total),
   )
   const placed = settlementMethod(order)
+
+  return describePayOnlineMethods(
+    available,
+    (provider) => provider.settlesExistingOrder === true && provider.confirmMode !== 'manual' && provider.id !== placed,
+    config,
+  )
+}
+
+/**
+ * The methods among `available` that pass `accepts`, as the order page draws
+ * them - label, description, logo - in the order `available` lists them, which
+ * is the owner's own arrangement from the Payments tab.
+ *
+ * Shared with the extra-charge offer (lib/order-charges.ts), which asks a
+ * different question of each provider but draws the answer the same way.
+ */
+export async function describePayOnlineMethods(
+  available: readonly string[],
+  accepts: (provider: ShpPaymentProvider) => boolean,
+  config: Pick<ShpConfig, 'paymentMethodDescriptions' | 'hiddenPaymentMethodLogos'>,
+): Promise<PayOnlineMethod[]> {
   const descriptions = resolvePaymentMethodDescriptions(config.paymentMethodDescriptions)
   const hidden = config.hiddenPaymentMethodLogos
 
-  const offered = getAllPaymentProviders().filter((provider) =>
-    provider.settlesExistingOrder === true &&
-    provider.confirmMode !== 'manual' &&
-    provider.id !== placed &&
-    available.includes(provider.id)
-  )
+  const offered = getAllPaymentProviders().filter((provider) => available.includes(provider.id) && accepts(provider))
 
   const labels = await Promise.all(offered.map((provider) => resolveProviderLabel(provider)))
 

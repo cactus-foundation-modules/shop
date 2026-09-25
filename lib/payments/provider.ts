@@ -102,6 +102,22 @@ export interface ShpPaymentProvider {
   // client-side glue that lives in the checkout block and nowhere else, and half
   // a payment path is worse than none.
   settlesExistingOrder?: boolean
+  // Whether this provider can take payment for an EXTRA CHARGE raised on an
+  // order after it was placed - a redelivery fee, say (see lib/order-charges.ts).
+  //
+  // Opt-in, false when unset, and a bigger promise than settlesExistingOrder.
+  // The charge is not the order: it is paid for separately, and the order's own
+  // payment - its method, its reference, the refund that may one day go back
+  // against it - must be left exactly as it is. So the draft handed to
+  // createIntent and confirmPayment carries the CHARGE's id as `orderId` and the
+  // charge's total as `amount`, and a provider claiming this undertakes that:
+  //   - createIntent and confirmPayment work off that id and amount alone, and
+  //     never expect to find an order or a checkout draft under it;
+  //   - every OTHER path that settles a payment (a return route, a webhook)
+  //     recognises a charge id, via getOrderChargeForSettlement, and settles it
+  //     with settleOrderChargePayment instead of looking for an order - so a
+  //     payment that finishes after the shopper has left is still recorded.
+  settlesOrderCharges?: boolean
   // Module-contributed providers self-gate on their own env/settings so a method
   // can never reach checkout without being configured. Built-in providers are
   // gated by lib/env.ts instead; when unset the method is treated as available.

@@ -25,9 +25,16 @@ type PreparedIntent = {
 }
 
 export function OrderPayOnlinePanel({
-  orderId, amount, methods, payer, methodClientFields, paymentFields,
+  orderId, amount, methods, payer, methodClientFields, paymentFields, payPath, heading, intro,
 }: {
   orderId: string
+  /** Where the payment is started, with `/confirm` on the end to finish it.
+   *  The order's own pay route unless told otherwise - an extra charge on the
+   *  order has routes of its own (lib/order-charges.ts). */
+  payPath?: string
+  /** The line above the methods, and the sentence under it. */
+  heading?: string
+  intro?: string
   /** What is still owed, already formatted - the button says it out loud. */
   amount: string
   methods: PayOnlineMethod[]
@@ -41,6 +48,7 @@ export function OrderPayOnlinePanel({
   paymentFields?: Record<string, ComponentType<ShopCheckoutPaymentFieldsProps>>
 }) {
   const router = useRouter()
+  const startPath = payPath ?? `/api/m/shop/member/orders/${encodeURIComponent(orderId)}/pay`
   const [method, setMethod] = useState<string | null>(null)
   const [fieldsConfig, setFieldsConfig] = useState<Record<string, unknown> | null>(null)
   const [busy, setBusy] = useState(false)
@@ -55,7 +63,7 @@ export function OrderPayOnlinePanel({
   const payingRef = useRef(false)
 
   const prepare = useCallback(async (next: string): Promise<PreparedIntent> => {
-    const res = await fetch(`/api/m/shop/member/orders/${encodeURIComponent(orderId)}/pay`, {
+    const res = await fetch(startPath, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ method: next }),
@@ -69,7 +77,7 @@ export function OrderPayOnlinePanel({
     }
     preparedRef.current = prepared
     return prepared
-  }, [orderId])
+  }, [startPath])
 
   // Picking a method. A method with fields of its own has its intent created
   // here rather than on the pay button, because those fields need the amount to
@@ -140,7 +148,7 @@ export function OrderPayOnlinePanel({
         payload = await submit({ ...(methodClientFields[method] ?? {}), ...(prepared.clientFields ?? {}) })
       }
 
-      const res = await fetch(`/api/m/shop/member/orders/${encodeURIComponent(orderId)}/pay/confirm`, {
+      const res = await fetch(`${startPath}/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ method, payload }),
@@ -158,16 +166,16 @@ export function OrderPayOnlinePanel({
       payingRef.current = false
       setBusy(false)
     }
-  }, [method, methods, methodClientFields, orderId, paymentFields, prepare, router])
+  }, [method, methods, methodClientFields, paymentFields, prepare, router, startPath])
 
   const Fields = method && fieldsConfig ? paymentFields?.[method] : undefined
 
   return (
     <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
       <div>
-        <strong>Or pay {amount} now</strong>
+        <strong>{heading ?? `Or pay ${amount} now`}</strong>
         <p style={{ margin: '0.25rem 0 0', fontSize: 'var(--text-sm)' }}>
-          Settle it here instead and we will get on with your order straight away.
+          {intro ?? 'Settle it here instead and we will get on with your order straight away.'}
         </p>
       </div>
 
@@ -185,7 +193,7 @@ export function OrderPayOnlinePanel({
           >
             <input
               type="radio"
-              name={`shop-pay-online-${orderId}`}
+              name={`shop-pay-online-${startPath}`}
               checked={method === option.id}
               onChange={() => { void choose(option.id) }}
               disabled={busy}
