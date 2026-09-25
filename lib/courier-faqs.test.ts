@@ -19,6 +19,8 @@ const FURDECO = {
   failedStages: ['Failed Attempt'],
   rearrangeChatUrl: 'https://chat.example/rebook',
   rearrangePhone: '0121 000 0000',
+  rebookedBy: 'customer' as const,
+  showFailedReason: false,
   faqs: [{ id: 'faq_1', question: 'Will they take it upstairs?', answer: 'No.' }],
 }
 const DPD = {
@@ -34,6 +36,8 @@ const DPD = {
   failedStages: [],
   rearrangeChatUrl: '',
   rearrangePhone: '',
+  rebookedBy: 'customer' as const,
+  showFailedReason: false,
   faqs: [],
 }
 const config = { deliveryCouriers: [FURDECO, DPD] }

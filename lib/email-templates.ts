@@ -162,17 +162,19 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
   {
     // The courier tried and could not deliver. Sent once per failed attempt,
     // off the courier's own tracking - see lib/failed-delivery-email.ts. Two
-    // versions in one template, picked by flags: get in touch with the courier
-    // (their chat and phone, from the courier's settings), or - where staff
-    // have already spoken to them - wait, because the courier will call.
-    // The courier's own reason is deliberately left out: it is written for
-    // drivers, and "recipient not home" reads as an accusation.
+    // versions in one template, picked by flags: get in touch with the courier,
+    // or wait because the courier will be in touch (the courier's "who books
+    // the new day" setting, or staff saying so on the order). The courier's
+    // chat and phone, from their settings, follow in both.
+    // The courier's own reason is only given where the courier's settings say
+    // so (showFailedReason), tidied by failedReason: it is written for drivers,
+    // and "recipient not home" can read as an accusation.
     key: 'shop.delivery-failed',
     label: 'Delivery not possible',
     subject: 'We could not deliver your order {{orderNumber}}',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>We are sorry - {{carrier}} tried to deliver your order <strong>{{orderNumber}}</strong> but were not able to.</p>{{#if hasCourierWillContact}}<p>They are arranging a new delivery day and will be in touch with you directly, so there is nothing you need to do for now.</p>{{/if}}{{#if hasContactCourier}}<p>Please get in touch with {{carrier}} to arrange a new delivery day.</p>{{/if}}{{#if hasRebookChat}}<p><a href="{{rebookChatUrl}}">Chat to {{carrier}} online</a></p>{{/if}}{{#if hasRebookPhone}}<p>Call {{carrier}} on <a href="tel:{{rebookPhoneDial}}">{{rebookPhone}}</a></p>{{/if}}{{#if hasTrackingNumber}}<p>Your tracking number is <strong>{{trackingNumber}}</strong> - {{carrier}} will ask for it.</p>{{/if}}<p>Thanks for bearing with us - {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['customerName', 'orderNumber', 'carrier', 'trackingNumber', 'hasTrackingNumber', 'rebookChatUrl', 'hasRebookChat', 'rebookPhone', 'rebookPhoneDial', 'hasRebookPhone', 'hasContactCourier', 'hasCourierWillContact', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
+      '<p>Hi {{customerName}},</p><p>We are sorry - {{carrier}} tried to deliver your order <strong>{{orderNumber}}</strong> but were not able to.</p>{{#if hasFailedReason}}<p>Reason given by {{carrier}}: {{failedReason}}</p>{{/if}}{{#if hasCourierWillContact}}<p>There is nothing you need to do. {{carrier}} will be in touch with you directly to arrange a new delivery day.</p>{{/if}}{{#if hasReachSooner}}<p>If you would rather speak to them yourself in the meantime, you can reach them here:</p>{{/if}}{{#if hasContactCourier}}<p>Please get in touch with {{carrier}} to arrange a new delivery day.</p>{{/if}}{{#if hasRebookChat}}<p><a href="{{rebookChatUrl}}">Chat to {{carrier}} online</a></p>{{/if}}{{#if hasRebookPhone}}<p>Call {{carrier}} on <a href="tel:{{rebookPhoneDial}}">{{rebookPhone}}</a></p>{{/if}}{{#if hasTrackingNumber}}<p>Your tracking number is <strong>{{trackingNumber}}</strong>, which {{carrier}} will ask for if you get in touch.</p>{{/if}}<p>Thanks for bearing with us - {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'carrier', 'trackingNumber', 'hasTrackingNumber', 'failedReason', 'hasFailedReason', 'rebookChatUrl', 'hasRebookChat', 'rebookPhone', 'rebookPhoneDial', 'hasRebookPhone', 'hasReachSooner', 'hasContactCourier', 'hasCourierWillContact', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
     transactional: false,
   },
   {

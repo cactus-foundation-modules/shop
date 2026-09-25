@@ -85,6 +85,36 @@ export function stageMeaning(
   return 'progress'
 }
 
+/**
+ * The courier's reason for a failed attempt, in words fit for the customer, or
+ * '' when the stage says nothing past "it failed".
+ *
+ * Multidrop staples the reason onto the stage itself: "Failed Attempt - Non
+ * Fault - RECIPIENT NOT HOME - UNABLE TO DELIVER". The part the owner listed as
+ * the failed stage is dropped (the customer already knows it failed), so is
+ * "Non Fault" (depot bookkeeping, not news), and a reason shouted in capitals is
+ * brought down to a sentence: "Recipient not home - unable to deliver".
+ * Only cut on " - ", so a comma inside a reason survives.
+ */
+export function failedReason(
+  courier: Pick<ShpCourier, 'failedStages'> | null,
+  stage: string | null | undefined,
+): string {
+  if (!courier || !stage?.trim()) return ''
+  const listed = new Set(courier.failedStages.map(normalise))
+  // The owner listed the whole stage: it is the failure, not a reason for one.
+  if (listed.has(normalise(stage))) return ''
+  const parts = stage
+    .split(/\s+-\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part && !listed.has(normalise(part)) && !/^non[\s-]?fault$/i.test(part))
+  if (parts.length === 0) return ''
+  const reason = parts.join(' - ')
+  if (reason !== reason.toUpperCase()) return reason
+  const lower = reason.toLowerCase()
+  return lower.charAt(0).toUpperCase() + lower.slice(1)
+}
+
 /** Whether this courier is one the shop reads on a schedule at all.
  *
  *  Asked as "not none" rather than by listing the sources, so adding a reader

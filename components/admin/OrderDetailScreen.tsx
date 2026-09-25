@@ -152,6 +152,9 @@ type ShipmentDetail = {
   /** Set when staff have recorded that the courier will contact the customer
    *  to rebook. */
   courierRearrangingAt?: string | null
+  /** The courier's settings say they always rebook a failed delivery
+   *  themselves. Optional so a response from an older deployment still renders. */
+  courierRebooks?: boolean
   /** When the customer was emailed about the current failed attempt. */
   failedNotifiedAt?: string | null
   signedBy: string | null; signedAt: string | null; signatureUrl: string | null
@@ -929,21 +932,23 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                         {shipment.deliveryFailed && (
                           <div className="sox-list-sub" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem' }}>
                             <span>
-                              {shipment.courierRearrangingAt
+                              {shipment.courierRebooks || shipment.courierRearrangingAt
                                 ? `Delivery failed · customer told ${shipment.carrier || 'the courier'} will be in touch to rebook`
                                 : `Delivery failed · customer told to contact ${shipment.carrier || 'the courier'} to rebook`}
                               {shipment.failedNotifiedAt ? ' · customer emailed' : ''}
                             </span>
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-sm sox-noprint"
-                              disabled={busy}
-                              onClick={() => setCourierRearranging(shipment, !shipment.courierRearrangingAt)}
-                            >
-                              {shipment.courierRearrangingAt
-                                ? 'Customer should contact them instead'
-                                : `${shipment.carrier || 'Courier'} will contact the customer`}
-                            </button>
+                            {!shipment.courierRebooks && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm sox-noprint"
+                                disabled={busy}
+                                onClick={() => setCourierRearranging(shipment, !shipment.courierRearrangingAt)}
+                              >
+                                {shipment.courierRearrangingAt
+                                  ? 'Customer should contact them instead'
+                                  : `${shipment.carrier || 'Courier'} will contact the customer`}
+                              </button>
+                            )}
                           </div>
                         )}
                         {shipment.signatureUrl && (

@@ -586,6 +586,19 @@ export const ShpConfigSchema = z.object({
           .refine((v) => v === '' || /^https?:\/\//i.test(v), 'Must start with http:// or https://')
           .default(''),
         rearrangePhone: z.string().max(40).default(''),
+        // Who books the new day after a failed attempt. 'customer' tells them
+        // to get in touch with the courier; 'courier' tells them there is
+        // nothing to do, because the courier will be in touch. The chat and
+        // phone above are offered either way - in 'courier' as a way to get
+        // hold of them sooner. Staff can still say "the courier will call" on
+        // one parcel from the order screen when this is 'customer'.
+        rebookedBy: z.enum(['customer', 'courier']).default('customer'),
+        // Whether the customer is told the courier's reason for a failed
+        // attempt ("Recipient not home"), read off the failed stage itself -
+        // see failedReason in lib/tracking/stage-meaning.ts. Off by default:
+        // a driver's shorthand can read as an accusation, so it is the
+        // owner's call per courier.
+        showFailedReason: z.boolean().default(false),
         // What the button to the courier's own page says, and the line under
         // it.
         //

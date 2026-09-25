@@ -18,6 +18,8 @@ const config = {
       failedStages: ['Failed Attempt'],
       rearrangeChatUrl: 'https://chat.example/rebook',
       rearrangePhone: '0121 000 0000',
+      rebookedBy: 'customer' as const,
+      showFailedReason: false,
       faqs: [{ id: 'f1', question: 'Q', answer: 'A' }],
     },
   ],
@@ -389,7 +391,24 @@ describe('a failed delivery', () => {
       chatUrl: 'https://chat.example/rebook',
       phone: '0121 000 0000',
       courierWillContact: false,
+      reason: '',
     })
+  })
+
+  it('tells the customer to wait when the courier always rebooks, keeping the contact details', () => {
+    const courierRebooks = { deliveryCouriers: [{ ...config.deliveryCouriers[0]!, rebookedBy: 'courier' as const }] }
+    const delivery = parcelDelivery(courierRebooks, failedParcel(), new Date('2026-09-25T11:30:00Z'), 'Europe/London')
+    expect(delivery.rearrange).toMatchObject({
+      courierWillContact: true,
+      chatUrl: 'https://chat.example/rebook',
+      phone: '0121 000 0000',
+    })
+  })
+
+  it('gives the courier\'s reason only where the courier is set to show it', () => {
+    const showing = { deliveryCouriers: [{ ...config.deliveryCouriers[0]!, showFailedReason: true }] }
+    const delivery = parcelDelivery(showing, failedParcel(), new Date('2026-09-25T11:30:00Z'), 'Europe/London')
+    expect(delivery.rearrange?.reason).toBe('Recipient not home - unable to deliver')
   })
 
   it('tells the customer to wait once staff say the courier will call', () => {

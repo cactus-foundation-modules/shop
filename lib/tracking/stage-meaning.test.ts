@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { courierIsPolled, stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
+import { courierIsPolled, failedReason, stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 
 const furdeco = {
   trackingSource: 'multidrop' as const,
@@ -98,5 +98,25 @@ describe('stages with the courier own detail stapled on', () => {
       failedStages: [] as string[],
     }
     expect(stageMeaning(dpd, 'Your parcel will be with you today  between 11:25 and 12:25')).toBe('out-for-delivery')
+  })
+})
+
+describe('failedReason', () => {
+  const courier = { failedStages: ['Failed Attempt'] }
+
+  it('keeps the reason Multidrop staples on, in sentence case, without "Non Fault"', () => {
+    expect(failedReason(courier, 'Failed Attempt - Non Fault - RECIPIENT NOT HOME - UNABLE TO DELIVER'))
+      .toBe('Recipient not home - unable to deliver')
+  })
+
+  it('leaves a reason that is not shouted as it was written', () => {
+    expect(failedReason(courier, 'Failed Attempt - No access to the building, gate locked'))
+      .toBe('No access to the building, gate locked')
+  })
+
+  it('says nothing when the stage is only the failure', () => {
+    expect(failedReason(courier, 'Failed Attempt')).toBe('')
+    expect(failedReason(courier, 'failed attempt ')).toBe('')
+    expect(failedReason(null, 'Failed Attempt - Refused')).toBe('')
   })
 })

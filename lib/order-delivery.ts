@@ -6,8 +6,8 @@ import {
   nowInTimezone,
   type DeliveryProgress,
 } from '@/modules/shop/lib/delivery-slot'
-import { courierForShipment, customerMaySeeTracking, faqsForShipment, type ShpCourier } from '@/modules/shop/lib/courier-faqs'
-import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
+import { courierForShipment, courierWillRebook, customerMaySeeTracking, faqsForShipment, type ShpCourier } from '@/modules/shop/lib/courier-faqs'
+import { failedReason, stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
 import { liveProgress, type LiveProgress } from '@/modules/shop/lib/tracking/live-line'
 import type { TrackingEvent } from '@/modules/shop/lib/tracking/reading'
@@ -80,9 +80,14 @@ export type DeliveryRearrange = {
   chatUrl: string
   /** '' for none. */
   phone: string
-  /** Staff have recorded that the courier will contact the customer to rebook,
-   *  so the customer is told to wait for them rather than to get in touch. */
+  /** The courier will contact the customer to rebook - their courier's
+   *  setting, or staff have said so on this parcel - so the customer is told to
+   *  wait for them rather than to get in touch. The chat and phone are still
+   *  given, for anyone who would rather get hold of them sooner. */
   courierWillContact: boolean
+  /** The courier's reason for the failed attempt, tidied for the customer.
+   *  '' when the courier's settings keep it back or the stage gives none. */
+  reason: string
 }
 
 /** What the button out to the courier says when nobody has changed it. The
@@ -149,7 +154,8 @@ export function parcelDelivery(
           courierName: courier?.name.trim() || shipment.carrier?.trim() || '',
           chatUrl: safeTrackingUrl(courier?.rearrangeChatUrl),
           phone: courier?.rearrangePhone.trim() ?? '',
-          courierWillContact: Boolean(shipment.courierRearrangingAt),
+          courierWillContact: courierWillRebook(courier, shipment),
+          reason: courier?.showFailedReason ? failedReason(courier, shipment.trackingStage) : '',
         }
       : null,
     showTracking: customerMaySeeTracking(config, shipment),

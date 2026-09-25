@@ -2,8 +2,9 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { claimFailedDeliveryNotification, getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
-import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
+import { courierForShipment, courierWillRebook } from '@/modules/shop/lib/courier-faqs'
 import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
+import { failedReason } from '@/modules/shop/lib/tracking/stage-meaning'
 import type { ShpShipment } from '@/modules/shop/lib/types'
 
 // "We could not deliver your order."
@@ -58,10 +59,12 @@ export async function sendFailedDeliveryEmail(params: { orderId: string; shipmen
   const trackingNumber = shipment.trackingNumber?.trim() ?? ''
 
   // Read at send time, so a parcel staff flagged before the email went is told
-  // to wait rather than to chase.
-  const courierWillContact = Boolean(shipment.courierRearrangingAt)
-  const chatUrl = courierWillContact ? '' : safeTrackingUrl(courier?.rearrangeChatUrl)
-  const phone = courierWillContact ? '' : courier?.rearrangePhone.trim() ?? ''
+  // to wait rather than to chase. The courier's chat and phone go either way:
+  // told to wait, a customer may still want them sooner.
+  const courierWillContact = courierWillRebook(courier, shipment)
+  const chatUrl = safeTrackingUrl(courier?.rearrangeChatUrl)
+  const phone = courier?.rearrangePhone.trim() ?? ''
+  const reason = courier?.showFailedReason ? failedReason(courier, shipment.trackingStage) : ''
 
   await notifyOrderCustomer('DELIVERY_FAILED', order, {
     orderNumber: order.orderNumber,
@@ -69,11 +72,16 @@ export async function sendFailedDeliveryEmail(params: { orderId: string; shipmen
     carrier,
     trackingNumber,
     hasTrackingNumber: trackingNumber ? 'true' : 'false',
+    failedReason: reason,
+    hasFailedReason: reason ? 'true' : 'false',
     rebookChatUrl: chatUrl,
     hasRebookChat: chatUrl ? 'true' : 'false',
     rebookPhone: phone,
     rebookPhoneDial: dialable(phone),
     hasRebookPhone: phone ? 'true' : 'false',
+    // The "or reach them sooner" line: only when told to wait, and only with
+    // something to reach them by. One flag, because {{#if}} does not nest.
+    hasReachSooner: courierWillContact && (chatUrl || phone) ? 'true' : 'false',
     hasContactCourier: courierWillContact ? 'false' : 'true',
     hasCourierWillContact: courierWillContact ? 'true' : 'false',
     shopName: config.shopTitle || 'Shop',

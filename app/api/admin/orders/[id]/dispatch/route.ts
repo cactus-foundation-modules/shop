@@ -205,11 +205,17 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // against the settings, so the screen offers "the courier will be in
     // touch" on exactly the parcels the customer's own page is telling to
     // rebook - the two must never disagree about which parcels those are.
-    shipments: shipments.map((shipment) => ({
-      ...shipment,
-      deliveryFailed: !shipment.deliveredAt
-        && stageMeaning(courierForShipment(config, shipment), shipment.trackingStage) === 'failed',
-    })),
+    shipments: shipments.map((shipment) => {
+      const courier = courierForShipment(config, shipment)
+      return {
+        ...shipment,
+        deliveryFailed: !shipment.deliveredAt
+          && stageMeaning(courier, shipment.trackingStage) === 'failed',
+        // The courier's own setting says they rebook, so there is nothing for
+        // staff to switch on this parcel.
+        courierRebooks: courier?.rebookedBy === 'courier',
+      }
+    }),
     // The dispatch modal's courier list. It rides on this call rather than
     // being fetched separately because every screen that offers dispatch is
     // already waiting on this one, and a second round trip for six words would

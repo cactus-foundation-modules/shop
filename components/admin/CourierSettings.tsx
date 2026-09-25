@@ -228,10 +228,39 @@ export function CourierSettings({ value, onChange }: {
                 />
                 <span className="field-hint">
                   Shown to the customer with their tracking number, which the courier will ask for.
-                  If you have already spoken to the courier and they will ring the customer
-                  themselves, say so on the order and the customer is told to wait instead.
                 </span>
               </div>
+
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Who books the new day after a failed delivery</label>
+                <select
+                  value={courier.rebookedBy}
+                  onChange={(e) => patchCourier(courier.id, { rebookedBy: e.target.value as 'customer' | 'courier' })}
+                >
+                  <option value="customer">The customer gets in touch with the courier</option>
+                  <option value="courier">The courier gets in touch with the customer</option>
+                </select>
+                <span className="field-hint">
+                  What the order page and the email tell the customer to do. Either way the chat
+                  link and phone number above are given - as a way to get hold of the courier sooner
+                  when the courier is the one rebooking. On the first setting you can still say, on
+                  a single order, that the courier will ring the customer themselves.
+                </span>
+              </div>
+
+              <label style={checkboxRow}>
+                <input
+                  type="checkbox"
+                  checked={courier.showFailedReason}
+                  onChange={(e) => patchCourier(courier.id, { showFailedReason: e.target.checked })}
+                />
+                Tell the customer the courier&rsquo;s reason for a failed delivery
+              </label>
+              <p className="field-hint" style={{ marginTop: '-0.25rem' }}>
+                Whatever the courier adds after the failed stage, on the order page and in the email -
+                &ldquo;Failed Attempt - Non Fault - RECIPIENT NOT HOME&rdquo; becomes &ldquo;Recipient not
+                home&rdquo;. Nothing is shown when the courier gives no reason.
+              </p>
             </div>
           )}
 
@@ -313,6 +342,8 @@ export function CourierSettings({ value, onChange }: {
           failedStages: [],
           rearrangeChatUrl: '',
           rearrangePhone: '',
+          rebookedBy: 'customer',
+          showFailedReason: false,
           trackingLinkLabel: '',
           trackingLinkHint: '',
           faqs: [],

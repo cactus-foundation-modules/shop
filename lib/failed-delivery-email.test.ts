@@ -4,6 +4,7 @@ import { claimFailedDeliveryNotification, getShipmentsForOrder } from '@/modules
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { shopEmailTemplates } from '@/modules/shop/lib/email-templates'
+import { getShopConfigCached } from '@/modules/shop/lib/config'
 
 vi.mock('@/modules/shop/lib/db/shipments', () => ({
   claimFailedDeliveryNotification: vi.fn(),
@@ -19,6 +20,8 @@ vi.mock('@/modules/shop/lib/config', () => ({
       name: 'Furdeco',
       rearrangeChatUrl: 'https://chat.example/rebook',
       rearrangePhone: '0121 000 0000',
+      rebookedBy: 'customer' as const,
+      showFailedReason: false,
     }],
   })),
 }))
@@ -66,7 +69,7 @@ describe('maybeSendFailedDeliveryEmail', () => {
     })
   })
 
-  it('tells them to wait once staff say the courier will call', async () => {
+  it('tells them to wait once staff say the courier will call, still giving the contact details', async () => {
     vi.mocked(getShipmentsForOrder).mockResolvedValue([
       { ...shipment, courierRearrangingAt: new Date('2026-09-25T11:00:00Z') },
     ] as never)
@@ -74,8 +77,45 @@ describe('maybeSendFailedDeliveryEmail', () => {
     expect(sentVars()).toMatchObject({
       hasContactCourier: 'false',
       hasCourierWillContact: 'true',
+      hasRebookChat: 'true',
+      hasRebookPhone: 'true',
+      hasReachSooner: 'true',
+    })
+  })
+
+  it('keeps the courier\'s reason back unless the courier is set to show it', async () => {
+    vi.mocked(getShipmentsForOrder).mockResolvedValue([
+      { ...shipment, trackingStage: 'Failed Attempt - Non Fault - RECIPIENT NOT HOME' },
+    ] as never)
+    await maybeSendFailedDeliveryEmail({ id: 'shp_1', orderId: 'ord_1' })
+    expect(sentVars()).toMatchObject({ hasFailedReason: 'false', failedReason: '', hasReachSooner: 'false' })
+  })
+
+  it('tells them to wait, with the reason, when the courier rebooks and shows its reasons', async () => {
+    vi.mocked(getShopConfigCached).mockResolvedValueOnce({
+      shopTitle: 'Test Shop',
+      deliveryCouriers: [{
+        id: 'cou_furdeco',
+        name: 'Furdeco',
+        failedStages: ['Failed Attempt'],
+        rearrangeChatUrl: '',
+        rearrangePhone: '0121 000 0000',
+        rebookedBy: 'courier',
+        showFailedReason: true,
+      }],
+    } as never)
+    vi.mocked(getShipmentsForOrder).mockResolvedValue([
+      { ...shipment, trackingStage: 'Failed Attempt - Non Fault - RECIPIENT NOT HOME' },
+    ] as never)
+    await maybeSendFailedDeliveryEmail({ id: 'shp_1', orderId: 'ord_1' })
+    expect(sentVars()).toMatchObject({
+      hasCourierWillContact: 'true',
+      hasContactCourier: 'false',
+      hasReachSooner: 'true',
       hasRebookChat: 'false',
-      hasRebookPhone: 'false',
+      hasRebookPhone: 'true',
+      failedReason: 'Recipient not home',
+      hasFailedReason: 'true',
     })
   })
 

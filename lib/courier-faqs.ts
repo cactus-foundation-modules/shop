@@ -45,6 +45,17 @@ export function courierForShipment(
 /** The questions worth answering about this delivery. Empty for a courier with
  *  none, and for a carrier that was typed in and never configured - in which
  *  case nothing is shown at all rather than an empty box. */
+/** Whether the customer is told to wait for the courier to rebook a failed
+ *  delivery, rather than to get in touch with them. The courier's own setting,
+ *  or staff having said so on this one parcel. One rule, so the order page, the
+ *  email and the order screen never disagree. */
+export function courierWillRebook(
+  courier: Pick<ShpCourier, 'rebookedBy'> | null,
+  shipment: Pick<ShpShipment, 'courierRearrangingAt'>,
+): boolean {
+  return courier?.rebookedBy === 'courier' || Boolean(shipment.courierRearrangingAt)
+}
+
 export function faqsForShipment(
   config: Pick<ShpConfig, 'deliveryCouriers'>,
   shipment: ShipmentCourierFields,
