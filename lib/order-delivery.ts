@@ -8,6 +8,7 @@ import {
 } from '@/modules/shop/lib/delivery-slot'
 import { courierForShipment, customerMaySeeTracking, faqsForShipment, type ShpCourier } from '@/modules/shop/lib/courier-faqs'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
+import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
 import { liveProgress, type LiveProgress } from '@/modules/shop/lib/tracking/live-line'
 import type { TrackingEvent } from '@/modules/shop/lib/tracking/reading'
 import type { ShpConfig } from '@/modules/shop/lib/config'
@@ -48,6 +49,14 @@ export type ParcelDelivery = {
   /** The courier says it has arrived. Again, better evidence than the window
    *  having elapsed. */
   arrived: boolean
+  /** The courier tried and could not deliver it. Nothing else about the day
+   *  stands once this is true: not the window, not the van, not "out for
+   *  delivery". Cleared by the courier moving it on again - a new day booked
+   *  reads as a new stage, and this goes back to false by itself. */
+  failed: boolean
+  /** How to get a failed delivery booked in again, where that is the courier's
+   *  job rather than the shop's. Null unless `failed`. */
+  rearrange: DeliveryRearrange | null
   /** Whether the customer is offered the courier's own tracking page. */
   showTracking: boolean
   /** What that button says, and the line under it. The courier's setting where
@@ -61,6 +70,19 @@ export type ParcelDelivery = {
   /** The courier's own history for this parcel, newest first. */
   events: TrackingEvent[]
   faqs: ShpCourier['faqs']
+}
+
+export type DeliveryRearrange = {
+  /** Who to ask, in the name the customer already knows them by. */
+  courierName: string
+  /** The courier's own chat page, checked as a link before it gets here. '' for
+   *  none. */
+  chatUrl: string
+  /** '' for none. */
+  phone: string
+  /** Staff have recorded that the courier will contact the customer to rebook,
+   *  so the customer is told to wait for them rather than to get in touch. */
+  courierWillContact: boolean
 }
 
 /** What the button out to the courier says when nobody has changed it. The
@@ -88,11 +110,19 @@ export function parcelDelivery(
       })
     : null
 
-  const arrived = meaning === 'delivered'
+  // A failed attempt is the courier's word and outranks the clock: the window
+  // passing after one is not the parcel having arrived, whatever the fallback
+  // below would make of it.
+  const failed = meaning === 'failed'
+    && !shipment.deliveredAt
+    && !shipment.signedAt
+    && !shipment.signedBy?.trim()
+
+  const arrived = !failed && (meaning === 'delivered'
     || Boolean(shipment.deliveredAt)
     || Boolean(shipment.signedAt)
     || Boolean(shipment.signedBy?.trim())
-    || (meaning === 'progress' && progress?.phase === 'passed')
+    || (meaning === 'progress' && progress?.phase === 'passed'))
 
   // The courier's own flag where they report one, and the owner's reading of
   // their stage words where they do not. Same rule as `delivered` in the
@@ -100,7 +130,8 @@ export function parcelDelivery(
   // Once it has arrived, the flag is ignored - DPD in particular keep
   // outForDelivery true after delivery, which would otherwise leave "any
   // minute now" on the page for ever.
-  const outForDelivery = !arrived && (shipment.carrierOutForDelivery ?? meaning === 'out-for-delivery')
+  const outForDelivery = !arrived && !failed
+    && (shipment.carrierOutForDelivery ?? meaning === 'out-for-delivery')
 
   return {
     shipmentId: shipment.id,
@@ -112,6 +143,15 @@ export function parcelDelivery(
     progress,
     outForDelivery,
     arrived,
+    failed,
+    rearrange: failed
+      ? {
+          courierName: courier?.name.trim() || shipment.carrier?.trim() || '',
+          chatUrl: safeTrackingUrl(courier?.rearrangeChatUrl),
+          phone: courier?.rearrangePhone.trim() ?? '',
+          courierWillContact: Boolean(shipment.courierRearrangingAt),
+        }
+      : null,
     showTracking: customerMaySeeTracking(config, shipment),
     trackingLabel: courier?.trackingLinkLabel.trim() || DEFAULT_TRACKING_LABEL,
     trackingHint: courier?.trackingLinkHint.trim() ?? '',

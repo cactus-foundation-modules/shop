@@ -109,6 +109,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })
       return NextResponse.json({ ...base, arrived: true, refreshPage: true })
     }
+    // The van has been and could not deliver. The page is showing a map of a
+    // delivery that is no longer happening, so it reloads onto what to do next.
+    if (stageMeaning(courier, reading.stage) === 'failed') {
+      return NextResponse.json({ ...base, refreshPage: true })
+    }
     const refreshed = await getShipmentForOrder(order.id, shipmentId)
     if (refreshed) current = refreshed
   }

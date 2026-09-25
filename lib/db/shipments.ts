@@ -47,6 +47,8 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     // told" rather than undefined - which would read as truthy and silence the
     // message for good.
     trackingNotifiedAt: (r.tracking_notified_at as Date | null) ?? null,
+    courierRearrangingAt: (r.courier_rearranging_at as Date | null) ?? null,
+    failedNotifiedAt: (r.failed_notified_at as Date | null) ?? null,
     trackingStage: (r.tracking_stage as string | null) ?? null,
     trackingStageAt: (r.tracking_stage_at as Date | null) ?? null,
     trackingCheckedAt: (r.tracking_checked_at as Date | null) ?? null,
@@ -509,6 +511,9 @@ export type UpdateShipmentDetailsInput = {
   deliverySlotEnd?: string | null
   notes?: string | null
   shippedAt?: Date | null
+  /** The courier has said they will contact the customer about a failed
+   *  delivery. True stamps it now, false clears it. */
+  courierRearranging?: boolean
 }
 
 export async function updateShipmentDetails(
@@ -531,6 +536,15 @@ export async function updateShipmentDetails(
   if (patch.deliverySlotEnd !== undefined) set('delivery_slot_end', patch.deliverySlotEnd)
   if (patch.notes !== undefined) set('notes', patch.notes)
   if (patch.shippedAt !== undefined && patch.shippedAt) set('shipped_at', patch.shippedAt)
+  // Stamped by the database's clock rather than this server's, like every
+  // other moment on this row. Re-sending true keeps the first stamp.
+  if (patch.courierRearranging === true) {
+    assignments.push(Prisma.sql`"courier_rearranging_at" = COALESCE("courier_rearranging_at", CURRENT_TIMESTAMP)`)
+  } else if (patch.courierRearranging === false) {
+    // A literal NULL, not a bound one: a parameter with no type of its own can
+    // arrive as text, and Postgres will not put text in a timestamp column.
+    assignments.push(Prisma.sql`"courier_rearranging_at" = NULL`)
+  }
 
   // Nothing to change still has to answer "does this parcel exist", because the
   // caller uses that answer to decide between a 404 and a success.
@@ -546,6 +560,23 @@ export async function updateShipmentDetails(
 
   const shipments = await getShipmentsForOrder(orderId)
   return shipments.find((s) => s.id === shipmentId) ?? null
+}
+
+/**
+ * Claim the right to email the customer about a failed delivery attempt.
+ *
+ * True once per failed stage. The stamp is set by the statement that reads
+ * it, so the hourly job and a page poll reading the same failure at the same
+ * moment cannot both send it. recordTrackingStage clears it when the stage
+ * moves on, which is what lets a second failed attempt send a second email.
+ */
+export async function claimFailedDeliveryNotification(shipmentId: string): Promise<boolean> {
+  const claimed = await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "failed_notified_at" = CURRENT_TIMESTAMP, "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId} AND "failed_notified_at" IS NULL AND "delivered_at" IS NULL
+  `
+  return claimed > 0
 }
 
 /**
@@ -665,6 +696,19 @@ export async function recordTrackingStage(shipmentId: string, input: {
           ELSE "tracking_stage_at"
         END,
         "tracking_stage" = COALESCE(${input.stage}::text, "tracking_stage"),
+        -- "The courier will ring you" was said about the stage it was set
+        -- against. A new day booked, or another failed attempt, is a different
+        -- conversation, and the old promise must not hang over it.
+        "courier_rearranging_at" = CASE
+          WHEN ${input.stage}::text IS NOT NULL AND ${input.stage}::text IS DISTINCT FROM "tracking_stage" THEN NULL
+          ELSE "courier_rearranging_at"
+        END,
+        -- Same rule for the failed-delivery email: a second failed attempt is
+        -- news, and the customer hears about it too.
+        "failed_notified_at" = CASE
+          WHEN ${input.stage}::text IS NOT NULL AND ${input.stage}::text IS DISTINCT FROM "tracking_stage" THEN NULL
+          ELSE "failed_notified_at"
+        END,
         "delivered_at" = CASE
           WHEN ${input.delivered} AND "delivered_at" IS NULL THEN CURRENT_TIMESTAMP
           ELSE "delivered_at"

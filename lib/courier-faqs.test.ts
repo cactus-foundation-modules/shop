@@ -16,6 +16,9 @@ const FURDECO = {
   trackingLinkHint: '',
   outForDeliveryStages: ['Assigned to Crew'],
   deliveredStages: ['Complete'],
+  failedStages: ['Failed Attempt'],
+  rearrangeChatUrl: 'https://chat.example/rebook',
+  rearrangePhone: '0121 000 0000',
   faqs: [{ id: 'faq_1', question: 'Will they take it upstairs?', answer: 'No.' }],
 }
 const DPD = {
@@ -28,6 +31,9 @@ const DPD = {
   trackingLinkHint: '',
   outForDeliveryStages: [],
   deliveredStages: [],
+  failedStages: [],
+  rearrangeChatUrl: '',
+  rearrangePhone: '',
   faqs: [],
 }
 const config = { deliveryCouriers: [FURDECO, DPD] }

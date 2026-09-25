@@ -15,6 +15,9 @@ const config = {
       trackingLinkHint: '',
       outForDeliveryStages: ['Assigned to Crew'],
       deliveredStages: ['Complete'],
+      failedStages: ['Failed Attempt'],
+      rearrangeChatUrl: 'https://chat.example/rebook',
+      rearrangePhone: '0121 000 0000',
       faqs: [{ id: 'f1', question: 'Q', answer: 'A' }],
     },
   ],
@@ -34,6 +37,8 @@ function shipment(patch: Partial<ShpShipmentWithItems>): ShpShipmentWithItems {
     deliverySlotEnd: null,
     slotNotifiedAt: null,
     trackingNotifiedAt: null,
+    courierRearrangingAt: null,
+    failedNotifiedAt: null,
     trackingStage: null,
     trackingStageAt: null,
     trackingCheckedAt: null,
@@ -214,6 +219,8 @@ const booked = (id: string, date: string, phase: 'upcoming' | 'passed'): ParcelD
   progress: { progress: phase === 'passed' ? 1 : 0, phase },
   outForDelivery: false,
   arrived: phase === 'passed',
+  failed: false,
+  rearrange: null,
   showTracking: true,
   trackingLabel: 'Track your parcel',
   trackingHint: '',
@@ -357,5 +364,74 @@ describe('orderProgressSteps with a delivery', () => {
 
     expect(steps.find((s) => s.key === 'delivery')?.state).toBe('done')
     expect(steps.find((s) => s.key === 'complete')?.state).toBe('now')
+  })
+})
+
+describe('a failed delivery', () => {
+  const failedParcel = (patch: Partial<ShpShipmentWithItems> = {}) => shipment({
+    deliveryDate: '2026-09-25',
+    deliverySlotStart: '09:00',
+    deliverySlotEnd: '12:00',
+    trackingNumber: 'F52483705654',
+    trackingStage: 'Failed Attempt - Non Fault - RECIPIENT NOT HOME - UNABLE TO DELIVER',
+    ...patch,
+  })
+
+  it('is neither out for delivery nor arrived, even once the window has gone', () => {
+    // 3pm, the window long closed. Without the failure the clock fallback
+    // would call this arrived.
+    const delivery = parcelDelivery(config, failedParcel(), new Date('2026-09-25T14:00:00Z'), 'Europe/London')
+    expect(delivery.failed).toBe(true)
+    expect(delivery.arrived).toBe(false)
+    expect(delivery.outForDelivery).toBe(false)
+    expect(delivery.rearrange).toEqual({
+      courierName: 'Furdeco',
+      chatUrl: 'https://chat.example/rebook',
+      phone: '0121 000 0000',
+      courierWillContact: false,
+    })
+  })
+
+  it('tells the customer to wait once staff say the courier will call', () => {
+    const delivery = parcelDelivery(
+      config,
+      failedParcel({ courierRearrangingAt: new Date('2026-09-25T11:00:00Z') }),
+      new Date('2026-09-25T11:30:00Z'),
+      'Europe/London',
+    )
+    expect(delivery.rearrange?.courierWillContact).toBe(true)
+  })
+
+  it('gives way to a real delivery timestamp', () => {
+    const delivery = parcelDelivery(
+      config,
+      failedParcel({ deliveredAt: new Date('2026-09-29T10:00:00Z') }),
+      new Date('2026-09-29T11:00:00Z'),
+      'Europe/London',
+    )
+    expect(delivery.failed).toBe(false)
+    expect(delivery.rearrange).toBeNull()
+    expect(delivery.arrived).toBe(true)
+  })
+
+  it('puts the rail step at "Delivery not possible" with no date under it', () => {
+    const delivery = parcelDelivery(config, failedParcel(), new Date('2026-09-25T10:30:00Z'), 'Europe/London')
+    const steps = orderProgressSteps({
+      order: { status: 'SHIPPED', paymentStatus: 'PAID', paidAt: new Date('2026-09-20T10:00:00Z'), createdAt: new Date('2026-09-20T10:00:00Z') },
+      lines: [{ item: { quantity: 1 }, dispatchedQty: 1 }],
+      lastShippedAt: new Date('2026-09-24T16:57:00Z'),
+      delivery: {
+        day: delivery.day,
+        window: delivery.window,
+        progress: delivery.progress?.progress ?? 0,
+        underway: false,
+        arrived: delivery.arrived,
+        failed: delivery.failed,
+      },
+    })
+    const step = steps.find((s) => s.key === 'delivery')
+    expect(step?.label).toBe('Delivery not possible')
+    expect(step?.state).toBe('now')
+    expect(step?.note).toBe('A new day is needed')
   })
 })

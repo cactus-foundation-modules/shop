@@ -160,6 +160,22 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     transactional: false,
   },
   {
+    // The courier tried and could not deliver. Sent once per failed attempt,
+    // off the courier's own tracking - see lib/failed-delivery-email.ts. Two
+    // versions in one template, picked by flags: get in touch with the courier
+    // (their chat and phone, from the courier's settings), or - where staff
+    // have already spoken to them - wait, because the courier will call.
+    // The courier's own reason is deliberately left out: it is written for
+    // drivers, and "recipient not home" reads as an accusation.
+    key: 'shop.delivery-failed',
+    label: 'Delivery not possible',
+    subject: 'We could not deliver your order {{orderNumber}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>We are sorry - {{carrier}} tried to deliver your order <strong>{{orderNumber}}</strong> but were not able to.</p>{{#if hasCourierWillContact}}<p>They are arranging a new delivery day and will be in touch with you directly, so there is nothing you need to do for now.</p>{{/if}}{{#if hasContactCourier}}<p>Please get in touch with {{carrier}} to arrange a new delivery day.</p>{{/if}}{{#if hasRebookChat}}<p><a href="{{rebookChatUrl}}">Chat to {{carrier}} online</a></p>{{/if}}{{#if hasRebookPhone}}<p>Call {{carrier}} on <a href="tel:{{rebookPhoneDial}}">{{rebookPhone}}</a></p>{{/if}}{{#if hasTrackingNumber}}<p>Your tracking number is <strong>{{trackingNumber}}</strong> - {{carrier}} will ask for it.</p>{{/if}}<p>Thanks for bearing with us - {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'carrier', 'trackingNumber', 'hasTrackingNumber', 'rebookChatUrl', 'hasRebookChat', 'rebookPhone', 'rebookPhoneDial', 'hasRebookPhone', 'hasContactCourier', 'hasCourierWillContact', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
+    transactional: false,
+  },
+  {
     key: 'shop.admin-new-order',
     label: 'New order (admin alert)',
     subject: 'New order received: {{orderNumber}}',
@@ -446,6 +462,7 @@ export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   STATUS_CANCELLED: 'shop.status-cancelled',
   PARTIAL_SHIPPED: 'shop.partial-shipped',
   DELIVERY_SLOT_CONFIRMED: 'shop.delivery-slot-confirmed',
+  DELIVERY_FAILED: 'shop.delivery-failed',
   ADMIN_NEW_ORDER: 'shop.admin-new-order',
   ADMIN_NEW_ORDER_UNPAID: 'shop.admin-new-order-unpaid',
   LOW_STOCK: 'shop.low-stock',

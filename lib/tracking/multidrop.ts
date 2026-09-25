@@ -36,6 +36,16 @@ export type TrackingStage = {
   label: string
   /** Whether the parcel has reached it. */
   done: boolean
+  /** Whether this is the courier saying the delivery did not happen. Multidrop
+   *  draw a failed attempt as a step of its own, classed `failed` rather than
+   *  `done`, in the place the last step would have been:
+   *
+   *    <div id="tl-step8" class="timeline-step failed">
+   *      Failed Attempt - Non Fault - RECIPIENT NOT HOME - UNABLE TO DELIVER
+   *
+   *  It is reached - it happened - but it is not progress, and the stage it
+   *  names is only a failure because a setting says so. See stage-meaning.ts. */
+  failed: boolean
   /** The timestamp printed under it, verbatim, where there is one. Kept as the
    *  courier's own text - it is shown to nobody and parsed by nothing, and
    *  their format is theirs to change. */
@@ -131,6 +141,7 @@ export function parseMultidropStages(html: string): TrackingStage[] {
       position,
       label,
       done: /(^|\s)done(\s|$)/.test(classes),
+      failed: /(^|\s)failed(\s|$)/.test(classes),
       time: time || null,
     })
   }
@@ -138,15 +149,44 @@ export function parseMultidropStages(html: string): TrackingStage[] {
 }
 
 /**
+ * A step's printed time as text that sorts: '25/09/2026 09:19' becomes
+ * '202609250919'. Null for anything else, including the scheduled step, which
+ * carries its date in its name rather than under it.
+ *
+ * Cut up by hand rather than handed to Date: `new Date('08/09/2026')` reads a
+ * UK date as American and would put September in August.
+ */
+function sortableTime(time: string | null): string | null {
+  const match = time?.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?$/)
+  if (!match) return null
+  const [, day, month, year, hour = '00', minute = '00'] = match
+  return `${year}${month}${day}${hour}${minute}`
+}
+
+/**
  * The furthest stage the parcel has actually reached.
  *
- * The LAST done stage rather than the first not-done one: a courier that ticks
- * a later step while leaving an earlier one blank is reporting progress, and
- * reading it the other way would have the parcel going backwards.
+ * The LAST reached stage rather than the first not-done one: a courier that
+ * ticks a later step while leaving an earlier one blank is reporting progress,
+ * and reading it the other way would have the parcel going backwards.
+ *
+ * A failed attempt counts as reached - on 25 September 2026 one was read past
+ * as though it were not there, and the customer was told for the rest of the
+ * day that the van was on its way to a house it had already left. It takes the
+ * place of the last step, so on position alone it would outrank everything,
+ * including a later delivery that went fine. So a failure only stands until the
+ * courier prints a time on another step that is later than its own.
  */
 export function furthestStage(stages: TrackingStage[]): TrackingStage | null {
-  const done = stages.filter((s) => s.done)
-  return done.length > 0 ? (done[done.length - 1] as TrackingStage) : null
+  const reached = stages.filter((s) => s.done || s.failed)
+  const furthest = reached[reached.length - 1]
+  if (!furthest) return null
+  if (!furthest.failed) return furthest
+
+  const failedAt = sortableTime(furthest.time)
+  if (!failedAt) return furthest
+  const since = reached.filter((s) => !s.failed && (sortableTime(s.time) ?? '') > failedAt)
+  return since[since.length - 1] ?? furthest
 }
 
 /** Whether a tracking link is one of these pages, so a shop with three

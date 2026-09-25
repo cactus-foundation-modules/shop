@@ -7,6 +7,7 @@ import {
 } from '@/modules/shop/lib/db/shipments'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { maybeSendCarrierWindowEmail } from '@/modules/shop/lib/delivery-slot-email'
+import { maybeSendFailedDeliveryEmail } from '@/modules/shop/lib/failed-delivery-email'
 import { parseSignature } from '@/modules/shop/lib/tracking/multidrop-page'
 import { captureSignature } from '@/modules/shop/lib/tracking/signature-capture'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
@@ -17,7 +18,7 @@ import type { ShpShipment } from '@/modules/shop/lib/types'
 /** Write one courier reading to the parcel row, shared by the hourly job and
  *  the page poll that runs while somebody is watching. */
 export async function storeParcelReading(
-  courier: Pick<ShpCourier, 'outForDeliveryStages' | 'deliveredStages'>,
+  courier: Pick<ShpCourier, 'outForDeliveryStages' | 'deliveredStages' | 'failedStages'>,
   parcel: ShpShipment,
   reading: ParcelReading,
   timezone: string,
@@ -28,6 +29,14 @@ export async function storeParcelReading(
   const moved = stage !== parcel.trackingStage
 
   await recordTrackingStage(parcel.id, { stage, delivered })
+
+  // A failed attempt, told to the customer once. After the stage is written,
+  // because writing a NEW stage is what clears the previous attempt's claim -
+  // the other way round, a second failure would find the first one's stamp
+  // still there and send nothing.
+  if (meaning === 'failed' && !delivered) {
+    await maybeSendFailedDeliveryEmail(parcel)
+  }
 
   // DPD keep outForDelivery true even after delivery. Once we know it has
   // arrived, stop treating it as on a van.

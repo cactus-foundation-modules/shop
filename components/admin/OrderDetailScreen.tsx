@@ -146,6 +146,14 @@ type ShipmentDetail = {
   // What the courier's own tracking last said, and the proof of delivery taken
   // from it. `signatureUrl` is the shop's own copy of their image.
   trackingStage: string | null; deliveredAt: string | null
+  /** The courier's stage means the delivery failed, by the shop's own courier
+   *  settings. Optional so a response from an older deployment still renders. */
+  deliveryFailed?: boolean
+  /** Set when staff have recorded that the courier will contact the customer
+   *  to rebook. */
+  courierRearrangingAt?: string | null
+  /** When the customer was emailed about the current failed attempt. */
+  failedNotifiedAt?: string | null
   signedBy: string | null; signedAt: string | null; signatureUrl: string | null
   items: Array<{ id: string; orderItemId: string; quantity: number }>
 }
@@ -470,6 +478,25 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
     })
     setBusy(false)
     if (!res.ok) { await alert('That payment could not be confirmed.'); return }
+    refresh()
+  }
+
+  // Whether the courier has said THEY will contact the customer about a failed
+  // delivery. Flips the customer's page between "get in touch with them" and
+  // "wait to hear from them". No email either way: the customer is about to
+  // hear from the courier, and a message from the shop saying so first is one
+  // more thing to read about a delivery that did not happen.
+  async function setCourierRearranging(shipment: ShipmentDetail, on: boolean) {
+    setBusy(true)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/dispatch`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shipmentId: shipment.id, courierRearranging: on, emailCustomer: false, emailTracking: false }),
+    })
+    setBusy(false)
+    if (!res.ok) {
+      await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That parcel could not be updated.')
+      return
+    }
     refresh()
   }
 
@@ -893,6 +920,31 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                             Courier says: {shipment.trackingStage}
                             {shipment.deliveredAt ? ` · delivered ${formatDate(shipment.deliveredAt)}` : ''}
                           </p>
+                        )}
+                        {/* A failed attempt, and what the customer is being
+                            told to do about it. The courier sometimes rings
+                            the customer themselves once the shop has spoken to
+                            them, and the customer should not be chasing a
+                            depot that is about to ring them. */}
+                        {shipment.deliveryFailed && (
+                          <div className="sox-list-sub" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem' }}>
+                            <span>
+                              {shipment.courierRearrangingAt
+                                ? `Delivery failed · customer told ${shipment.carrier || 'the courier'} will be in touch to rebook`
+                                : `Delivery failed · customer told to contact ${shipment.carrier || 'the courier'} to rebook`}
+                              {shipment.failedNotifiedAt ? ' · customer emailed' : ''}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm sox-noprint"
+                              disabled={busy}
+                              onClick={() => setCourierRearranging(shipment, !shipment.courierRearrangingAt)}
+                            >
+                              {shipment.courierRearrangingAt
+                                ? 'Customer should contact them instead'
+                                : `${shipment.carrier || 'Courier'} will contact the customer`}
+                            </button>
+                          </div>
                         )}
                         {shipment.signatureUrl && (
                           <>

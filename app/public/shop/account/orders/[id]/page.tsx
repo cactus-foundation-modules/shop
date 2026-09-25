@@ -37,7 +37,8 @@ import {
 } from '@/modules/shop/lib/order-display'
 import { orderProgressSteps, orderStopped } from '@/modules/shop/lib/order-progress'
 import { ParcelTracking } from '@/modules/shop/components/public/ParcelTracking'
-import { DEFAULT_TRACKING_LABEL, parcelDelivery, railDelivery, type ParcelDelivery } from '@/modules/shop/lib/order-delivery'
+import { FailedDeliveryNote } from '@/modules/shop/components/public/FailedDeliveryNote'
+import { DEFAULT_TRACKING_LABEL, parcelDelivery, railDelivery, type DeliveryRearrange, type ParcelDelivery } from '@/modules/shop/lib/order-delivery'
 import { formatDeliveredDayRelative, nowInTimezone } from '@/modules/shop/lib/delivery-slot'
 import { calendarDateIn } from '@/lib/config/timezone'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
@@ -362,9 +363,10 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           // The courier's own word first, the clock only as a fallback: a
           // booked window says what was planned, the tracking page says what is
           // happening.
-          underway: !railBooking.arrived
+          underway: !railBooking.arrived && !railBooking.failed
             && (railBooking.outForDelivery || railBooking.progress?.phase === 'during'),
           arrived: railBooking.arrived,
+          failed: railBooking.failed,
           // The day it actually came, where the courier gave one. Worded here
           // because this is where the timezone is.
           deliveredOn: deliveredOn.has(railBooking.shipmentId)
@@ -379,7 +381,9 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   // across a rail the morning after is somebody's furniture being described as
   // "on its way" when it is not.
   const railShipment = railBooking ? shipments.find((s) => s.id === railBooking.shipmentId) ?? null : null
-  const van = railBooking && !railBooking.arrived
+  // Nor for one the courier has already tried and failed - the clock would go
+  // on driving it across the rail towards a door it has left.
+  const van = railBooking && !railBooking.arrived && !railBooking.failed
     ? {
         date: railBooking.date,
         slotStart: railBooking.slotStart,
@@ -808,6 +812,14 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                       <span className="sod-parcel-booked">
                         Delivered on {formatDeliveredDay(deliveredOn.get(shipment.id) as Date, timezone)}
                       </span>
+                    ) : deliveryById.get(shipment.id)?.rearrange ? (
+                      /* The courier tried and could not. The booked day is
+                         the day it did not happen, so it goes, and what to do
+                         next takes its place. */
+                      <FailedDeliveryNote
+                        rearrange={deliveryById.get(shipment.id)?.rearrange as DeliveryRearrange}
+                        trackingNumber={shipment.trackingNumber}
+                      />
                     ) : deliveryById.get(shipment.id)?.day ? (
                       /* The booked delivery, in the customer's own words. The
                          day is a calendar day and stays one - see
@@ -819,7 +831,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                           : ''}
                       </span>
                     ) : null}
-                    {shipment.trackingNumber && (
+                    {shipment.trackingNumber && !deliveryById.get(shipment.id)?.rearrange && (
                       <span className="sod-dim">Tracking number: {shipment.trackingNumber}</span>
                     )}
                     <ul className="sod-parcel-items">

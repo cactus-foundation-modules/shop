@@ -1,0 +1,32 @@
+-- ---------------------------------------------------------------------------
+-- 063 - A failed delivery the courier has already taken in hand.
+--
+-- When a courier's tracking reports a failed attempt, the customer's order page
+-- tells them to get in touch with the courier to book another day. Sometimes
+-- the shop has already done that on their behalf, and the courier has said
+-- THEY will ring the customer. Telling the customer to chase it as well has
+-- two people ringing one depot about one wardrobe.
+--
+--   shp_shipments.courier_rearranging_at
+--       Set by staff from the order screen: the courier is arranging the new
+--       day and will contact the customer. While it is set, the order page
+--       says to wait to hear from them rather than to get in touch.
+--
+--       Cleared by staff, or by the courier's stage moving on - a new day
+--       booked, or a second failed attempt, is a different conversation, and
+--       an old "they will be in touch" must not hang over it. See
+--       recordTrackingStage in lib/db/shipments.ts.
+--
+--   shp_shipments.failed_notified_at
+--       Set the moment the customer is emailed about a failed attempt, by the
+--       same statement that checks it (claimFailedDeliveryNotification), so the
+--       hourly job and a watched page reading the same failure together cannot
+--       both send it. Cleared alongside the one above when the stage moves on,
+--       so a SECOND failed attempt is a second email.
+--
+-- Idempotent, and the same columns sit in 001_initial.sql in place, so a fresh
+-- install and an existing one land in the same place.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE "shp_shipments" ADD COLUMN IF NOT EXISTS "courier_rearranging_at" TIMESTAMP(3);
+ALTER TABLE "shp_shipments" ADD COLUMN IF NOT EXISTS "failed_notified_at" TIMESTAMP(3);

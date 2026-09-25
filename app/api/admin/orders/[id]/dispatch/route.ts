@@ -23,6 +23,8 @@ import { isDeliveryDate, isSlotTime, slotMinutes } from '@/modules/shop/lib/deli
 import { getSiteTimezone } from '@/lib/config/timezone.server'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
+import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
+import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import type { ShpOrderItem, ShpOrderStatus, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
 // Ceilings on what a parcel record may carry. Every one of these is stored on
@@ -198,7 +200,16 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         pendingReturnQty: pending.get(line.orderItemId)?.return ?? 0,
       })),
     },
-    shipments,
+    // Each parcel with the one reading of its courier's stage the order screen
+    // acts on: whether the courier says the delivery failed. Worked out here,
+    // against the settings, so the screen offers "the courier will be in
+    // touch" on exactly the parcels the customer's own page is telling to
+    // rebook - the two must never disagree about which parcels those are.
+    shipments: shipments.map((shipment) => ({
+      ...shipment,
+      deliveryFailed: !shipment.deliveredAt
+        && stageMeaning(courierForShipment(config, shipment), shipment.trackingStage) === 'failed',
+    })),
     // The dispatch modal's courier list. It rides on this call rather than
     // being fetched separately because every screen that offers dispatch is
     // already waiting on this one, and a second round trip for six words would
@@ -297,6 +308,10 @@ const PatchBody = z.object({
    *  messages sent on two different days, and an owner filling in a window on a
    *  parcel whose number has already gone out must not be made to choose. */
   emailTracking: z.boolean().optional(),
+  /** The courier has said they will contact the customer to rebook a failed
+   *  delivery, so the customer's page tells them to wait rather than to chase.
+   *  False takes it back. */
+  courierRearranging: z.boolean().optional(),
 })
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

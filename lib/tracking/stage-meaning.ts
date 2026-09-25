@@ -13,7 +13,7 @@ import type { ShpCourier } from '@/modules/shop/lib/courier-faqs'
 // only the end because a setting says so; a courier whose last stage is
 // "Signed For" is configured, not special-cased.
 
-export type StageMeaning = 'out-for-delivery' | 'delivered' | 'progress'
+export type StageMeaning = 'out-for-delivery' | 'delivered' | 'failed' | 'progress'
 
 /** Trimmed and lower-cased, because these are typed into a settings box by hand
  *  and "Assigned to crew " is the same stage as "Assigned to Crew". */
@@ -66,7 +66,7 @@ function named(list: string[], stage: string): boolean {
 }
 
 export function stageMeaning(
-  courier: Pick<ShpCourier, 'outForDeliveryStages' | 'deliveredStages'> | null,
+  courier: Pick<ShpCourier, 'outForDeliveryStages' | 'deliveredStages' | 'failedStages'> | null,
   stage: string | null | undefined,
 ): StageMeaning {
   const name = normalise(stage ?? '')
@@ -77,6 +77,10 @@ export function stageMeaning(
   // arrived" is the one that stops the shop chasing a parcel that is already in
   // somebody's hallway.
   if (named(courier.deliveredStages, name)) return 'delivered'
+  // Failed beats out for delivery for the same reason: a van that has been and
+  // gone again is not on its way, and saying it is has somebody waiting in for
+  // a delivery that has already not happened.
+  if (named(courier.failedStages, name)) return 'failed'
   if (named(courier.outForDeliveryStages, name)) return 'out-for-delivery'
   return 'progress'
 }

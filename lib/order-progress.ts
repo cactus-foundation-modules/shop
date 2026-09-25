@@ -51,6 +51,10 @@ export type OrderDelivery = {
   /** The window has been and gone. Not the same as the order being complete:
    *  somebody still has to confirm that it actually turned up. */
   arrived: boolean
+  /** The courier tried and could not deliver it. The step stays in progress -
+   *  nothing has arrived - but it stops claiming to be scheduled or out, and
+   *  says so. */
+  failed?: boolean
   /** The day it ACTUALLY arrived, already worded and relative - 'today',
    *  'yesterday', or '8/9/26' - where the courier has given a time for it.
    *  Printed after the word Delivered, so it reads "Delivered today".
@@ -141,7 +145,11 @@ export function orderProgressSteps(input: OrderProgressInput): OrderStep[] {
     placed: 'Ordered',
     paid: 'Paid',
     dispatched: 'Dispatched',
-    delivery: arrived ? 'Delivery' : delivery?.underway ? 'Out for delivery' : 'Delivery scheduled',
+    delivery: arrived
+      ? 'Delivery'
+      : delivery?.failed
+        ? 'Delivery not possible'
+        : delivery?.underway ? 'Out for delivery' : 'Delivery scheduled',
     complete: 'Complete',
   }
   const at: Record<OrderStep['key'], Date | null> = {
@@ -180,6 +188,10 @@ export function orderProgressSteps(input: OrderProgressInput): OrderStep[] {
           // nobody has confirmed - worse, it still says "Today" tomorrow.
           ? delivery.deliveredOn
             ? `Delivered ${delivery.deliveredOn}`
+            // The booked day is the day it did not happen, and printing it
+            // under the step reads as the plan still standing.
+            : delivery.failed && !arrived
+              ? 'A new day is needed'
             // "Tomorrow between 10am and 1pm". One sentence, capitalised at the
             // front, because the day arrives lower case so it can also sit
             // inside "Arranged for tomorrow" on the parcel card.

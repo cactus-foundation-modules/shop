@@ -5,6 +5,7 @@ const furdeco = {
   trackingSource: 'multidrop' as const,
   outForDeliveryStages: ['Assigned to Crew', "You're Up Next"],
   deliveredStages: ['Complete'],
+  failedStages: ['Failed Attempt'],
 }
 
 describe('stageMeaning', () => {
@@ -31,6 +32,18 @@ describe('stageMeaning', () => {
     expect(stageMeaning(muddled, 'Complete')).toBe('delivered')
   })
 
+  it('reads a failed attempt with the reason stapled on', () => {
+    // Multidrop's own wording on 25 September 2026. The owner typed the start
+    // of it; the reason differs from one parcel to the next.
+    expect(stageMeaning(furdeco, 'Failed Attempt - Non Fault - RECIPIENT NOT HOME - UNABLE TO DELIVER')).toBe('failed')
+  })
+
+  it('lets failed beat out for delivery, and delivered beat both', () => {
+    const muddled = { ...furdeco, outForDeliveryStages: ['Failed Attempt'] }
+    expect(stageMeaning(muddled, 'Failed Attempt')).toBe('failed')
+    expect(stageMeaning({ ...furdeco, deliveredStages: ['Failed Attempt'] }, 'Failed Attempt')).toBe('delivered')
+  })
+
   it('is progress for a courier that was never configured, or no stage at all', () => {
     expect(stageMeaning(null, 'Complete')).toBe('progress')
     expect(stageMeaning(furdeco, null)).toBe('progress')
@@ -38,7 +51,7 @@ describe('stageMeaning', () => {
   })
 
   it('concludes nothing for a courier with empty lists', () => {
-    const unconfigured = { trackingSource: 'multidrop' as const, outForDeliveryStages: [], deliveredStages: [] }
+    const unconfigured = { trackingSource: 'multidrop' as const, outForDeliveryStages: [], deliveredStages: [], failedStages: [] }
     expect(stageMeaning(unconfigured, 'Complete')).toBe('progress')
   })
 })
@@ -57,6 +70,7 @@ describe('stages with the courier own detail stapled on', () => {
   const courier = {
     outForDeliveryStages: ['OUT FOR DELIVERY'],
     deliveredStages: ['DELIVERED'],
+    failedStages: [] as string[],
   }
 
   it('matches the part the owner actually typed', () => {
@@ -81,6 +95,7 @@ describe('stages with the courier own detail stapled on', () => {
     const dpd = {
       outForDeliveryStages: ['Your parcel will be with you today  between 11:41 and 12:41'],
       deliveredStages: [] as string[],
+      failedStages: [] as string[],
     }
     expect(stageMeaning(dpd, 'Your parcel will be with you today  between 11:25 and 12:25')).toBe('out-for-delivery')
   })

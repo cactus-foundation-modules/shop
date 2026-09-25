@@ -834,6 +834,13 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     -- parcel went (054_tracking_notified.sql). NULL is "nobody has been told",
     -- and only a parcel that GAINS tracking it did not have ever sends one.
     "tracking_notified_at" TIMESTAMP(3),
+    -- Set by staff once the courier has said they will ring the customer to
+    -- rebook a failed delivery (063_courier_rearranging.sql). Cleared when the
+    -- courier's stage moves on.
+    "courier_rearranging_at" TIMESTAMP(3),
+    -- Set once the customer is emailed about a failed attempt (063); cleared
+    -- when the courier's stage moves on, so a second failure is a second email.
+    "failed_notified_at" TIMESTAMP(3),
     -- Where the courier's own tracking says the parcel has got to, read on a
     -- schedule rather than while a customer waits. The stage is kept in the
     -- courier's own words and translated at READ time, so an owner correcting

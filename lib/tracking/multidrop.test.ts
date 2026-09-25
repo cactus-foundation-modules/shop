@@ -116,15 +116,49 @@ describe('furthestStage', () => {
     // reporting progress. Taking the first not-done step would have the parcel
     // moving back up its own timeline.
     const stages = [
-      { position: 1, label: 'One', done: true, time: null },
-      { position: 2, label: 'Two', done: false, time: null },
-      { position: 3, label: 'Three', done: true, time: null },
+      { position: 1, label: 'One', done: true, failed: false, time: null },
+      { position: 2, label: 'Two', done: false, failed: false, time: null },
+      { position: 3, label: 'Three', done: true, failed: false, time: null },
     ]
     expect(furthestStage(stages)?.label).toBe('Three')
   })
 
+  // Multidrop's page on 25 September 2026, cut down: six steps done, then the
+  // failed attempt drawn as step 8 in place of step 7, classed `failed` and not
+  // `done`. It was read straight past, and the order sat on "You're Up Next"
+  // for the rest of the day.
+  const FAILED_PAGE = `
+    <div class="timeline">
+      <div id="tl-step5" class="timeline-step done">Assigned to Crew
+        <div class="tl-time">25/09/2026 06:47</div></div>
+      <div id="tl-step6" class="timeline-step done">You're Up Next
+        <div class="tl-time">25/09/2026 09:08</div></div>
+      <div id="tl-step8" class="timeline-step failed">
+        <svg><use href="#icon-truck-alert"/></svg>
+        Failed Attempt - Non Fault - RECIPIENT NOT HOME - UNABLE TO DELIVER
+        <div class="tl-time">25/09/2026 09:19</div>
+      </div>
+    </div>`
+
+  it('counts a failed attempt as reached', () => {
+    const stages = parseMultidropStages(FAILED_PAGE)
+    expect(stages[2]).toMatchObject({ position: 8, done: false, failed: true, time: '25/09/2026 09:19' })
+    expect(furthestStage(stages)?.label).toBe('Failed Attempt - Non Fault - RECIPIENT NOT HOME - UNABLE TO DELIVER')
+  })
+
+  it('lets a later step overtake a failed attempt', () => {
+    // The failure sits at position 8, above everything, so position alone
+    // would hold it there after a second visit went fine.
+    const stages = [
+      { position: 6, label: "You're Up Next", done: true, failed: false, time: '25/09/2026 09:08' },
+      { position: 7, label: 'Complete', done: true, failed: false, time: '29/09/2026 11:02' },
+      { position: 8, label: 'Failed Attempt', done: false, failed: true, time: '25/09/2026 09:19' },
+    ]
+    expect(furthestStage(stages)?.label).toBe('Complete')
+  })
+
   it('is nothing when nothing has happened yet', () => {
-    expect(furthestStage([{ position: 1, label: 'One', done: false, time: null }])).toBeNull()
+    expect(furthestStage([{ position: 1, label: 'One', done: false, failed: false, time: null }])).toBeNull()
     expect(furthestStage([])).toBeNull()
   })
 })

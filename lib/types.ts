@@ -723,6 +723,13 @@ export type ShpShipment = {
   /** Set once the customer has been told tracking that was not known when the
    *  parcel went out. Null on every parcel that never gained any. */
   trackingNotifiedAt: Date | null
+  /** Set by staff when the courier has said they will contact the customer to
+   *  rebook a failed delivery, so the customer is told to wait rather than to
+   *  chase. Cleared when the courier's stage moves on. */
+  courierRearrangingAt: Date | null
+  /** When the customer was emailed about the current failed attempt. Cleared
+   *  when the courier's stage moves on. */
+  failedNotifiedAt: Date | null
   /** Where the courier's own tracking says the parcel has got to, in the
    *  courier's own words. What that MEANS is a per-courier setting, applied at
    *  read time so correcting it fixes parcels already recorded. */
@@ -1221,6 +1228,10 @@ export type ShpEmailTemplateTrigger =
   // one most customers actually plan their day around.
   // See lib/delivery-slot-email.ts.
   | 'DELIVERY_SLOT_CONFIRMED'
+  // Sent when the courier's tracking reports a failed attempt: it could not be
+  // delivered, and here is how a new day gets booked - or, where staff have
+  // said so, that the courier will be in touch. See lib/failed-delivery-email.ts.
+  | 'DELIVERY_FAILED'
   // Sent at checkout on a method nobody has been paid on yet (bank transfer,
   // cash): the order is placed, here is how to pay for it, and nothing moves
   // until it does. Every other method has ORDER_CONFIRMED doing that job

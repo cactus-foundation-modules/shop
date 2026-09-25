@@ -197,6 +197,41 @@ export function CourierSettings({ value, onChange }: {
                 onChange={(next) => patchCourier(courier.id, { deliveredStages: next })}
                 hint="When every parcel on an order reaches one of these, and nothing is still owed, the order marks itself complete and the customer gets your completion message. Leave it empty and nothing is ever finished off automatically."
               />
+
+              <StageListField
+                label="Stages that mean the delivery failed"
+                list={courier.failedStages}
+                onChange={(next) => patchCourier(courier.id, { failedStages: next })}
+                hint="Nobody in, no access, refused. Reaching one takes the order off “Out for delivery”, says the delivery was not possible, and tells the customer - on their order page and in one email - how to get a new day booked. The start of the courier's wording is enough - “Failed Attempt” matches “Failed Attempt - Recipient Not Home”."
+              />
+
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Live chat link for rebooking a failed delivery</label>
+                <input
+                  type="url"
+                  value={courier.rearrangeChatUrl}
+                  placeholder="https://"
+                  onChange={(e) => patchCourier(courier.id, { rearrangeChatUrl: e.target.value.trim() })}
+                />
+                <span className="field-hint">
+                  The courier&rsquo;s own chat page, offered to the customer as a link. Optional.
+                </span>
+              </div>
+
+              <div className="field" style={{ marginBottom: 0 }}>
+                <label>Phone number for rebooking a failed delivery</label>
+                <input
+                  type="tel"
+                  value={courier.rearrangePhone}
+                  placeholder="Optional"
+                  onChange={(e) => patchCourier(courier.id, { rearrangePhone: e.target.value })}
+                />
+                <span className="field-hint">
+                  Shown to the customer with their tracking number, which the courier will ask for.
+                  If you have already spoken to the courier and they will ring the customer
+                  themselves, say so on the order and the customer is told to wait instead.
+                </span>
+              </div>
             </div>
           )}
 
@@ -275,6 +310,9 @@ export function CourierSettings({ value, onChange }: {
           gfsCarrier: 'DPD',
           outForDeliveryStages: [],
           deliveredStages: [],
+          failedStages: [],
+          rearrangeChatUrl: '',
+          rearrangePhone: '',
           trackingLinkLabel: '',
           trackingLinkHint: '',
           faqs: [],

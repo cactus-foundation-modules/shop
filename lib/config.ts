@@ -571,6 +571,21 @@ export const ShpConfigSchema = z.object({
         gfsCarrier: z.string().min(1).max(40).default('DPD'),
         outForDeliveryStages: z.array(z.string().min(1).max(120)).default([]),
         deliveredStages: z.array(z.string().min(1).max(120)).default([]),
+        // Stages that mean the courier tried and could not deliver - nobody
+        // in, no access, refused. Reaching one takes the order off "Out for
+        // delivery" and tells the customer how to get another day booked.
+        failedStages: z.array(z.string().min(1).max(120)).default([]),
+        // How the customer gets a failed delivery rearranged, where it is the
+        // courier they have to ask rather than the shop. Both optional; with
+        // neither the customer is simply told to get in touch with the courier
+        // by name. The chat is a web page of the courier's, never a script -
+        // it is offered as a link and nothing more.
+        rearrangeChatUrl: z
+          .string()
+          .max(500)
+          .refine((v) => v === '' || /^https?:\/\//i.test(v), 'Must start with http:// or https://')
+          .default(''),
+        rearrangePhone: z.string().max(40).default(''),
         // What the button to the courier's own page says, and the line under
         // it.
         //
