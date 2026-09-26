@@ -84,3 +84,9 @@ export function positionFreshness(fixedAt: Date | null | undefined, now: Date): 
 export function livePollIntervalMs(dropsAway: number | null | undefined): number {
   return typeof dropsAway === 'number' && dropsAway <= FAST_POLL_DROPS ? FAST_POLL_MS : SLOW_POLL_MS
 }
+
+/** How long a parcel's last look at the courier stays good enough for somebody
+ *  opening the order page. Past it, opening the page asks again; inside it, a
+ *  reload shows what was learned a moment ago rather than asking the courier
+ *  the same question twice. The same five minutes the map's slow tick uses. */
+export const VIEW_CHECK_MIN_AGE_MINUTES = 5

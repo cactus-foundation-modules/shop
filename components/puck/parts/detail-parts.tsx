@@ -913,6 +913,12 @@ const orderSizeDeductionCss = `
    better of two rather than as a second, unexplained price. */
 .spd-osd-was{color:var(--color-text-muted);text-decoration:line-through;text-decoration-thickness:1px}
 .spd-osd-amount{font-weight:600;font-size:1.1em;color:var(--color-primary)}
+/* The supplier's name, linked to their page where the shop publishes one. Same
+   colour as the words around it - the figure is the thing set apart, and a
+   second accent colour in one short sentence would compete with it - so the
+   underline alone says it can be followed. */
+.spd-osd-supplier{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}
+.spd-osd-supplier:hover{color:var(--color-primary)}
 `
 
 type OrderSizeDeductionProps = { _ctx?: DetailPartContext; align?: string }
@@ -927,7 +933,7 @@ export function ShopDetailOrderSizeDeduction(props: OrderSizeDeductionProps) {
       <div className="spd-osd" style={{ opacity: 0.6, ...textAlignStyle(props.align) }}>
         <div className="spd-osd-box">
           <p className="spd-osd-line">
-            Get it for just <s className="spd-osd-was">£116</s> <span className="spd-osd-amount">£110</span> on Dynamic Office Solutions orders of £350 or more
+            Get it for just <s className="spd-osd-was">£116</s> <span className="spd-osd-amount">£110</span> on <a className="spd-osd-supplier">Dynamic Office Solutions</a> orders of £350 or more
           </p>
         </div>
       </div>

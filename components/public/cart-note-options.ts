@@ -4,9 +4,9 @@
 // verbatim. Nothing here composes, interprets or dates anything - these options
 // only decide what the finished line looks like.
 //
-// Set per surface, on the block that owns it, so the slide-out basket, the cart
-// page and the checkout order summary can each dress the note differently, or
-// hide it, without any of them knowing about the others.
+// Set per surface, on the block that owns it, so the cart page and the checkout
+// order summary can each dress the note differently, or hide it, without either
+// knowing about the other. The slide-out basket draws no notes at all.
 //
 // On its own file for the same reason cart-drawer-options.ts is: the Puck
 // blocks need the shape and the defaults without dragging the renderer and its
@@ -51,15 +51,6 @@ export const CART_NOTE_DEFAULTS: CartNoteOptions = {
   noteImageWidth: 96,
   noteImageSide: 'left',
   noteTailSize: 12,
-}
-
-// Slide-out basket: green, bold, ticked - what the panel has always drawn.
-export const DRAWER_NOTE_DEFAULTS: CartNoteOptions = {
-  ...CART_NOTE_DEFAULTS,
-  noteTick: 'yes',
-  noteBold: 'yes',
-  noteTextColour: 'var(--color-success)',
-  noteTextSize: 14.5,
 }
 
 // Checkout order summary: a quiet secondary line, exactly as before.

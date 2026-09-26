@@ -1,6 +1,5 @@
 import { CartSummaryClient, type CartSummaryOptions } from '@/modules/shop/components/public/CartSummaryClient'
 import { DRAWER_DEFAULTS } from '@/modules/shop/components/public/cart-drawer-options'
-import { cartNoteFields } from '@/modules/shop/components/puck/cart-fields'
 import { SiteColourField } from '@/lib/puck/SiteColourField'
 
 export type ShopCartSummaryProps = CartSummaryOptions
@@ -63,9 +62,9 @@ export const shopCartSummaryPuckComponent = {
     showSubtotal: { type: 'select' as const, label: 'Show subtotal', options: yesNo },
     hideWhenEmpty: { type: 'select' as const, label: 'Hide widget when cart empty', options: yesNo },
     // Click behaviour. The slide-out keeps the shopper on the page they were
-    // reading and shows the same basket the cart page would - lines, delivery
-    // services, whole-basket promises and all. It stays shut in this editor: it
-    // covers the page it belongs to, not the canvas you design it on.
+    // reading and shows the same lines and delivery services the cart page
+    // would. It stays shut in this editor: it covers the page it belongs to,
+    // not the canvas you design it on.
     clickAction: { type: 'select' as const, label: 'When clicked', options: [
       { value: 'link', label: 'Go to the cart page' },
       { value: 'drawer', label: 'Slide out a basket summary' },
@@ -79,7 +78,7 @@ export const shopCartSummaryPuckComponent = {
     drawerWidth: { type: 'number' as const, label: 'Slide-out: width (px)' },
     drawerShowImage: { type: 'select' as const, label: 'Slide-out: show product images', options: yesNo },
     drawerShowDelivery: { type: 'select' as const, label: 'Slide-out: show delivery options', options: yesNo },
-    drawerSubtotalLabel: { type: 'text' as const, label: 'Slide-out: subtotal label' },
+    drawerSubtotalLabel: { type: 'text' as const, label: 'Slide-out: subtotal label (includes delivery)' },
     drawerTaxLabel: { type: 'text' as const, label: 'Slide-out: VAT label' },
     drawerTotalLabel: { type: 'text' as const, label: 'Slide-out: total label' },
     drawerCheckoutLabel: { type: 'text' as const, label: 'Slide-out: checkout button' },
@@ -103,11 +102,6 @@ export const shopCartSummaryPuckComponent = {
     drawerViewCartHoverBorder: colourField('View full basket button: border on hover'),
     drawerViewCartHoverText: colourField('View full basket button: text on hover'),
     drawerRadius: { type: 'number' as const, label: 'Slide-out: button corner radius (px)' },
-    // The whole-basket note the panel prints above the subtotal - another
-    // module's sentence ("everything by Fri 4 Sep"), dressed here. Its own set,
-    // held separately from the cart page's and the checkout's, so the panel can
-    // show a plain ticked line where checkout shows a picture, or nothing at all.
-    ...cartNoteFields('Slide-out: basket note'),
     // Audience. NB: keep this key as `audience`, never `visibility` - core owns a
     // responsive-visibility field of that exact name on every block and strips it
     // from render props, which would silently disable this gate.

@@ -61,8 +61,8 @@ export type CartSummaryOptions = {
   audience: 'everyone' | 'admin'
   // What clicking the widget does. 'link' goes to the cart page, exactly as this
   // widget always has. 'drawer' keeps the shopper where they are and slides the
-  // basket in over the page instead - same lines, same delivery pickers, same
-  // whole-basket notes as the cart page, plus a way through to it.
+  // basket in over the page instead - same lines and delivery pickers as the
+  // cart page, plus a way through to it.
   clickAction: 'link' | 'drawer'
 } & CartDrawerOptions
 

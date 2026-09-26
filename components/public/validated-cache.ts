@@ -41,7 +41,7 @@ const inflightValidate = new Map<string, Promise<ValidateResponse<unknown> | nul
 export type ValidateResponse<T> = {
   lines: T[]
   notes?: { id: string; text: string }[]
-  deductionNotes?: { id: string; text: string; amounts?: string[] }[]
+  deductionNotes?: { id: string; text: string; amounts?: string[]; link?: { name: string; href: string } | null }[]
 }
 
 export function postCartValidate<T>(cart: CartLineShape[]): Promise<ValidateResponse<T> | null> {

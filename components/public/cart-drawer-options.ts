@@ -3,20 +3,20 @@
 // in the panel itself. CartDrawerClient is loaded lazily on the first click -
 // importing its options from the same file would drag the whole panel back into
 // the header's bundle and undo that.
-import { DRAWER_NOTE_DEFAULTS, type CartNoteOptions } from '@/modules/shop/components/public/cart-note-options'
-
-// The whole-basket note's look rides along here rather than in a set of its own:
-// the panel's options are one bag from the widget's point of view, and the note
-// is one more thing the panel draws.
-export type CartDrawerOptions = CartNoteOptions & {
+//
+// No whole-basket note options: the panel does not draw the notes at all (see
+// CartDrawerClient). A block saved while it did still carries its note props,
+// which nothing reads any more.
+export type CartDrawerOptions = {
   drawerHeading: string
   drawerSide: 'right' | 'left' | 'bottom'
   /** Ignored by the 'bottom' panel, which is always the full width of the screen. */
   drawerWidth: number
   drawerShowImage: 'yes' | 'no'
   drawerShowDelivery: 'yes' | 'no'
+  /** The subtotal includes delivery - the panel prints no delivery row. */
   drawerSubtotalLabel: string
-  /** VAT row label; the row only appears when there is tax to show. */
+  /** VAT label, beside the subtotal; only shown when there is tax to show. */
   drawerTaxLabel: string
   drawerTotalLabel: string
   drawerCheckoutLabel: string
@@ -48,7 +48,6 @@ export type CartDrawerOptions = CartNoteOptions & {
 }
 
 export const DRAWER_DEFAULTS: CartDrawerOptions = {
-  ...DRAWER_NOTE_DEFAULTS,
   drawerHeading: 'Your basket',
   drawerSide: 'right',
   drawerWidth: 420,

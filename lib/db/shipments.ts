@@ -905,6 +905,31 @@ export async function getShipmentForOrder(orderId: string, shipmentId: string): 
   return rows[0] ? mapShipment(rows[0]) : null
 }
 
+/**
+ * Claims one on-view look at a parcel's courier, or says somebody already has.
+ *
+ * The order page asks the courier when it is opened, so a customer never waits
+ * on the hourly job to learn what DPD already know. That makes every reload a
+ * request to somebody else's site, so the claim is the throttle: one look per
+ * parcel per `minAgeMinutes`, however many people and tabs are reloading, taken
+ * in a single conditional UPDATE so two viewers at the same instant cannot both
+ * win it. It stamps `tracking_checked_at` exactly as the hourly job would, which
+ * also moves the parcel to the back of that job's queue - fair, as it has just
+ * been asked.
+ */
+export async function claimViewerTrackingCheck(shipmentId: string, minAgeMinutes: number): Promise<boolean> {
+  const claimed = await prisma.$executeRaw`
+    UPDATE "shp_shipments" SET "tracking_checked_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId}
+      AND "delivered_at" IS NULL
+      AND (
+        "tracking_checked_at" IS NULL
+        OR "tracking_checked_at" < CURRENT_TIMESTAMP - ${minAgeMinutes}::int * INTERVAL '1 minute'
+      )
+  `
+  return claimed > 0
+}
+
 /** Marks only that this parcel was looked at, for a fetch that failed. Without
  *  it a courier whose site is down would be retried first every single run,
  *  starving every other parcel behind the cap. */

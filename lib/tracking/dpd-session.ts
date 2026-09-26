@@ -84,6 +84,12 @@ export async function mintDpdSession(shortCode: string): Promise<DpdSession | nu
   const url = `${API}/createSession?parcelCode=${encodeURIComponent(shortCode)}&origin=d`
   const res = await request(url, null, 'manual')
   if (!res) return null
+  // Only the redirect is a session. They allow five of these a minute per
+  // address and answer the sixth with a 429 that STILL sets a sessionId - one
+  // that was never granted anything, so the parcel reads anonymously and the
+  // photograph is refused. Better to know there is no session than to carry
+  // one that only looks like it.
+  if (res.status < 300 || res.status >= 400) return null
   const session = setCookieLines(res)
     .map((line) => line.split(';')[0]?.trim() ?? '')
     .filter((pair) => pair.startsWith('sessionId='))
@@ -123,10 +129,15 @@ export type DpdPayloads = {
  */
 export async function fetchDpdParcel(parcelCode: string, cookie: string | null): Promise<DpdPayloads> {
   const code = encodeURI(parcelCode)
-  const [parcel, events] = await Promise.all([
-    json(`/parcels/${code}`, cookie),
-    json(`/parcels/${code}/parcelevents`, cookie),
-  ])
+  // One after the other, never together. Two requests landing on a new session
+  // at the same moment each save it on the way out, and whichever saves last
+  // loses what the other granted: the parcel and its history both come back,
+  // and the proof-of-delivery photograph is then a 403 for the rest of that
+  // session's life. Reproduced on DW000195 - together, 403 every time; one
+  // after the other, in either order, 200 every time. It is one extra round
+  // trip on an hourly job.
+  const parcel = await json(`/parcels/${code}`, cookie)
+  const events = await json(`/parcels/${code}/parcelevents`, cookie)
   return { parcel, events, session: Boolean(cookie) && parcel !== null }
 }
 

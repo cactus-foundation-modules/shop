@@ -209,7 +209,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   // Shop's own order-size line, kept apart from the author-dressed notes above
   // so it is drawn whatever the author set those to - see CartDeductionNote.
   const [deductionNotes, setDeductionNotes] = useState<CartDeductionNote[]>(
-    preview ? [{ id: 'sample', text: 'Add £113 more from Dynamic Office Solutions and save £30.', amounts: ['£113', '£30'] }] : [],
+    preview ? [{ id: 'sample', text: 'Add £113 more from Dynamic Office Solutions and save £30.', amounts: ['£113', '£30'], link: { name: 'Dynamic Office Solutions', href: '/shop/suppliers' } }] : [],
   )
 
   // The currency symbol is fixed for the shop, so fetch it once rather than on

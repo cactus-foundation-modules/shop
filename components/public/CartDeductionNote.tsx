@@ -20,6 +20,9 @@
 // The TEXT is still never composed here. It arrives finished from
 // lib/order-size-deduction.ts, exactly as the product page's does.
 
+import type { SupplierLink } from '@/modules/shop/lib/order-size-deduction'
+import { SupplierLinkText } from '@/modules/shop/components/public/SupplierLinkText'
+
 export const CART_DEDUCTION_NOTE_CSS = `
 .scd{display:flex;flex-direction:column;gap:6px;margin:0}
 .scd-row{display:block;margin:0;padding:9px 14px;background:var(--color-bg-subtle);border-left:3px solid var(--color-primary);border-radius:0 7px 7px 0;font-size:14.5px;line-height:1.45;color:var(--color-text)}
@@ -28,6 +31,10 @@ export const CART_DEDUCTION_NOTE_CSS = `
    on --color-bg-subtle in both themes. Same reasoning as .spd-osd-box on the
    product page, and the two must keep agreeing. */
 .scd-amount{font-weight:600;color:var(--color-primary)}
+/* The supplier's name, linked to their page where the shop publishes one -
+   dressed exactly as .spd-osd-supplier on the product page. */
+.scd-supplier{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}
+.scd-supplier:hover{color:var(--color-primary)}
 `
 
 // Where the figures sit in the sentence, so they can be set apart without this
@@ -49,7 +56,7 @@ function emphasise(text: string, amounts: readonly string[]): Array<string | { a
   return out
 }
 
-export type CartDeductionNote = { id: string; text: string; amounts?: string[] }
+export type CartDeductionNote = { id: string; text: string; amounts?: string[]; link?: SupplierLink | null }
 
 export function CartDeductionNotes({ notes }: { notes: readonly CartDeductionNote[] }) {
   if (notes.length === 0) return null
@@ -57,15 +64,22 @@ export function CartDeductionNotes({ notes }: { notes: readonly CartDeductionNot
     <>
       <style dangerouslySetInnerHTML={{ __html: CART_DEDUCTION_NOTE_CSS }} />
       <div className="scd">
-        {notes.map((note) => (
-          <p className="scd-row" key={note.id}>
-            {emphasise(note.text, note.amounts ?? []).map((part, i) =>
-              typeof part === 'string'
-                ? part
-                : <strong className="scd-amount" key={i}>{part.amount}</strong>,
-            )}
-          </p>
-        ))}
+        {notes.map((note) => {
+          // The supplier's name is linked once, in whichever stretch of words
+          // between the figures holds it - never inside a figure.
+          const parts = emphasise(note.text, note.amounts ?? [])
+          const link = note.link
+          const holder = link ? parts.findIndex((part) => typeof part === 'string' && part.includes(link.name)) : -1
+          return (
+            <p className="scd-row" key={note.id}>
+              {parts.map((part, i) =>
+                typeof part === 'string'
+                  ? (i === holder ? <SupplierLinkText key={i} text={part} link={link} className="scd-supplier" /> : part)
+                  : <strong className="scd-amount" key={i}>{part.amount}</strong>,
+              )}
+            </p>
+          )
+        })}
       </div>
     </>
   )

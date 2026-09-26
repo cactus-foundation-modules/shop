@@ -12,6 +12,7 @@ import { refundRouteForOrder } from '@/modules/shop/lib/payments/order-refund-ro
 import { refundableDelivery as deliveryLeftToRefund } from '@/modules/shop/lib/refund-delivery'
 import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
 import { CUSTOMER_REFUND_CREATED_BY } from '@/modules/shop/lib/order-charges'
+import { resolveProductStorefrontHrefs } from '@/modules/shop/lib/product-storefront-link'
 
 // Everything the order screen shows in one call, apart from dispatch progress -
 // that rides on its own route so the dispatch block can refresh itself after a
@@ -107,7 +108,19 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   // How much of the delivery charge the refund box may still offer, tax and all.
   const refundableDelivery = deliveryLeftToRefund(order, items, refunds)
 
-  return NextResponse.json({ order, items, notes, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, deliveryInstructionsLabel: deliveryInstructionsLabelText, refundNotice, refundableDelivery, replacements, replacementLines, parentOrder, requests })
+  // Where each line's product lives on the storefront, so its name opens the
+  // page the customer bought from rather than the product editor - which, for a
+  // variation, is only a note saying to edit it somewhere else. A link is a
+  // nicety: a read that will not answer leaves the names as plain text.
+  const storefrontHrefs = Object.fromEntries(
+    await resolveProductStorefrontHrefs(items.map((i) => i.productId).filter((v): v is string => Boolean(v)))
+      .catch((error) => {
+        console.error('[shop] could not resolve storefront links for an order', error)
+        return new Map<string, string>()
+      }),
+  )
+
+  return NextResponse.json({ order, items, storefrontHrefs, notes, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, deliveryInstructionsLabel: deliveryInstructionsLabelText, refundNotice, refundableDelivery, replacements, replacementLines, parentOrder, requests })
 }
 
 const PatchBody = z.object({

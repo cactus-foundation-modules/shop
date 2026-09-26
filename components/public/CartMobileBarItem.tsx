@@ -16,7 +16,7 @@ import type { ModuleMobileBarItemProps } from '@/lib/puck/mobileBar'
 // this file owns is the icon, the number on it and what a press does.
 //
 // The panel is the same CartDrawerClient the header widget opens - same lines,
-// same delivery pickers, same notes - loaded on the first press rather than on
+// same delivery pickers, same totals - loaded on the first press rather than on
 // every page, because most visitors never open it. It is opened with the panel's
 // stock wording: a bar cell has no settings panel of its own to dress it from,
 // which is the trade for a cell that needs no setting up at all.

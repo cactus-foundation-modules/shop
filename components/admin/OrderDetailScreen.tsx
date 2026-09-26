@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { RefundModal } from '@/modules/shop/components/admin/RefundModal'
 import { OrderChargesPanel } from '@/modules/shop/components/admin/OrderChargesPanel'
@@ -29,13 +29,16 @@ import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-
 import { useAlert, useConfirm, usePrompt } from '@/modules/shop/components/admin/dialogs'
 import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
 import { dpdShortCodeFromUrl } from '@/modules/shop/lib/tracking/dpd'
+import { orderChargeRows, splitOrderLine } from '@/modules/shop/lib/order-line-charges'
 
 type LineMetaField = { label: string; value: string; href?: string }
 type OrderItem = {
   id: string; productId: string | null; productName: string; productSku: string | null; productType: string
   quantity: number; unitPrice: string; taxRate: string; taxAmount: string; total: string
   refundedQty: number; isPreOrder: boolean; preOrderDispatchDate: string | null
-  lineMeta?: { fields: LineMetaField[] } | null
+  // `charges` is the per-unit slice of the price a module attributed to a
+  // service of its own - a delivery tier, say. See lib/order-line-charges.ts.
+  lineMeta?: { fields: LineMetaField[]; charges?: unknown } | null
 }
 type Address = { firstName?: string; lastName?: string; company?: string; line1: string; line2?: string; city: string; county?: string; postcode: string; country: string; phone?: string }
 type OrderDetail = {
@@ -74,6 +77,10 @@ type OrderDetail = {
     marketingConsent?: boolean | null
   }
   items: OrderItem[]
+  /** Product id -> where that product lives on the storefront, site-relative -
+   *  for a variation, the parent listing with that combination chosen. A product
+   *  deleted since the order is missing. Optional for an older response. */
+  storefrontHrefs?: Record<string, string>
   notes: Array<{ id: string; content: string; isInternal: boolean; createdBy: string | null; createdAt: string }>
   emails: Array<{ id: string; subject: string; to: string; sentAt: string; trigger: string }>
   refunds: Array<{ id: string; amount: string; reason: string | null; status: string; createdBy: string; createdAt: string }>
@@ -619,6 +626,18 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
     }
   }
   const itemNames = new Map(data.items.map((i) => [i.id, i.productName]))
+  // Each line with any service folded into its price (a delivery tier priced per
+  // item) taken back out, so the goods, the delivery and the totals each show
+  // their own money - the figures the customer saw in the basket.
+  const splitLines = new Map(data.items.map((i) => [i.id, splitOrderLine(i)]))
+  const chargeRows = orderChargeRows([...splitLines.values()])
+  const chargeTotal = chargeRows.reduce((sum, c) => sum + c.amount, 0)
+  const goodsSubtotal = Math.round((Number(order.subtotal) - chargeTotal + Number.EPSILON) * 100) / 100
+  // The order's own carriage row. On a shop that prices delivery per item it is
+  // nought while the lines carry plenty, so it only speaks when there is carriage
+  // to speak about - or when nothing else says what delivery cost. The invoice
+  // makes the same call (components/puck/invoice-parts.tsx).
+  const showCarriage = Number(order.shippingAmount) > 0 || chargeRows.length === 0
   const requests = data.requests ?? []
   const waitingRequests = requests.filter((r) => r.status === 'PENDING').length
   const replacementNumbers = new Map((data.replacements ?? []).map((r) => [r.id, r.orderNumber]))
@@ -834,21 +853,41 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                     // so a line that has fully arrived reads "1 delivered"
                     // rather than "1 sent" and "1 delivered" side by side.
                     const inTransitQty = Math.max(0, (line?.dispatchedQty ?? 0) - deliveredQty)
+                    const split = splitLines.get(item.id) ?? splitOrderLine(item)
+                    const storefrontHref = item.productId ? data.storefrontHrefs?.[item.productId] : undefined
+                    // A charge sits beside the detail row it is the price of
+                    // (the "Delivery" line naming the service), matched on its
+                    // label. One with no row of its own gets a row to itself.
+                    const chargeFor = (label: string) => split.charges.find((c) => c.label.trim().toLowerCase() === label.trim().toLowerCase())
+                    const fields = item.lineMeta?.fields ?? []
+                    const looseCharges = split.charges.filter((c) => !fields.some((f) => f.label.trim().toLowerCase() === c.label.trim().toLowerCase()))
                     return (
                       <tr key={item.id}>
                         <td>
-                          {item.productId ? (
-                            <a className="sox-item-name" href={`/${adminPath}/m/shop/products/${item.productId}`}>{item.productName}</a>
+                          {/* The page the customer bought it from, in a new tab -
+                              not the product editor, which for a variation is
+                              only a note saying to edit it somewhere else. */}
+                          {storefrontHref ? (
+                            <a className="sox-item-name" href={storefrontHref} target="_blank" rel="noopener noreferrer">{item.productName}</a>
                           ) : (
                             <span className="sox-item-name">{item.productName}</span>
                           )}
                           {item.productSku && <p className="sox-sub sox-mono">{item.productSku}</p>}
-                          {item.lineMeta?.fields?.length ? (
+                          {fields.length > 0 || looseCharges.length > 0 ? (
                             <ul className="sox-meta-list">
-                              {item.lineMeta.fields.map((f, i) => (
-                                <li key={i}>
-                                  <b>{f.label}:</b>{' '}
-                                  {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
+                              {fields.map((f, i) => {
+                                const charge = chargeFor(f.label)
+                                return (
+                                  <li key={i}>
+                                    <b>{f.label}:</b>{' '}
+                                    {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
+                                    {charge && <> · <b>{formatMoney(charge.amount, currencySymbol)}</b></>}
+                                  </li>
+                                )
+                              })}
+                              {looseCharges.map((c) => (
+                                <li key={`charge-${c.label}`}>
+                                  <b>{c.label}:</b> {formatMoney(c.amount, currencySymbol)}
                                 </li>
                               ))}
                             </ul>
@@ -877,9 +916,9 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                             </p>
                           ))}
                         </td>
-                        <td className="sox-num">{formatMoney(item.unitPrice, currencySymbol)}</td>
+                        <td className="sox-num">{formatMoney(split.goodsUnitPrice, currencySymbol)}</td>
                         <td className="sox-num">{item.quantity}</td>
-                        <td className="sox-num">{formatMoney(item.total, currencySymbol)}</td>
+                        <td className="sox-num">{formatMoney(split.goodsTotal, currencySymbol)}</td>
                       </tr>
                     )
                   })}
@@ -1484,15 +1523,29 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
             <div className="sox-card-head"><h2>Totals</h2></div>
             <div className="sox-card-body">
               <dl className="sox-totals">
-                <dt>Subtotal</dt><dd>{formatMoney(order.subtotal, currencySymbol)}</dd>
+                <dt>Subtotal</dt><dd>{formatMoney(goodsSubtotal, currencySymbol)}</dd>
+                {/* What the lines paid for services priced per item - the
+                    delivery tier each one went by - under the name the module
+                    that charged it gave. Already inside the total, so these
+                    come out of the subtotal rather than being added to it. */}
+                {chargeRows.map((charge) => (
+                  <Fragment key={charge.label}>
+                    <dt>{charge.label}</dt>
+                    <dd>{formatMoney(charge.amount, currencySymbol)}</dd>
+                  </Fragment>
+                ))}
                 {Number(order.discountAmount) > 0 && (
                   <>
                     <dt>Discount{order.couponCode ? ` (${order.couponCode})` : ''}</dt>
                     <dd>-{formatMoney(order.discountAmount, currencySymbol)}</dd>
                   </>
                 )}
-                <dt>Delivery{order.shippingRateName ? ` (${order.shippingRateName})` : ''}</dt>
-                <dd>{formatMoney(order.shippingAmount, currencySymbol)}</dd>
+                {showCarriage && (
+                  <>
+                    <dt>Delivery{order.shippingRateName ? ` (${order.shippingRateName})` : ''}</dt>
+                    <dd>{formatMoney(order.shippingAmount, currencySymbol)}</dd>
+                  </>
+                )}
                 <dt>Tax{order.taxMode === 'INCLUSIVE' ? ' (included)' : ''}</dt>
                 <dd>{formatMoney(order.taxAmount, currencySymbol)}</dd>
                 <dt className="sox-total-row">Total</dt>

@@ -5,17 +5,22 @@
 // they have, change quantity, switch delivery service and go to checkout without
 // leaving the product they were looking at.
 //
-// It shows the same things the cart page shows, from the same data: the server's
-// cart validate, including any per-line control a cart-line resolver offered
-// (the delivery tier picker) and any whole-basket notes another module
-// contributed. The picker itself is CartLineControlView, shared with the cart
-// page, so a tier switched here reads exactly as it would there.
+// It shows the lines the cart page shows, from the same data: the server's cart
+// validate, including any per-line control a cart-line resolver offered (the
+// delivery tier picker). The picker itself is CartLineControlView, shared with
+// the cart page, so a tier switched here reads exactly as it would there.
+//
+// It is NOT the whole cart page in a narrower box. The whole-basket notes (a
+// delivery module's "everything by Wednesday", the order-size deduction's "add
+// £252 more") stay on the cart page and the checkout: in a phone-high panel
+// every line of them was a line of basket the shopper could no longer see. The
+// totals are pared down for the same reason - see the footer below.
 //
 // Rendered into document.body through a portal: the widget lives in the site
 // header, which is very often a positioned/overflow-clipped stacking context of
 // its own, and a panel that has to cover the whole viewport cannot be born
 // inside one.
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { getCart, setLineMeta, setLineQuantity, subscribeCart } from '@/modules/shop/components/public/cart'
@@ -24,12 +29,16 @@ import { postCartValidate, readValidatedCartCache, writeValidatedCartCache } fro
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
 import { CART_DRAWER_CSS } from '@/modules/shop/components/public/cart-drawer-css'
 import { CartLinePrice, CartUndoToast, QuantityStepper, lineSubtotalBeforeDeduction } from '@/modules/shop/components/public/CartChrome'
-import { CartNotes } from '@/modules/shop/components/public/CartNotes'
-import { CartDeductionNotes, type CartDeductionNote } from '@/modules/shop/components/public/CartDeductionNote'
 import { useCartUndo } from '@/modules/shop/components/public/use-cart-undo'
 import { CartLineControlView, LineMetaList, productMetaFields } from '@/modules/shop/components/public/CartLineControlView'
 import { useFitLines } from '@/modules/shop/components/public/fit-line'
 import { DRAWER_DEFAULTS, type CartDrawerOptions } from '@/modules/shop/components/public/cart-drawer-options'
+import {
+  publishCartDrawerOpen,
+  readCartDrawerExtras,
+  serverCartDrawerExtras,
+  subscribeCartDrawerExtras,
+} from '@/modules/shop/components/public/cart-drawer-extras'
 import {
   commerceModeButtonLabel,
   commerceModeMoney,
@@ -115,8 +124,6 @@ export function CartDrawerClient({
   const closeRef = useRef<HTMLButtonElement>(null)
 
   const [lines, setLines] = useState<ValidatedLine[]>([])
-  const [notes, setNotes] = useState<string[]>([])
-  const [deductionNotes, setDeductionNotes] = useState<CartDeductionNote[]>([])
   const [currencySymbol, setCurrencySymbol] = useState('£')
   // Whether the prices on screen already include tax - same question the cart
   // page asks before it prints a VAT row (see lib/tax-display-shared.ts).
@@ -157,6 +164,21 @@ export function CartDrawerClient({
     }
   }, [open, onClose])
 
+  // Tell the rest of the page the basket is up, so a floating button that would
+  // sit over the panel's own (a chat bubble) can step aside - and bring it back
+  // the moment the panel shuts or goes. See cart-drawer-extras.ts.
+  useEffect(() => {
+    if (!open) return
+    publishCartDrawerOpen(true)
+    return () => publishCartDrawerOpen(false)
+  }, [open])
+
+  // Buttons other modules asked to have drawn under "View full basket" (a live
+  // chat's "message us", say). Shop draws them and knows nothing else about
+  // them - see cart-drawer-extras.ts for the registry.
+  const extras = useSyncExternalStore(subscribeCartDrawerExtras, readCartDrawerExtras, serverCartDrawerExtras)
+  const extraEntries = Object.entries(extras)
+
   // Focus lands on the close button as the panel opens, so a keyboard or screen
   // reader user is inside the dialog rather than still back on the trigger.
   useEffect(() => {
@@ -191,7 +213,7 @@ export function CartDrawerClient({
     let bootstrapped = false
     async function refresh() {
       const cart = getCart()
-      if (cart.length === 0) { if (!cancelled) { setLines([]); setNotes([]); setHasLoaded(true) } return }
+      if (cart.length === 0) { if (!cancelled) { setLines([]); setHasLoaded(true) } return }
       if (!bootstrapped) {
         bootstrapped = true
         const cached = readValidatedCartCache<ValidatedLine>(cart)
@@ -202,8 +224,6 @@ export function CartDrawerClient({
       if (cancelled || mySeq !== seq) return
       if (data) {
         setLines(data.lines)
-        setNotes((data.notes ?? []).map((n) => n.text))
-        setDeductionNotes(data.deductionNotes ?? [])
         writeValidatedCartCache(data.lines)
       }
       setHasLoaded(true)
@@ -252,7 +272,12 @@ export function CartDrawerClient({
     const before = lineSubtotalBeforeDeduction(line)
     return before == null ? null : money(before)
   }
-  const { subtotal, chargeRows, taxAmount, total } = computeBasketTotals(lines, taxMode)
+  // The subtotal here is everything on the lines, delivery included, rather than
+  // goods with each charge on a row of its own beneath: the delivery a shopper
+  // picked is already printed on the line it belongs to, and a second row
+  // repeating it was a line of panel the basket could not spare. The cart page
+  // and the checkout still break it out.
+  const { lineTotal, taxAmount, total } = computeBasketTotals(lines, taxMode)
   const showImage = o.drawerShowImage !== 'no'
   const showDelivery = o.drawerShowDelivery !== 'no'
 
@@ -450,39 +475,39 @@ export function CartDrawerClient({
 
         <div className="scd-body">{body}</div>
 
-        {hasLoaded && lines.length > 0 && (
-          <div className="scd-foot">
-            <dl className="scl-tot">
-              <dt>{o.drawerSubtotalLabel}</dt>
-              <dd>{money(subtotal)}</dd>
-              {chargeRows.map((row) => (
-                <div key={row.label} style={{ display: 'contents' }}>
-                  <dt>{row.label}</dt>
-                  <dd>{money(row.amount)}</dd>
-                </div>
-              ))}
-              {taxAmount > 0 && (
-                <>
-                  <dt>{o.drawerTaxLabel}{taxMode === 'INCLUSIVE' ? ' (included)' : ''}</dt>
-                  <dd>{money(taxAmount)}</dd>
-                </>
-              )}
-              <dt className="scl-tot-t">{o.drawerTotalLabel}</dt>
-              <dd className="scl-tot-t">{money(total)}</dd>
-            </dl>
-            {/* Whole-basket lines other modules contributed to this validate (a
-                delivery module's "everything by Fri 4 Sep"). Shop displays them,
-                it never composes them. */}
-            <CartDeductionNotes notes={deductionNotes} />
-            <CartNotes notes={notes} options={o} />
-            <Link href={commerce.cartCtaHref} className="scd-btn" style={checkoutStyle} onClick={onClose}>
-              {commerceModeButtonLabel(commerce.cartCtaLabel, o.drawerCheckoutLabel, DRAWER_DEFAULTS.drawerCheckoutLabel)}
-            </Link>
-            {o.drawerViewCartLabel && (
-              <Link href="/shop/cart" className="scd-ghost" style={ghostStyle} onClick={onClose}>
-                {o.drawerViewCartLabel}
-              </Link>
+        {hasLoaded && (lines.length > 0 || extraEntries.length > 0) && (
+          <div className="scd-foot" style={{ ['--scd-r' as string]: `${o.drawerRadius}px` }}>
+            {lines.length > 0 && (
+              <>
+                {/* Subtotal and VAT side by side, the total on its own beneath -
+                    two rows rather than four, so the lines above keep the room. */}
+                <dl className="scd-sums">
+                  <div className="scd-sum">
+                    <dt>{o.drawerSubtotalLabel}</dt>
+                    <dd>{money(lineTotal)}</dd>
+                  </div>
+                  {taxAmount > 0 && (
+                    <div className="scd-sum scd-sum-r">
+                      <dt>{o.drawerTaxLabel}{taxMode === 'INCLUSIVE' ? ' (included)' : ''}</dt>
+                      <dd>{money(taxAmount)}</dd>
+                    </div>
+                  )}
+                </dl>
+                <dl className="scd-total">
+                  <dt>{o.drawerTotalLabel}</dt>
+                  <dd>{money(total)}</dd>
+                </dl>
+                <Link href={commerce.cartCtaHref} className="scd-btn" style={checkoutStyle} onClick={onClose}>
+                  {commerceModeButtonLabel(commerce.cartCtaLabel, o.drawerCheckoutLabel, DRAWER_DEFAULTS.drawerCheckoutLabel)}
+                </Link>
+                {o.drawerViewCartLabel && (
+                  <Link href="/shop/cart" className="scd-ghost" style={ghostStyle} onClick={onClose}>
+                    {o.drawerViewCartLabel}
+                  </Link>
+                )}
+              </>
             )}
+            {extraEntries.map(([id, Extra]) => <Extra key={id} close={onClose} />)}
           </div>
         )}
 

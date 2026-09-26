@@ -60,6 +60,12 @@ export type DeductionViewParams = {
    * tax, worked out from the converted figures above at this product's rate.
    */
   taxView?: ProductTaxView | null
+  /**
+   * The supplier's page, where the shop publishes one (supplierPageHref in
+   * lib/supplier-url.ts). The line links the supplier's name to it; null or
+   * omitted leaves the name as plain text.
+   */
+  supplierHref?: string | null
 }
 
 /**
@@ -76,7 +82,7 @@ export type DeductionViewParams = {
  * something the checkout declines to do.
  */
 export function orderSizeDeductionView(params: DeductionViewParams): OrderSizeDeductionLineView | null {
-  const { product, rule, enabledPriceTypes, adjust, currencySymbol, someOptionsOnly, taxView } = params
+  const { product, rule, enabledPriceTypes, adjust, currencySymbol, someOptionsOnly, taxView, supplierHref } = params
   if (!rule) return null
   const amount = deductionAmount(product.orderSizeDeduction)
   if (amount == null) return null
@@ -100,7 +106,8 @@ export function orderSizeDeductionView(params: DeductionViewParams): OrderSizeDe
     currencySymbol,
     someOptionsOnly,
   })
-  if (!taxView) return parts
+  const supplierLink = supplierHref ? { name: rule.supplier, href: supplierHref } : null
+  if (!taxView) return { ...parts, supplierLink }
 
   // Each side composed by the same call as the line itself, so the struck
   // figure is dropped on a side exactly when it would read equal there.
@@ -115,5 +122,5 @@ export function orderSizeDeductionView(params: DeductionViewParams): OrderSizeDe
     })
     return { was: sideParts.was, now: sideParts.now, tail: sideParts.tail }
   }
-  return { ...parts, taxSides: { defaultSide: taxView.defaultSide, inc: figuresOn('inc'), ex: figuresOn('ex') } }
+  return { ...parts, supplierLink, taxSides: { defaultSide: taxView.defaultSide, inc: figuresOn('inc'), ex: figuresOn('ex') } }
 }

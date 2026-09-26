@@ -54,8 +54,11 @@ export const CART_DRAWER_CSS = `
 @keyframes scd-slide-up{from{transform:translateY(100%)}to{transform:none}}
 @keyframes scd-fade{from{opacity:0}to{opacity:1}}
 
-/* ---- Header ---- */
-.scd-head{flex:none;display:flex;align-items:center;gap:1rem;padding:1.125rem 1.25rem;
+/* ---- Header ----
+   Barely any padding top and bottom: the close button's own 40px target sets
+   the bar's height, and every rem spent above the list is a rem of basket the
+   shopper cannot see on a phone. */
+.scd-head{flex:none;display:flex;align-items:center;gap:1rem;padding:0.125rem 1.25rem;
   border-bottom:1px solid var(--color-border)}
 .scd-title{margin:0;font-size:1.375rem;line-height:1.2;font-weight:700}
 .scd-close{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;
@@ -147,12 +150,31 @@ export const CART_DRAWER_CSS = `
 /* ---- Empty state ---- */
 .scd-empty{display:grid;gap:0.75rem;justify-items:start;color:var(--color-text-muted)}
 
-/* ---- Footer: subtotal, actions ---- */
-/* The whole-basket note is drawn by CartNotes now (cart-note-css.ts), which the
-   block's own style fields dress - the panel no longer hardcodes it green. */
+/* ---- Footer: totals, actions ---- */
 .scd-foot{flex:none;display:grid;gap:0.75rem;padding:1.25rem;border-top:1px solid var(--color-border);
   background:var(--color-surface)}
 .scd-sub{display:flex;align-items:baseline;justify-content:space-between;font-size:1.125rem;font-weight:700}
+/* Subtotal on the left, VAT on the right, one row between them; each is its
+   label then its figure. Wraps rather than squeezing if a long VAT label and a
+   big basket will not share a phone-width panel. */
+.scd-sums{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0.25rem 1rem;
+  margin:0;font-size:0.9375rem}
+.scd-sum{display:flex;align-items:baseline;gap:0.4375rem}
+.scd-sum dt{color:var(--color-text-secondary)}
+.scd-sum dd{margin:0;font-variant-numeric:tabular-nums;color:var(--color-text)}
+.scd-sum-r{margin-left:auto}
+.scd-total{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;margin:0;
+  padding-top:0.5625rem;border-top:1px solid var(--color-border);font-size:1.125rem;font-weight:700;color:var(--color-text)}
+.scd-total dd{margin:0;font-variant-numeric:tabular-nums}
+/* A button another module asked the panel to draw (cart-drawer-extras.ts): full
+   width, the same height and corners as the two above it. The geometry is the
+   panel's; the colours are the contributing module's, so these are only the
+   resting fallbacks for one that sets none. */
+.scd-extra{display:flex;align-items:center;justify-content:center;gap:0.5rem;width:100%;box-sizing:border-box;
+  padding:0.8125rem 1.25rem;border:1.5px solid transparent;border-radius:var(--scd-r,9999px);
+  background:var(--color-bg-subtle);color:var(--color-text);
+  font-family:inherit;font-size:1rem;font-weight:600;line-height:inherit;text-align:center;text-decoration:none;cursor:pointer}
+.scd-extra:focus-visible{outline:2px solid var(--color-text);outline-offset:2px}
 /* Both buttons paint from custom properties rather than plain inline colours.
    An inline background/colour outranks any stylesheet rule, so a hover
    colour set on the block could never take effect while the resting colour was

@@ -22,8 +22,9 @@
 // nothing about the shop's prices has to be trusted to the client.
 
 import { useEffect, useRef, useState } from 'react'
-import type { OrderSizeDeductionFigures, OrderSizeDeductionLineView } from '@/modules/shop/lib/order-size-deduction'
+import type { OrderSizeDeductionFigures, OrderSizeDeductionLineView, SupplierLink } from '@/modules/shop/lib/order-size-deduction'
 import { TaxViewText } from '@/modules/shop/components/public/TaxViewText'
+import { SupplierLinkText } from '@/modules/shop/components/public/SupplierLinkText'
 
 // Mirrors VariantSelectionDetail in shop-variations. Declared rather than
 // imported for the reason above; only the three fields this needs are named, so
@@ -118,20 +119,22 @@ export function OrderSizeDeductionClient({
       <p className="spd-osd-line">
         {line.lead}
         {line.taxSides
-          ? <TaxViewText defaultSide={line.taxSides.defaultSide} excluding={<LineFigures figures={line.taxSides.ex} />} including={<LineFigures figures={line.taxSides.inc} />} />
-          : <LineFigures figures={line} />}
+          ? <TaxViewText defaultSide={line.taxSides.defaultSide} excluding={<LineFigures figures={line.taxSides.ex} supplierLink={line.supplierLink} />} including={<LineFigures figures={line.taxSides.inc} supplierLink={line.supplierLink} />} />
+          : <LineFigures figures={line} supplierLink={line.supplierLink} />}
       </p>
     </div>
   )
 }
 
-function LineFigures({ figures }: { figures: OrderSizeDeductionFigures }) {
+// The supplier's name sits in the tail ("on Dynamic Office Solutions orders of
+// £350 or more") and links to their page where the shop publishes one.
+function LineFigures({ figures, supplierLink }: { figures: OrderSizeDeductionFigures; supplierLink?: SupplierLink | null }) {
   return (
     <>
       {figures.was && <s className="spd-osd-was">{figures.was}</s>}
       {figures.was && ' '}
       <span className="spd-osd-amount">{figures.now}</span>
-      {figures.tail}
+      <SupplierLinkText text={figures.tail} link={supplierLink} className="spd-osd-supplier" />
     </>
   )
 }

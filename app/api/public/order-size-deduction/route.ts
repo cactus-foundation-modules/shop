@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getProductById } from '@/modules/shop/lib/db/products'
-import { getDeductionRules } from '@/modules/shop/lib/db/suppliers'
+import { getDeductionRules, getSupplierByName } from '@/modules/shop/lib/db/suppliers'
+import { supplierPageHref } from '@/modules/shop/lib/supplier-url'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { makeDisplayAdjuster, productTaxView, resolveTaxDisplay } from '@/modules/shop/lib/tax-display'
 import { orderSizeDeductionView } from '@/modules/shop/lib/order-size-deduction-view'
@@ -44,7 +45,14 @@ export async function GET(request: NextRequest) {
   // nothing that cannot be bought should be advertising a price at all.
   if (!product || product.status !== 'ACTIVE' || !product.supplier) return line(null)
 
-  const rules = await getDeductionRules([product.supplier])
+  // The supplier row is only wanted for the link to their page, so it is only
+  // read on a shop that publishes supplier pages - and alongside the rule rather
+  // than after it.
+  const wantsLink = config.supplierFieldEnabled && config.supplierPagesEnabled
+  const [rules, supplier] = await Promise.all([
+    getDeductionRules([product.supplier]),
+    wantsLink ? getSupplierByName(product.supplier) : Promise.resolve(null),
+  ])
   const rule = rules[0] ?? null
   if (!rule) return line(null)
 
@@ -62,6 +70,7 @@ export async function GET(request: NextRequest) {
       // Both sides of tax where the shopper's switch is on, so the replaced line
       // follows it exactly as the one the page opened with did.
       taxView: productTaxView(taxDisplay, product.taxClassId),
+      supplierHref: supplierPageHref(config, supplier),
     }),
   )
 }

@@ -9,6 +9,7 @@ import { getDefaultTaxZoneId, getTaxRateForZoneAndClass } from '@/modules/shop/l
 import { shopClosedResponse } from '@/modules/shop/lib/access'
 import { getCartSummaryNotes } from '@/modules/shop/lib/cart-summary'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { supplierPageLinks } from '@/modules/shop/lib/supplier-links'
 import { displayAmount, type PriceDisplay } from '@/modules/shop/lib/tax-display-shared'
 import { CheckoutLinesSchema, checkoutLinesRefusal } from '@/modules/shop/lib/checkout-lines'
 
@@ -151,10 +152,10 @@ export async function POST(request: NextRequest) {
   // the notes modules contribute, and that separation is the point.
   //
   // Those notes are dressed per surface by the author (cart-note-options.ts):
-  // the slide-out draws them green with a tick, the cart page hides them
+  // the checkout draws them as a quiet line, the cart page hides them
   // outright. Both defaults were written when a note meant a delivery estimate,
-  // and neither suits this one - a tick in front of "add £113 more" claims
-  // something is settled when it is an instruction, and hiding it on the cart
+  // and neither suits this one - a muted aside undersells "add £113 more",
+  // which is an instruction rather than a fact, and hiding it on the cart
   // page hides the one sentence that exists to move the order value, on exactly
   // the page where a shopper decides whether to add anything.
   //
@@ -165,9 +166,14 @@ export async function POST(request: NextRequest) {
   // The figures are stored-side, like the thresholds and amounts they come from,
   // so the sentence quotes what the owner typed rather than a tax conversion of
   // it. Deliberate: "orders of £350 or more" is the supplier's rule, not a price.
-  const deductionNotes = config.orderSizeDeductionShowInBasket
-    ? orderSizeDeductionNotes(orderSizeDeduction, config.currencySymbol)
-    : []
+  //
+  // The supplier's name in it links to their page where the shop publishes one,
+  // looked up only for the suppliers that actually have a note to print.
+  const noteStates = config.orderSizeDeductionShowInBasket ? orderSizeDeduction.filter((s) => s.saving > 0) : []
+  const supplierLinks = noteStates.length > 0
+    ? await supplierPageLinks(config, noteStates.map((s) => s.supplier))
+    : new Map<string, string>()
+  const deductionNotes = orderSizeDeductionNotes(noteStates, config.currencySymbol, (name) => supplierLinks.get(name) ?? null)
 
   return NextResponse.json({ lines, notes: providerNotes, deductionNotes })
 }

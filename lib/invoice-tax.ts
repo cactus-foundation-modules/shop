@@ -1,3 +1,4 @@
+import { attributedLineCharges } from '@/modules/shop/lib/order-line-charges'
 import type { ShpInvoiceLine, ShpInvoiceLineCharge, ShpInvoiceTaxRow, ShpLedgerItem, ShpOrder, ShpOrderItem } from '@/modules/shop/lib/types'
 
 // The arithmetic on an invoice, kept pure and kept here so it can be tested
@@ -84,18 +85,10 @@ function lineDetail(item: ShpOrderItem, keepDelivery = false): { label: string; 
  *
  *  Nothing here adds money: every penny is already inside `lineTotal`. */
 function lineCharges(item: ShpOrderItem, lineTotal: number): ShpInvoiceLineCharge[] | undefined {
-  const charges = item.lineMeta?.charges
-  if (!Array.isArray(charges) || charges.length === 0) return undefined
-  const raw = charges
-    .filter((charge) => charge && typeof charge.label === 'string' && Number.isFinite(Number(charge.amount)))
-    .map((charge) => ({ label: charge.label, amount: Number(charge.amount) * item.quantity }))
-  const attributed = raw.reduce((sum, charge) => sum + charge.amount, 0)
-  if (!(attributed > 0)) return undefined
-  const cap = Math.max(0, lineTotal)
-  const scale = attributed > cap ? cap / attributed : 1
-  const rows = raw
-    .map((charge) => ({ label: charge.label, amount: money(charge.amount * scale) }))
-    .filter((charge) => Number(charge.amount) > 0)
+  // The same split the admin order screen prints, from the one helper, so the
+  // invoice and the screen it is raised from cannot disagree about the delivery.
+  const rows = attributedLineCharges(item.lineMeta?.charges, item.quantity, lineTotal)
+    .map((charge) => ({ label: charge.label, amount: money(charge.amount) }))
   return rows.length > 0 ? rows : undefined
 }
 

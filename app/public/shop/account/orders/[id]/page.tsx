@@ -45,6 +45,7 @@ import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { courierIsPolled } from '@/modules/shop/lib/tracking/stage-meaning'
 import { livePollIntervalMs, positionFreshness } from '@/modules/shop/lib/tracking/live-delivery'
 import DeliveryLiveMap, { type LiveDeliveryState } from '@/modules/shop/components/public/DeliveryLiveMap'
+import { TrackingCheckOnView } from '@/modules/shop/components/public/TrackingCheckOnView'
 import { FAQ_QUERY_KEY } from '@/modules/shop/lib/courier-faqs'
 import { listInvoicesForOrder } from '@/modules/shop/lib/db/invoices'
 import { listCreditNotesForOrder } from '@/modules/shop/lib/db/credit-notes'
@@ -436,6 +437,17 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
       }
     : null
 
+  // The parcels worth asking the courier about as the page opens: still on
+  // their way, on a courier the shop follows, with something to follow them by.
+  // Not the one on the live map, which asks on its own tick. The route decides
+  // for itself whether it has asked recently enough already.
+  const checkOnView = stopped
+    ? []
+    : shipments.filter((s) => !s.deliveredAt
+        && s.id !== liveShipment?.id
+        && Boolean(s.trackingUrl || s.trackingShortCode)
+        && courierIsPolled(courierForShipment(config, s)))
+
   // Which parcel's questions the delivery email asked for. One order, one set
   // of questions on screen: with two parcels out with the same courier the
   // questions are the same questions, so the first booked delivery that has any
@@ -601,6 +613,11 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
         {liveDelivery && liveShipment && (
           <DeliveryLiveMap orderId={order.id} shipmentId={liveShipment.id} initial={liveDelivery} />
         )}
+        {/* Asks each parcel's courier as the page opens, rather than leaving
+            the customer on whatever the hourly job last heard. Draws nothing. */}
+        {checkOnView.map((s) => (
+          <TrackingCheckOnView key={s.id} orderId={order.id} shipmentId={s.id} />
+        ))}
 
         {/* The charge says why the order is on hold, in its own words, so the
             general "on hold" note would only be saying it twice. */}

@@ -35,7 +35,7 @@ import { resolveProductRating } from '@/modules/shop/lib/detail-rating'
 import { productUrl } from '@/modules/shop/lib/product-url'
 import { nonReturnableNote, returnsPolicy } from '@/modules/shop/lib/returnable'
 import { getSiteUrl } from '@/lib/config/env'
-import { supplierHref } from '@/modules/shop/lib/supplier-url'
+import { supplierPageHref } from '@/modules/shop/lib/supplier-url'
 import { orderSizeDeductionView } from '@/modules/shop/lib/order-size-deduction-view'
 import type { PuckData } from '@/modules/shop/lib/types'
 import type { DetailPartContext } from '@/modules/shop/components/puck/parts/part-context'
@@ -426,8 +426,7 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
     if (!config.supplierFieldEnabled || !config.supplierShowOnFrontend) return null
     const name = product.supplier?.trim()
     if (!name) return null
-    const linkable = config.supplierPagesEnabled && supplier?.storefrontVisible === true && supplier.slug
-    return { name, href: linkable ? supplierHref(supplier.slug!) : null }
+    return { name, href: supplierPageHref(config, supplier) }
   }
 
   // The order-size deduction line the page OPENS with. On a listing whose
@@ -449,6 +448,8 @@ export async function ShopProductDetailRsc(props: ShopProductDetailProps) {
       currencySymbol: config.currencySymbol,
       someOptionsOnly: slot != null,
       taxView: productTaxView(taxDisplay, product.taxClassId),
+      // The same address the badge above the title links to.
+      supplierHref: supplierPageHref(config, supplier),
     })
   }
 

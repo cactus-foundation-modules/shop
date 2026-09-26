@@ -307,12 +307,12 @@ export function dpdImageUrl(parcelCode: string, image: { key: string; imageType:
 /**
  * The headers that picture needs, which are not the ones anything else needs.
  *
- * Two things, and it is 403 without either: the session cookie minted from the
- * follow-my-parcel code (the same `createSession?parcelCode=…&origin=d` call
- * that `www.dpd.co.uk/d/<code>` makes), and a Referer from that entry path.
- *
- * The parcel-number tracking URL is a different door in; the image endpoint
- * expects the session that came through the short link.
+ * The session cookie minted from the follow-my-parcel code (the same
+ * `createSession?parcelCode=…&origin=d` call that `www.dpd.co.uk/d/<code>`
+ * makes) is what matters, and it has to be a session that was actually granted
+ * - see fetchDpdParcel for how two requests at once spoil one. Re-tested
+ * 2026-09-26: with a good session the Referer makes no difference, so this one
+ * is sent only because it is what their own page sends.
  */
 export function dpdImageHeaders(cookie: string, shortCode?: string | null): Record<string, string> {
   const code = shortCode?.trim()

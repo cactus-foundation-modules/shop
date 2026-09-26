@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mintDpdSession, setCookieLines } from '@/modules/shop/lib/tracking/dpd-session'
+import { fetchDpdParcel, mintDpdSession, setCookieLines } from '@/modules/shop/lib/tracking/dpd-session'
 
 describe('setCookieLines', () => {
   it('reads sessionId from getSetCookie when the runtime has it', () => {
@@ -48,6 +48,28 @@ describe('mintDpdSession', () => {
   it('has no parcel number when the redirect goes anywhere else', async () => {
     redirect({ location: 'https://track.dpd.co.uk/', 'set-cookie': 'sessionId=x; Path=/' })
     expect(await mintDpdSession('nonsense')).toEqual({ cookie: 'sessionId=x', parcelCode: null })
+  })
+
+  it('is null when the session was refused, although a cookie came with it', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', {
+      status: 429,
+      headers: { 'set-cookie': 'sessionId=useless; Path=/' },
+    })))
+    expect(await mintDpdSession('6dPoGvP3DMDN')).toBeNull()
+  })
+
+  it('asks for the parcel and its history one after the other, never together', async () => {
+    let inFlight = 0
+    let most = 0
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      inFlight += 1
+      most = Math.max(most, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      inFlight -= 1
+      return new Response('{"data":{}}', { status: 200 })
+    }))
+    await fetchDpdParcel('15505217097035*21453', 'sessionId=abc')
+    expect(most).toBe(1)
   })
 
   it('is null when the request fails outright', async () => {

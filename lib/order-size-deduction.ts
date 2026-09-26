@@ -265,7 +265,22 @@ export type OrderSizeDeductionLineView = {
     inc: OrderSizeDeductionFigures
     ex: OrderSizeDeductionFigures
   } | null
+  /**
+   * The supplier named in `tail`, with their page, where the shop publishes
+   * one. Null or absent otherwise, and the name stays plain text. The name is
+   * found in the tail rather than the tail being split here, so every side of
+   * tax and every surface links the same words the same way.
+   */
+  supplierLink?: SupplierLink | null
 }
+
+/**
+ * The supplier's name as it appears in a sentence, and where their page lives.
+ * Only ever handed over where that page is actually published (see
+ * supplierPageHref in lib/supplier-url.ts), so a renderer that finds one links
+ * it and one that finds none prints the name as plain text.
+ */
+export type SupplierLink = { name: string; href: string }
 
 /** The part of the line that carries money, on one side of tax. */
 export type OrderSizeDeductionFigures = Pick<OrderSizeDeductionLineView, 'was' | 'now' | 'tail'>
@@ -382,7 +397,10 @@ export function orderSizeDeductionQualifiedNote(state: OrderSizeDeductionState, 
 export function orderSizeDeductionNotes(
   states: readonly OrderSizeDeductionState[],
   currencySymbol = '£',
-): Array<{ id: string; text: string; amounts: string[] }> {
+  /** Where a supplier's page lives, or null where it has none published. The
+   *  basket links the name in the sentence to it. Omitted means no links. */
+  supplierHref?: (supplier: string) => string | null,
+): Array<{ id: string; text: string; amounts: string[]; link: SupplierLink | null }> {
   return states
     .filter((s) => s.saving > 0)
     .map((s) => ({
@@ -397,5 +415,11 @@ export function orderSizeDeductionNotes(
       amounts: s.qualified
         ? [tidyMoney(s.saving, currencySymbol), tidyMoney(s.threshold, currencySymbol)]
         : [tidyMoney(s.shortfall, currencySymbol), tidyMoney(s.saving, currencySymbol)],
+      link: supplierLinkFor(s.supplier, supplierHref),
     }))
+}
+
+function supplierLinkFor(name: string, supplierHref?: (supplier: string) => string | null): SupplierLink | null {
+  const href = supplierHref?.(name) ?? null
+  return href ? { name, href } : null
 }

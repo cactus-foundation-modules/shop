@@ -368,3 +368,27 @@ describe('the copy', () => {
     expect(notes[1]!.text).toBe('Add £400 more from Furdeco and save £10.')
   })
 })
+
+describe('orderSizeDeductionNotes - supplier links', () => {
+  const currency = '£'
+  const states = orderSizeDeductionStates(
+    [
+      line({ supplier: DYNAMIC, unitPrice: 116, quantity: 1, lineSubtotal: 116, deduction: 6 }),
+      line({ supplier: 'Furdeco', unitPrice: 100, quantity: 1, lineSubtotal: 100, deduction: 10 }),
+    ],
+    [rule(), rule({ supplier: 'Furdeco', threshold: 500 })],
+  )
+
+  it('links only the suppliers whose page is published, by the name the sentence prints', () => {
+    const notes = orderSizeDeductionNotes(states, currency, (name) =>
+      name === DYNAMIC ? '/shop/suppliers/dynamic-office-solutions' : null,
+    )
+    expect(notes[0]!.link).toEqual({ name: DYNAMIC, href: '/shop/suppliers/dynamic-office-solutions' })
+    expect(notes[0]!.text).toContain(notes[0]!.link!.name)
+    expect(notes[1]!.link).toBeNull()
+  })
+
+  it('links nothing when no lookup is given', () => {
+    expect(orderSizeDeductionNotes(states, currency).every((n) => n.link === null)).toBe(true)
+  })
+})
