@@ -7,6 +7,7 @@ import {
   type CourierOption,
   type ParcelDetails,
 } from '@/modules/shop/components/admin/ParcelDetailsFields'
+import { dpdFollowLink } from '@/modules/shop/lib/tracking/dpd-follow-link'
 
 // Filling in a parcel after it has gone.
 //
@@ -50,8 +51,12 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
     courierId: parcel.courierId ?? '',
     carrier: parcel.carrier ?? '',
     trackingNumber: parcel.trackingNumber ?? '',
-    trackingUrl: parcel.trackingUrl ?? '',
-    trackingShortCode: parcel.trackingShortCode ?? '',
+    // A parcel recorded before the follow-my-parcel link had a box of its own
+    // to leave - its code saved separately, beside a long tracking address -
+    // shows the link the code stands for, since that is now the one to keep.
+    trackingUrl: parcel.trackingShortCode?.trim()
+      ? dpdFollowLink(parcel.trackingShortCode.trim())
+      : parcel.trackingUrl ?? '',
     deliveryDate: parcel.deliveryDate ?? '',
     deliverySlotStart: parcel.deliverySlotStart ?? '',
     deliverySlotEnd: parcel.deliverySlotEnd ?? '',
@@ -74,7 +79,7 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   // a second email repeating it is noise. A courier name is not tracking - it
   // is who has the box - so it does not count towards either side of this.
   const hadTracking = Boolean(parcel.trackingNumber?.trim() || parcel.trackingUrl?.trim() || parcel.trackingShortCode?.trim())
-  const hasTrackingNow = Boolean(details.trackingNumber.trim() || details.trackingUrl.trim() || details.trackingShortCode.trim())
+  const hasTrackingNow = Boolean(details.trackingNumber.trim() || details.trackingUrl.trim())
   const trackingAlreadyTold = Boolean(parcel.trackingNotifiedAt)
   const offerTrackingEmail = !hadTracking && !trackingAlreadyTold
 
@@ -118,7 +123,7 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
           {offerTrackingEmail && (
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input type="checkbox" checked={emailTracking} onChange={(e) => setEmailTracking(e.target.checked)} />
-              Let the customer know the tracking{hasTrackingNow ? '' : ' (needs a number, a link or a code)'}
+              Let the customer know the tracking{hasTrackingNow ? '' : ' (needs a number or a link)'}
             </label>
           )}
 

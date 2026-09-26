@@ -1,4 +1,3 @@
-import { dpdShortCodeFromUrl } from '@/modules/shop/lib/tracking/dpd'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
@@ -25,6 +24,7 @@ import type { ShpConfig } from '@/modules/shop/lib/config'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
+import { DPD_FOLLOW_LINK_EXAMPLE, dpdFollowLink, dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
 import type { ShpOrderItem, ShpOrderStatus, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
 // Ceilings on what a parcel record may carry. Every one of these is stored on
@@ -68,25 +68,6 @@ const TrackingUrl = z
 const DeliveryDate = z.string().trim().refine(isDeliveryDate, 'That is not a real date.')
 const SlotTime = z.string().trim().refine(isSlotTime, 'A delivery time looks like 10:00.')
 
-/**
- * A courier's follow-my-parcel link, reduced to the code inside it.
- *
- * Accepted as the whole address or as the bare code, because an owner pasting
- * out of an email will do either, and stored as the code: the address around it
- * is the courier's to restructure, and a stored URL would be one redesign away
- * from being a link to nowhere. Anything that is neither is rejected here
- * rather than saved and quietly ignored by the poller.
- */
-const TrackingShortCode = z.string().trim().max(TRACKING_URL_MAX_LENGTH, `The follow-my-parcel link is too long - ${TRACKING_URL_MAX_LENGTH} characters at most.`).transform((value, ctx) => {
-  if (!value) return null
-  const code = dpdShortCodeFromUrl(value)
-  if (!code) {
-    ctx.addIssue({ code: 'custom', message: 'That does not look like a follow-my-parcel link.' })
-    return z.NEVER
-  }
-  return code
-})
-
 const DeliveryFields = {
   /** The courier picked from the shop's own list. Its name is read from
    *  settings server-side rather than taken from the browser, so a renamed
@@ -107,7 +88,6 @@ const Body = z.object({
     .max(ORDER_LINE_BATCH_MAX, ORDER_LINE_BATCH_MAX_MESSAGE),
   trackingNumber: TrackingNumber.nullable().optional(),
   trackingUrl: TrackingUrl.nullable().optional(),
-  trackingShortCode: TrackingShortCode.nullable().optional(),
   ...DeliveryFields,
   notes: ShipmentNotes.nullable().optional(),
   // Owners back-date a parcel that went out on Friday and is only being
@@ -118,6 +98,41 @@ const Body = z.object({
 })
 
 type CourierChoice = { courierId: string | null; carrier: string | null }
+
+/** The courier's tracking is read from DPD, which is what makes its one
+ *  tracking link the follow-my-parcel link and nothing else. */
+function courierTakesDpdLink(config: Pick<ShpConfig, 'deliveryCouriers'>, courierId: string | null): boolean {
+  return config.deliveryCouriers.find((c) => c.id === courierId)?.trackingSource === 'dpd'
+}
+
+const WRONG_DPD_LINK = `For DPD the tracking link has to be the follow-my-parcel link from their email, like ${DPD_FOLLOW_LINK_EXAMPLE}.`
+
+type TrackingLink = { trackingUrl: string | null; trackingShortCode: string | null }
+
+/**
+ * The one tracking link, checked against the courier it went with.
+ *
+ * On a DPD courier it must be the follow-my-parcel link: that is the link whose
+ * code opens their full feed, and it is the only DPD link a customer can follow
+ * without a parcel number to hand. Anything else is refused here rather than
+ * saved and quietly never read. It is stored in one canonical shape, with its
+ * code alongside for the tracking check.
+ *
+ * Any other courier takes any web address, as it always has, and carries no
+ * code - a code left over from when the parcel was down as DPD would have the
+ * tracking check asking DPD about somebody else's van.
+ */
+function trackingLinkFor(
+  config: Pick<ShpConfig, 'deliveryCouriers'>,
+  courierId: string | null,
+  trackingUrl: string | null,
+): { ok: true; link: TrackingLink } | { ok: false; error: string } {
+  if (!trackingUrl) return { ok: true, link: { trackingUrl: null, trackingShortCode: null } }
+  if (!courierTakesDpdLink(config, courierId)) return { ok: true, link: { trackingUrl, trackingShortCode: null } }
+  const code = dpdFollowLinkCode(trackingUrl)
+  if (!code) return { ok: false, error: WRONG_DPD_LINK }
+  return { ok: true, link: { trackingUrl: dpdFollowLink(code), trackingShortCode: code } }
+}
 
 // Which courier this parcel went with, decided here rather than trusted.
 //
@@ -220,7 +235,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // being fetched separately because every screen that offers dispatch is
     // already waiting on this one, and a second round trip for six words would
     // show up as a dropdown that populates a beat late.
-    couriers: config.deliveryCouriers.map((c) => ({ id: c.id, name: c.name })),
+    couriers: config.deliveryCouriers.map((c) => ({ id: c.id, name: c.name, dpdFollowLink: c.trackingSource === 'dpd' })),
     preOrderHold: {
       active: holdAll && outstanding.length > 0,
       outstandingCount: outstanding.length,
@@ -250,15 +265,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const windowError = checkWindow(parsed.data.deliverySlotStart, parsed.data.deliverySlotEnd)
   if (windowError) return NextResponse.json({ error: windowError }, { status: 400 })
 
-  const courier = resolveCourier(await getShopConfigCached(), parsed.data.courierId, parsed.data.carrier)
+  const config = await getShopConfigCached()
+  const courier = resolveCourier(config, parsed.data.courierId, parsed.data.carrier)
   if (!courier.ok) return NextResponse.json({ error: courier.error }, { status: 400 })
+
+  const tracking = trackingLinkFor(config, courier.choice.courierId, parsed.data.trackingUrl ?? null)
+  if (!tracking.ok) return NextResponse.json({ error: tracking.error }, { status: 400 })
 
   const outcome = await createShipment({
     orderId: id,
     shippedAt: parsed.data.shippedAt ?? null,
     trackingNumber: parsed.data.trackingNumber ?? null,
-    trackingUrl: parsed.data.trackingUrl ?? null,
-    trackingShortCode: parsed.data.trackingShortCode ?? null,
+    ...tracking.link,
     carrier: courier.choice.carrier,
     courierId: courier.choice.courierId,
     deliveryDate: parsed.data.deliveryDate ?? null,
@@ -302,7 +320,6 @@ const PatchBody = z.object({
   shipmentId: z.string().min(1),
   trackingNumber: TrackingNumber.nullable().optional(),
   trackingUrl: TrackingUrl.nullable().optional(),
-  trackingShortCode: TrackingShortCode.nullable().optional(),
   ...DeliveryFields,
   notes: ShipmentNotes.nullable().optional(),
   /** Whether saving a newly-confirmed window emails the customer about it.
@@ -352,8 +369,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     : null
   if (courier && !courier.ok) return NextResponse.json({ error: courier.error }, { status: 400 })
 
+  // The link is judged against the courier as it will be after the save, and
+  // only when this save touches one or the other. A parcel recorded before the
+  // rule, and left as it was, is not refused for an address nobody changed.
+  const nextCourierId = courier?.ok ? courier.choice.courierId : existing.courierId
+  const nextUrl = rest.trackingUrl !== undefined ? rest.trackingUrl : existing.trackingUrl
+  const linkTouched = (rest.trackingUrl !== undefined && rest.trackingUrl !== existing.trackingUrl)
+    || nextCourierId !== existing.courierId
+  const tracking = linkTouched ? trackingLinkFor(config, nextCourierId, nextUrl) : null
+  if (tracking && !tracking.ok) return NextResponse.json({ error: tracking.error }, { status: 400 })
+
   const shipment = await updateShipmentDetails(shipmentId, id, {
     ...rest,
+    ...(tracking?.ok ? tracking.link : {}),
     ...(courier?.ok ? { courierId: courier.choice.courierId, carrier: courier.choice.carrier } : {}),
   })
   if (!shipment) return NextResponse.json({ error: 'That parcel is no longer on this order.' }, { status: 404 })

@@ -4,6 +4,7 @@ import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { orderTrackingUrl } from '@/modules/shop/lib/order-tracking'
 import { renderOrderItemsTable, type OrderEmailLine } from '@/modules/shop/lib/order-items-email'
+import { orderItemEmailMedia } from '@/modules/shop/lib/order-item-email-media'
 import {
   deliveryBookingForShipment,
   formatDeliveryDay,
@@ -57,18 +58,21 @@ export async function sendDeliverySlotEmail(params: {
 
   const config = await getShopConfigCached()
 
-  // What is in THIS parcel, by name, so somebody with a split order knows which
-  // half is arriving. Names come off the dispatch summary the order screen
-  // reads, so the email cannot disagree with it. No photographs: this email is
-  // read on a phone, in a hurry, to find out a time.
-  const summary = await getOrderDispatchSummary(params.orderId)
+  // What is in THIS parcel, so somebody with a split order knows which half is
+  // arriving. Names come off the dispatch summary the order screen reads, so
+  // the email cannot disagree with it; pictures and links the same way the
+  // dispatch note has them, so the two read as one order.
+  const [summary, media] = await Promise.all([
+    getOrderDispatchSummary(params.orderId),
+    orderItemEmailMedia(params.orderId, config),
+  ])
   const nameByOrderItemId = new Map(summary.lines.map((l) => [l.orderItemId, l.productName]))
   const lines: OrderEmailLine[] = shipment.items
     .map((item) => ({
       name: nameByOrderItemId.get(item.orderItemId) ?? 'Item',
       quantity: item.quantity,
-      imageUrl: null,
-      url: null,
+      imageUrl: media.imageFor(item.orderItemId),
+      url: media.linkFor(item.orderItemId),
     }))
     .sort((a, b) => a.name.localeCompare(b.name))
 

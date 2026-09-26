@@ -1,6 +1,7 @@
 'use client'
 
 import type { CSSProperties } from 'react'
+import { DPD_FOLLOW_LINK_EXAMPLE, dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
 
 // The details that hang off a parcel rather than off its contents: who is
 // carrying it, when it is booked to arrive, and how to follow it.
@@ -12,7 +13,15 @@ import type { CSSProperties } from 'react'
 // thing to do is edit the parcel that already went. Two forms would drift, and
 // the second one would quietly forget a field.
 
-export type CourierOption = { id: string; name: string }
+export type CourierOption = {
+  id: string
+  name: string
+  /** The courier's tracking is read from DPD, so its one tracking link must be
+   *  the follow-my-parcel link from DPD's email. Optional so a response from an
+   *  older deployment still renders - it then accepts any web address, as it
+   *  always did, and the route has the final say either way. */
+  dpdFollowLink?: boolean
+}
 
 export type ParcelDetails = {
   /** '' means the shop's "Other" case: a courier typed in by hand. */
@@ -20,10 +29,9 @@ export type ParcelDetails = {
   /** Only used when courierId is ''. */
   carrier: string
   trackingNumber: string
+  /** The one tracking link. On a DPD courier, the follow-my-parcel link from
+   *  their email - the route takes the code out of it. */
   trackingUrl: string
-  /** The courier's follow-my-parcel link, or the bare code out of it. Pasted
-   *  whole; the route reduces it to the code. */
-  trackingShortCode: string
   /** 'YYYY-MM-DD', as the date input gives it. */
   deliveryDate: string
   /** 'HH:MM', as the time input gives it. */
@@ -37,7 +45,6 @@ export const EMPTY_PARCEL_DETAILS: ParcelDetails = {
   carrier: '',
   trackingNumber: '',
   trackingUrl: '',
-  trackingShortCode: '',
   deliveryDate: '',
   deliverySlotStart: '',
   deliverySlotEnd: '',
@@ -56,7 +63,6 @@ export function parcelDetailsPayload(details: ParcelDetails): Record<string, str
     carrier: picked ? null : details.carrier.trim() || null,
     trackingNumber: details.trackingNumber.trim() || null,
     trackingUrl: details.trackingUrl.trim() || null,
-    trackingShortCode: details.trackingShortCode.trim() || null,
     deliveryDate: details.deliveryDate.trim() || null,
     deliverySlotStart: details.deliverySlotStart.trim() || null,
     deliverySlotEnd: details.deliverySlotEnd.trim() || null,
@@ -71,6 +77,12 @@ export function ParcelDetailsFields({ couriers, value, onChange }: {
 }) {
   const set = <K extends keyof ParcelDetails>(key: K, next: ParcelDetails[K]) =>
     onChange({ ...value, [key]: next })
+
+  // DPD's link is checked as it is typed, so the wrong one is caught at the
+  // desk rather than an hour later by a tracking check that finds nothing.
+  const dpd = couriers.find((c) => c.id === value.courierId)?.dpdFollowLink === true
+  const typedLink = value.trackingUrl.trim()
+  const wrongDpdLink = dpd && typedLink.length > 0 && !dpdFollowLinkCode(typedLink)
 
   return (
     <>
@@ -153,30 +165,29 @@ export function ParcelDetailsFields({ couriers, value, onChange }: {
         <input
           value={value.trackingUrl}
           onChange={(e) => set('trackingUrl', e.target.value)}
-          placeholder="https://…"
+          placeholder={dpd ? DPD_FOLLOW_LINK_EXAMPLE : 'https://…'}
           inputMode="url"
-          style={fieldStyle}
+          aria-invalid={wrongDpdLink || undefined}
+          style={wrongDpdLink ? { ...fieldStyle, borderColor: 'var(--color-danger)' } : fieldStyle}
         />
-        <span style={hintStyle}>
-          The courier&rsquo;s own page for this parcel. Whether the customer is offered it is that
-          courier&rsquo;s own setting - either way it stays here for you.
-        </span>
-      </label>
-
-      <label>Follow-my-parcel link (optional)
-        <input
-          value={value.trackingShortCode}
-          onChange={(e) => set('trackingShortCode', e.target.value)}
-          placeholder="https://www.dpd.co.uk/d/…"
-          inputMode="url"
-          style={fieldStyle}
-        />
-        <span style={hintStyle}>
-          The short link the courier emails you once they have the parcel - not the same as the
-          tracking link above. Paste it here and your own order page can show the delivery window,
-          the driver&rsquo;s name and how many drops away they are. Usually arrives the day before,
-          so it is normally added by editing the parcel rather than at dispatch.
-        </span>
+        {wrongDpdLink ? (
+          <span style={{ ...hintStyle, color: 'var(--color-danger)' }}>
+            That is not DPD&rsquo;s follow-my-parcel link. Use the one from their email, which looks
+            like {DPD_FOLLOW_LINK_EXAMPLE}.
+          </span>
+        ) : dpd ? (
+          <span style={hintStyle}>
+            The link in DPD&rsquo;s email, like {DPD_FOLLOW_LINK_EXAMPLE}. That one link is all it
+            takes: the customer&rsquo;s order page shows the delivery window, the driver and how many
+            drops away they are. Usually arrives the day before, so it is normally added by editing
+            the parcel rather than at dispatch.
+          </span>
+        ) : (
+          <span style={hintStyle}>
+            The courier&rsquo;s own page for this parcel. Whether the customer is offered it is that
+            courier&rsquo;s own setting - either way it stays here for you.
+          </span>
+        )}
       </label>
 
       <label>Notes (optional)

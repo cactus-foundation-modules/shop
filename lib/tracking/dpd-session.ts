@@ -17,6 +17,8 @@
 // Everything here fails to null rather than throwing. A courier having an
 // afternoon must cost this parcel one poll, not the whole run.
 
+import { dpdParcelCodeFromUrl } from '@/modules/shop/lib/tracking/dpd'
+
 const API = 'https://apis.track.dpd.co.uk/v1'
 const TIMEOUT_MS = 8000
 
@@ -57,20 +59,38 @@ async function request(url: string, cookie: string | null, redirect: RequestRedi
   }
 }
 
+export type DpdSession = {
+  /** The sessionId cookie, ready for a `cookie` header. Null when DPD did not
+   *  hand one over - the parcel can still be read anonymously. */
+  cookie: string | null
+  /** The parcel number the short link stands for, off the redirect DPD answer
+   *  with ('https://track.dpd.co.uk/parcels/15505217097035*21453'). The only
+   *  place it comes from on a parcel recorded with the follow-my-parcel link
+   *  alone - pasted into both boxes on the dispatch form, which is the natural
+   *  thing to do with the one link the email carries - and without it there is
+   *  nothing to ask their feed about at all. */
+  parcelCode: string | null
+}
+
 /**
- * A session cookie for one parcel, or null.
+ * A session for one parcel, and the parcel number behind the short link.
+ * Null when the request itself failed.
  *
  * `redirect: 'manual'` matters: the response that carries the cookie is the
- * 302, and following it lands on the tracking page and loses the header.
+ * 302, and following it lands on the tracking page and loses the header - and
+ * the Location it points at is the parcel number.
  */
-export async function mintDpdSession(shortCode: string): Promise<string | null> {
+export async function mintDpdSession(shortCode: string): Promise<DpdSession | null> {
   const url = `${API}/createSession?parcelCode=${encodeURIComponent(shortCode)}&origin=d`
   const res = await request(url, null, 'manual')
   if (!res) return null
   const session = setCookieLines(res)
     .map((line) => line.split(';')[0]?.trim() ?? '')
     .filter((pair) => pair.startsWith('sessionId='))
-  return session.length > 0 ? session.join('; ') : null
+  return {
+    cookie: session.length > 0 ? session.join('; ') : null,
+    parcelCode: dpdParcelCodeFromUrl(res.headers.get('location')),
+  }
 }
 
 /** One JSON call, parsed loosely - the schemas in dpd.ts do the checking, and

@@ -5,10 +5,8 @@ import { getOrderDispatchSummary, getShipmentsForOrder } from '@/modules/shop/li
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { parentOrderVars } from '@/modules/shop/lib/replacement-emails'
 import { dispatchDetails, orderStatusEmailVars } from '@/modules/shop/lib/order-status'
-import { getOrderItems } from '@/modules/shop/lib/db/orders'
-import { absoluteImageUrl, productEmailUrl, renderOrderItemsTable, type OrderEmailLine } from '@/modules/shop/lib/order-items-email'
-import { getProductMediaForProducts, getProductSlugsByIds } from '@/modules/shop/lib/db/products'
-import type { ShpProductMedia } from '@/modules/shop/lib/types'
+import { renderOrderItemsTable, type OrderEmailLine } from '@/modules/shop/lib/order-items-email'
+import { orderItemEmailMedia } from '@/modules/shop/lib/order-item-email-media'
 
 // The two lists go into the template as pre-built markup, declared as rawTags
 // on shop.partial-shipped. They were plain strings, prefixed and newline-joined
@@ -102,33 +100,11 @@ export async function sendShipmentDispatchedEmail(params: { orderId: string; shi
     return
   }
 
-  // Thumbnails, by the line's own product exactly as the confirmation resolves
-  // them. The dispatch summary carries names and quantities but no product id,
-  // so the order's items come along to supply it; a picture that will not read
-  // costs the thumbnails and never the dispatch note.
-  const orderItems = await getOrderItems(params.orderId).catch(() => [])
-  const productByOrderItemId = new Map(orderItems.map((i) => [i.id, i.productId]))
-  const productIds = orderItems.map((i) => i.productId).filter((id): id is string => !!id)
-  const [mediaByProduct, slugByProduct] = await Promise.all([
-    productIds.length > 0
-      ? getProductMediaForProducts(productIds).catch(() => new Map<string, ShpProductMedia[]>())
-      : Promise.resolve(new Map<string, ShpProductMedia[]>()),
-    productIds.length > 0
-      ? getProductSlugsByIds(productIds).catch(() => new Map<string, string>())
-      : Promise.resolve(new Map<string, string>()),
-  ])
-  const imageForOrderItem = (orderItemId: string): string | null => {
-    const productId = productByOrderItemId.get(orderItemId) ?? null
-    const media = productId ? mediaByProduct.get(productId) ?? [] : []
-    const image = media.find((m) => m.type === 'IMAGE' && m.isPrimary) ?? media.find((m) => m.type === 'IMAGE')
-    return absoluteImageUrl(image?.url, siteUrl)
-  }
-  // The same link the confirmation gives - the line's own product, which for a
-  // variation is the child slug the parent's page opens on.
-  const linkForOrderItem = (orderItemId: string): string | null => {
-    const productId = productByOrderItemId.get(orderItemId) ?? null
-    return productEmailUrl(productId ? slugByProduct.get(productId) : null, siteUrl, config.productUrlStyle)
-  }
+  // Thumbnails and links, shared with the tracking and delivery-window emails
+  // - see lib/order-item-email-media.ts.
+  const media = await orderItemEmailMedia(params.orderId, config)
+  const imageForOrderItem = media.imageFor
+  const linkForOrderItem = media.linkFor
 
   type DispatchedEntry = { productName: string; quantity: number; imageUrl: string | null; url: string | null }
   const dispatched = shipment.items

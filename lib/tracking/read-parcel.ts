@@ -122,13 +122,19 @@ async function readGfs(parcel: ShpShipment, carrier: string, timezone: string): 
 }
 
 async function readDpdParcelOnce(parcel: ShpShipment, timezone: string): Promise<ParcelReading | null> {
-  const parcelCode = dpdParcelCodeFromUrl(parcel.trackingUrl)
-  if (!parcelCode) return null
-
   // One session for the whole parcel, or none at all. Without a follow-my-parcel
   // code this still reads - it just gets the fifteen public fields rather than
   // the ninety, which is a timeline and a status and no stop number.
-  const cookie = parcel.trackingShortCode ? await mintDpdSession(parcel.trackingShortCode) : null
+  const session = parcel.trackingShortCode ? await mintDpdSession(parcel.trackingShortCode) : null
+  const cookie = session?.cookie ?? null
+
+  // The parcel number from the tracking link where it is one, else from where
+  // the short link points. A parcel recorded with only the follow-my-parcel
+  // link - in both boxes, as it arrives in DPD's email - has no parcel number
+  // anywhere else, and went unread every hour until the order was closed.
+  const parcelCode = dpdParcelCodeFromUrl(parcel.trackingUrl) ?? session?.parcelCode ?? null
+  if (!parcelCode) return null
+
   const payloads = await fetchDpdParcel(parcelCode, cookie)
   if (!payloads.parcel && !payloads.events) return null
 

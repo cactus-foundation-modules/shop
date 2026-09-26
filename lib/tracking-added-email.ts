@@ -3,6 +3,7 @@ import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { getOrderDispatchSummary, getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { renderOrderItemsTable, type OrderEmailLine } from '@/modules/shop/lib/order-items-email'
+import { orderItemEmailMedia } from '@/modules/shop/lib/order-item-email-media'
 import { parentOrderVars } from '@/modules/shop/lib/replacement-emails'
 import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
 import type { ShpShipmentWithItems } from '@/modules/shop/lib/types'
@@ -55,18 +56,21 @@ export async function sendTrackingAddedEmail(params: { orderId: string; shipment
 
   const config = await getShopConfigCached()
 
-  // What is in THIS parcel, by name, so somebody with a split order knows which
-  // half the number belongs to. Off the dispatch summary the order screen
-  // reads, so the email cannot disagree with it. No photographs: this is read
-  // on a phone to find out where a box is.
-  const summary = await getOrderDispatchSummary(params.orderId)
+  // What is in THIS parcel, so somebody with a split order knows which half the
+  // number belongs to. Off the dispatch summary the order screen reads, so the
+  // email cannot disagree with it; pictures and links the same way the
+  // dispatch note has them, so the two read as one order.
+  const [summary, media] = await Promise.all([
+    getOrderDispatchSummary(params.orderId),
+    orderItemEmailMedia(params.orderId, config),
+  ])
   const nameByOrderItemId = new Map(summary.lines.map((l) => [l.orderItemId, l.productName]))
   const lines: OrderEmailLine[] = shipment.items
     .map((item) => ({
       name: nameByOrderItemId.get(item.orderItemId) ?? 'Item',
       quantity: item.quantity,
-      imageUrl: null,
-      url: null,
+      imageUrl: media.imageFor(item.orderItemId),
+      url: media.linkFor(item.orderItemId),
     }))
     .sort((a, b) => a.name.localeCompare(b.name))
 
