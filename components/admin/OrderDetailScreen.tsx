@@ -75,6 +75,9 @@ type OrderDetail = {
     // Their answer about marketing emails on this order. Null means nobody asked
     // it, which is not the same as a no. Optional for an older response.
     marketingConsent?: boolean | null
+    // Whether the completion email may ask for a review. Optional for an older
+    // response, and absent reads as yes - what every order did before.
+    askForReview?: boolean
   }
   items: OrderItem[]
   /** Product id -> where that product lives on the storefront, site-relative -
@@ -451,6 +454,20 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
     setBusy(false)
     if (!res.ok) { await alert('That reference could not be saved.'); return }
     setReferenceDraft(null)
+    refresh()
+  }
+
+  // Saved the moment it is ticked rather than on the next status change: the
+  // order may complete on its own when the courier says it landed, and the
+  // email goes then, with nobody pressing anything.
+  async function setAskForReview(on: boolean) {
+    setBusy(true)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ askForReview: on }),
+    })
+    setBusy(false)
+    if (!res.ok) { await alert('That could not be saved.'); return }
     refresh()
   }
 
@@ -1161,6 +1178,13 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                 <input type="checkbox" checked={sendEmailOnChange} onChange={(e) => setSendEmailOnChange(e.target.checked)} />
                 Email the customer when this changes
               </label>
+              {/* A replacement's last email is its own, and asks for nothing. */}
+              {order.kind !== 'REPLACEMENT' && (
+                <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.8125rem' }}>
+                  <input type="checkbox" checked={order.askForReview !== false} disabled={busy} onChange={(e) => setAskForReview(e.target.checked)} />
+                  Ask for a review in the completion email
+                </label>
+              )}
               {awaitingManualPayment && (
                 <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={confirmPayment}>Payment received</button>
               )}

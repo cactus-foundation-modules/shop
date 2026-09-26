@@ -175,6 +175,9 @@ export async function orderStatusEmailVars(
     hasTrackingUrl: dispatch.trackingUrl ? 'true' : 'false',
     hasTrackingLinks: dispatch.trackingLinks ? 'true' : 'false',
     ...customerReferenceVars(order, config),
+    // The flag an owner wraps their "leave us a review" paragraph in, so an
+    // order that went badly can be finished off without asking for stars.
+    hasReviewRequest: order.askForReview ? 'true' : 'false',
     shopName: config.shopTitle || 'Shop',
     shopUrl: `${getSiteUrl()}/shop`,
   }

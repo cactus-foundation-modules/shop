@@ -182,6 +182,7 @@ function prospectiveOrder(paymentMethod: string): ShpOrder {
     // Nobody has been asked how they want to hear about an order that does not
     // exist, so this is the default an order is born with.
     notifyEmail: true, notifySms: false, notifyPhone: null,
+    askForReview: true,
     createdAt: now, updatedAt: now,
   }
 }

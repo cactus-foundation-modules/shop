@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db/prisma'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { deliveryInstructionsLabel } from '@/modules/shop/lib/delivery-instructions'
-import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, listReplacementOrdersForParent, setOrderCustomerReference } from '@/modules/shop/lib/db/orders'
+import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, listReplacementOrdersForParent, setOrderAskForReview, setOrderCustomerReference } from '@/modules/shop/lib/db/orders'
 import { listRefundsForOrder, listRefundItemsForOrder } from '@/modules/shop/lib/db/refunds'
 import { listDownloadsForOrder } from '@/modules/shop/lib/db/digital'
 import { listRequestsForOrder } from '@/modules/shop/lib/db/order-requests'
@@ -126,14 +126,20 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 const PatchBody = z.object({
   // The customer's own reference for the order - their purchase order number.
   // Blank clears it, which is how a number typed into the wrong order is undone.
-  customerReference: z.string().max(120),
+  customerReference: z.string().max(120).optional(),
+  // Whether the completion email may ask for a review. Off for an order that
+  // went badly - see migration 065.
+  askForReview: z.boolean().optional(),
+}).refine((body) => body.customerReference !== undefined || body.askForReview !== undefined, {
+  message: 'Nothing to change',
 })
 
 // PATCH - the few things about an order somebody rings up to correct.
 //
-// Only the customer's own reference so far, and deliberately narrow: an order's
-// figures, lines and addresses are what the shopper agreed to, and a route that
-// would quietly rewrite them is not a route this screen needs.
+// The customer's own reference, and whether the completion email asks for a
+// review. Deliberately narrow: an order's figures, lines and addresses are what
+// the shopper agreed to, and a route that would quietly rewrite them is not a
+// route this screen needs.
 //
 // Gated on shop.orders WITHOUT allowAccess, unlike the GET above: read-only shop
 // access is enough to look at an order and not enough to change one.
@@ -145,8 +151,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const parsed = PatchBody.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 })
 
-  const updated = await setOrderCustomerReference(id, parsed.data.customerReference)
-  if (!updated) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+  const { customerReference, askForReview } = parsed.data
+  if (customerReference !== undefined && !(await setOrderCustomerReference(id, customerReference))) {
+    return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+  }
+  if (askForReview !== undefined && !(await setOrderAskForReview(id, askForReview))) {
+    return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+  }
 
   const order = await getOrderById(id)
   return NextResponse.json({ order })

@@ -80,7 +80,7 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     key: 'shop.status-completed',
     label: 'Order completed',
     body: '{{shopName}}: order {{orderNumber}} is complete. Thanks for shopping with us.',
-    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderUrl', 'hasOrderUrl'],
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderUrl', 'hasOrderUrl', 'hasReviewRequest'],
     requiredTags: ['orderNumber'],
     transactional: false,
   },

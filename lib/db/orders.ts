@@ -56,6 +56,9 @@ function mapOrder(r: Record<string, unknown>): ShpOrder {
     notifyEmail: (r.notify_email as boolean | null) ?? true,
     notifySms: (r.notify_sms as boolean | null) ?? false,
     notifyPhone: (r.notify_phone as string | null) ?? null,
+    // Migration 065, defaulted for the same reason: an older query shape still
+    // answers "ask", which is what every order did before the column existed.
+    askForReview: (r.ask_for_review as boolean | null | undefined) ?? true,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
   }
@@ -688,6 +691,14 @@ export async function setOrderBillingIdentity(
 export async function setOrderCustomerReference(id: string, reference: string): Promise<boolean> {
   const result = await prisma.$executeRaw`
     UPDATE "shp_orders" SET "customer_reference" = ${reference.trim() || null}, "updated_at" = CURRENT_TIMESTAMP WHERE "id" = ${id}
+  `
+  return result > 0
+}
+
+/** Staff switching the review request in the completion email on or off. */
+export async function setOrderAskForReview(id: string, askForReview: boolean): Promise<boolean> {
+  const result = await prisma.$executeRaw`
+    UPDATE "shp_orders" SET "ask_for_review" = ${askForReview}, "updated_at" = CURRENT_TIMESTAMP WHERE "id" = ${id}
   `
   return result > 0
 }

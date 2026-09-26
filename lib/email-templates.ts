@@ -21,6 +21,12 @@ import type { EmailTemplateDef } from '@/lib/email/registry'
 // has not been dispatched, and the form would open on a page that refuses it -
 // and it is empty on a shop that has issue reports switched off, which takes
 // the whole {{#if hasReportIssueUrl}} line with it.
+//
+// {{#if hasReviewRequest}} is for the completion email's "leave us a review"
+// paragraph, which the defaults do not have - a shop writes its own, with its
+// own review link. Wrap it in the flag and staff can switch it off on the order
+// screen for an order that went badly; the rest of the email still goes. On for
+// every order unless somebody says otherwise.
 
 export const shopEmailTemplates: EmailTemplateDef[] = [
   {
@@ -115,7 +121,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Order completed',
     subject: 'Your order {{orderNumber}} is complete',
     bodyHtml: '<p>Hi {{customerName}},</p><p>Your order <strong>{{orderNumber}}</strong> is now complete. Thanks for shopping with us.</p>{{#if hasReportIssueUrl}}<p>Something not right with it? <a href="{{reportIssueUrl}}">Tell us about it</a> and we will put it right.</p>{{/if}}{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'customerReference', 'customerReferenceLabel', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'customerReference', 'customerReferenceLabel', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl', 'hasReviewRequest'],
     rawTags: ['orderItems'],
     transactional: false,
   },

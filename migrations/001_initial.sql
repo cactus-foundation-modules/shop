@@ -559,6 +559,10 @@ CREATE TABLE IF NOT EXISTS "shp_orders" (
     "notify_sms" BOOLEAN NOT NULL DEFAULT false,
     "notify_phone" TEXT,
 
+    -- Whether the completion email may ask for a review (065). Staff switch it
+    -- off on an order that went badly; it gates {{#if hasReviewRequest}}.
+    "ask_for_review" BOOLEAN NOT NULL DEFAULT true,
+
     -- What this order IS (052_replacement_orders.sql). 'SALE' for anything
     -- somebody bought; 'REPLACEMENT' for a part sent out to put an earlier
     -- order right, which is an order only because every parcel and every scrap

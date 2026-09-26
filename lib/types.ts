@@ -596,6 +596,10 @@ export type ShpOrder = {
   notifyEmail: boolean
   notifySms: boolean
   notifyPhone: string | null
+  // Migration 065. Whether the completion email may ask for a review - the flag
+  // behind {{#if hasReviewRequest}}. On by default; staff switch it off on an
+  // order that went badly.
+  askForReview: boolean
   createdAt: Date
   updatedAt: Date
 }
