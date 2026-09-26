@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cancellationRefundPlan, chargeFigures, suggestedChargeTaxRate } from '@/modules/shop/lib/order-charge-money'
+import { cancellationRefundPlan, chargeFigures, keptOnCancellation, redeliveryFigures, suggestedChargeTaxRate } from '@/modules/shop/lib/order-charge-money'
 
 // The figures an extra charge puts in front of a customer, and what cancelling
 // instead sends back. Each case is one a customer would check against their
@@ -28,6 +28,35 @@ describe('chargeFigures', () => {
     expect(chargeFigures(Number.NaN, 20).ok).toBe(false)
     expect(chargeFigures(10, -1).ok).toBe(false)
     expect(chargeFigures(10, 101).ok).toBe(false)
+  })
+})
+
+describe('redeliveryFigures', () => {
+  it('taxes the fee and the cancellation charge at the one rate', () => {
+    const out = redeliveryFigures(40, 25, 20)
+    expect(out.ok && out.figures).toEqual({
+      fee: { net: 40, taxRate: 20, tax: 8, total: 48 },
+      cancellation: { net: 25, tax: 5, total: 30 },
+    })
+  })
+
+  it('takes no cancellation charge at all', () => {
+    const out = redeliveryFigures(40, 0, 20)
+    expect(out.ok && out.figures.cancellation).toEqual({ net: 0, tax: 0, total: 0 })
+  })
+
+  it('still insists on a redelivery fee, and refuses a negative cancellation charge', () => {
+    expect(redeliveryFigures(0, 25, 20).ok).toBe(false)
+    expect(redeliveryFigures(40, -1, 20).ok).toBe(false)
+    expect(redeliveryFigures(40, Number.NaN, 20).ok).toBe(false)
+  })
+})
+
+describe('keptOnCancellation', () => {
+  it('keeps the redelivery fee and the cancellation charge together', () => {
+    expect(keptOnCancellation({ total: '48.00', cancellationTotal: '30.00' })).toBe(78)
+    expect(keptOnCancellation({ total: '48.00', cancellationTotal: '0' })).toBe(48)
+    expect(keptOnCancellation({ total: '46.80', cancellationTotal: '14.81' })).toBe(61.61)
   })
 })
 

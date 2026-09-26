@@ -1,17 +1,19 @@
-// Extra charges on an order that has already been placed.
+// Redelivery charges on an order that has already been placed.
 //
-// The case that started it: the courier could not deliver because nobody was
-// in, and the carrier bills the shop for a second attempt. The shop raises that
-// fee on the order, the order goes on hold, and the customer is emailed. From
-// their own order page they then do one of two things:
+// The courier could not deliver because nobody was in, and the carrier bills
+// the shop for the attempt that failed and for trying again. The shop raises
+// that fee on the order, the order goes on hold, and the customer is emailed.
+// From their own order page they then do one of two things:
 //
 //   - pay it, by card or whatever else the shop takes online, and the order
 //     comes off hold and goes out again; or
-//   - cancel instead, and have what they paid refunded LESS the fee, because
-//     the attempt that already happened cost the shop exactly that.
+//   - cancel instead, and have what they paid refunded LESS the fee - the
+//     failed attempt has already happened and has already cost the shop, so
+//     the fee is owed either way - and less any cancellation charge the shop
+//     set on top, for calling the order off and getting the goods back.
 //
-// Nothing here knows about deliveries. The charge is whatever the owner calls
-// it, and the same two doors apply to any one-off extra.
+// The fee can be changed while it is still waiting (changeOrderCharge), with or
+// without telling the customer.
 //
 // The charge is paid for SEPARATELY from the order. The order's own payment -
 // its method, its reference, the refund that may one day be sent against it -
@@ -30,10 +32,12 @@ import { getShopConfigCached, getAvailablePaymentMethods, type ShpConfig } from 
 import { addOrderNote, getOrderById, getOrderItems, updateOrderStatus } from '@/modules/shop/lib/db/orders'
 import { listRefundsForOrder } from '@/modules/shop/lib/db/refunds'
 import {
-  ChargeAlreadyPendingError, claimChargeForCancellation, getChargeById, insertCharge,
+  ChargeAlreadyPendingError, changePendingCharge, claimChargeForCancellation, getChargeById, insertCharge,
   markChargePaid, markChargeWaived, releaseKeptCharge, restoreHeldOrderStatus, setChargeRefund, setOrderRefundedInPart,
 } from '@/modules/shop/lib/db/order-charges'
-import { cancellationRefundPlan, chargeFigures, type CancellationRefundPlan } from '@/modules/shop/lib/order-charge-money'
+import {
+  cancellationRefundPlan, keptOnCancellation, redeliveryFigures, type CancellationRefundPlan,
+} from '@/modules/shop/lib/order-charge-money'
 import { describePayOnlineMethods, type PayOnlineMethod } from '@/modules/shop/lib/order-pay-online'
 import { issueRefund } from '@/modules/shop/lib/order-request-actions'
 import { refundRouteForOrder } from '@/modules/shop/lib/payments/order-refund-route'
@@ -53,6 +57,11 @@ export type ChargeOutcome =
 /** The refund row's `created_by` for a refund the customer started. Not a user
  *  id, so the order screen names it (see the admin order route). */
 export const CUSTOMER_REFUND_CREATED_BY = 'customer'
+
+/** What a redelivery charge is called, on the order page, in emails and on the
+ *  timeline. Stored on each row, so a charge raised before this was fixed keeps
+ *  the words it was raised with. */
+export const REDELIVERY_REASON = 'Redelivery fee'
 
 // An order that has already been called off has nothing left to charge for.
 const UNCHARGEABLE: ReadonlySet<ShpOrderStatus> = new Set<ShpOrderStatus>(['CANCELLED', 'REFUNDED'])
@@ -79,6 +88,7 @@ function orderPageUrl(order: Pick<ShpOrder, 'id'>): string {
 function chargeVars(charge: ShpOrderCharge, config: ShpConfig): Record<string, string> {
   const symbol = config.currencySymbol
   const taxed = Number(charge.taxAmount) > 0
+  const cancellation = Number(charge.cancellationTotal) > 0
   return {
     chargeReason: charge.reason,
     chargeNote: charge.note ?? '',
@@ -87,8 +97,30 @@ function chargeVars(charge: ShpOrderCharge, config: ShpConfig): Record<string, s
     chargeTax: formatMoney(charge.taxAmount, symbol),
     chargeTotal: formatMoney(charge.total, symbol),
     hasChargeTax: taxed ? 'true' : 'false',
+    cancellationTotal: cancellation ? formatMoney(charge.cancellationTotal, symbol) : '',
+    hasCancellationCharge: cancellation ? 'true' : 'false',
+    cancellationNote: cancellation ? (charge.cancellationNote ?? '') : '',
+    hasCancellationNote: cancellation && charge.cancellationNote ? 'true' : 'false',
+    keptTotal: formatMoney(keptOnCancellation(charge), symbol),
     taxLabel: config.invoiceTaxLabel || 'VAT',
   }
+}
+
+/** "the £48.00 redelivery fee for the failed delivery and the £30.00
+ *  cancellation charge" - what cancelling keeps back, for the timeline. */
+function keptWords(charge: ShpOrderCharge, symbol: string): string {
+  const fee = `the ${formatMoney(charge.total, symbol)} ${charge.reason.toLowerCase()} for the failed delivery`
+  return Number(charge.cancellationTotal) > 0
+    ? `${fee} and the ${formatMoney(charge.cancellationTotal, symbol)} cancellation charge`
+    : fee
+}
+
+/** "£48.00 (£40.00 + £8.00 VAT)", for the timeline. */
+function withTax(net: string | number, tax: string | number, total: string | number, config: ShpConfig): string {
+  const symbol = config.currencySymbol
+  return Number(tax) > 0
+    ? `${formatMoney(total, symbol)} (${formatMoney(net, symbol)} + ${formatMoney(tax, symbol)} ${config.invoiceTaxLabel || 'VAT'})`
+    : formatMoney(total, symbol)
 }
 
 // ---------------------------------------------------------------------------
@@ -131,11 +163,15 @@ export async function assertChargePayable(
 
 export type RaiseChargeInput = {
   orderId: string
-  reason: string
   note: string | null
-  /** Before tax, in the order's currency. */
+  /** The redelivery fee before tax, in the order's currency. */
   netAmount: number
-  /** A percentage. */
+  /** Kept back on top of the fee only if the customer cancels. Before tax;
+   *  zero for none. */
+  cancellationNet: number
+  /** Why, for the customer. */
+  cancellationNote: string | null
+  /** A percentage, applied to both. */
   taxRate: number
   /** Put the order on hold until the charge is settled. */
   holdOrder: boolean
@@ -150,8 +186,9 @@ export async function raiseOrderCharge(input: RaiseChargeInput): Promise<ChargeO
     return { ok: false, status: 409, error: 'This order has already been cancelled or refunded, so there is nothing to charge against.' }
   }
 
-  const figures = chargeFigures(input.netAmount, input.taxRate)
+  const figures = redeliveryFigures(input.netAmount, input.cancellationNet, input.taxRate)
   if (!figures.ok) return { ok: false, status: 400, error: figures.error }
+  const { fee, cancellation } = figures.figures
 
   // Only an order this charge actually puts on hold remembers where it was.
   // One already on hold for some other reason stays on hold when the charge is
@@ -162,12 +199,16 @@ export async function raiseOrderCharge(input: RaiseChargeInput): Promise<ChargeO
   try {
     charge = await insertCharge({
       orderId: order.id,
-      reason: input.reason,
+      reason: REDELIVERY_REASON,
       note: input.note,
-      netAmount: figures.figures.net,
-      taxRate: figures.figures.taxRate,
-      taxAmount: figures.figures.tax,
-      total: figures.figures.total,
+      netAmount: fee.net,
+      taxRate: fee.taxRate,
+      taxAmount: fee.tax,
+      total: fee.total,
+      cancellationNet: cancellation.net,
+      cancellationTax: cancellation.tax,
+      cancellationTotal: cancellation.total,
+      cancellationNote: cancellation.total > 0 ? input.cancellationNote : null,
       currency: order.currency,
       holdOrder: input.holdOrder,
       heldFromStatus: holding ? order.status : null,
@@ -183,14 +224,13 @@ export async function raiseOrderCharge(input: RaiseChargeInput): Promise<ChargeO
   if (holding) await updateOrderStatus(order.id, 'ON_HOLD')
 
   const config = await getShopConfigCached()
-  const symbol = config.currencySymbol
   await addOrderNote(
     order.id,
-    `Charge raised: ${charge.reason}, ${formatMoney(charge.total, symbol)}` +
-      (Number(charge.taxAmount) > 0
-        ? ` (${formatMoney(charge.netAmount, symbol)} + ${formatMoney(charge.taxAmount, symbol)} ${config.invoiceTaxLabel || 'VAT'})`
+    `${charge.reason} raised: ${withTax(charge.netAmount, charge.taxAmount, charge.total, config)}.` +
+      (cancellation.total > 0
+        ? ` Cancellation charge if they cancel instead: ${withTax(charge.cancellationNet, charge.cancellationTax, charge.cancellationTotal, config)}, on top of the fee.`
         : '') +
-      `.${holding ? ' Order put on hold until it is settled.' : ''}${input.emailCustomer ? ' Customer emailed.' : ''}`,
+      `${holding ? ' Order put on hold until it is settled.' : ''}${input.emailCustomer ? ' Customer emailed.' : ''}`,
     true,
     input.userId,
   )
@@ -200,9 +240,10 @@ export async function raiseOrderCharge(input: RaiseChargeInput): Promise<ChargeO
   return { ok: true, charge }
 }
 
-/** "There is a charge to pay on your order." Also what staff resend from the
- *  order screen. The cancellation figure is worked out at send time, so the
- *  email promises what the page will actually do. */
+/** "There is a redelivery fee to pay on your order." Also what staff resend
+ *  from the order screen, and what a changed fee sends when staff choose to
+ *  tell the customer. The cancellation figure is worked out at send time, so
+ *  the email promises what the page will actually do. */
 export async function sendChargeRaisedEmail(order: ShpOrder, charge: ShpOrderCharge, config?: ShpConfig): Promise<void> {
   const shop = config ?? (await getShopConfigCached())
   const plan = await planCancellation(order, charge)
@@ -216,9 +257,95 @@ export async function sendChargeRaisedEmail(order: ShpOrder, charge: ShpOrderCha
       isOnHold: charge.holdOrder ? 'true' : 'false',
       canCancel: plan.ok ? 'true' : 'false',
       cancelRefund: plan.ok ? formatMoney(plan.refund, shop.currencySymbol) : '',
+      paidAmount: plan.ok ? formatMoney(plan.held, shop.currencySymbol) : '',
+      ...(plan.ok ? { keptTotal: formatMoney(plan.kept, shop.currencySymbol) } : {}),
       shopName: shop.shopTitle || 'Shop',
     }),
   )
+}
+
+// ---------------------------------------------------------------------------
+// Changing one
+// ---------------------------------------------------------------------------
+
+export type ChangeChargeInput = {
+  note: string | null
+  netAmount: number
+  cancellationNet: number
+  cancellationNote: string | null
+  taxRate: number
+  /** Send the "fee to pay" email again with the new figures. Off by default:
+   *  most changes are the owner putting right what they typed. */
+  emailCustomer: boolean
+  userId: string
+}
+
+/**
+ * Changes a redelivery charge still waiting to be paid: the fee, the
+ * cancellation charge, the tax rate or the note. The customer is only emailed
+ * when staff ask for it; the order page shows the new figures either way.
+ *
+ * A change to the amount to pay retires the old charge and raises its
+ * replacement (see changePendingCharge), so a card payment already started for
+ * the old figure cannot quietly settle the new one.
+ */
+export async function changeOrderCharge(chargeId: string, input: ChangeChargeInput): Promise<ChargeOutcome> {
+  const before = await getChargeById(chargeId)
+  if (!before) return { ok: false, status: 404, error: 'That charge was not found.' }
+  if (before.status !== 'PENDING') return { ok: false, status: 409, error: 'That charge has already been settled.' }
+  const order = await getOrderById(before.orderId)
+  if (!order) return { ok: false, status: 404, error: 'Order not found' }
+  if (UNCHARGEABLE.has(order.status)) {
+    return { ok: false, status: 409, error: 'This order has already been cancelled or refunded, so there is nothing to charge against.' }
+  }
+
+  const figures = redeliveryFigures(input.netAmount, input.cancellationNet, input.taxRate)
+  if (!figures.ok) return { ok: false, status: 400, error: figures.error }
+  const { fee, cancellation } = figures.figures
+
+  const changed = await changePendingCharge(
+    chargeId,
+    {
+      note: input.note,
+      netAmount: fee.net,
+      taxRate: fee.taxRate,
+      taxAmount: fee.tax,
+      total: fee.total,
+      cancellationNet: cancellation.net,
+      cancellationTax: cancellation.tax,
+      cancellationTotal: cancellation.total,
+      cancellationNote: cancellation.total > 0 ? input.cancellationNote : null,
+    },
+    input.userId,
+  )
+  if (!changed) return { ok: false, status: 409, error: 'That charge has already been settled.' }
+  const { charge } = changed
+
+  const config = await getShopConfigCached()
+  const moves: string[] = []
+  if (Number(before.total) !== Number(charge.total) || Number(before.taxRate) !== Number(charge.taxRate)) {
+    moves.push(
+      `fee ${withTax(before.netAmount, before.taxAmount, before.total, config)} to ` +
+        `${withTax(charge.netAmount, charge.taxAmount, charge.total, config)}`,
+    )
+  }
+  if (Number(before.cancellationTotal) !== Number(charge.cancellationTotal)) {
+    const describe = (c: ShpOrderCharge) =>
+      Number(c.cancellationTotal) > 0 ? withTax(c.cancellationNet, c.cancellationTax, c.cancellationTotal, config) : 'none'
+    moves.push(`cancellation charge ${describe(before)} to ${describe(charge)}`)
+  }
+  if ((before.note ?? '') !== (charge.note ?? '')) moves.push('note to the customer reworded')
+  if ((before.cancellationNote ?? '') !== (charge.cancellationNote ?? '')) moves.push('cancellation charge explanation reworded')
+  await addOrderNote(
+    order.id,
+    `${charge.reason} changed: ${moves.length > 0 ? moves.join('; ') : 'nothing that matters to the customer'}.` +
+      (input.emailCustomer ? ' Customer emailed the new figures.' : ' Customer not emailed.'),
+    true,
+    input.userId,
+  )
+
+  if (input.emailCustomer) await sendChargeRaisedEmail(order, charge, config)
+  return { ok: true, charge }
 }
 
 // ---------------------------------------------------------------------------
@@ -256,7 +383,22 @@ export async function settleOrderChargePayment(
   const paid = await markChargePaid(chargeId, { method: payment.method, reference: payment.providerReference, resolvedBy: null })
   if (!paid) {
     const charge = await getChargeById(chargeId)
-    if (charge && charge.status !== 'PAID') {
+    if (charge && charge.status === 'REPLACED') {
+      // Started before staff changed the fee, and taken for the old figure.
+      // The new one is still owed; what to do with this money is a person's
+      // call - count it towards the new fee and record the rest by hand, or
+      // send it back.
+      const config = await getShopConfigCached()
+      await addOrderNote(
+        charge.orderId,
+        `A payment of ${formatMoney(charge.total, config.currencySymbol)} came in for the ${charge.reason.toLowerCase()} at its OLD amount, ` +
+          `after the fee had been changed. The changed fee still shows as waiting to be paid. Either record it as paid here ` +
+          `(and settle any difference with the customer), or refund this payment` +
+          `${payment.providerReference ? ` (${payment.providerReference})` : ''} from the payment provider's own dashboard.`,
+        true,
+        null,
+      )
+    } else if (charge && charge.status !== 'PAID') {
       const config = await getShopConfigCached()
       await addOrderNote(
         charge.orderId,
@@ -349,15 +491,16 @@ export async function waiveOrderCharge(chargeId: string, userId: string): Promis
 // Cancelling instead
 // ---------------------------------------------------------------------------
 
-/** What cancelling this order now, keeping the charge back, would refund. The
- *  order page and the email both quote it, so both read it from here. */
+/** What cancelling this order now, keeping the redelivery fee and any
+ *  cancellation charge back, would refund. The order page and the email both
+ *  quote it, so both read it from here. */
 export async function planCancellation(order: ShpOrder, charge: ShpOrderCharge): Promise<CancellationRefundPlan> {
   if (UNCHARGEABLE.has(order.status)) return { ok: false, error: 'This order has already been cancelled.' }
   if (!refundRouteForOrder(order)) {
     return { ok: false, error: 'This order was not paid through a method this shop can still refund.' }
   }
   const [items, refunds] = await Promise.all([getOrderItems(order.id), listRefundsForOrder(order.id)])
-  return cancellationRefundPlan({ order, items, refunds, fee: Number(charge.total) })
+  return cancellationRefundPlan({ order, items, refunds, fee: keptOnCancellation(charge) })
 }
 
 export type CancelOutcome =
@@ -365,7 +508,8 @@ export type CancelOutcome =
   | { ok: false; status: number; error: string }
 
 /**
- * Cancels the order and refunds everything the customer paid, less the charge.
+ * Cancels the order and refunds everything the customer paid, less the
+ * redelivery fee and any cancellation charge.
  *
  * The charge is claimed first (PENDING to KEPT), so a card payment arriving
  * mid-cancellation cannot also settle it. The refund goes next, down the same
@@ -394,7 +538,7 @@ export async function cancelOrderKeepingCharge(chargeId: string, actor: ChargeAc
   const config = await getShopConfigCached()
   const symbol = config.currencySymbol
   const reason = `Order cancelled ${actor.kind === 'customer' ? 'by the customer' : 'by staff'} instead of paying the ${charge.reason.toLowerCase()} - ` +
-    `${formatMoney(plan.kept, symbol)} kept back`
+    `${formatMoney(plan.kept, symbol)} kept back: ${keptWords(charge, symbol)}`
 
   let result: Awaited<ReturnType<typeof issueRefund>>
   try {
@@ -447,6 +591,7 @@ export async function cancelOrderKeepingCharge(chargeId: string, actor: ChargeAc
       ...chargeVars(charge, config),
       refundAmount: formatMoney(result.amount, symbol),
       paidAmount: formatMoney(plan.held, symbol),
+      keptTotal: formatMoney(plan.kept, symbol),
       shopName: config.shopTitle || 'Shop',
     }),
   )
@@ -457,7 +602,7 @@ export async function cancelOrderKeepingCharge(chargeId: string, actor: ChargeAc
       config,
       `cancelled the order rather than pay the ${charge.reason.toLowerCase()}. ` +
         `${formatMoney(result.amount, symbol)} has been refunded${manual ? ' on paper - send it yourself, as it was not paid by card' : ''}, ` +
-        `and ${formatMoney(plan.kept, symbol)} kept back. If the goods are with a courier, arrange for them to come back.`,
+        `and ${formatMoney(plan.kept, symbol)} kept back (${keptWords(charge, symbol)}). If the goods are with a courier, arrange for them to come back.`,
     )
   }
 

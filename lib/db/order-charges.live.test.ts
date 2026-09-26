@@ -14,7 +14,7 @@ import {
   type TestServer,
 } from '@/lib/backup/test-database'
 
-// Extra charges on an order (lib/order-charges.ts), against a real Postgres.
+// Redelivery charges on an order (lib/order-charges.ts), against a real Postgres.
 //
 // Every state change on a charge is one conditional UPDATE, and the whole
 // feature leans on those being exactly-once: a card payment and a cancellation
@@ -75,7 +75,7 @@ suite('order charges, against a real database', () => {
 
     // One paid, dispatched order per case, so no case can see another's
     // charges. Prices before VAT, free delivery: £149.95 + £29.99 = £179.94.
-    for (const id of ['ord-a', 'ord-b', 'ord-c', 'ord-d']) {
+    for (const id of ['ord-a', 'ord-b', 'ord-c', 'ord-d', 'ord-e', 'ord-f']) {
       await client.query(
         `INSERT INTO "shp_orders" (
           "id","order_number","customer_email","customer_name","shipping_address",
@@ -106,7 +106,7 @@ suite('order charges, against a real database', () => {
 
   const base = {
     reason: 'Redelivery fee', note: null, netAmount: 39, taxRate: 20, taxAmount: 7.8, total: 46.8,
-    currency: 'GBP', holdOrder: true, heldFromStatus: 'SHIPPED' as const, createdBy: 'user-1',
+    cancellationNet: 0, cancellationTax: 0, cancellationTotal: 0, cancellationNote: null, currency: 'GBP', holdOrder: true, heldFromStatus: 'SHIPPED' as const, createdBy: 'user-1',
   }
 
   it('stores a charge and reads its money back as it was written', async () => {
@@ -166,7 +166,7 @@ suite('order charges, against a real database', () => {
 
   it('raises, holds, and on cancelling refunds everything less the fee', async () => {
     const raised = await service.raiseOrderCharge({
-      orderId: 'ord-d', reason: 'Redelivery fee', note: null, netAmount: 39, taxRate: 20,
+      orderId: 'ord-d', note: null, netAmount: 39, cancellationNet: 0, cancellationNote: null, taxRate: 20,
       holdOrder: true, emailCustomer: false, userId: 'user-1',
     })
     expect(raised.ok).toBe(true)
@@ -195,5 +195,74 @@ suite('order charges, against a real database', () => {
     // And a second go finds nothing left to do.
     const again = await service.cancelOrderKeepingCharge(raised.charge.id, { kind: 'customer' })
     expect(again.ok).toBe(false)
+  })
+
+  it('changes the note and the cancellation charge where the charge stands', async () => {
+    const charge = await charges.insertCharge({ ...base, orderId: 'ord-e' })
+    const changed = await charges.changePendingCharge(
+      charge.id,
+      { note: 'Tuesday', netAmount: 39, taxRate: 20, taxAmount: 7.8, total: 46.8, cancellationNet: 10, cancellationTax: 2, cancellationTotal: 12, cancellationNote: 'Supplier admin, at cost.' },
+      'user-2',
+    )
+    expect(changed?.replaced).toBe(false)
+    expect(changed?.charge.id).toBe(charge.id)
+    expect(changed?.charge.note).toBe('Tuesday')
+    expect(Number(changed?.charge.cancellationTotal)).toBe(12)
+    expect(changed?.charge.cancellationNote).toBe('Supplier admin, at cost.')
+    expect(changed?.charge.status).toBe('PENDING')
+    expect(await charges.latestCancellationNote()).toBe('Supplier admin, at cost.')
+  })
+
+  it('replaces the charge when the amount to pay moves, and an old payment cannot settle the new one', async () => {
+    const [before] = (await charges.listChargesForOrder('ord-e')).filter((c) => c.status === 'PENDING')
+    const changed = await charges.changePendingCharge(
+      before!.id,
+      { note: 'Tuesday', netAmount: 40, taxRate: 20, taxAmount: 8, total: 48, cancellationNet: 10, cancellationTax: 2, cancellationTotal: 12, cancellationNote: 'Supplier admin, at cost.' },
+      'user-2',
+    )
+    expect(changed?.replaced).toBe(true)
+    expect(changed?.charge.id).not.toBe(before!.id)
+    expect(Number(changed?.charge.total)).toBe(48)
+    expect(changed?.charge.heldFromStatus).toBe('SHIPPED')
+    expect(changed?.charge.holdOrder).toBe(true)
+    expect((await charges.getChargeById(before!.id))?.status).toBe('REPLACED')
+
+    // A card payment started against the old figure lands on the old id: it
+    // settles nothing, and says so on the timeline.
+    expect(await service.settleOrderChargePayment(before!.id, { method: 'SQUARE', providerReference: 'pay_old' })).toBe(false)
+    expect((await charges.getChargeById(changed!.charge.id))?.status).toBe('PENDING')
+    const notes = await client.query(`SELECT "content" FROM "shp_order_notes" WHERE "order_id" = 'ord-e'`)
+    expect(notes.rows.some((row: { content: string }) => row.content.includes('OLD amount') && row.content.includes('pay_old'))).toBe(true)
+
+    // A replaced charge is no longer changeable, and still one pending per order.
+    expect(await charges.changePendingCharge(before!.id, { ...base, note: null }, 'user-2')).toBeNull()
+    expect((await charges.listChargesForOrder('ord-e')).filter((c) => c.status === 'PENDING')).toHaveLength(1)
+  })
+
+  it('on cancelling keeps the redelivery fee and the cancellation charge both', async () => {
+    const raised = await service.raiseOrderCharge({
+      orderId: 'ord-f', note: null, netAmount: 30, cancellationNet: 0, cancellationNote: null, taxRate: 20,
+      holdOrder: true, emailCustomer: false, userId: 'user-1',
+    })
+    expect(raised.ok).toBe(true)
+    if (!raised.ok) return
+
+    // Owner puts it right afterwards, without emailing: £39 + VAT fee, £10 +
+    // VAT to cancel.
+    const changed = await service.changeOrderCharge(raised.charge.id, {
+      note: null, netAmount: 39, cancellationNet: 10, cancellationNote: 'Supplier admin, at cost.', taxRate: 20, emailCustomer: false, userId: 'user-1',
+    })
+    expect(changed.ok).toBe(true)
+    if (!changed.ok) return
+    expect(Number(changed.charge.total)).toBe(46.8)
+    expect(Number(changed.charge.cancellationTotal)).toBe(12)
+    expect((await orderRow('ord-f')).status).toBe('ON_HOLD')
+
+    const cancelled = await service.cancelOrderKeepingCharge(changed.charge.id, { kind: 'staff', userId: 'user-1' })
+    // £179.94 less £46.80 less £12.00.
+    expect(cancelled).toMatchObject({ ok: true, refunded: 121.14 })
+    const refunds = await client.query('SELECT "amount" FROM "shp_refunds" WHERE "order_id" = $1', ['ord-f'])
+    expect(Number(refunds.rows[0].amount)).toBe(121.14)
+    expect((await orderRow('ord-f')).status).toBe('CANCELLED')
   })
 })

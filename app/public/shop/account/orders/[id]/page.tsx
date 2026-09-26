@@ -630,7 +630,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           </OrderNote>
         )}
 
-        {/* An extra charge to pay, and the way out of it. Above everything but
+        {/* A redelivery fee to pay, and the way out of it. Above everything but
             the order's own state: while it is waiting, it is the only thing on
             this page the customer has to do anything about. */}
         {openCharge && (
@@ -655,7 +655,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                   orderId={order.id}
                   payPath={`/api/m/shop/member/orders/${encodeURIComponent(order.id)}/charges/${encodeURIComponent(openCharge.id)}/pay`}
                   heading={`Pay ${formatMoney(openCharge.total, symbol)} now`}
-                  intro="Pay it here and we will get your order moving again."
+                  intro="Pay it here and we will book your delivery again."
                   amount={formatMoney(openCharge.total, symbol)}
                   methods={chargeMethods}
                   payer={{
@@ -668,21 +668,36 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                 />
               </>
             ) : (
-              <p>Get in touch with us to pay it, and we will get your order moving again.</p>
+              <p>Get in touch with us to pay it, and we will book your delivery again.</p>
             )}
             {cancelPlan?.ok && (
               <>
                 <div className="sod-note-sep" />
                 <p>
-                  <strong>Rather not pay it?</strong> You can cancel the order instead, and we will refund{' '}
-                  {formatMoney(cancelPlan.refund, symbol)} - the {formatMoney(cancelPlan.held, symbol)} you paid, less
-                  the {formatMoney(cancelPlan.kept, symbol)}.
+                  <strong>Rather not go ahead?</strong> You can cancel the order instead. The first delivery attempt has
+                  already been made and the courier has charged us for it, so the{' '}
+                  {formatMoney(openCharge.total, symbol)} {openCharge.reason.toLowerCase()} is still due if you cancel.
+                </p>
+                {Number(openCharge.cancellationTotal) > 0 && (
+                  <p>
+                    There is also a {formatMoney(openCharge.cancellationTotal, symbol)} cancellation charge.
+                    {openCharge.cancellationNote ? <> {openCharge.cancellationNote}</> : null}
+                  </p>
+                )}
+                <p>
+                  We would refund <strong>{formatMoney(cancelPlan.refund, symbol)}</strong> - the{' '}
+                  {formatMoney(cancelPlan.held, symbol)} you paid, less {formatMoney(cancelPlan.kept, symbol)}.
                 </p>
                 <ChargeCancelOrderButton
                   orderId={order.id}
                   chargeId={openCharge.id}
                   refund={formatMoney(cancelPlan.refund, symbol)}
-                  charge={formatMoney(cancelPlan.kept, symbol)}
+                  keeping={
+                    `the ${formatMoney(openCharge.total, symbol)} ${openCharge.reason.toLowerCase()}` +
+                    (Number(openCharge.cancellationTotal) > 0
+                      ? ` and the ${formatMoney(openCharge.cancellationTotal, symbol)} cancellation charge`
+                      : '')
+                  }
                 />
               </>
             )}
@@ -1055,15 +1070,17 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
           <OrderCard title="Payment">
             <p><strong>{methodName}</strong></p>
             {paymentWhen && <p className="sod-dim">{paymentWhen}</p>}
-            {/* Extra charges already settled, so the money on a bank statement
-                has something on this page to match it to. A waived one is left
-                off: nothing was paid, and nothing is owed. */}
+            {/* Redelivery charges already settled, so the money on a bank
+                statement has something on this page to match it to. A waived or
+                replaced one is left off: nothing was paid, and nothing is owed. */}
             {charges.filter((charge) => charge.status === 'PAID' || charge.status === 'KEPT').map((charge) => (
               <p key={charge.id} className="sod-dim">
                 {charge.reason}, {formatMoney(charge.total, symbol)}:{' '}
                 {charge.status === 'PAID'
                   ? `paid${charge.paidAt ? ` on ${formatOrderDate(charge.paidAt, timezone)}` : ''}`
-                  : 'kept back from your refund'}
+                  : Number(charge.cancellationTotal) > 0
+                    ? `kept back from your refund, with a ${formatMoney(charge.cancellationTotal, symbol)} cancellation charge`
+                    : 'kept back from your refund'}
               </p>
             ))}
             {/* Their own reference for the order, under the money rather than in

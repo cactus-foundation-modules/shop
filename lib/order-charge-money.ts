@@ -2,7 +2,7 @@ import { netOffReturnCharge, type RefundLine } from '@/modules/shop/lib/return-c
 import { requestRefundLines, withinRemaining, type RefundableLine, type RefundableOrder } from '@/modules/shop/lib/request-refund-lines'
 import { refundableDelivery, type DeliveryLine, type DeliveryOrder, type DeliveryRefund } from '@/modules/shop/lib/refund-delivery'
 
-// The arithmetic behind an extra charge on an order (lib/order-charges.ts).
+// The arithmetic behind a redelivery charge on an order (lib/order-charges.ts).
 //
 // Pure and apart from the file that moves the money, for the reason
 // lib/return-charge.ts is: a penny wrong here is a penny wrong on somebody's
@@ -36,6 +36,44 @@ export function chargeFigures(net: number, taxRate: number): { ok: true; figures
   return { ok: true, figures: { net: netRounded, taxRate, tax, total: round2(netRounded + tax) } }
 }
 
+export type CancellationFigures = { net: number; tax: number; total: number }
+
+export type RedeliveryFigures = {
+  /** The redelivery fee: what the customer pays to have it sent again, and
+   *  what is kept back if they cancel instead. */
+  fee: ChargeFigures
+  /** Kept back on top of the fee, and only if they cancel. All zero where the
+   *  shop does not charge for cancelling. */
+  cancellation: CancellationFigures
+}
+
+/**
+ * The redelivery fee and the cancellation charge, both typed before tax and
+ * both taxed at the one rate. The fee is required; the cancellation charge may
+ * be nothing at all.
+ */
+export function redeliveryFigures(
+  feeNet: number,
+  cancellationNet: number,
+  taxRate: number,
+): { ok: true; figures: RedeliveryFigures } | { ok: false; error: string } {
+  const fee = chargeFigures(feeNet, taxRate)
+  if (!fee.ok) return fee
+  if (!Number.isFinite(cancellationNet) || cancellationNet < 0) {
+    return { ok: false, error: 'The cancellation charge must be nothing, or an amount.' }
+  }
+  if (cancellationNet > MAX_CHARGE_NET) return { ok: false, error: 'That is rather a lot for a cancellation charge. Check the amount.' }
+  const net = round2(cancellationNet)
+  const tax = round2((net * taxRate) / 100)
+  return { ok: true, figures: { fee: fee.figures, cancellation: { net, tax, total: round2(net + tax) } } }
+}
+
+/** Everything kept back if the customer cancels instead of paying: the
+ *  redelivery fee, which is owed either way, and any cancellation charge. */
+export function keptOnCancellation(charge: { total: string | number; cancellationTotal: string | number }): number {
+  return round2(Number(charge.total) + Number(charge.cancellationTotal))
+}
+
 /**
  * The tax rate a new charge starts at, as a percentage: the highest rate on
  * the order's own lines. An extra fee on a delivery follows the goods being
@@ -57,7 +95,8 @@ export type CancellationRefundInput = {
   order: RefundableOrder & DeliveryOrder & { total: string | number }
   items: ReadonlyArray<RefundableLine & DeliveryLine>
   refunds: ReadonlyArray<DeliveryRefund & { amount: string | number }>
-  /** The charge being kept back, tax included. */
+  /** Everything being kept back, tax included - the redelivery fee and any
+   *  cancellation charge (keptOnCancellation). */
   fee: number
 }
 
@@ -99,7 +138,7 @@ export function cancellationRefundPlan(input: CancellationRefundInput): Cancella
 
   const fee = round2(input.fee)
   if (fee + 0.005 >= held) {
-    return { ok: false, error: 'The charge is as much as everything left on the order, so there would be nothing to refund.' }
+    return { ok: false, error: 'The charges are as much as everything left on the order, so there would be nothing to refund.' }
   }
 
   const delivery = Math.min(refundableDelivery(input.order, input.items, input.refunds), held)
@@ -108,7 +147,7 @@ export function cancellationRefundPlan(input: CancellationRefundInput): Cancella
   const lines = withinRemaining(requestRefundLines({ items: [] }, input.items, input.order), held - delivery)
   const netted = netOffReturnCharge(lines, fee)
   if (!netted.ok) {
-    return { ok: false, error: 'The charge is as much as the goods on the order, so there would be nothing to refund for them.' }
+    return { ok: false, error: 'The charges are as much as the goods on the order, so there would be nothing to refund for them.' }
   }
 
   return {

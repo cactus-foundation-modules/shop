@@ -4,17 +4,29 @@ import { requireShopUser } from '@/modules/shop/lib/access'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { getChargeById } from '@/modules/shop/lib/db/order-charges'
 import {
-  cancelOrderKeepingCharge, recordChargePaidByHand, sendChargeRaisedEmail, waiveOrderCharge,
+  cancelOrderKeepingCharge, changeOrderCharge, recordChargePaidByHand, sendChargeRaisedEmail, waiveOrderCharge,
 } from '@/modules/shop/lib/order-charges'
+import { MAX_CHARGE_NET } from '@/modules/shop/lib/order-charge-money'
 
-// What staff can do with a charge still waiting to be paid:
+// What staff can do with a redelivery charge still waiting to be paid:
 //
+//   edit         - change the fee, the cancellation charge, the tax rate or the
+//                  note; the customer is emailed only if asked
 //   waive        - let it go; the order comes off hold
 //   mark-paid    - the customer paid some other way (over the phone, say)
 //   cancel-order - the customer rang to cancel instead: refund what they paid,
-//                  less the charge, and close the order
+//                  less the fee and any cancellation charge, and close the order
 //   resend       - send the "charge to pay" email again
 const Body = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('edit'),
+    note: z.string().trim().max(2000, 'Keep the note under 2000 characters.').nullable().optional(),
+    netAmount: z.number().positive('Enter the redelivery fee.').max(MAX_CHARGE_NET),
+    cancellationNet: z.number().min(0, 'The cancellation charge must be nothing, or an amount.').max(MAX_CHARGE_NET),
+    cancellationNote: z.string().trim().max(2000, 'Keep the cancellation charge explanation under 2000 characters.').nullable().optional(),
+    taxRate: z.number().min(0).max(100),
+    emailCustomer: z.boolean(),
+  }),
   z.object({ action: z.literal('waive') }),
   z.object({
     action: z.literal('mark-paid'),
@@ -39,6 +51,19 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!charge || charge.orderId !== id) return NextResponse.json({ error: 'Charge not found' }, { status: 404 })
 
   switch (parsed.data.action) {
+    case 'edit': {
+      const outcome = await changeOrderCharge(chargeId, {
+        note: parsed.data.note || null,
+        netAmount: parsed.data.netAmount,
+        cancellationNet: parsed.data.cancellationNet,
+        cancellationNote: parsed.data.cancellationNote || null,
+        taxRate: parsed.data.taxRate,
+        emailCustomer: parsed.data.emailCustomer,
+        userId: gate.user.id,
+      })
+      if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
+      return NextResponse.json({ charge: outcome.charge })
+    }
     case 'waive': {
       const outcome = await waiveOrderCharge(chargeId, gate.user.id)
       if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })

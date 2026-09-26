@@ -687,7 +687,9 @@ export type ShpOrderItem = {
 //   PAID    - settled, online or recorded by staff
 //   KEPT    - the customer cancelled instead, and it came off their refund
 //   WAIVED  - staff let it go
-export type ShpOrderChargeStatus = 'PENDING' | 'PAID' | 'KEPT' | 'WAIVED'
+/** REPLACED: the fee was changed after it was raised, and a new PENDING row
+ *  carries the new figure (migration 066). */
+export type ShpOrderChargeStatus = 'PENDING' | 'PAID' | 'KEPT' | 'WAIVED' | 'REPLACED'
 export type ShpOrderCharge = {
   id: string
   orderId: string
@@ -701,6 +703,14 @@ export type ShpOrderCharge = {
   taxAmount: string
   /** What the customer pays, and what comes off a refund if they cancel. */
   total: string
+  /** A further charge kept back only if the customer cancels instead of
+   *  paying, on top of `total`. Same tax rate. "0" where there is none. */
+  cancellationNet: string
+  cancellationTax: string
+  cancellationTotal: string
+  /** Why there is a cancellation charge, in the shop's own words, for the
+   *  customer. Null for none. */
+  cancellationNote: string | null
   currency: string
   status: ShpOrderChargeStatus
   holdOrder: boolean

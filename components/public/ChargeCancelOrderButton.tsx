@@ -3,21 +3,23 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-// The other way out of an extra charge: cancel the order, and be refunded what
-// was paid less the charge. Money moves the moment it is confirmed, so it asks
+// The other way out of a redelivery fee: cancel the order, and be refunded what
+// was paid less the fee (owed either way - the failed attempt has happened) and
+// any cancellation charge. Money moves the moment it is confirmed, so it asks
 // twice, in words that say exactly what will happen - the refund figure is the
 // server's own (lib/order-charges.ts), and the route works it out again rather
 // than trusting this one.
 
 export function ChargeCancelOrderButton({
-  orderId, chargeId, refund, charge,
+  orderId, chargeId, refund, keeping,
 }: {
   orderId: string
   chargeId: string
   /** What would come back, already formatted. */
   refund: string
-  /** The charge being kept, already formatted. */
-  charge: string
+  /** What is kept back, in words: "the £48.00 redelivery fee and the £30.00
+   *  cancellation charge". */
+  keeping: string
 }) {
   const router = useRouter()
   const [asking, setAsking] = useState(false)
@@ -58,8 +60,8 @@ export function ChargeCancelOrderButton({
   return (
     <div style={{ display: 'grid', gap: '0.5rem' }}>
       <p style={{ margin: 0 }}>
-        <strong>Cancel the whole order?</strong> We will refund {refund} straight away - what you paid, less the{' '}
-        {charge}. This cannot be undone.
+        <strong>Cancel the whole order?</strong> We will refund {refund} straight away - what you paid, less{' '}
+        {keeping}. This cannot be undone.
       </p>
       {error && <p style={{ margin: 0, color: 'var(--color-danger)' }}>{error}</p>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>

@@ -1473,9 +1473,10 @@ CREATE INDEX IF NOT EXISTS "shp_product_slug_redirects_target_slug_idx"
     ON "shp_product_slug_redirects" ("target_slug")
     WHERE "target_slug" IS NOT NULL;
 
--- Mirror of 064_order_charges.sql. An extra charge raised on an order after it
--- was placed - a redelivery fee, say - which the customer pays from their order
--- page, or has kept back out of their refund if they cancel instead.
+-- Mirror of 064_order_charges.sql and 066_redelivery_charges.sql. A redelivery
+-- fee raised on an order after a failed delivery, which the customer pays from
+-- their order page, or has kept back out of their refund - with any
+-- cancellation charge on top - if they cancel instead.
 CREATE TABLE IF NOT EXISTS "shp_order_charges" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     "order_id" TEXT NOT NULL,
@@ -1498,12 +1499,18 @@ CREATE TABLE IF NOT EXISTS "shp_order_charges" (
     "created_by" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "cancellation_net" NUMERIC(10,2) NOT NULL DEFAULT 0,
+    "cancellation_tax" NUMERIC(10,2) NOT NULL DEFAULT 0,
+    "cancellation_total" NUMERIC(10,2) NOT NULL DEFAULT 0,
+    "cancellation_note" TEXT,
 
     CONSTRAINT "shp_order_charges_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "shp_order_charges_order_id_fkey"
         FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE,
-    CONSTRAINT "shp_order_charges_status_check" CHECK ("status" IN ('PENDING', 'PAID', 'KEPT', 'WAIVED')),
-    CONSTRAINT "shp_order_charges_total_check" CHECK ("total" > 0 AND "net_amount" > 0 AND "tax_amount" >= 0)
+    CONSTRAINT "shp_order_charges_status_check" CHECK ("status" IN ('PENDING', 'PAID', 'KEPT', 'WAIVED', 'REPLACED')),
+    CONSTRAINT "shp_order_charges_total_check" CHECK ("total" > 0 AND "net_amount" > 0 AND "tax_amount" >= 0),
+    CONSTRAINT "shp_order_charges_cancellation_check"
+        CHECK ("cancellation_net" >= 0 AND "cancellation_tax" >= 0 AND "cancellation_total" >= 0)
 );
 
 CREATE INDEX IF NOT EXISTS "shp_order_charges_order_id_idx" ON "shp_order_charges" ("order_id");

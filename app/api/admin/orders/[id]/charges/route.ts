@@ -3,14 +3,14 @@ import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
-import { listChargesForOrder } from '@/modules/shop/lib/db/order-charges'
+import { latestCancellationNote, listChargesForOrder } from '@/modules/shop/lib/db/order-charges'
 import { chargePayMethods, pendingCharge, planCancellation, raiseOrderCharge } from '@/modules/shop/lib/order-charges'
 import { MAX_CHARGE_NET, suggestedChargeTaxRate } from '@/modules/shop/lib/order-charge-money'
 
-// Extra charges on one order - a redelivery fee after a failed delivery, say.
-// See lib/order-charges.ts for what raising, paying and cancelling each do.
+// Redelivery charges on one order, after a failed delivery. See
+// lib/order-charges.ts for what raising, changing, paying and cancelling each do.
 
-// GET - the charges this order has had, plus what the "raise a charge" form and
+// GET - the charges this order has had, plus what the "charge for redelivery" form and
 // the pending charge's buttons need to say: the tax rate to start from, whether
 // the customer can pay online at all, and what cancelling would refund.
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -23,15 +23,19 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const [charges, items, config] = await Promise.all([listChargesForOrder(id), getOrderItems(id), getShopConfigCached()])
   const pending = pendingCharge(charges)
-  const [methods, cancellation] = await Promise.all([
+  const [methods, cancellation, lastCancellationNote] = await Promise.all([
     chargePayMethods(config),
     pending ? planCancellation(order, pending) : Promise.resolve(null),
+    latestCancellationNote(),
   ])
 
   return NextResponse.json({
     charges,
     suggestedTaxRate: suggestedChargeTaxRate(items),
     taxLabel: config.invoiceTaxLabel || 'VAT',
+    // The form's starting words for why there is a cancellation charge: the
+    // shop's own, from the last charge that had one.
+    lastCancellationNote,
     // Names only - the admin screen says which ways the customer will be
     // offered, or that there are none and the payment will need recording.
     payMethods: methods.map((method) => method.label),
@@ -44,9 +48,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 }
 
 const RaiseBody = z.object({
-  reason: z.string().trim().min(1, 'Say what the charge is for.').max(120, 'Keep what it is for under 120 characters.'),
   note: z.string().trim().max(2000, 'Keep the note under 2000 characters.').nullable().optional(),
-  netAmount: z.number().positive('Enter the amount to charge.').max(MAX_CHARGE_NET),
+  netAmount: z.number().positive('Enter the redelivery fee.').max(MAX_CHARGE_NET),
+  cancellationNet: z.number().min(0, 'The cancellation charge must be nothing, or an amount.').max(MAX_CHARGE_NET),
+  cancellationNote: z.string().trim().max(2000, 'Keep the cancellation charge explanation under 2000 characters.').nullable().optional(),
   taxRate: z.number().min(0).max(100),
   holdOrder: z.boolean(),
   emailCustomer: z.boolean(),
@@ -64,9 +69,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const outcome = await raiseOrderCharge({
     orderId: id,
-    reason: parsed.data.reason,
     note: parsed.data.note || null,
     netAmount: parsed.data.netAmount,
+    cancellationNet: parsed.data.cancellationNet,
+    cancellationNote: parsed.data.cancellationNote || null,
     taxRate: parsed.data.taxRate,
     holdOrder: parsed.data.holdOrder,
     emailCustomer: parsed.data.emailCustomer,

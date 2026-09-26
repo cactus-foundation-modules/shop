@@ -184,47 +184,49 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     transactional: false,
   },
   {
-    // An extra charge raised on an order after it was placed - a redelivery
-    // fee, typically - and the two ways out of it: pay it, or cancel and be
-    // refunded less the fee. See lib/order-charges.ts. {{cancelRefund}} is
-    // worked out at send time, and the whole cancel paragraph drops out where
-    // the order has nothing left to refund.
+    // A redelivery fee raised on an order after a failed delivery, and the two
+    // ways out of it: pay it, or cancel and be refunded less the fee (owed
+    // either way - the attempt has happened) and any cancellation charge. See
+    // lib/order-charges.ts. Also sent when staff change the fee and choose to
+    // tell the customer. {{cancelRefund}} and {{keptTotal}} are worked out at
+    // send time, and the whole cancel paragraph drops out where the order has
+    // nothing left to refund.
     key: 'shop.charge-raised',
-    label: 'Extra charge to pay',
+    label: 'Redelivery fee to pay',
     subject: '{{chargeReason}} to pay on your order {{orderNumber}}',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>There is a charge to pay on your order <strong>{{orderNumber}}</strong>: <strong>{{chargeReason}}, {{chargeTotal}}</strong>{{#if hasChargeTax}} ({{chargeNet}} plus {{chargeTax}} {{taxLabel}}){{/if}}.</p>{{#if hasChargeNote}}<p>{{chargeNote}}</p>{{/if}}{{#if isOnHold}}<p>We have put your order on hold until it is sorted.</p>{{/if}}{{#if hasChargeUrl}}<p><a href="{{chargeUrl}}">Pay it from your order page</a></p>{{/if}}{{#if canCancel}}<p>If you would rather not, you can cancel the order from the same page instead. We would refund {{cancelRefund}}, which is what you paid less the {{chargeTotal}}.</p>{{/if}}<p>Any questions, just reply to this email - {{shopName}}.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'chargeReason', 'chargeNote', 'hasChargeNote', 'chargeNet', 'chargeTax', 'chargeTotal', 'hasChargeTax', 'taxLabel', 'chargeUrl', 'hasChargeUrl', 'isOnHold', 'canCancel', 'cancelRefund', 'shopName', 'orderUrl', 'hasOrderUrl'],
+      '<p>Hi {{customerName}},</p><p>We tried to deliver your order <strong>{{orderNumber}}</strong>, but could not. The courier charges us for another attempt, so there is a redelivery fee to pay: <strong>{{chargeTotal}}</strong>{{#if hasChargeTax}} ({{chargeNet}} plus {{chargeTax}} {{taxLabel}}){{/if}}.</p>{{#if hasChargeNote}}<p>{{chargeNote}}</p>{{/if}}{{#if isOnHold}}<p>We have put your order on hold until it is sorted.</p>{{/if}}{{#if hasChargeUrl}}<p><a href="{{chargeUrl}}">Pay it from your order page</a></p>{{/if}}{{#if canCancel}}<p>If you would rather not go ahead, you can cancel the order from the same page instead. The first delivery attempt has already been made, and the courier has charged us for it, so the {{chargeTotal}} redelivery fee is still due if you cancel.{{#if hasCancellationCharge}} There is also a {{cancellationTotal}} cancellation charge.{{#if hasCancellationNote}} {{cancellationNote}}{{/if}}{{/if}} We would refund {{cancelRefund}}: the {{paidAmount}} you paid, less {{keptTotal}}.</p>{{/if}}<p>Any questions, just reply to this email - {{shopName}}.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'chargeReason', 'chargeNote', 'hasChargeNote', 'chargeNet', 'chargeTax', 'chargeTotal', 'hasChargeTax', 'cancellationTotal', 'hasCancellationCharge', 'cancellationNote', 'hasCancellationNote', 'keptTotal', 'taxLabel', 'chargeUrl', 'hasChargeUrl', 'isOnHold', 'canCancel', 'cancelRefund', 'paidAmount', 'shopName', 'orderUrl', 'hasOrderUrl'],
     transactional: false,
   },
   {
     key: 'shop.charge-paid',
-    label: 'Extra charge paid',
+    label: 'Redelivery fee paid',
     subject: 'Thank you - {{chargeReason}} paid on order {{orderNumber}}',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>Thank you - we have received {{chargeTotal}} for the {{chargeReason}} on your order <strong>{{orderNumber}}</strong>.</p><p>Your order is moving again, and we will be in touch about what happens next.</p><p>{{shopName}}</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['customerName', 'orderNumber', 'chargeReason', 'chargeNote', 'hasChargeNote', 'chargeNet', 'chargeTax', 'chargeTotal', 'hasChargeTax', 'taxLabel', 'shopName', 'orderUrl', 'hasOrderUrl'],
+      '<p>Hi {{customerName}},</p><p>Thank you - we have received {{chargeTotal}} for the {{chargeReason}} on your order <strong>{{orderNumber}}</strong>.</p><p>Your order is moving again, and we will be in touch to book the delivery.</p><p>{{shopName}}</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'chargeReason', 'chargeNote', 'hasChargeNote', 'chargeNet', 'chargeTax', 'chargeTotal', 'hasChargeTax', 'cancellationTotal', 'hasCancellationCharge', 'cancellationNote', 'hasCancellationNote', 'keptTotal', 'taxLabel', 'shopName', 'orderUrl', 'hasOrderUrl'],
     transactional: false,
   },
   {
     key: 'shop.charge-order-cancelled',
-    label: 'Order cancelled instead of paying an extra charge',
+    label: 'Order cancelled instead of paying the redelivery fee',
     subject: 'Your order {{orderNumber}} has been cancelled',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>As you asked, we have cancelled your order <strong>{{orderNumber}}</strong>.</p><p>We are refunding <strong>{{refundAmount}}</strong>. That is the {{paidAmount}} you paid, less the {{chargeTotal}} {{chargeReason}}. Refunds usually take a few working days to reach you.</p><p>Sorry it did not work out this time - {{shopName}}.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'chargeReason', 'chargeNote', 'hasChargeNote', 'chargeNet', 'chargeTax', 'chargeTotal', 'hasChargeTax', 'taxLabel', 'refundAmount', 'paidAmount', 'shopName', 'orderUrl', 'hasOrderUrl'],
+      '<p>Hi {{customerName}},</p><p>As you asked, we have cancelled your order <strong>{{orderNumber}}</strong>.</p><p>We are refunding <strong>{{refundAmount}}</strong>. That is the {{paidAmount}} you paid, less the {{chargeTotal}} redelivery fee for the delivery attempt already made{{#if hasCancellationCharge}} and the {{cancellationTotal}} cancellation charge{{/if}}.{{#if hasCancellationNote}} {{cancellationNote}}{{/if}} Refunds usually take a few working days to reach you.</p><p>Sorry it did not work out this time - {{shopName}}.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'chargeReason', 'chargeNote', 'hasChargeNote', 'chargeNet', 'chargeTax', 'chargeTotal', 'hasChargeTax', 'cancellationTotal', 'hasCancellationCharge', 'cancellationNote', 'hasCancellationNote', 'keptTotal', 'taxLabel', 'refundAmount', 'paidAmount', 'shopName', 'orderUrl', 'hasOrderUrl'],
     transactional: false,
   },
   {
-    // The owner's alert when the customer settles an extra charge themselves,
+    // The owner's alert when the customer settles a redelivery fee themselves,
     // either way. {{chargeOutcome}} is the rest of the sentence, and says what
     // is left for the owner to do.
     key: 'shop.admin-charge-update',
-    label: 'Extra charge settled by the customer (admin alert)',
+    label: 'Redelivery fee settled by the customer (admin alert)',
     subject: '{{orderNumber}}: {{chargeReason}} settled by the customer',
     bodyHtml:
       '<p>{{customerName}} ({{customerEmail}}) has {{chargeOutcome}}</p><p>Order <strong>{{orderNumber}}</strong>, {{chargeReason}} of {{chargeTotal}}.</p>{{#if hasAdminOrderUrl}}<p><a href="{{adminOrderUrl}}">Open the order</a></p>{{/if}}',
-    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'chargeReason', 'chargeNote', 'hasChargeNote', 'chargeNet', 'chargeTax', 'chargeTotal', 'hasChargeTax', 'taxLabel', 'chargeOutcome', 'adminOrderUrl', 'hasAdminOrderUrl', 'shopName'],
+    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'chargeReason', 'chargeNote', 'hasChargeNote', 'chargeNet', 'chargeTax', 'chargeTotal', 'hasChargeTax', 'cancellationTotal', 'hasCancellationCharge', 'cancellationNote', 'hasCancellationNote', 'keptTotal', 'taxLabel', 'chargeOutcome', 'adminOrderUrl', 'hasAdminOrderUrl', 'shopName'],
     transactional: false,
   },
   {
