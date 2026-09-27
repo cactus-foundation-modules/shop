@@ -120,7 +120,21 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       }),
   )
 
-  return NextResponse.json({ order, items, storefrontHrefs, notes, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, deliveryInstructionsLabel: deliveryInstructionsLabelText, refundNotice, refundableDelivery, replacements, replacementLines, parentOrder, requests })
+  // The failed-email payload carries the whole rendered message (html, and any
+  // attachment as base64) so a Resend click can replay it verbatim - none of
+  // which the order screen itself needs to show. It only needs to know a note
+  // IS resendable and which trigger it was, so that is all that goes out here;
+  // the rendered content stays server-side until a resend actually asks for it.
+  const noteSummaries = notes.map((n) => ({
+    id: n.id,
+    content: n.content,
+    isInternal: n.isInternal,
+    createdBy: n.createdBy,
+    createdAt: n.createdAt,
+    resendableTrigger: n.failedEmail?.trigger ?? null,
+  }))
+
+  return NextResponse.json({ order, items, storefrontHrefs, notes: noteSummaries, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, deliveryInstructionsLabel: deliveryInstructionsLabelText, refundNotice, refundableDelivery, replacements, replacementLines, parentOrder, requests })
 }
 
 const PatchBody = z.object({

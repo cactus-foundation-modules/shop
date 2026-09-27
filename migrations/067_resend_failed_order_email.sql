@@ -1,0 +1,22 @@
+-- ---------------------------------------------------------------------------
+-- 067 - Resend a failed order email from the order's own history.
+--
+-- Every customer email this shop sends already leaves a mark on the order: a
+-- row in shp_order_emails when it goes, a plain-text note when it does not
+-- (lib/email.ts, noteFailedOrderEmail). The note said what failed and why,
+-- but not enough to send it again - no trigger, no recipient, no rendered
+-- content - so a failed send (a bad FROM address, the mail service down for a
+-- minute) needed the whole event to happen again from scratch to reach the
+-- customer at all, and several of the things this shop emails about (a refund
+-- amount, a charge outcome, a specific failed delivery attempt) cannot safely
+-- be re-created later from the order's current state without risking a
+-- different figure to the one that was meant to go out.
+--
+-- One column carries what a failed send needs to be replayed exactly as
+-- written: the trigger, the recipient, the rendered subject/html/text, and
+-- any attachment (base64, since the file itself is never kept anywhere
+-- durable). NULL on every note that isn't reporting a failed email, which is
+-- effectively every note ever written before this file.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE "shp_order_notes" ADD COLUMN IF NOT EXISTS "failed_email" JSONB;

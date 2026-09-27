@@ -84,7 +84,13 @@ type OrderDetail = {
    *  for a variation, the parent listing with that combination chosen. A product
    *  deleted since the order is missing. Optional for an older response. */
   storefrontHrefs?: Record<string, string>
-  notes: Array<{ id: string; content: string; isInternal: boolean; createdBy: string | null; createdAt: string }>
+  notes: Array<{
+    id: string; content: string; isInternal: boolean; createdBy: string | null; createdAt: string
+    /** Set only on a note reporting a failed send - the trigger it tried to
+     *  send, so a Resend button can appear. Optional so a response from an
+     *  older deployment still renders. */
+    resendableTrigger?: string | null
+  }>
   emails: Array<{ id: string; subject: string; to: string; sentAt: string; trigger: string }>
   refunds: Array<{ id: string; amount: string; reason: string | null; status: string; createdBy: string; createdAt: string }>
   refundItems: Array<{ id: string; refundId: string; orderItemId: string; quantity: number; amount: string }>
@@ -254,7 +260,7 @@ const EMAIL_TRIGGER_LABEL: Record<string, string> = {
   REPLY_CATCHER: 'Reply',
 }
 
-type TimelineEvent = { id: string; at: string; icon: string; title: string; note?: string }
+type TimelineEvent = { id: string; at: string; icon: string; title: string; note?: string; resend?: { noteId: string } }
 
 /** How the invoice panel says when invoices go out, in the words the order
  *  screen already uses for those states. */
@@ -572,6 +578,22 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
     refresh()
   }
 
+  // Tries one failed send again, exactly as it was written the first time -
+  // not a new email about the order as it stands now. See lib/email.ts.
+  async function resendFailedEmail(noteId: string) {
+    setBusy(true)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/resend-email`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ noteId }),
+    })
+    setBusy(false)
+    if (!res.ok) {
+      await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That email could not be sent.')
+      return
+    }
+    refresh()
+  }
+
   async function issueCreditNote(refundId: string) {
     setBusy(true)
     const res = await fetch(`/api/m/shop/admin/orders/${orderId}/credit-note`, {
@@ -704,6 +726,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
       icon: '📝',
       title: n.createdBy ? `Note from ${data.authors[n.createdBy] ?? 'a member of staff'}` : 'Note',
       note: n.content,
+      resend: n.resendableTrigger ? { noteId: n.id } : undefined,
     })),
     ...data.emails.map((e) => ({
       id: `email-${e.id}`,
@@ -1143,6 +1166,11 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                       <p className="sox-event-title">{event.title}</p>
                       {event.note && <p className="sox-event-note">{event.note}</p>}
                       <p className="sox-event-when">{formatDateTime(event.at)}</p>
+                      {event.resend && (
+                        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => resendFailedEmail(event.resend!.noteId)}>
+                          Resend email
+                        </button>
+                      )}
                     </div>
                   </li>
                 ))}

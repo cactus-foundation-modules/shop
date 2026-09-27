@@ -1203,9 +1203,24 @@ export async function getOrderIdsForItems(orderItemIds: string[]): Promise<strin
 // Notes and email log
 // ---------------------------------------------------------------------------
 
-export async function addOrderNote(orderId: string, content: string, isInternal: boolean, createdBy: string | null): Promise<void> {
+// What a failed send needs to be replayed exactly as it was written the first
+// time, rather than rebuilt from the order's state as it stands now - see
+// migration 067. `trigger` is a ShpEmailTemplateTrigger widened to string so
+// this type has no dependency the other way back into lib/email.ts.
+export type SerialisedEmailAttachment = { filename: string; contentType: string; contentBase64: string }
+export type FailedOrderEmail = {
+  trigger: string
+  to: string
+  subject: string
+  html: string
+  text: string
+  attachments?: SerialisedEmailAttachment[]
+}
+
+export async function addOrderNote(orderId: string, content: string, isInternal: boolean, createdBy: string | null, failedEmail?: FailedOrderEmail): Promise<void> {
   await prisma.$executeRaw`
-    INSERT INTO "shp_order_notes" ("order_id", "content", "is_internal", "created_by") VALUES (${orderId}, ${content}, ${isInternal}, ${createdBy})
+    INSERT INTO "shp_order_notes" ("order_id", "content", "is_internal", "created_by", "failed_email")
+    VALUES (${orderId}, ${content}, ${isInternal}, ${createdBy}, ${failedEmail ? JSON.stringify(failedEmail) : null}::jsonb)
   `
 }
 
@@ -1213,17 +1228,34 @@ export async function addOrderNote(orderId: string, content: string, isInternal:
 // raw rows, so `isInternal` and `createdAt` were simply undefined on the admin
 // screen while `content` happened to work - the kind of quiet mismatch that only
 // shows up as a blank timestamp.
-export type OrderNoteRow = { id: string; content: string; isInternal: boolean; createdBy: string | null; createdAt: Date }
+export type OrderNoteRow = { id: string; content: string; isInternal: boolean; createdBy: string | null; createdAt: Date; failedEmail: FailedOrderEmail | null }
 
-export async function listOrderNotes(orderId: string): Promise<OrderNoteRow[]> {
-  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_order_notes" WHERE "order_id" = ${orderId} ORDER BY "created_at" ASC`
-  return rows.map((r) => ({
+function mapOrderNote(r: Record<string, unknown>): OrderNoteRow {
+  return {
     id: r.id as string,
     content: r.content as string,
     isInternal: r.is_internal as boolean,
     createdBy: (r.created_by as string | null) ?? null,
     createdAt: r.created_at as Date,
-  }))
+    // jsonb comes back already parsed; NULL on every note except a failed send.
+    failedEmail: (r.failed_email as FailedOrderEmail | null) ?? null,
+  }
+}
+
+export async function listOrderNotes(orderId: string): Promise<OrderNoteRow[]> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_order_notes" WHERE "order_id" = ${orderId} ORDER BY "created_at" ASC`
+  return rows.map(mapOrderNote)
+}
+
+// The one note behind a Resend click, scoped to the order it claims to be on -
+// so a note id copied from one order's response can't be used to replay mail
+// through a different one.
+export async function getOrderNoteById(noteId: string, orderId: string): Promise<OrderNoteRow | null> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "shp_order_notes" WHERE "id" = ${noteId} AND "order_id" = ${orderId} LIMIT 1
+  `
+  const row = rows[0]
+  return row ? mapOrderNote(row) : null
 }
 
 export async function logOrderEmail(orderId: string, subject: string, to: string, trigger: string): Promise<void> {

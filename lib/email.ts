@@ -1,6 +1,6 @@
 import { sendEmail, type EmailAttachment } from '@/lib/email/index'
 import { renderEmailTemplate } from '@/lib/email/render'
-import { addOrderNote, logOrderEmail } from '@/modules/shop/lib/db/orders'
+import { addOrderNote, getOrderNoteById, logOrderEmail, type FailedOrderEmail } from '@/modules/shop/lib/db/orders'
 import { SHOP_TRIGGER_TO_TEMPLATE_KEY } from '@/modules/shop/lib/email-templates'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import { orderTrackingUrl } from '@/modules/shop/lib/order-tracking'
@@ -60,9 +60,10 @@ export async function sendShopEmail(
     // undone because the email about it failed - so without this the order's
     // history simply showed nothing sent, which reads the same as "never meant
     // to be sent". A system note puts the failure on the order's timeline where
-    // staff look. Best-effort, and the send's own error is still what the caller
-    // gets.
-    if (opts?.orderId) await noteFailedOrderEmail(opts.orderId, rendered.subject, to, err)
+    // staff look, and carries what a Resend click needs to try it again exactly
+    // as written (lib/db/orders.ts, migration 067). Best-effort, and the send's
+    // own error is still what the caller gets.
+    if (opts?.orderId) await noteFailedOrderEmail(opts.orderId, trigger, rendered, to, err, opts?.attachments)
     throw err
   }
   if (opts?.orderId) await logOrderEmail(opts.orderId, rendered.subject, to, trigger)
@@ -72,14 +73,60 @@ export async function sendShopEmail(
 // "not configured" from "address refused" from "service down", not a stack.
 const FAILED_EMAIL_REASON_CHARS = 300
 
-async function noteFailedOrderEmail(orderId: string, subject: string, to: string, err: unknown): Promise<void> {
+async function noteFailedOrderEmail(
+  orderId: string,
+  trigger: ShpEmailTemplateTrigger | string,
+  rendered: Pick<RenderedShopEmail, 'subject' | 'html' | 'text'>,
+  to: string,
+  err: unknown,
+  attachments?: EmailAttachment[],
+): Promise<void> {
   const reason = (err instanceof Error ? err.message : String(err)).replace(/\s+/g, ' ').trim().slice(0, FAILED_EMAIL_REASON_CHARS)
-  const note = `Email not sent: "${subject}" to ${to} did not go, so it has not arrived and nothing will retry it.${reason ? ` The email service said: ${reason}` : ''}`
+  const note = `Email not sent: "${rendered.subject}" to ${to} did not go, so it has not arrived. The email service said: ${reason || 'no further detail.'} Use Resend below once that is fixed.`
+  const failedEmail: FailedOrderEmail = {
+    trigger: String(trigger),
+    to,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    ...(attachments?.length ? {
+      attachments: attachments.map((a) => ({
+        filename: a.filename,
+        contentType: a.contentType ?? 'application/pdf',
+        contentBase64: Buffer.from(a.content).toString('base64'),
+      })),
+    } : {}),
+  }
   try {
-    await addOrderNote(orderId, note, true, null)
+    await addOrderNote(orderId, note, true, null, failedEmail)
   } catch (noteErr) {
     console.error(`[shop] could not note a failed email on order ${orderId}`, noteErr)
   }
+}
+
+// Replays one failed send exactly as it was rendered the first time - not
+// rebuilt from the order's current state, which for some of what this shop
+// emails (a refund amount, a charge outcome, a specific failed delivery
+// attempt) may since have moved on to a different figure than what was
+// actually meant to go out. The note is where that rendered content lives
+// (migration 067); this is the only way back to it, so a note id from a
+// different order is refused rather than silently finding nothing.
+export async function resendFailedOrderEmail(orderId: string, noteId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const note = await getOrderNoteById(noteId, orderId)
+  if (!note?.failedEmail) return { ok: false, status: 404, error: 'Nothing here to resend.' }
+  const { trigger, to, subject, html, text, attachments } = note.failedEmail
+  const emailAttachments: EmailAttachment[] | undefined = attachments?.length
+    ? attachments.map((a) => ({ filename: a.filename, content: Buffer.from(a.contentBase64, 'base64'), contentType: a.contentType }))
+    : undefined
+
+  try {
+    await sendEmail({ moduleName: 'shop', to, subject, html, text, ...(emailAttachments ? { attachments: emailAttachments } : {}) })
+  } catch (err) {
+    await noteFailedOrderEmail(orderId, trigger, { subject, html, text }, to, err, emailAttachments)
+    return { ok: false, status: 502, error: err instanceof Error ? err.message : 'The email service refused it.' }
+  }
+  await logOrderEmail(orderId, subject, to, trigger)
+  return { ok: true }
 }
 
 // The customer's own reference for an order, as the three merge values every
