@@ -41,6 +41,21 @@ type OrderRow = {
    *  still renders, and absent reads as a sale. */
   kind?: string
 }
+// Where the parcel goes, in two short lines rather than the full label: the
+// street, then town and postcode - enough to spot the order bound for Leeds
+// without the table growing a column the width of an envelope. The name and
+// company are left off because the Customer column beside it already says who.
+function deliveryAddressSummary(address: ShpAddress): { street: string; place: string } | null {
+  const street = [address.line1, address.line2].map((l) => l?.trim()).filter(Boolean).join(', ')
+  const place = [
+    address.city?.trim(),
+    address.postcode?.trim(),
+    address.country && address.country !== 'GB' ? address.country : null,
+  ].filter(Boolean).join(' · ')
+  if (!street && !place) return null
+  return { street, place }
+}
+
 type RowMetrics = {
   lineCount: number
   unitCount: number
@@ -577,6 +592,7 @@ export function OrdersScreen() {
                 </th>
                 <th>Order</th>
                 <th>Customer</th>
+                <th>Delivery address</th>
                 <th>Items</th>
                 <th>Payment</th>
                 <th>Dispatch</th>
@@ -593,6 +609,7 @@ export function OrdersScreen() {
                 const dispatch = fulfilmentBadge(m)
                 const nextDelivery = m?.nextDeliveryDate ? formatDeliveryDayShort(m.nextDeliveryDate) : ''
                 const company = orderCompanyName(o)
+                const delivery = o.shippingAddress ? deliveryAddressSummary(o.shippingAddress) : null
                 return (
                   <tr key={o.id} className={selected.has(o.id) ? 'is-selected' : ''}>
                     <td className="sox-check">
@@ -618,6 +635,14 @@ export function OrdersScreen() {
                         {o.memberId && <span className="badge badge-default">Account</span>}
                       </div>
                       <p className="sox-sub">{company ? `${o.customerName} · ${o.customerEmail}` : o.customerEmail}</p>
+                    </td>
+                    <td>
+                      {delivery ? (
+                        <>
+                          <span>{delivery.street}</span>
+                          <p className="sox-sub">{delivery.place}</p>
+                        </>
+                      ) : '—'}
                     </td>
                     <td className="sox-nowrap">
                       {m ? `${m.unitCount} item${m.unitCount === 1 ? '' : 's'}` : '—'}
