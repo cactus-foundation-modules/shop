@@ -7,6 +7,7 @@ import { orderItemEmailMedia } from '@/modules/shop/lib/order-item-email-media'
 import { parentOrderVars } from '@/modules/shop/lib/replacement-emails'
 import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
 import type { ShpShipmentWithItems } from '@/modules/shop/lib/types'
+import { dispatchDeliveryVars } from '@/modules/shop/lib/delivery-slot'
 
 // "Here is the tracking for the parcel we told you about."
 //
@@ -96,6 +97,9 @@ export async function sendTrackingAddedEmail(params: { orderId: string; shipment
       hasCarrier: carrier ? 'true' : 'false',
       hasTrackingNumber: trackingNumber ? 'true' : 'false',
       hasTrackingUrl: trackingUrl ? 'true' : 'false',
+      // The day may have been booked before the tracking turned up, and this is
+      // the message somebody reads when deciding which morning to stay in.
+      ...dispatchDeliveryVars([shipment]),
       shopName: config.shopTitle || 'Shop',
       ...await parentOrderVars(order),
     },

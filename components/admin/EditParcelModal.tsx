@@ -72,6 +72,14 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   // wondering whether they have just emailed the customer all over again.
   const alreadyTold = Boolean(parcel.slotNotifiedAt)
   const windowComplete = Boolean(details.deliveryDate && details.deliverySlotStart && details.deliverySlotEnd)
+  // Until the window is in, the day alone is worth an email whenever it is new
+  // or has moved - the window email follows once the times are filled in.
+  const dayChanged = Boolean(details.deliveryDate) && details.deliveryDate !== (parcel.deliveryDate ?? '')
+  const emailHint = windowComplete
+    ? ''
+    : dayChanged
+      ? ' (the day now, the time once you have it)'
+      : ' (needs a new day, or a date and both times)'
 
   // The tracking half, which is a different question asked on a different day.
   // Offered only on a parcel that went out WITHOUT anything to follow: one
@@ -142,7 +150,7 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
           ) : (
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input type="checkbox" checked={emailCustomer} onChange={(e) => setEmailCustomer(e.target.checked)} />
-              Email the customer their delivery time{windowComplete ? '' : ' (needs a date and both times)'}
+              Email the customer their delivery day and time{emailHint}
             </label>
           )}
         </div>

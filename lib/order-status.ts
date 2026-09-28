@@ -17,6 +17,7 @@ import { formatMoney } from '@/modules/shop/lib/money'
 import { getSiteUrl } from '@/lib/config/env'
 import { escapeHtml } from '@/lib/email/blocks'
 import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
+import { dispatchDeliveryVars } from '@/modules/shop/lib/delivery-slot'
 import { statusChangeRefusal } from '@/modules/shop/lib/order-status-money'
 import type { ShpEmailTemplateTrigger, ShpOrder, ShpOrderItem, ShpOrderStatus } from '@/modules/shop/lib/types'
 
@@ -314,8 +315,9 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail, email
       // from the argument, so the email quotes everything that has gone out
       // and not merely whatever was typed into this one change. Only gathered
       // on a dispatch: no other status has anything to say about parcels.
+      const shipments = status === 'SHIPPED' ? await getShipmentsForOrder(orderId).catch(() => []) : []
       const dispatch: DispatchDetails = status === 'SHIPPED'
-        ? dispatchDetails(await getShipmentsForOrder(orderId).catch(() => []))
+        ? dispatchDetails(shipments)
         : { trackingNumber: '', carrier: '', trackingUrl: '', trackingLinks: '' }
 
       await notifyOrderCustomer(
@@ -323,6 +325,7 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail, email
         order,
         {
           ...await orderStatusEmailVars(order, config, dispatch),
+          ...dispatchDeliveryVars(shipments),
           // Only the replacement wording asks for these, and the parent's number
           // is the one the customer actually recognises - the replacement's own
           // is one they have never seen.

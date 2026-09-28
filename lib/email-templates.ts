@@ -107,8 +107,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Order shipped',
     subject: 'Your order {{orderNumber}} is on its way',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>Your order <strong>{{orderNumber}}</strong> is on its way.</p>{{orderItems}}{{#if hasCarrier}}<p>Sent with {{carrier}}.</p>{{/if}}{{#if hasTracking}}<p>Tracking number: <strong>{{trackingNumber}}</strong></p>{{/if}}{{#if hasTrackingLinks}}{{trackingLinks}}{{/if}}<p>Shipping to: {{shippingAddress}}</p>{{#if hasReportIssueUrl}}<p>Something not right when it arrives? <a href="{{reportIssueUrl}}">Tell us about it</a> and we will put it right.</p>{{/if}}{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'carrier', 'trackingNumber', 'trackingUrl', 'trackingLinks', 'hasCarrier', 'hasTracking', 'hasTrackingUrl', 'hasTrackingLinks', 'customerReference', 'customerReferenceLabel', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
+      '<p>Hi {{customerName}},</p><p>Your order <strong>{{orderNumber}}</strong> is on its way.</p>{{orderItems}}{{#if hasCarrier}}<p>Sent with {{carrier}}.</p>{{/if}}{{#if hasTracking}}<p>Tracking number: <strong>{{trackingNumber}}</strong></p>{{/if}}{{#if hasTrackingLinks}}{{trackingLinks}}{{/if}}{{#if hasDeliveryDay}}<p>Delivery is booked for <strong>{{deliveryWhen}}</strong>.</p>{{/if}}<p>Shipping to: {{shippingAddress}}</p>{{#if hasReportIssueUrl}}<p>Something not right when it arrives? <a href="{{reportIssueUrl}}">Tell us about it</a> and we will put it right.</p>{{/if}}{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'carrier', 'trackingNumber', 'trackingUrl', 'trackingLinks', 'hasCarrier', 'hasTracking', 'hasTrackingUrl', 'hasTrackingLinks', 'deliveryDay', 'deliveryWindow', 'deliveryWhen', 'hasDeliveryDay', 'hasDeliveryWindow', 'customerReference', 'customerReferenceLabel', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
     // trackingLinks is one anchor per parcel, assembled in lib/order-status.ts
     // with the url and the number both escaped. {{trackingUrl}} is there for an
     // owner who wants a single plain link of their own, and is filled in only
@@ -139,8 +139,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Part of an order dispatched',
     subject: '{{#if hasOutstanding}}Part of your order {{orderNumber}} is on its way{{/if}}{{#if isFinalPart}}The last part of your order {{orderNumber}} is on its way{{/if}}',
     bodyHtml:
-      '<p>Hi {{customerName}},</p>{{#if hasOutstanding}}<p>Good news - part of your order <strong>{{orderNumber}}</strong> is on its way. The rest of it is still with us, and we will email you again as soon as it is dispatched.</p>{{/if}}{{#if isFinalPart}}<p>Good news - the last part of your order <strong>{{orderNumber}}</strong> is on its way. That is everything from this order now dispatched.</p>{{/if}}<p><strong>In this parcel:</strong></p>{{dispatchedItems}}{{#if hasOutstanding}}<p><strong>Still to come:</strong></p>{{outstandingItems}}{{/if}}{{#if hasCarrier}}<p>Sent with {{carrier}}.</p>{{/if}}{{#if hasTracking}}<p>Tracking number: {{trackingNumber}}</p>{{/if}}{{#if hasTrackingUrl}}<p><a href="{{trackingUrl}}">Track your parcel</a></p>{{/if}}<p>Parcels sent separately can arrive a day or two apart, so please do not worry if they turn up at different times.</p>{{#if hasReportIssueUrl}}<p>Something not right when it arrives? <a href="{{reportIssueUrl}}">Tell us about it</a> and we will put it right.</p>{{/if}}<p>Thanks for shopping with {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['customerName', 'orderNumber', 'dispatchedItems', 'outstandingItems', 'carrier', 'trackingNumber', 'trackingUrl', 'hasCarrier', 'hasTracking', 'hasTrackingUrl', 'hasOutstanding', 'isFinalPart', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
+      '<p>Hi {{customerName}},</p>{{#if hasOutstanding}}<p>Good news - part of your order <strong>{{orderNumber}}</strong> is on its way. The rest of it is still with us, and we will email you again as soon as it is dispatched.</p>{{/if}}{{#if isFinalPart}}<p>Good news - the last part of your order <strong>{{orderNumber}}</strong> is on its way. That is everything from this order now dispatched.</p>{{/if}}<p><strong>In this parcel:</strong></p>{{dispatchedItems}}{{#if hasOutstanding}}<p><strong>Still to come:</strong></p>{{outstandingItems}}{{/if}}{{#if hasCarrier}}<p>Sent with {{carrier}}.</p>{{/if}}{{#if hasTracking}}<p>Tracking number: {{trackingNumber}}</p>{{/if}}{{#if hasTrackingUrl}}<p><a href="{{trackingUrl}}">Track your parcel</a></p>{{/if}}{{#if hasDeliveryDay}}<p>Delivery is booked for <strong>{{deliveryWhen}}</strong>.</p>{{/if}}<p>Parcels sent separately can arrive a day or two apart, so please do not worry if they turn up at different times.</p>{{#if hasReportIssueUrl}}<p>Something not right when it arrives? <a href="{{reportIssueUrl}}">Tell us about it</a> and we will put it right.</p>{{/if}}<p>Thanks for shopping with {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'dispatchedItems', 'outstandingItems', 'carrier', 'trackingNumber', 'trackingUrl', 'hasCarrier', 'hasTracking', 'hasTrackingUrl', 'hasOutstanding', 'isFinalPart', 'deliveryDay', 'deliveryWindow', 'deliveryWhen', 'hasDeliveryDay', 'hasDeliveryWindow', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
     // The item list is a table this module builds itself, photographs and
     // all, with every value escaped on the way in - see
     // lib/order-items-email.ts. As a plain value its markup would arrive as
@@ -160,6 +160,24 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     bodyHtml:
       '<p>Hi {{customerName}},</p><p>Good news - your delivery for order <strong>{{orderNumber}}</strong> is booked in for <strong>{{deliveryDay}}</strong>, {{deliveryWindow}}.</p>{{#if hasParcelItems}}<p><strong>Arriving:</strong></p>{{parcelItems}}{{/if}}{{#if hasCarrier}}<p>Coming with {{carrier}}.</p>{{/if}}<p>Please make sure somebody is in to take it. If nobody is, the driver will have to bring it back and we will have to book it in all over again.</p>{{#if hasFaq}}<p><a href="{{faqUrl}}">Questions about your delivery</a> - what happens on the day, and what to do if the time does not suit.</p>{{/if}}<p>Thanks for shopping with {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
     mergeTags: ['customerName', 'orderNumber', 'deliveryDay', 'deliveryWindow', 'deliverySlotStart', 'deliverySlotEnd', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
+    // Same table the dispatch note uses, built by this module with every value
+    // escaped on the way in. See lib/order-items-email.ts.
+    rawTags: ['parcelItems'],
+    transactional: false,
+  },
+  {
+    // The day, booked onto a parcel that has already gone out, before the
+    // courier has given a window for it. Its own message rather than the
+    // window one with a blank where the time goes: a shop's wording for that
+    // one is written around a time. Sent again if the day moves, and followed
+    // by 'Delivery time confirmed' once the window is in. See
+    // lib/delivery-slot-email.ts.
+    key: 'shop.delivery-day-booked',
+    label: 'Delivery day booked',
+    subject: 'Your delivery is booked in for {{deliveryDay}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>Good news - your delivery for order <strong>{{orderNumber}}</strong> is booked in for <strong>{{deliveryDay}}</strong>.</p><p>We do not have a time for it yet. As soon as {{#if hasCarrier}}{{carrier}} gives{{/if}}{{#if noCarrier}}the courier gives{{/if}} us one, we will email you with it.</p>{{#if hasParcelItems}}<p><strong>Arriving:</strong></p>{{parcelItems}}{{/if}}<p>Please make sure somebody is in to take it. If nobody is, the driver will have to bring it back and we will have to book it in all over again.</p>{{#if hasFaq}}<p><a href="{{faqUrl}}">Questions about your delivery</a> - what happens on the day, and what to do if it does not suit.</p>{{/if}}<p>Thanks for shopping with {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'deliveryDay', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'noCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
     // Same table the dispatch note uses, built by this module with every value
     // escaped on the way in. See lib/order-items-email.ts.
     rawTags: ['parcelItems'],
@@ -410,7 +428,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     subject: 'Your replacement for order {{parentOrderNumber}} is on its way',
     bodyHtml:
       '<p>Hi {{customerName}},</p><p>The replacement for order <strong>{{parentOrderNumber}}</strong> has left us.</p>{{orderItems}}{{#if hasCarrier}}<p>Courier: {{carrier}}</p>{{/if}}{{#if hasTracking}}<p>Tracking: {{trackingNumber}}</p>{{/if}}{{#if hasOrderUrl}}<p>Follow it at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}{{#if hasParentOrderUrl}}<p>Everything about the original is on <a href="{{parentOrderUrl}}">order {{parentOrderNumber}}</a>.</p>{{/if}}<p>Sorry again for the bother.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'parentOrderNumber', 'parentOrderUrl', 'orderItems', 'carrier', 'trackingNumber', 'shopName', 'hasCarrier', 'hasTracking', 'orderUrl', 'hasOrderUrl', 'hasParentOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
+    mergeTags: ['customerName', 'orderNumber', 'parentOrderNumber', 'parentOrderUrl', 'orderItems', 'carrier', 'trackingNumber', 'deliveryDay', 'deliveryWindow', 'deliveryWhen', 'hasDeliveryDay', 'hasDeliveryWindow', 'shopName', 'hasCarrier', 'hasTracking', 'orderUrl', 'hasOrderUrl', 'hasParentOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
     rawTags: ['orderItems'],
     transactional: true,
   },
@@ -422,8 +440,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Tracking added after dispatch',
     subject: 'Tracking for your order {{orderNumber}}',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>Your order <strong>{{orderNumber}}</strong> is already on its way, and we now have the tracking for it.</p>{{#if hasCarrier}}<p>Courier: {{carrier}}</p>{{/if}}{{#if hasTrackingNumber}}<p>Tracking: <strong>{{trackingNumber}}</strong></p>{{/if}}{{#if hasTrackingUrl}}<p><a href="{{trackingUrl}}">Follow your parcel</a></p>{{/if}}{{orderItems}}{{#if hasOrderUrl}}<p>Everything about this order is at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'carrier', 'trackingNumber', 'trackingUrl', 'shopName', 'hasCarrier', 'hasTrackingNumber', 'hasTrackingUrl', 'orderUrl', 'hasOrderUrl'],
+      '<p>Hi {{customerName}},</p><p>Your order <strong>{{orderNumber}}</strong> is already on its way, and we now have the tracking for it.</p>{{#if hasCarrier}}<p>Courier: {{carrier}}</p>{{/if}}{{#if hasTrackingNumber}}<p>Tracking: <strong>{{trackingNumber}}</strong></p>{{/if}}{{#if hasTrackingUrl}}<p><a href="{{trackingUrl}}">Follow your parcel</a></p>{{/if}}{{#if hasDeliveryDay}}<p>Delivery is booked for <strong>{{deliveryWhen}}</strong>.</p>{{/if}}{{orderItems}}{{#if hasOrderUrl}}<p>Everything about this order is at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'carrier', 'trackingNumber', 'trackingUrl', 'deliveryDay', 'deliveryWindow', 'deliveryWhen', 'hasDeliveryDay', 'hasDeliveryWindow', 'shopName', 'hasCarrier', 'hasTrackingNumber', 'hasTrackingUrl', 'orderUrl', 'hasOrderUrl'],
     rawTags: ['orderItems'],
     transactional: true,
   },
@@ -432,8 +450,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Replacement - tracking added after dispatch',
     subject: 'Tracking for your replacement from order {{parentOrderNumber}}',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>The replacement for order <strong>{{parentOrderNumber}}</strong> is already on its way, and we now have the tracking for it.</p>{{#if hasCarrier}}<p>Courier: {{carrier}}</p>{{/if}}{{#if hasTrackingNumber}}<p>Tracking: <strong>{{trackingNumber}}</strong></p>{{/if}}{{#if hasTrackingUrl}}<p><a href="{{trackingUrl}}">Follow your parcel</a></p>{{/if}}{{orderItems}}{{#if hasOrderUrl}}<p>Or follow it at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}{{#if hasParentOrderUrl}}<p>Everything about the original is on <a href="{{parentOrderUrl}}">order {{parentOrderNumber}}</a>.</p>{{/if}}',
-    mergeTags: ['customerName', 'orderNumber', 'parentOrderNumber', 'parentOrderUrl', 'orderItems', 'carrier', 'trackingNumber', 'trackingUrl', 'shopName', 'hasCarrier', 'hasTrackingNumber', 'hasTrackingUrl', 'orderUrl', 'hasOrderUrl', 'hasParentOrderUrl'],
+      '<p>Hi {{customerName}},</p><p>The replacement for order <strong>{{parentOrderNumber}}</strong> is already on its way, and we now have the tracking for it.</p>{{#if hasCarrier}}<p>Courier: {{carrier}}</p>{{/if}}{{#if hasTrackingNumber}}<p>Tracking: <strong>{{trackingNumber}}</strong></p>{{/if}}{{#if hasTrackingUrl}}<p><a href="{{trackingUrl}}">Follow your parcel</a></p>{{/if}}{{#if hasDeliveryDay}}<p>Delivery is booked for <strong>{{deliveryWhen}}</strong>.</p>{{/if}}{{orderItems}}{{#if hasOrderUrl}}<p>Or follow it at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}{{#if hasParentOrderUrl}}<p>Everything about the original is on <a href="{{parentOrderUrl}}">order {{parentOrderNumber}}</a>.</p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'parentOrderNumber', 'parentOrderUrl', 'orderItems', 'carrier', 'trackingNumber', 'trackingUrl', 'deliveryDay', 'deliveryWindow', 'deliveryWhen', 'hasDeliveryDay', 'hasDeliveryWindow', 'shopName', 'hasCarrier', 'hasTrackingNumber', 'hasTrackingUrl', 'orderUrl', 'hasOrderUrl', 'hasParentOrderUrl'],
     rawTags: ['orderItems'],
     transactional: true,
   },
@@ -516,6 +534,7 @@ export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   STATUS_CANCELLED: 'shop.status-cancelled',
   PARTIAL_SHIPPED: 'shop.partial-shipped',
   DELIVERY_SLOT_CONFIRMED: 'shop.delivery-slot-confirmed',
+  DELIVERY_DAY_BOOKED: 'shop.delivery-day-booked',
   DELIVERY_FAILED: 'shop.delivery-failed',
   CHARGE_RAISED: 'shop.charge-raised',
   CHARGE_PAID: 'shop.charge-paid',

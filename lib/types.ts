@@ -1280,6 +1280,10 @@ export type ShpEmailTemplateTrigger =
   // one most customers actually plan their day around.
   // See lib/delivery-slot-email.ts.
   | 'DELIVERY_SLOT_CONFIRMED'
+  // The day on its own, written onto a parcel after it went out and before the
+  // courier has a window for it. Sent again if the day moves; the window email
+  // follows once there is one. See lib/delivery-slot-email.ts.
+  | 'DELIVERY_DAY_BOOKED'
   // Sent when the courier's tracking reports a failed attempt: it could not be
   // delivered, and here is how a new day gets booked - or, where staff have
   // said so, that the courier will be in touch. See lib/failed-delivery-email.ts.

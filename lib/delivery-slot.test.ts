@@ -7,6 +7,7 @@ import {
   formatDeliveredDayRelative,
   formatDeliveryDayRelative,
   deliveryBookingForShipment,
+  dispatchDeliveryVars,
   formatDeliveryWindow,
   formatDeliveryWindowSpoken,
   slotTimeFromInstant,
@@ -310,5 +311,45 @@ describe('deliveryBookingForShipment', () => {
       slotStart: '11:25',
       slotEnd: '12:25',
     })
+  })
+})
+
+describe('dispatchDeliveryVars', () => {
+  const parcel = (deliveryDate: string | null, deliverySlotStart: string | null = null, deliverySlotEnd: string | null = null) =>
+    ({ deliveryDate, deliverySlotStart, deliverySlotEnd })
+
+  it('gives the day alone when no window was booked', () => {
+    expect(dispatchDeliveryVars([parcel('2026-09-29')])).toEqual({
+      deliveryDay: 'Tuesday 29th of September',
+      deliveryWindow: '',
+      deliveryWhen: 'Tuesday 29th of September',
+      hasDeliveryDay: 'true',
+      hasDeliveryWindow: 'false',
+    })
+  })
+
+  it('joins the window on when there is one', () => {
+    const out = dispatchDeliveryVars([parcel('2026-09-29', '10:00', '13:00')])
+    expect(out.deliveryWhen).toBe('Tuesday 29th of September, between 10:00 and 13:00')
+    expect(out.hasDeliveryWindow).toBe('true')
+  })
+
+  it('says nothing when no parcel has a day', () => {
+    expect(dispatchDeliveryVars([parcel(null), parcel('not a date')]).hasDeliveryDay).toBe('false')
+    expect(dispatchDeliveryVars([]).deliveryWhen).toBe('')
+  })
+
+  it('says nothing when parcels arrive on different days', () => {
+    expect(dispatchDeliveryVars([parcel('2026-09-29'), parcel('2026-10-01')]).deliveryDay).toBe('')
+  })
+
+  it('gives the shared day but no window when the windows differ', () => {
+    const out = dispatchDeliveryVars([parcel('2026-09-29', '10:00', '13:00'), parcel('2026-09-29', '13:00', '16:00')])
+    expect(out.deliveryWhen).toBe('Tuesday 29th of September')
+    expect(out.hasDeliveryWindow).toBe('false')
+  })
+
+  it('ignores an undated parcel alongside a dated one', () => {
+    expect(dispatchDeliveryVars([parcel(null), parcel('2026-09-29')]).deliveryDay).toBe('Tuesday 29th of September')
   })
 })

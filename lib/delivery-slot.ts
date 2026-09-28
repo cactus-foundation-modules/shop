@@ -169,6 +169,46 @@ export function formatDeliveryWindow(start: string | null, end: string | null): 
   return `between ${start} and ${end}`
 }
 
+export type DispatchDeliveryVars = {
+  deliveryDay: string
+  deliveryWindow: string
+  /** The two together - "Tuesday 29th of September, between 10:00 and 13:00",
+   *  or the day alone. Core's {{#if}} does not nest, so wording that wants the
+   *  window only when there is one cannot be written from the two parts. */
+  deliveryWhen: string
+  hasDeliveryDay: 'true' | 'false'
+  hasDeliveryWindow: 'true' | 'false'
+}
+
+/**
+ * The delivery day, and the window on it where there is one, for the dispatch
+ * note - the parcel's booked day as typed onto it when it went out.
+ *
+ * Only the day the shop booked, never the courier's own reported window: that
+ * turns up later, and has its own email (lib/delivery-slot-email.ts).
+ *
+ * Several parcels are only given a day when they all share it. "Arriving
+ * Tuesday" on an order whose second box comes Thursday is worse than saying
+ * nothing, and the order page names each parcel's day separately anyway. The
+ * window follows the same rule, and is blank unless the day is filled.
+ */
+export function dispatchDeliveryVars(
+  shipments: Array<{ deliveryDate: string | null; deliverySlotStart: string | null; deliverySlotEnd: string | null }>,
+): DispatchDeliveryVars {
+  const dated = shipments.filter((s) => isDeliveryDate(s.deliveryDate))
+  const days = new Set(dated.map((s) => s.deliveryDate))
+  const deliveryDay = dated.length > 0 && days.size === 1 ? formatDeliveryDay(dated[0]?.deliveryDate ?? '') : ''
+  const windows = new Set(dated.map((s) => formatDeliveryWindow(s.deliverySlotStart, s.deliverySlotEnd)))
+  const deliveryWindow = deliveryDay && windows.size === 1 ? ([...windows][0] ?? '') : ''
+  return {
+    deliveryDay,
+    deliveryWindow,
+    deliveryWhen: deliveryWindow ? `${deliveryDay}, ${deliveryWindow}` : deliveryDay,
+    hasDeliveryDay: deliveryDay ? 'true' : 'false',
+    hasDeliveryWindow: deliveryWindow ? 'true' : 'false',
+  }
+}
+
 /**
  * "10am", "1pm", "10.30am" - the time as somebody says it rather than as a
  * railway timetable prints it.

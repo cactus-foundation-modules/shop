@@ -7,6 +7,7 @@ import { parentOrderVars } from '@/modules/shop/lib/replacement-emails'
 import { dispatchDetails, orderStatusEmailVars } from '@/modules/shop/lib/order-status'
 import { renderOrderItemsTable, type OrderEmailLine } from '@/modules/shop/lib/order-items-email'
 import { orderItemEmailMedia } from '@/modules/shop/lib/order-item-email-media'
+import { dispatchDeliveryVars } from '@/modules/shop/lib/delivery-slot'
 
 // The two lists go into the template as pre-built markup, declared as rawTags
 // on shop.partial-shipped. They were plain strings, prefixed and newline-joined
@@ -73,6 +74,7 @@ export async function sendShipmentDispatchedEmail(params: { orderId: string; shi
       order,
       {
         ...await orderStatusEmailVars(order, config, dispatchDetails(shipments)),
+        ...dispatchDeliveryVars(shipments),
         ...await parentOrderVars(order),
       },
     )
@@ -95,7 +97,10 @@ export async function sendShipmentDispatchedEmail(params: { orderId: string; shi
     await notifyOrderCustomer(
       'STATUS_SHIPPED',
       order,
-      await orderStatusEmailVars(order, config, dispatchDetails(shipments)),
+      {
+        ...await orderStatusEmailVars(order, config, dispatchDetails(shipments)),
+        ...dispatchDeliveryVars(shipments),
+      },
     )
     return
   }
@@ -148,6 +153,8 @@ export async function sendShipmentDispatchedEmail(params: { orderId: string; shi
     trackingNumber,
     trackingUrl,
     carrier,
+    // This parcel's day, not the order's: the other half has its own.
+    ...dispatchDeliveryVars([shipment]),
     shopName: config.shopTitle || 'Shop',
     shopUrl: `${siteUrl}/shop`,
   })

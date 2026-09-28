@@ -17,7 +17,7 @@ import { pendingRequestUnits } from '@/modules/shop/lib/order-requests'
 import { ORDER_LINE_BATCH_MAX, ORDER_LINE_BATCH_MAX_MESSAGE } from '@/modules/shop/lib/order-line-limits'
 import { sendShipmentDispatchedEmail } from '@/modules/shop/lib/shipment-email'
 import { hasFollowableTracking, sendTrackingAddedEmail } from '@/modules/shop/lib/tracking-added-email'
-import { sendDeliverySlotEmail } from '@/modules/shop/lib/delivery-slot-email'
+import { sendDeliveryDayEmail, sendDeliverySlotEmail } from '@/modules/shop/lib/delivery-slot-email'
 import { isDeliveryDate, isSlotTime, slotMinutes } from '@/modules/shop/lib/delivery-slot'
 import { getSiteTimezone } from '@/lib/config/timezone.server'
 import type { ShpConfig } from '@/modules/shop/lib/config'
@@ -387,11 +387,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!shipment) return NextResponse.json({ error: 'That parcel is no longer on this order.' }, { status: 404 })
 
   const notified = await maybeSendSlotEmail(id, shipment, emailCustomer !== false)
+  const dayTold = await maybeSendDayEmail(id, existing, shipment, emailCustomer !== false)
   // `existing` is the row as it was BEFORE this save - read above for the window
   // check - which is the only way to tell "tracking has just been added" from
   // "tracking has been here since it went out".
   const trackingTold = await maybeSendTrackingEmail(id, existing, shipment, emailTracking !== false)
-  return NextResponse.json({ shipment, slotEmailSent: notified, trackingEmailSent: trackingTold })
+  return NextResponse.json({ shipment, slotEmailSent: notified, dayEmailSent: dayTold, trackingEmailSent: trackingTold })
 }
 
 /**
@@ -422,6 +423,41 @@ async function maybeSendSlotEmail(
     await sendDeliverySlotEmail({ orderId, shipmentId: shipment.id, timezone })
   } catch (error) {
     console.error('[shop] delivery slot email failed', error)
+  }
+  return true
+}
+
+/**
+ * Tell the customer the day, when this save booked one and there is no window
+ * on it yet.
+ *
+ * The window email above is the one that matters, and once it has gone this
+ * stays quiet: that email already named the day, and moving a day after a
+ * window was confirmed is a rebooking, not a booking. Before then the day is
+ * news whenever it is new or has moved, so there is no once-only stamp here -
+ * a customer told Tuesday who is now getting Thursday has to hear it. The
+ * price is that correcting a day typed wrong sends the right one, which is the
+ * correction the customer needed anyway.
+ *
+ * A day recorded at dispatch is not sent from here: the dispatch note carries
+ * it (see dispatchDeliveryVars).
+ */
+async function maybeSendDayEmail(
+  orderId: string,
+  before: ShpShipmentWithItems,
+  after: ShpShipmentWithItems,
+  wanted: boolean,
+): Promise<boolean> {
+  if (!wanted) return false
+  if (!isDeliveryDate(after.deliveryDate)) return false
+  if (after.deliveryDate === before.deliveryDate) return false
+  if (after.deliverySlotStart && after.deliverySlotEnd) return false
+  if (after.slotNotifiedAt) return false
+
+  try {
+    await sendDeliveryDayEmail({ orderId, shipmentId: after.id })
+  } catch (error) {
+    console.error('[shop] delivery day email failed', error)
   }
   return true
 }
