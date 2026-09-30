@@ -188,7 +188,12 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
   // drawing its replacement in the same place, rather than stacking two.
   const stripePaymentElementRef = useRef<{ destroy: () => void } | null>(null)
   const preparedRef = useRef<PreparedPayment | null>(null)
-  const preparingRef = useRef(false)
+  // The prepare the effect below has in flight, held as the promise rather than
+  // a flag so "Place order" can wait for it. Pressed while that call is still on
+  // its way back, "Place order" found nothing prepared and made an order of its
+  // own, and the shopper ended up with two for the same basket - one paid for,
+  // one left behind unpaid.
+  const preparingRef = useRef<Promise<void> | null>(null)
   // Whether a "Place order" is already running. The Review block disables its
   // button while placing, but it re-enables on failure - which is right, a
   // declined card should be retryable - and that leaves a window where a second
@@ -443,7 +448,9 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         attemptedForRef.current = null
         setError(null)
       }
-      if (outstanding || preparingRef.current || attemptedForRef.current === chosen || preparedRef.current?.method === chosen) return
+      // Nor while "Place order" is running: it prepares for itself when it has
+      // to, and one made here on top of it would be a second order.
+      if (outstanding || placingRef.current || preparingRef.current || attemptedForRef.current === chosen || preparedRef.current?.method === chosen) return
 
       // Not while the postcode is still being typed, and not on the keystroke
       // itself. Every prepare is a real order at the delivery, price and address
@@ -457,18 +464,17 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         timer = null
         const now = getCheckoutState()
         if (now.paymentMethod !== chosen || outstandingRequirement(now)) return
-        if (preparingRef.current || attemptedForRef.current === chosen || preparedRef.current?.method === chosen) return
+        if (placingRef.current || preparingRef.current || attemptedForRef.current === chosen || preparedRef.current?.method === chosen) return
         const snapshot = orderRequest(chosen).snapshot
         attemptedForRef.current = chosen
-        preparingRef.current = true
-        prepareIntent(chosen)
+        preparingRef.current = prepareIntent(chosen)
           .then(() => setError(null))
           .catch((err) => {
             setError(err instanceof Error ? err.message : 'Could not start checkout')
             if (!preparedRef.current) refusedFor = snapshot
           })
           .finally(() => {
-            preparingRef.current = false
+            preparingRef.current = null
             // A method chosen while that call was in flight cleared the attempt
             // marker and found the door shut. Knock again.
             sync()
@@ -600,6 +606,12 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
       placingRef.current = true
 
       try {
+        // A prepare already on its way back is the order this press is for, so
+        // it is waited for rather than doubled (see preparingRef). Its failure
+        // is not this press's to report - the effect has already put it on
+        // screen - and nothing prepared afterwards just means preparing below.
+        const inFlight = preparingRef.current
+        if (inFlight) await inFlight
         // A method restored from a previous visit (reload, or off to the bank and
         // back) has no live intent in this mount, and the order left behind in
         // sessionStorage belongs to that abandoned attempt. Confirming that one
@@ -663,8 +675,9 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
           payload = walletPayload
         } else if (method === 'STRIPE') {
           // A card form that was only just mounted is necessarily empty, so ask
-          // rather than submit a blank card and relay Stripe's error for it.
-          if (freshlyPrepared) throw new Error('Please enter your card details, then place your order.')
+          // rather than submit a blank card and relay Stripe's error for it. One
+          // mounted by the prepare this press waited for was only just mounted too.
+          if (freshlyPrepared || inFlight !== null) throw new Error('Please enter your card details, then place your order.')
           // The same, for a card box drawn afresh because the order changed.
           if (changedSincePrepared) throw new Error('Your order has changed since you entered your card, so please enter your card details again, then place your order.')
           const stripe = stripeInstanceRef.current
