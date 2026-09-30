@@ -32,6 +32,8 @@ export const ORDER_CONFIRMATION_CSS = `
 .soc-mark-wait{background:var(--color-info-subtle);color:var(--color-info);border:1px solid var(--color-info-border)}
 .soc-mark-todo{background:var(--color-warning-subtle);color:var(--color-warning);border:1px solid var(--color-warning-border)}
 .soc-mark-bad{background:var(--color-error-bg);color:var(--color-danger);border:1px solid var(--color-destructive-border)}
+/* A shop's own picture in place of the mark (the holographic one styles itself). */
+.soc-celebrate{display:block;height:auto;margin:0 auto}
 .soc-title{font-size:1.75rem;line-height:1.2;margin:0;font-weight:650}
 .soc-sub{margin:0;color:var(--color-text-secondary);max-width:44ch}
 .soc-sub strong{color:var(--color-text);font-weight:600;overflow-wrap:anywhere}

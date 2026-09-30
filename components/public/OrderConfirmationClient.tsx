@@ -9,6 +9,7 @@ import { sortLinesByGroup } from '@/modules/shop/lib/cart-group'
 import { ORDER_CONFIRMATION_CSS } from '@/modules/shop/components/public/order-confirmation-css'
 import { TRACK_ORDER_CSS } from '@/modules/shop/components/public/track-order-css'
 import OrderAccessForm from '@/modules/shop/components/public/OrderAccessForm'
+import { HoloImage } from '@/modules/shop/components/public/HoloImage'
 import RegisterForm from '@/components/members/RegisterForm'
 import type { ShpAddress } from '@/modules/shop/lib/types'
 
@@ -464,7 +465,22 @@ function ReceiptAccessGate({
 // Registered Puck block wrapper (ShopOrderConfirmation) is a server component that
 // renders this, so Puck's RSC <Render> never serialises its renderDropZone
 // function bag into the client.
-export function OrderConfirmationClient() {
+// A shop's own picture for the top of the page, in place of the plain tick -
+// set on the Order Confirmation block. Everything optional: the fallback render
+// in the confirmation page passes nothing and gets the tick, as before.
+export type OrderConfirmationOptions = {
+  celebrationImage?: string
+  celebrationImageAlt?: string
+  celebrationImageWidth?: number
+  holographic?: 'yes' | 'no'
+}
+
+export function OrderConfirmationClient({
+  celebrationImage,
+  celebrationImageAlt,
+  celebrationImageWidth,
+  holographic,
+}: OrderConfirmationOptions = {}) {
   const [data, setData] = useState<OrderStatusResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Set when the server says this browser is not one that may open this receipt
@@ -685,6 +701,9 @@ export function OrderConfirmationClient() {
         ? { mark: 'soc-mark-wait', icon: ICON_CLOCK, title: 'Payment on its way' }
         : { mark: 'soc-mark-ok', icon: ICON_TICK, title: name ? `Thanks, ${name}` : 'Thanks for your order' }
 
+  // Old layouts saved before the width option existed arrive without one.
+  const imageWidth = celebrationImageWidth && celebrationImageWidth > 0 ? celebrationImageWidth : 220
+
   const discount = Number(order.discountAmount)
   const shipping = Number(order.shippingAmount)
   const tax = Number(order.taxAmount)
@@ -694,7 +713,17 @@ export function OrderConfirmationClient() {
       <style dangerouslySetInnerHTML={{ __html: ORDER_CONFIRMATION_CSS }} />
       <section className="soc">
         <header className="soc-hero">
-          <div className={`soc-mark ${hero.mark}`}><Icon>{hero.icon}</Icon></div>
+          {/* The shop's picture only when there is something to celebrate. A
+              failed payment keeps the alert mark: a dog in confetti above
+              "your payment didn't go through" would be the wrong tone entirely. */}
+          {celebrationImage && !failed
+            ? holographic === 'no'
+              ? (
+                /* eslint-disable-next-line @next/next/no-img-element -- a media-library url on any host, sized by the block; next/image would need every storage host allow-listed */
+                <img className="soc-celebrate" src={celebrationImage} alt={celebrationImageAlt ?? ''} style={{ width: `min(${imageWidth}px, 100%)` }} />
+              )
+              : <HoloImage src={celebrationImage} alt={celebrationImageAlt ?? ''} width={imageWidth} />
+            : <div className={`soc-mark ${hero.mark}`}><Icon>{hero.icon}</Icon></div>}
           <h1 className="soc-title">{hero.title}</h1>
           {/* The one sentence anyone actually reads. Where the confirmation is
               going matters more than the order number - a typo in the email
