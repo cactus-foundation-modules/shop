@@ -1,0 +1,22 @@
+-- ---------------------------------------------------------------------------
+-- 068 - Parcels the customer is not to hear about.
+--
+-- A despatch another module records from the supplier's own tracking (the
+-- purchasing module, reading a courier's email about a drop-shipped order) can
+-- go on the customer's order while the shop is set to "record only": the owner
+-- is checking it against what really turns up before letting it talk to
+-- anybody. Not emailing at the moment of recording is not enough. Once a parcel
+-- has a courier and a link, the hourly tracking check and the customer's own
+-- order page read it, and they email by themselves - a failed delivery, a
+-- delivery window, the completion message when it lands.
+--
+-- So the parcel carries the fact itself: quiet. Every email that can follow
+-- from a quiet parcel is not sent, whatever the setting says later - switching
+-- to "record and tell" does not go back and tell customers about parcels
+-- recorded quietly. Sending the dispatch note by hand from the order clears it.
+--
+-- Defaulted false, so every parcel already recorded behaves exactly as before.
+-- Idempotent, and 001 carries the same column for a fresh install.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE "shp_shipments" ADD COLUMN IF NOT EXISTS "quiet_customer_emails" BOOLEAN NOT NULL DEFAULT false;

@@ -1278,6 +1278,28 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             <input type="email" value={config.lowStockAlertEmail} onChange={(e) => set('lowStockAlertEmail', e.target.value)} />
           </div>
 
+          <hr style={hr} />
+          <h3 style={sectionHeading}>Tracking from your suppliers</h3>
+          <div className="field">
+            <label>When your purchasing records a supplier&apos;s despatch</label>
+            <select
+              value={config.despatchFromSupplierTracking}
+              onChange={(e) => set('despatchFromSupplierTracking', e.target.value as ShpConfig['despatchFromSupplierTracking'])}
+            >
+              <option value="off">Leave the customer&apos;s order alone</option>
+              <option value="record">Put it on the customer&apos;s order, but email nobody</option>
+              <option value="record-and-tell">Put it on the customer&apos;s order and tell the customer</option>
+            </select>
+            <span className="field-hint">
+              {config.despatchFromSupplierTracking === 'off'
+                ? 'For an order a supplier delivers straight to your customer. Nothing their tracking emails say reaches the order here - you record the parcel yourself, as now.'
+                : config.despatchFromSupplierTracking === 'record'
+                  ? 'The parcel and its tracking go on the order, and the order moves to dispatched, but the parcel is marked quiet: the customer is not emailed now, nor later by anything that follows from that parcel - no delivery window, no failed delivery, no completion email when it lands (the order still completes). They can see it on their order page. To tell them, open the parcel on the order and press Send dispatch note. Worth a fortnight of checking against what actually turned up before letting it talk to anybody. Switching to the next option later does not go back and email about parcels recorded quietly.'
+                  : 'The parcel and its tracking go on the order, and the customer gets the same emails as if you had recorded it yourself: the dispatch note, the tracking when it arrives late, and their delivery window.'}
+              {' '}A parcel you already dispatched with no tracking has the tracking filled in; tracking already on an order is never overwritten, and nothing goes on a cancelled or refunded order. A tracking link is only kept when it goes to a courier the shop knows (DPD, Royal Mail, Evri, Multidrop, GFS and the like); otherwise just the number goes on.
+            </span>
+          </div>
+
           {/* Rendered by the core config page, so shop hands it the space and
               asks nothing else about it. Its own fetch, its own save, its own
               permission check - all its module's business, not shop's. */}

@@ -49,6 +49,9 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     trackingNotifiedAt: (r.tracking_notified_at as Date | null) ?? null,
     courierRearrangingAt: (r.courier_rearranging_at as Date | null) ?? null,
     failedNotifiedAt: (r.failed_notified_at as Date | null) ?? null,
+    // Migration 068. Absent reads as false: a parcel recorded before it was
+    // never quiet.
+    quietCustomerEmails: r.quiet_customer_emails === true,
     trackingStage: (r.tracking_stage as string | null) ?? null,
     trackingStageAt: (r.tracking_stage_at as Date | null) ?? null,
     trackingCheckedAt: (r.tracking_checked_at as Date | null) ?? null,
@@ -130,10 +133,16 @@ export type CreateShipmentInput = {
   deliverySlotEnd?: string | null
   notes?: string | null
   items: Array<{ orderItemId: string; quantity: number }>
+  /** Refuse, under the lock, when a parcel on this order already carries this
+   *  tracking. For a caller that is not a person looking at the order - two
+   *  announcements of one parcel arriving together must make one parcel. */
+  unlessTrackingOnOrder?: { trackingNumber: string | null; trackingShortCode: string | null; trackingUrl: string | null }
+  /** No customer email that can follow from this parcel is sent (068). */
+  quietCustomerEmails?: boolean
 }
 
 export type CreateShipmentResult =
-  | { ok: false; status: number; error: string }
+  | { ok: false; status: number; error: string; code?: 'busy' | 'duplicate' }
   | { ok: true; shipment: ShpShipmentWithItems }
 
 // Per-line dispatch position, read fresh inside a transaction. The dispatched
@@ -273,12 +282,28 @@ export async function createShipment(input: CreateShipmentInput): Promise<Create
     const locked = await tx.$queryRaw<[{ locked: boolean }]>`
       SELECT pg_try_advisory_xact_lock(${ORDER_LOCK_NAMESPACE}::int4, hashtext(${input.orderId})) AS locked
     `
-    if (!locked[0]?.locked) return { ok: false, status: 409, error: ORDER_BUSY_ERROR }
+    if (!locked[0]?.locked) return { ok: false, status: 409, error: ORDER_BUSY_ERROR, code: 'busy' }
 
     const orderRows = await tx.$queryRaw<{ id: string }[]>`
       SELECT "id" FROM "shp_orders" WHERE "id" = ${input.orderId}
     `
     if (!orderRows[0]) return { ok: false, status: 404, error: 'Order not found' }
+
+    if (input.unlessTrackingOnOrder) {
+      const t = input.unlessTrackingOnOrder
+      const number = (t.trackingNumber ?? '').replace(/[\s-]/g, '').toUpperCase() || null
+      const already = await tx.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "shp_shipments"
+        WHERE "order_id" = ${input.orderId}
+          AND (
+            (${number}::text IS NOT NULL AND upper(regexp_replace(COALESCE("tracking_number", ''), '[[:space:]-]', '', 'g')) = ${number}::text)
+            OR (${t.trackingShortCode}::text IS NOT NULL AND "tracking_short_code" = ${t.trackingShortCode}::text)
+            OR (${t.trackingUrl}::text IS NOT NULL AND "tracking_url" = ${t.trackingUrl}::text)
+          )
+        LIMIT 1
+      `
+      if (already[0]) return { ok: false, status: 409, error: 'That parcel is already on this order.', code: 'duplicate' }
+    }
 
     // Read every line's position under the lock - not just the ones being
     // dispatched - so the same figures decide both the caps and the summary.
@@ -325,14 +350,14 @@ export async function createShipment(input: CreateShipmentInput): Promise<Create
       INSERT INTO "shp_shipments" (
         "order_id", "shipped_at", "tracking_number", "tracking_url", "tracking_short_code",
         "carrier", "courier_id",
-        "delivery_date", "delivery_slot_start", "delivery_slot_end", "notes"
+        "delivery_date", "delivery_slot_start", "delivery_slot_end", "notes", "quiet_customer_emails"
       )
       VALUES (
         ${input.orderId}, ${shippedAt}, ${input.trackingNumber ?? null}, ${input.trackingUrl ?? null},
         ${input.trackingShortCode ?? null},
         ${input.carrier ?? null}, ${input.courierId ?? null},
         ${input.deliveryDate ?? null}, ${input.deliverySlotStart ?? null}, ${input.deliverySlotEnd ?? null},
-        ${input.notes ?? null}
+        ${input.notes ?? null}, ${input.quietCustomerEmails === true}
       )
       RETURNING *
     `
@@ -560,6 +585,68 @@ export async function updateShipmentDetails(
 
   const shipments = await getShipmentsForOrder(orderId)
   return shipments.find((s) => s.id === shipmentId) ?? null
+}
+
+/**
+ * Put tracking on a parcel that went out with none, if it still has none.
+ *
+ * Guarded in the statement rather than read first, so two announcements of
+ * different parcels for the same lines cannot both fill the one blank parcel,
+ * the second overwriting the first: the loser changes nothing and is told so.
+ * The courier is filled only where the parcel names none. True when it filled.
+ */
+export async function fillBlankShipmentTracking(
+  shipmentId: string,
+  orderId: string,
+  tracking: {
+    trackingNumber: string | null
+    trackingUrl: string | null
+    trackingShortCode: string | null
+    carrier: string | null
+    courierId: string | null
+  },
+  quiet = false,
+): Promise<boolean> {
+  const changed = await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "tracking_number" = ${tracking.trackingNumber},
+        "quiet_customer_emails" = "quiet_customer_emails" OR ${quiet},
+        "tracking_url" = ${tracking.trackingUrl},
+        "tracking_short_code" = ${tracking.trackingShortCode},
+        "carrier" = CASE WHEN "courier_id" IS NULL AND NULLIF(TRIM(COALESCE("carrier", '')), '') IS NULL
+                         THEN ${tracking.carrier} ELSE "carrier" END,
+        "courier_id" = CASE WHEN "courier_id" IS NULL AND NULLIF(TRIM(COALESCE("carrier", '')), '') IS NULL
+                            THEN ${tracking.courierId} ELSE "courier_id" END,
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId} AND "order_id" = ${orderId}
+      AND NULLIF(TRIM(COALESCE("tracking_number", '')), '') IS NULL
+      AND NULLIF(TRIM(COALESCE("tracking_url", '')), '') IS NULL
+      AND NULLIF(TRIM(COALESCE("tracking_short_code", '')), '') IS NULL
+  `
+  return changed > 0
+}
+
+/**
+ * Let a quiet parcel speak: clears its flag, true only for the one caller
+ * that cleared it, so two presses of "Send dispatch note" send one note.
+ */
+export async function releaseQuietShipment(shipmentId: string, orderId: string): Promise<boolean> {
+  const changed = await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "quiet_customer_emails" = false, "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId} AND "order_id" = ${orderId} AND "quiet_customer_emails"
+  `
+  return changed > 0
+}
+
+/** Whether any parcel on the order is quiet, for the completion email. */
+export async function orderHasQuietShipment(orderId: string): Promise<boolean> {
+  const rows = await prisma.$queryRaw<{ quiet: boolean }[]>`
+    SELECT EXISTS (
+      SELECT 1 FROM "shp_shipments" WHERE "order_id" = ${orderId} AND "quiet_customer_emails"
+    ) AS "quiet"
+  `
+  return Boolean(rows[0]?.quiet)
 }
 
 /**

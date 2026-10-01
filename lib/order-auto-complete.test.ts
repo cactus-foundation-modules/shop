@@ -19,6 +19,8 @@ vi.mock('@/modules/shop/lib/db/orders', () => ({
 vi.mock('@/modules/shop/lib/db/shipments', () => ({
   allShipmentsDelivered: async () => state.everyParcelIn,
   getOrderDispatchSummary: async () => ({ fullyDispatched: state.fullyDispatched }),
+  // No quiet parcels here; lib/quiet-parcel-emails.test.ts covers those.
+  orderHasQuietShipment: async () => false,
 }))
 vi.mock('@/modules/shop/lib/order-status', () => ({
   applyOrderStatusChange: (input: unknown) => applyOrderStatusChange(input),

@@ -98,7 +98,8 @@ export async function sendDeliverySlotEmail(params: {
   if (!order) return
 
   const shipment = (await getShipmentsForOrder(params.orderId)).find((s) => s.id === params.shipmentId)
-  if (!shipment) return
+  // A quiet parcel (068) tells the customer nothing.
+  if (!shipment || shipment.quietCustomerEmails) return
 
   const parts = deliveryEmailParts(shipment, params.timezone)
   if (!parts) return
@@ -130,7 +131,7 @@ export async function sendDeliveryDayEmail(params: { orderId: string; shipmentId
   if (!order) return
 
   const shipment = (await getShipmentsForOrder(params.orderId)).find((s) => s.id === params.shipmentId)
-  if (!shipment) return
+  if (!shipment || shipment.quietCustomerEmails) return
 
   const deliveryDay = formatDeliveryDay(shipment.deliveryDate ?? '')
   if (!deliveryDay) return
@@ -155,11 +156,12 @@ export async function maybeSendCarrierWindowEmail(
     | 'deliveryWindowFrom'
     | 'deliveryWindowTo'
     | 'slotNotifiedAt'
+    | 'quietCustomerEmails'
   >,
   reading: { windowFrom: Date | null; windowTo: Date | null },
   timezone: string,
 ): Promise<boolean> {
-  if (parcel.slotNotifiedAt) return false
+  if (parcel.slotNotifiedAt || parcel.quietCustomerEmails) return false
   if (hasCompleteBookedSlot(parcel)) return false
   if (!reading.windowFrom || !reading.windowTo) return false
   if (!(await claimSlotNotification(parcel.id, parcel.orderId))) return false

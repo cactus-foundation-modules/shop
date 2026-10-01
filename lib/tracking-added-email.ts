@@ -53,7 +53,8 @@ export async function sendTrackingAddedEmail(params: { orderId: string; shipment
   if (!order) return
 
   const shipment = (await getShipmentsForOrder(params.orderId)).find((s) => s.id === params.shipmentId)
-  if (!shipment || !hasFollowableTracking(shipment)) return
+  // A quiet parcel (068) tells the customer nothing.
+  if (!shipment || shipment.quietCustomerEmails || !hasFollowableTracking(shipment)) return
 
   const config = await getShopConfigCached()
 

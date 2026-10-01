@@ -38,6 +38,10 @@ export type EditableParcel = {
   /** Set once the customer has been told tracking the parcel went out without.
    *  Optional so a response from an older deployment still renders. */
   trackingNotifiedAt?: string | null
+  /** Recorded from a supplier's tracking while the shop was set to "record
+   *  only": the customer has been told nothing about it, and nothing that
+   *  follows from it tells them. Optional for the same reason as above. */
+  quietCustomerEmails?: boolean
 }
 
 export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: {
@@ -91,6 +95,28 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   const trackingAlreadyTold = Boolean(parcel.trackingNotifiedAt)
   const offerTrackingEmail = !hadTracking && !trackingAlreadyTold
 
+  const quiet = Boolean(parcel.quietCustomerEmails)
+  const [sendingNote, setSendingNote] = useState(false)
+
+  // A quiet parcel's customer has been told nothing. This tells them - the
+  // dispatch note a parcel recorded by hand would have sent - and from then on
+  // the parcel behaves like any other.
+  async function sendDispatchNote() {
+    setSendingNote(true)
+    setError(null)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/dispatch/send-note`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shipmentId: parcel.id }),
+    })
+    setSendingNote(false)
+    if (!res.ok) {
+      setError((await res.json().catch(() => ({}))).error ?? 'Could not send the dispatch note')
+      return
+    }
+    onDone()
+  }
+
   async function save() {
     setSaving(true)
     setError(null)
@@ -126,9 +152,24 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
           </p>
           {error && <p style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}>{error}</p>}
 
+          {quiet && (
+            <div style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem', display: 'grid', gap: '0.5rem' }}>
+              <span>
+                Recorded from your supplier&rsquo;s tracking while the shop was set to record it without telling anybody,
+                so the customer has not been told about this parcel - and will not be, by email, until you send its
+                dispatch note. Saving here changes the details only.
+              </span>
+              <span>
+                <button type="button" className="btn btn-secondary btn-sm" disabled={sendingNote} onClick={sendDispatchNote}>
+                  {sendingNote ? 'Sending…' : 'Send dispatch note'}
+                </button>
+              </span>
+            </div>
+          )}
+
           <ParcelDetailsFields couriers={couriers} value={details} onChange={setDetails} />
 
-          {offerTrackingEmail && (
+          {offerTrackingEmail && !quiet && (
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input type="checkbox" checked={emailTracking} onChange={(e) => setEmailTracking(e.target.checked)} />
               Let the customer know the tracking{hasTrackingNow ? '' : ' (needs a number or a link)'}
@@ -142,7 +183,7 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
             </p>
           )}
 
-          {alreadyTold ? (
+          {quiet ? null : alreadyTold ? (
             <p style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
               The customer has already been told this delivery window, so saving again will not email
               them a second time.

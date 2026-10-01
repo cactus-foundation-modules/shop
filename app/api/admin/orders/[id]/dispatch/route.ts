@@ -4,8 +4,6 @@ import { requireShopUser } from '@/modules/shop/lib/access'
 import { getOrderById, getOrderItems, outstandingPreOrderItems } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import {
-  claimSlotNotification,
-  claimTrackingNotification,
   createShipment,
   deleteShipment,
   getOrderDispatchSummary,
@@ -16,16 +14,18 @@ import { listRequestsForOrder } from '@/modules/shop/lib/db/order-requests'
 import { pendingRequestUnits } from '@/modules/shop/lib/order-requests'
 import { ORDER_LINE_BATCH_MAX, ORDER_LINE_BATCH_MAX_MESSAGE } from '@/modules/shop/lib/order-line-limits'
 import { sendShipmentDispatchedEmail } from '@/modules/shop/lib/shipment-email'
-import { hasFollowableTracking, sendTrackingAddedEmail } from '@/modules/shop/lib/tracking-added-email'
-import { sendDeliveryDayEmail, sendDeliverySlotEmail } from '@/modules/shop/lib/delivery-slot-email'
 import { isDeliveryDate, isSlotTime, slotMinutes } from '@/modules/shop/lib/delivery-slot'
-import { getSiteTimezone } from '@/lib/config/timezone.server'
 import type { ShpConfig } from '@/modules/shop/lib/config'
-import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
-import { DPD_FOLLOW_LINK_EXAMPLE, dpdFollowLink, dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
-import type { ShpOrderItem, ShpOrderStatus, ShpShipmentWithItems } from '@/modules/shop/lib/types'
+import {
+  followDispatchWithStatus,
+  maybeSendDayEmail,
+  maybeSendSlotEmail,
+  maybeSendTrackingEmail,
+  trackingLinkFor,
+} from '@/modules/shop/lib/dispatch-follow-up'
+import type { ShpOrderItem } from '@/modules/shop/lib/types'
 
 // Ceilings on what a parcel record may carry. Every one of these is stored on
 // the shipment, sent back on every read of the order and, bar the notes, put in
@@ -98,41 +98,6 @@ const Body = z.object({
 })
 
 type CourierChoice = { courierId: string | null; carrier: string | null }
-
-/** The courier's tracking is read from DPD, which is what makes its one
- *  tracking link the follow-my-parcel link and nothing else. */
-function courierTakesDpdLink(config: Pick<ShpConfig, 'deliveryCouriers'>, courierId: string | null): boolean {
-  return config.deliveryCouriers.find((c) => c.id === courierId)?.trackingSource === 'dpd'
-}
-
-const WRONG_DPD_LINK = `For DPD the tracking link has to be the follow-my-parcel link from their email, like ${DPD_FOLLOW_LINK_EXAMPLE}.`
-
-type TrackingLink = { trackingUrl: string | null; trackingShortCode: string | null }
-
-/**
- * The one tracking link, checked against the courier it went with.
- *
- * On a DPD courier it must be the follow-my-parcel link: that is the link whose
- * code opens their full feed, and it is the only DPD link a customer can follow
- * without a parcel number to hand. Anything else is refused here rather than
- * saved and quietly never read. It is stored in one canonical shape, with its
- * code alongside for the tracking check.
- *
- * Any other courier takes any web address, as it always has, and carries no
- * code - a code left over from when the parcel was down as DPD would have the
- * tracking check asking DPD about somebody else's van.
- */
-function trackingLinkFor(
-  config: Pick<ShpConfig, 'deliveryCouriers'>,
-  courierId: string | null,
-  trackingUrl: string | null,
-): { ok: true; link: TrackingLink } | { ok: false; error: string } {
-  if (!trackingUrl) return { ok: true, link: { trackingUrl: null, trackingShortCode: null } }
-  if (!courierTakesDpdLink(config, courierId)) return { ok: true, link: { trackingUrl, trackingShortCode: null } }
-  const code = dpdFollowLinkCode(trackingUrl)
-  if (!code) return { ok: false, error: WRONG_DPD_LINK }
-  return { ok: true, link: { trackingUrl: dpdFollowLink(code), trackingShortCode: code } }
-}
 
 // Which courier this parcel went with, decided here rather than trusted.
 //
@@ -395,110 +360,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   return NextResponse.json({ shipment, slotEmailSent: notified, dayEmailSent: dayTold, trackingEmailSent: trackingTold })
 }
 
-/**
- * Tell the customer their delivery window, if this save is the moment it became
- * knowable and nobody has been told yet.
- *
- * A day on its own is not enough: "your delivery is confirmed" with no window
- * in it is the dispatch note again, and the second email is only worth sending
- * because it carries something the first one could not.
- *
- * The claim is taken BEFORE the send and never given back. A mail server that
- * refuses the message has not made the parcel undelivered, and retrying it on
- * the owner's next save - which is usually a typo correction - would land a
- * second copy in front of a customer who already had the first.
- */
-async function maybeSendSlotEmail(
-  orderId: string,
-  shipment: ShpShipmentWithItems,
-  wanted: boolean,
-): Promise<boolean> {
-  if (!wanted) return false
-  if (!shipment.deliveryDate || !shipment.deliverySlotStart || !shipment.deliverySlotEnd) return false
-  if (shipment.slotNotifiedAt) return false
-  if (!(await claimSlotNotification(shipment.id, orderId))) return false
-
-  try {
-    const timezone = await getSiteTimezone()
-    await sendDeliverySlotEmail({ orderId, shipmentId: shipment.id, timezone })
-  } catch (error) {
-    console.error('[shop] delivery slot email failed', error)
-  }
-  return true
-}
-
-/**
- * Tell the customer the day, when this save booked one and there is no window
- * on it yet.
- *
- * The window email above is the one that matters, and once it has gone this
- * stays quiet: that email already named the day, and moving a day after a
- * window was confirmed is a rebooking, not a booking. Before then the day is
- * news whenever it is new or has moved, so there is no once-only stamp here -
- * a customer told Tuesday who is now getting Thursday has to hear it. The
- * price is that correcting a day typed wrong sends the right one, which is the
- * correction the customer needed anyway.
- *
- * A day recorded at dispatch is not sent from here: the dispatch note carries
- * it (see dispatchDeliveryVars).
- */
-async function maybeSendDayEmail(
-  orderId: string,
-  before: ShpShipmentWithItems,
-  after: ShpShipmentWithItems,
-  wanted: boolean,
-): Promise<boolean> {
-  if (!wanted) return false
-  if (!isDeliveryDate(after.deliveryDate)) return false
-  if (after.deliveryDate === before.deliveryDate) return false
-  if (after.deliverySlotStart && after.deliverySlotEnd) return false
-  if (after.slotNotifiedAt) return false
-
-  try {
-    await sendDeliveryDayEmail({ orderId, shipmentId: after.id })
-  } catch (error) {
-    console.error('[shop] delivery day email failed', error)
-  }
-  return true
-}
-
-/**
- * Tell the customer the tracking, if this save is the moment it appeared.
- *
- * The test is that the parcel GAINED something followable. A parcel dispatched
- * with its number already on it carried that number in its dispatch note, and a
- * second email repeating it is noise; a parcel that went out with nothing had a
- * dispatch note saying the goods had left and giving no way of following them,
- * which is the gap this closes.
- *
- * A courier name alone is not tracking - it is who has the box - so changing
- * "DPD" to "DPD Local" sends nothing. See hasFollowableTracking.
- *
- * The claim is taken BEFORE the send and never given back, exactly as the
- * window email's is: a mail server refusing the message has not un-tracked the
- * parcel, and retrying on the owner's next save - usually a typo correction -
- * would land a second copy in front of somebody who already had the first.
- */
-async function maybeSendTrackingEmail(
-  orderId: string,
-  before: ShpShipmentWithItems,
-  after: ShpShipmentWithItems,
-  wanted: boolean,
-): Promise<boolean> {
-  if (!wanted) return false
-  if (hasFollowableTracking(before)) return false
-  if (!hasFollowableTracking(after)) return false
-  if (after.trackingNotifiedAt) return false
-  if (!(await claimTrackingNotification(after.id, orderId))) return false
-
-  try {
-    await sendTrackingAddedEmail({ orderId, shipmentId: after.id })
-  } catch (error) {
-    console.error('[shop] tracking email failed', error)
-  }
-  return true
-}
-
 // Undo a dispatch recorded by mistake. The dispatched totals are summed from
 // the shipment's lines rather than held in a counter, so deleting the shipment
 // is all it takes for the units to go back to outstanding.
@@ -519,45 +380,4 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (order) await followDispatchWithStatus(id, order.status, 'undone')
 
   return NextResponse.json({ success: true })
-}
-
-/**
- * Keep the order's status in step with its parcels.
- *
- * The status and the dispatch record are two separate things an owner sets, and
- * the customer's order page reads its headline off the status. Recording every
- * parcel without also changing the dropdown left a replacement whose customer
- * had been emailed "on its way" looking at a page that said "Being prepared".
- * So the last parcel moves a PROCESSING order on to SHIPPED, and undoing a
- * parcel moves a SHIPPED order that is no longer fully dispatched back again.
- *
- * Only those two statuses are touched. PENDING has not been paid for, ON_HOLD
- * was put there by somebody on purpose, and COMPLETED and the refunded and
- * cancelled states say something a parcel record has no business overruling.
- *
- * It goes through applyOrderStatusChange so invoicing on dispatch and the
- * pre-order rules behave exactly as they do from the dropdown. No email: the
- * dispatch note is this route's to send, and an undo is not news to a customer.
- * A refusal is logged and stepped over - the parcel is recorded either way, and
- * the dropdown is still there.
- */
-async function followDispatchWithStatus(
-  orderId: string,
-  statusBefore: ShpOrderStatus,
-  change: 'recorded' | 'undone',
-): Promise<void> {
-  const wanted: { from: ShpOrderStatus; to: ShpOrderStatus } = change === 'recorded'
-    ? { from: 'PROCESSING', to: 'SHIPPED' }
-    : { from: 'SHIPPED', to: 'PROCESSING' }
-  if (statusBefore !== wanted.from) return
-
-  try {
-    const { fullyDispatched } = await getOrderDispatchSummary(orderId)
-    if (fullyDispatched !== (change === 'recorded')) return
-
-    const result = await applyOrderStatusChange({ orderId, status: wanted.to, sendEmail: false })
-    if (!result.ok) console.warn(`[shop] dispatch could not move order ${orderId} to ${wanted.to}: ${result.error}`)
-  } catch (error) {
-    console.error('[shop] dispatch status follow-up failed', orderId, error)
-  }
 }

@@ -465,6 +465,19 @@ export const ShpConfigSchema = z.object({
   // Pre-orders (addendum B)
   preOrderMixedCartBehaviour: z.enum(['HOLD_ALL', 'PROMPT_SPLIT']).default('HOLD_ALL'),
 
+  // A despatch another module has recorded from the supplier's own tracking -
+  // the purchasing module, reading the carrier's email about a drop-shipped
+  // order - and whether it goes on the customer's order (lib/despatch-observer.ts).
+  //
+  //   off             - nothing happens here. The default: a shop that never
+  //                     asked for this is not changed by it.
+  //   record          - the parcel and its tracking go on the order, the
+  //                     status follows, and nobody is emailed. For checking it
+  //                     against what actually arrives before trusting it.
+  //   record-and-tell - the same, and the customer gets the emails a parcel
+  //                     recorded by hand would get them.
+  despatchFromSupplierTracking: z.enum(['off', 'record', 'record-and-tell']).default('off'),
+
   // Customer cancel and return requests.
   //
   // Both default ON: a shopper who cannot ask has to email instead, and that

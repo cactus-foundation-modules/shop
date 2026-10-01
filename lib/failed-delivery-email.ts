@@ -34,8 +34,10 @@ function dialable(phone: string): string {
  *  `parcel`: the caller's copy was read before the stage was written, and
  *  writing a new stage is exactly what releases the previous claim. */
 export async function maybeSendFailedDeliveryEmail(
-  parcel: Pick<ShpShipment, 'id' | 'orderId'>,
+  parcel: Pick<ShpShipment, 'id' | 'orderId' | 'quietCustomerEmails'>,
 ): Promise<boolean> {
+  // A quiet parcel (068) tells the customer nothing, and leaves the claim be.
+  if (parcel.quietCustomerEmails) return false
   if (!(await claimFailedDeliveryNotification(parcel.id))) return false
 
   try {
@@ -51,7 +53,7 @@ export async function sendFailedDeliveryEmail(params: { orderId: string; shipmen
   if (!order) return
 
   const shipment = (await getShipmentsForOrder(params.orderId)).find((s) => s.id === params.shipmentId)
-  if (!shipment) return
+  if (!shipment || shipment.quietCustomerEmails) return
 
   const config = await getShopConfigCached()
   const courier = courierForShipment(config, shipment)

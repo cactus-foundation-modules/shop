@@ -782,6 +782,12 @@ export type ShpShipment = {
   /** When the customer was emailed about the current failed attempt. Cleared
    *  when the courier's stage moves on. */
   failedNotifiedAt: Date | null
+  /** Recorded from a supplier's tracking while the shop was set to "record
+   *  only" (lib/despatch-observer.ts): no customer email that can follow from
+   *  this parcel is sent. Cleared by sending its dispatch note by hand.
+   *  Always set on a parcel read from the database; optional so a parcel built
+   *  by hand (a preview, a test) reads as not quiet. */
+  quietCustomerEmails?: boolean
   /** Where the courier's own tracking says the parcel has got to, in the
    *  courier's own words. What that MEANS is a per-courier setting, applied at
    *  read time so correcting it fixes parcels already recorded. */

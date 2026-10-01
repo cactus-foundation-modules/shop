@@ -52,7 +52,9 @@ export async function sendShipmentDispatchedEmail(params: { orderId: string; shi
 
   const shipments = await getShipmentsForOrder(params.orderId)
   const shipment = shipments.find((s) => s.id === params.shipmentId)
-  if (!shipment || shipment.items.length === 0) return
+  // A quiet parcel (068) tells the customer nothing; "Send dispatch note"
+  // clears the flag before it calls this.
+  if (!shipment || shipment.quietCustomerEmails || shipment.items.length === 0) return
 
   // The summary is the same read the order screen uses, so the figures in the
   // email cannot disagree with the ones the shop owner is looking at. Its lines

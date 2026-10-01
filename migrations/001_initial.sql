@@ -845,6 +845,9 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     -- Set once the customer is emailed about a failed attempt (063); cleared
     -- when the courier's stage moves on, so a second failure is a second email.
     "failed_notified_at" TIMESTAMP(3),
+    -- Recorded from a supplier's tracking while the shop was set to "record
+    -- only": no email that can follow from this parcel is sent (068).
+    "quiet_customer_emails" BOOLEAN NOT NULL DEFAULT false,
     -- Where the courier's own tracking says the parcel has got to, read on a
     -- schedule rather than while a customer waits. The stage is kept in the
     -- courier's own words and translated at READ time, so an owner correcting

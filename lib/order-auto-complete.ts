@@ -1,5 +1,5 @@
 import { getOrderById } from '@/modules/shop/lib/db/orders'
-import { allShipmentsDelivered, getOrderDispatchSummary } from '@/modules/shop/lib/db/shipments'
+import { allShipmentsDelivered, getOrderDispatchSummary, orderHasQuietShipment } from '@/modules/shop/lib/db/shipments'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 import type { ShpOrderStatus } from '@/modules/shop/lib/types'
 
@@ -47,16 +47,20 @@ export async function completeOrderIfEveryParcelArrived(orderId: string): Promis
   const order = await getOrderById(orderId)
   if (!order || NOT_COMPLETABLE.has(order.status)) return false
 
-  const [summary, everyParcelIn] = await Promise.all([
+  const [summary, everyParcelIn, quiet] = await Promise.all([
     getOrderDispatchSummary(orderId),
     allShipmentsDelivered(orderId),
+    orderHasQuietShipment(orderId),
   ])
   if (!everyParcelIn || !summary.fullyDispatched) return false
 
+  // An order with a quiet parcel on it (068, recorded from a supplier's
+  // tracking in "record only") is still completed - it has arrived - but its
+  // customer is not emailed about it.
   const result = await applyOrderStatusChange({
     orderId,
     status: 'COMPLETED',
-    sendEmail: true,
+    sendEmail: !quiet,
     emailOnlyIfChanged: true,
   })
   if (!result.ok) {

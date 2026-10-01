@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.467",
+  "version": "0.1.468",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1679",
@@ -863,6 +863,13 @@
     }
   ],
   "extensionPoints": [
+    {
+      "point": "purchase-orders.despatch-recorded",
+      "id": "shop-despatch-from-supplier-tracking",
+      "serverOnly": true,
+      "import": "./lib/despatch-observer",
+      "component": "shopDespatchRecordedObserver"
+    },
     {
       "point": "core.admin-dashboard-widgets",
       "id": "shop-summary",
