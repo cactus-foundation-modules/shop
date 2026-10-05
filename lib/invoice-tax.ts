@@ -120,6 +120,15 @@ export type InvoiceMoney = {
   taxBreakdown: ShpInvoiceTaxRow[]
 }
 
+/** A separately-settled amount that belongs on the order's one VAT invoice. */
+export type InvoiceExtraLine = {
+  name: string
+  net: number
+  tax: number
+  gross: number
+  taxRatePercent: number
+}
+
 /** One VAT rate's share of the delivery charge. */
 export type DeliverySlice = { ratePercent: string; rate: number; net: number; tax: number; gross: number }
 
@@ -205,7 +214,7 @@ export function deliverySlices(
 export function buildInvoiceMoney(
   order: ShpOrder,
   items: ShpOrderItem[],
-  opts?: { keepDeliveryDetail?: boolean },
+  opts?: { keepDeliveryDetail?: boolean; extraLines?: InvoiceExtraLine[] },
 ): InvoiceMoney {
   const inclusive = order.taxMode === 'INCLUSIVE'
   const subtotal = Number(order.subtotal)
@@ -259,6 +268,36 @@ export function buildInvoiceMoney(
       // Which order line this is, so a credit note can find it again without
       // matching on a product name that may since have been edited.
       orderItemId: item.id,
+    })
+  }
+
+  // A redelivery charge is settled after checkout, rather than being part of a
+  // basket line. It is nevertheless part of what the customer paid for this
+  // order, so its own recorded net, tax and gross figures become a proper VAT
+  // line rather than vanishing from the invoice raised at completion.
+  for (const extra of opts?.extraLines ?? []) {
+    const rate = Number(extra.taxRatePercent) || 0
+    const key = formatRatePercent(rate)
+    const net = Number(extra.net) || 0
+    const tax = Number(extra.tax) || 0
+    const gross = Number(extra.gross) || 0
+    const bucket = buckets.get(key) ?? { rate, net: 0, tax: 0, gross: 0 }
+    bucket.net += net
+    bucket.tax += tax
+    bucket.gross += gross
+    buckets.set(key, bucket)
+    lines.push({
+      name: extra.name,
+      sku: null,
+      quantity: 1,
+      unitPrice: money(inclusive ? gross : net),
+      lineTotal: money(inclusive ? gross : net),
+      taxRatePercent: key,
+      net: money(net),
+      tax: money(tax),
+      gross: money(gross),
+      detail: [],
+      orderItemId: null,
     })
   }
 

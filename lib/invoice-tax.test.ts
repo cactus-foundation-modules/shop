@@ -61,6 +61,15 @@ describe('buildInvoiceMoney - EXCLUSIVE shop (Deskwell)', () => {
     expect(taxBreakdown).toEqual([{ ratePercent: '20', net: '1050.00', tax: '210.00', gross: '1260.00' }])
   })
 
+  it('puts a separately-settled redelivery fee on the one VAT invoice', () => {
+    const invoiceOrder = order({ subtotal: '1040.00', taxAmount: '208.00', total: '1248.00' })
+    const { lines, taxBreakdown } = buildInvoiceMoney(invoiceOrder, [item()], {
+      extraLines: [{ name: 'Redelivery fee', net: 40, tax: 8, gross: 48, taxRatePercent: 0.2 }],
+    })
+    expect(lines[1]).toMatchObject({ name: 'Redelivery fee', net: '40.00', tax: '8.00', gross: '48.00' })
+    expect(taxBreakdown).toEqual([{ ratePercent: '20', net: '1040.00', tax: '208.00', gross: '1248.00' }])
+  })
+
   it('splits a mixed-rate basket into a row each, delivery apportioned by value', () => {
     // £300 at 20% and £100 at 0%, £40 delivery. Delivery follows the mix, so
     // £30 of it is rated 20% (£6) and £10 of it zero-rated.

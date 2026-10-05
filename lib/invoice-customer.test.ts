@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCustomer } from '@/modules/shop/lib/invoices'
+import { buildCustomer, settledChargeInvoiceLines } from '@/modules/shop/lib/invoices'
 import type { ShpOrder } from '@/modules/shop/lib/types'
 
 // Who the invoice is made out to, frozen at the moment it is raised.
@@ -66,5 +66,23 @@ describe('buildCustomer', () => {
 
   it('carries the customer reference their finance team matches against', () => {
     expect(buildCustomer(ORDER).reference).toBe('PO-4471')
+  })
+})
+
+describe('settledChargeInvoiceLines', () => {
+  it('includes paid redelivery charges at their recorded VAT rate', () => {
+    const charges = [{
+      status: 'PAID', reason: 'Redelivery fee', netAmount: '40.00', taxAmount: '8.00', total: '48.00', taxRate: '20.000',
+    }] as Awaited<ReturnType<typeof import('@/modules/shop/lib/db/order-charges').listChargesForOrder>>
+    expect(settledChargeInvoiceLines(charges)).toEqual([
+      { name: 'Redelivery fee', net: 40, tax: 8, gross: 48, taxRatePercent: 0.2 },
+    ])
+  })
+
+  it('leaves charges that have not been paid off the VAT invoice', () => {
+    const charges = [{
+      status: 'PENDING', reason: 'Redelivery fee', netAmount: '40.00', taxAmount: '8.00', total: '48.00', taxRate: '20.000',
+    }] as Awaited<ReturnType<typeof import('@/modules/shop/lib/db/order-charges').listChargesForOrder>>
+    expect(settledChargeInvoiceLines(charges)).toEqual([])
   })
 })

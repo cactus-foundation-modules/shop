@@ -13,10 +13,11 @@ import {
 } from '@/modules/shop/lib/db/invoices'
 import { clearRefundsNettedOff, listUncreditedRefundDelivery, listUncreditedRefundLines, markRefundsNettedOff } from '@/modules/shop/lib/db/refunds'
 import { getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
+import { listChargesForOrder } from '@/modules/shop/lib/db/order-charges'
 import { generateInvoiceNumber } from '@/modules/shop/lib/invoice-number'
 import { invoiceTaxPointDay } from '@/modules/shop/lib/invoice-tax-point'
 import { netOrderOfRefunds } from '@/modules/shop/lib/invoice-net-of-refunds'
-import { buildInvoiceMoney, ledgerItems } from '@/modules/shop/lib/invoice-tax'
+import { buildInvoiceMoney, ledgerItems, type InvoiceExtraLine } from '@/modules/shop/lib/invoice-tax'
 import { invoicePdfFilename, printPath } from '@/modules/shop/lib/invoice-pdf'
 import {
   dispatchInvoiceIssued,
@@ -69,6 +70,39 @@ export function addDays(isoDate: string, days: number): string {
   const date = new Date(`${isoDate}T00:00:00Z`)
   date.setUTCDate(date.getUTCDate() + days)
   return date.toISOString().slice(0, 10)
+}
+
+/** Charges the customer has actually settled before their order's VAT invoice
+ * is raised. The original order total does not contain them, so make their
+ * recorded figures part of this immutable invoice snapshot explicitly. */
+export function settledChargeInvoiceLines(
+  charges: Awaited<ReturnType<typeof listChargesForOrder>>,
+): InvoiceExtraLine[] {
+  return charges
+    .filter((charge) => charge.status === 'PAID')
+    .map((charge) => ({
+      name: charge.reason,
+      net: Number(charge.netAmount),
+      tax: Number(charge.taxAmount),
+      gross: Number(charge.total),
+      // Order lines keep 20% as 0.2; order charges keep it as 20. Their
+      // invoice representation must use the order-line convention.
+      taxRatePercent: Number(charge.taxRate) / 100,
+    }))
+}
+
+function orderIncludingSettledCharges(order: ShpOrder, charges: InvoiceExtraLine[]): ShpOrder {
+  if (charges.length === 0) return order
+  const net = charges.reduce((sum, charge) => sum + charge.net, 0)
+  const tax = charges.reduce((sum, charge) => sum + charge.tax, 0)
+  const gross = charges.reduce((sum, charge) => sum + charge.gross, 0)
+  const subtotalExtra = order.taxMode === 'INCLUSIVE' ? gross : net
+  return {
+    ...order,
+    subtotal: (Number(order.subtotal) + subtotalExtra).toFixed(2),
+    taxAmount: (Number(order.taxAmount) + tax).toFixed(2),
+    total: (Number(order.total) + gross).toFixed(2),
+  }
 }
 
 export function splitLines(value: string): string[] {
@@ -280,7 +314,7 @@ export async function buildInvoiceInsertInput(
     taxPointDate?: string
   },
 ): Promise<BuiltInvoiceInput> {
-  const [rawItems, timezone, refundLines, refundDelivery, shipments] = await Promise.all([
+  const [rawItems, timezone, refundLines, refundDelivery, shipments, charges] = await Promise.all([
     getOrderItems(order.id),
     opts.timezone ? Promise.resolve(opts.timezone) : siteTimezone(),
     listUncreditedRefundLines(order.id, opts.alsoNettedOffInvoiceId ?? null),
@@ -288,6 +322,7 @@ export async function buildInvoiceInsertInput(
     // Oldest first, and only the first parcel is wanted: the earliest any of the
     // order was supplied. Not read at all when the tax point is carried over.
     opts.taxPointDate ? Promise.resolve(null) : getShipmentsForOrder(order.id),
+    listChargesForOrder(order.id),
   ])
   const issuedDay = dateInZone(new Date(), timezone)
   const paidDay = order.paidAt ? dateInZone(order.paidAt, timezone) : null
@@ -310,7 +345,9 @@ export async function buildInvoiceInsertInput(
     refundDelivery.reduce((sum, row) => sum + Number(row.shippingAmount), 0),
   )
 
-  const { lines, taxBreakdown } = buildInvoiceMoney(net.order, net.items)
+  const extraLines = settledChargeInvoiceLines(charges)
+  const invoiceOrder = orderIncludingSettledCharges(net.order, extraLines)
+  const { lines, taxBreakdown } = buildInvoiceMoney(invoiceOrder, net.items, { extraLines })
   const [seller, invoiceNumber] = await Promise.all([buildSeller(config), generateInvoiceNumber()])
 
   const input: InsertInvoiceInput = {
@@ -322,11 +359,11 @@ export async function buildInvoiceInsertInput(
     currency: order.currency,
     currencySymbol: config.currencySymbol,
     taxMode: order.taxMode,
-    subtotal: net.order.subtotal,
-    discountAmount: net.order.discountAmount,
-    shippingAmount: net.order.shippingAmount,
-    taxAmount: net.order.taxAmount,
-    total: net.order.total,
+    subtotal: invoiceOrder.subtotal,
+    discountAmount: invoiceOrder.discountAmount,
+    shippingAmount: invoiceOrder.shippingAmount,
+    taxAmount: invoiceOrder.taxAmount,
+    total: invoiceOrder.total,
     seller,
     customer: buildCustomer(order),
     lines,
