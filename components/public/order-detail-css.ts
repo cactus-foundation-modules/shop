@@ -326,7 +326,13 @@ export const ORDER_DETAIL_CSS = `
   .sod-steps{grid-auto-flow:row;grid-auto-columns:auto;gap:0;padding:0.875rem 1rem}
   .sod-step{grid-template-columns:auto 1fr;justify-items:start;text-align:left;
     column-gap:0.75rem;padding:0.375rem 0}
-  .sod-step .sod-dot{grid-row:span 2}
+  .sod-step .sod-dot,.sod-step .sod-van-wrap{grid-row:span 2}
+  /* Stacked, the rail runs down and not across, so there is no width for the van
+     to slide along. It sits on the rail like any other dot, and the track shrinks
+     to the dot so the label and date keep their own column. */
+  .sod-van-track{width:24px}
+  .sod-van{left:0 !important;transform:none}
+  .sod-step-delivery .sod-step-label,.sod-step-delivery .sod-step-when{min-width:0}
   .sod-step::before,.sod-step::after{top:auto;left:11px;right:auto;width:2px;height:50%}
   .sod-step::before{top:0}
   .sod-step::after{bottom:0}

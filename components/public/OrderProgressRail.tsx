@@ -36,7 +36,7 @@ export function OrderProgressRail({ steps, timezone, van }: {
           {/* The dot is decoration - the state is already in the label's
               wording and in aria-current, so nothing is lost by hiding it. */}
           {step.key === 'delivery' && van ? (
-            <span aria-hidden="true">
+            <span className="sod-van-wrap" aria-hidden="true">
               <DeliveryVanDot {...van} timezone={timezone} initialProgress={step.progress ?? 0} />
             </span>
           ) : (
