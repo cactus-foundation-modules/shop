@@ -363,6 +363,23 @@ describe('the tracking in the shop’s own terms', () => {
     })
   })
 
+  it('puts an AIT short link on the AIT courier, canonical, with no number', () => {
+    const couriers = [...COURIERS, { id: 'ait', name: 'AIT', trackingSource: 'ait' }]
+    expect(shopTrackingFor({ deliveryCouriers: couriers } as never, event({
+      carrier: null, trackingNumber: '972140', trackingUrl: 'http://www.aithd.com/kz0vkrz?utm=sms', trackingShortCode: null,
+    }))).toEqual({
+      trackingNumber: null, trackingUrl: 'https://aithd.com/kz0vkrz', trackingShortCode: null,
+      carrier: 'AIT', courierId: 'ait',
+    })
+  })
+
+  it('keeps a parcel off the AIT courier when its link is not an AIT short link', () => {
+    const couriers = [...COURIERS, { id: 'ait', name: 'AIT', trackingSource: 'ait' }]
+    expect(shopTrackingFor({ deliveryCouriers: couriers } as never, event({
+      carrier: 'AIT', trackingNumber: '972140', trackingUrl: null, trackingShortCode: null,
+    }))).toMatchObject({ trackingNumber: '972140', courierId: null })
+  })
+
   it('B2: never keeps a link to a host it does not know as a carrier, keeping the number', () => {
     expect(shopTrackingFor({ deliveryCouriers: COURIERS } as never, event({
       carrier: null, trackingUrl: 'https://evil.example/track/12345678901234', trackingShortCode: null,

@@ -1,4 +1,5 @@
 import type { ShpCourier } from '@/modules/shop/lib/courier-faqs'
+import { AIT_STAGE, AIT_STAGE_MEANING } from '@/modules/shop/lib/tracking/ait-stages'
 
 // What one of a courier's stages MEANS, according to the shop's settings.
 //
@@ -65,8 +66,22 @@ function named(list: string[], stage: string): boolean {
   })
 }
 
+/** What a stage means to the shop before the owner has said anything: only
+ *  AIT's, whose words are the reader's own rather than the courier's - see
+ *  ait-stages.ts. The part before " - ", so "Unsuccessful - No access" is the
+ *  failure it starts with. */
+function builtInMeaning(
+  courier: Partial<Pick<ShpCourier, 'trackingSource'>>,
+  stage: string,
+): StageMeaning | null {
+  if (courier.trackingSource !== 'ait') return null
+  const opening = stage.split(/\s+-\s+/)[0]?.trim() ?? ''
+  return Object.hasOwn(AIT_STAGE_MEANING, opening) ? AIT_STAGE_MEANING[opening] ?? null : null
+}
+
 export function stageMeaning(
-  courier: Pick<ShpCourier, 'outForDeliveryStages' | 'deliveredStages' | 'failedStages'> | null,
+  courier: (Pick<ShpCourier, 'outForDeliveryStages' | 'deliveredStages' | 'failedStages'>
+    & Partial<Pick<ShpCourier, 'trackingSource'>>) | null,
   stage: string | null | undefined,
 ): StageMeaning {
   const name = normalise(stage ?? '')
@@ -82,7 +97,7 @@ export function stageMeaning(
   // a delivery that has already not happened.
   if (named(courier.failedStages, name)) return 'failed'
   if (named(courier.outForDeliveryStages, name)) return 'out-for-delivery'
-  return 'progress'
+  return builtInMeaning(courier, name) ?? 'progress'
 }
 
 /**
@@ -97,11 +112,13 @@ export function stageMeaning(
  * Only cut on " - ", so a comma inside a reason survives.
  */
 export function failedReason(
-  courier: Pick<ShpCourier, 'failedStages'> | null,
+  courier: (Pick<ShpCourier, 'failedStages'> & Partial<Pick<ShpCourier, 'trackingSource'>>) | null,
   stage: string | null | undefined,
 ): string {
   if (!courier || !stage?.trim()) return ''
   const listed = new Set(courier.failedStages.map(normalise))
+  // AIT's failure word is the shop's own and means failed without being listed.
+  if (courier.trackingSource === 'ait') listed.add(normalise(AIT_STAGE.unsuccessful))
   // The owner listed the whole stage: it is the failure, not a reason for one.
   if (listed.has(normalise(stage))) return ''
   const parts = stage
@@ -113,6 +130,24 @@ export function failedReason(
   if (reason !== reason.toUpperCase()) return reason
   const lower = reason.toLowerCase()
   return lower.charAt(0).toUpperCase() + lower.slice(1)
+}
+
+/** Whether this courier's own word is the only thing that may say a parcel
+ *  has arrived - so the clock passing the end of the window never does.
+ *
+ *  True for AIT, whose status code says delivered, out, failed, cancelled, on
+ *  hold or part-delivered outright. The clock fallback exists for couriers who
+ *  report nothing past a stage name; on AIT it would turn a late van, a
+ *  cancellation or a parcel put on hold into "arrived" at the end of the
+ *  window. */
+export function courierAloneSaysArrived(
+  courier: Partial<Pick<ShpCourier, 'trackingSource'>> | null,
+  /** The parcel's stored stage. Only a parcel AIT have actually been read for
+   *  is left to AIT: one with no link, or whose feed has refused us since it
+   *  went out, has nothing but the clock, and keeps it like any other courier. */
+  trackingStage: string | null | undefined,
+): boolean {
+  return courier?.trackingSource === 'ait' && Boolean(trackingStage?.trim())
 }
 
 /** Whether this courier is one the shop reads on a schedule at all.

@@ -43,7 +43,7 @@ import { formatDeliveredDayRelative, nowInTimezone } from '@/modules/shop/lib/de
 import { calendarDateIn } from '@/lib/config/timezone'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { courierIsPolled } from '@/modules/shop/lib/tracking/stage-meaning'
-import { livePollIntervalMs, positionFreshness } from '@/modules/shop/lib/tracking/live-delivery'
+import { livePollIntervalMs, storedPositionFreshness } from '@/modules/shop/lib/tracking/live-delivery'
 import DeliveryLiveMap, { type LiveDeliveryState } from '@/modules/shop/components/public/DeliveryLiveMap'
 import { TrackingCheckOnView } from '@/modules/shop/components/public/TrackingCheckOnView'
 import { FAQ_QUERY_KEY } from '@/modules/shop/lib/courier-faqs'
@@ -433,7 +433,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
               fixedAt: liveShipment.vehicleFixedAt ? liveShipment.vehicleFixedAt.toISOString() : null,
             }
           : null,
-        freshness: positionFreshness(liveShipment.vehicleFixedAt, now),
+        freshness: storedPositionFreshness(liveShipment.vehicleFixedAt, liveShipment.vehiclePolledAt, now),
       }
     : null
 

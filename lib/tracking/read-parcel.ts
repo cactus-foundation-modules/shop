@@ -28,6 +28,8 @@ import {
   readDpd,
 } from '@/modules/shop/lib/tracking/dpd'
 import { fetchDpdParcel, fetchDpdRoute, mintDpdSession } from '@/modules/shop/lib/tracking/dpd-session'
+import { aitImageHeaders, readAit } from '@/modules/shop/lib/tracking/ait'
+import { aitLinkParts } from '@/modules/shop/lib/tracking/ait-link'
 import { EMPTY_READING, type TrackingReading } from '@/modules/shop/lib/tracking/reading'
 import type { ShpCourier } from '@/modules/shop/lib/courier-faqs'
 import type { ShpShipment } from '@/modules/shop/lib/types'
@@ -44,7 +46,12 @@ export type ParcelReading = TrackingReading & {
    *  courier has one. The headers come with it because some couriers serve it
    *  from a session rather than a public bucket, and the reader is the only
    *  thing here holding that session. */
-  proofImage: { url: string; headers: Record<string, string> } | null
+  proofImage: { url: string; headers: Record<string, string>; label: string } | null
+  /** Where the crew is, where the courier hands that over in the same answer
+   *  as everything else (AIT). Carries no time of its own: the caller records
+   *  when it asked. Multidrop's van comes from a separate endpoint instead -
+   *  see multidrop-position.ts - and leaves this null. */
+  vehicle: { lat: string; lng: string } | null
   /** Ids the live map asks with. Multidrop only - DPD do not give a guest the
    *  round's map, and their driver endpoint has no position on it either. */
   clientId: string | null
@@ -59,6 +66,7 @@ const EMPTY_PARCEL_READING: ParcelReading = {
   ...EMPTY_READING,
   multidropHtml: null,
   proofImage: null,
+  vehicle: null,
   clientId: null,
   routeId: null,
   crewLine: null,
@@ -154,6 +162,7 @@ async function readDpdParcelOnce(parcel: ShpShipment, timezone: string): Promise
     ? {
         url: dpdImageUrl(parcelCode, image),
         headers: dpdImageHeaders(cookie, parcel.trackingShortCode),
+        label: 'delivery-photo',
       }
     : null
 
@@ -178,6 +187,30 @@ async function readDpdParcel(parcel: ShpShipment, timezone: string): Promise<Par
   return readDpdParcelOnce(parcel, timezone)
 }
 
+async function readAitParcel(parcel: ShpShipment): Promise<ParcelReading | null> {
+  const parts = aitLinkParts(parcel.trackingUrl)
+  if (!parts) return null
+  const reading = await readAit(parcel.trackingUrl)
+  if (!reading?.stage) return null
+  const { vehicle, destinationLat, destinationLng, dropsAway, signatureImageUrl, clientId, routeId, ...common } = reading
+  return {
+    ...EMPTY_PARCEL_READING,
+    ...common,
+    vehicle,
+    destinationLat,
+    destinationLng,
+    dropsAway,
+    clientId,
+    routeId,
+    // Their signature, from wherever they keep it. Fetched with their tracking
+    // page as the Referer, in case the picture sits behind the same gate as
+    // the feed does.
+    proofImage: signatureImageUrl
+      ? { url: signatureImageUrl, headers: aitImageHeaders(parts.region), label: 'delivery-signature' }
+      : null,
+  }
+}
+
 /**
  * One look at one parcel.
  *
@@ -200,6 +233,8 @@ export async function readParcelTracking(
       return readGfs(parcel, courier.gfsCarrier, timezone)
     case 'dpd':
       return readDpdParcel(parcel, timezone)
+    case 'ait':
+      return readAitParcel(parcel)
     default:
       return null
   }

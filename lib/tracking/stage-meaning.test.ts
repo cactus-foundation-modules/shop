@@ -8,6 +8,37 @@ const furdeco = {
   failedStages: ['Failed Attempt'],
 }
 
+// AIT's stage words are the reader's own, so they mean something with nothing
+// in the lists - otherwise a late van reads as "progress" and the window
+// passing is taken as arrival.
+const ait = {
+  trackingSource: 'ait' as const,
+  outForDeliveryStages: [] as string[],
+  deliveredStages: [] as string[],
+  failedStages: [] as string[],
+}
+
+describe('stageMeaning for AIT', () => {
+  it('knows its own words with every list empty', () => {
+    expect(stageMeaning(ait, 'Out for delivery')).toBe('out-for-delivery')
+    expect(stageMeaning(ait, 'Delivered')).toBe('delivered')
+    expect(stageMeaning(ait, 'Unsuccessful - No access to property')).toBe('failed')
+    expect(stageMeaning(ait, 'Booked')).toBe('progress')
+  })
+
+  it('still lets the owner say otherwise', () => {
+    expect(stageMeaning({ ...ait, deliveredStages: ['Partial success'] }, 'Partial success')).toBe('delivered')
+  })
+
+  it('gives no other courier those meanings', () => {
+    expect(stageMeaning({ ...ait, trackingSource: 'multidrop' as const }, 'Delivered')).toBe('progress')
+  })
+
+  it('gives the reason without the failure word, unlisted', () => {
+    expect(failedReason(ait, 'Unsuccessful - No access to property')).toBe('No access to property')
+  })
+})
+
 describe('stageMeaning', () => {
   it('reads the stages the owner has named', () => {
     expect(stageMeaning(furdeco, 'Assigned to Crew')).toBe('out-for-delivery')

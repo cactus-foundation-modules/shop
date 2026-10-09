@@ -57,20 +57,29 @@ function plural(count: number, noun: string): string {
  * minutes ago that we re-read a second ago is a van sitting still, and saying
  * "updated 1 second ago" there would be true of us and useless to them.
  */
-export function positionFreshness(fixedAt: Date | null | undefined, now: Date): PositionFreshness | null {
+export function positionFreshness(
+  fixedAt: Date | null | undefined,
+  now: Date,
+  /** Whose clock `fixedAt` is. 'van' is the courier's own fix time and says
+   *  "Updated"; 'us' is when the shop asked, for a courier whose position
+   *  comes with no time of its own (AIT), and says "Checked" - the honest
+   *  claim, since a van that has not moved since breakfast reads the same. */
+  clock: 'van' | 'us' = 'van',
+): PositionFreshness | null {
+  const verb = clock === 'van' ? 'Updated' : 'Checked'
   if (!fixedAt) return null
   const age = now.getTime() - fixedAt.getTime()
   // A fix from the future is a clock disagreement, not a fresher fix. Treated
   // as "just now" rather than shown as a negative age.
-  if (age < 0) return { text: 'Updated just now', stale: false }
+  if (age < 0) return { text: `${verb} just now`, stale: false }
 
-  if (age < MINUTE) return { text: `Updated ${plural(Math.floor(age / SECOND), 'second')} ago`, stale: false }
+  if (age < MINUTE) return { text: `${verb} ${plural(Math.floor(age / SECOND), 'second')} ago`, stale: false }
   if (age < HOUR) {
     const minutes = Math.floor(age / MINUTE)
-    return { text: `Updated ${plural(minutes, 'minute')} ago`, stale: age >= STALE_AFTER_MS }
+    return { text: `${verb} ${plural(minutes, 'minute')} ago`, stale: age >= STALE_AFTER_MS }
   }
-  if (age < DAY) return { text: `Updated ${plural(Math.floor(age / HOUR), 'hour')} ago`, stale: true }
-  return { text: 'Updated over a day ago', stale: true }
+  if (age < DAY) return { text: `${verb} ${plural(Math.floor(age / HOUR), 'hour')} ago`, stale: true }
+  return { text: `${verb} over a day ago`, stale: true }
 }
 
 /**
@@ -90,3 +99,15 @@ export function livePollIntervalMs(dropsAway: number | null | undefined): number
  *  reload shows what was learned a moment ago rather than asking the courier
  *  the same question twice. The same five minutes the map's slow tick uses. */
 export const VIEW_CHECK_MIN_AGE_MINUTES = 5
+
+/**
+ * The freshness line for a stored position: the van's own time where the
+ * courier gave one, and otherwise when the shop last asked.
+ */
+export function storedPositionFreshness(
+  fixedAt: Date | null | undefined,
+  polledAt: Date | null | undefined,
+  now: Date,
+): PositionFreshness | null {
+  return fixedAt ? positionFreshness(fixedAt, now, 'van') : positionFreshness(polledAt, now, 'us')
+}

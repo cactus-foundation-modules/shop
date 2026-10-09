@@ -6,6 +6,7 @@ import { sendDeliveryDayEmail, sendDeliverySlotEmail } from '@/modules/shop/lib/
 import { isDeliveryDate } from '@/modules/shop/lib/delivery-slot'
 import { getSiteTimezone } from '@/lib/config/timezone.server'
 import { DPD_FOLLOW_LINK_EXAMPLE, dpdFollowLink, dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
+import { AIT_LINK_EXAMPLE, aitLink, aitLinkParts } from '@/modules/shop/lib/tracking/ait-link'
 import type { ShpOrderStatus, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
 // What happens around recording a parcel, shared by the two things that record
@@ -25,9 +26,24 @@ export function courierTakesDpdLink(config: Pick<ShpConfig, 'deliveryCouriers'>,
   return config.deliveryCouriers.find((c) => c.id === courierId)?.trackingSource === 'dpd'
 }
 
+/** The courier's tracking is read from AIT Home Delivery, whose one link is
+ *  the short aithd.com address - the code in it is the whole parcel to them. */
+export function courierTakesAitLink(config: Pick<ShpConfig, 'deliveryCouriers'>, courierId: string | null): boolean {
+  return config.deliveryCouriers.find((c) => c.id === courierId)?.trackingSource === 'ait'
+}
+
+export const WRONG_AIT_LINK = `For AIT Home Delivery the tracking link has to be the short link from their message, like ${AIT_LINK_EXAMPLE}.`
+
 export const WRONG_DPD_LINK = `For DPD the tracking link has to be the follow-my-parcel link from their email, like ${DPD_FOLLOW_LINK_EXAMPLE}.`
 
-export type TrackingLink = { trackingUrl: string | null; trackingShortCode: string | null }
+export type TrackingLink = {
+  trackingUrl: string | null
+  trackingShortCode: string | null
+  /** Present, and null, only on an AIT courier: they take no tracking number,
+   *  so one sent anyway (by an older form, a script, a supplier's announcement)
+   *  is cleared rather than stored where the edit form can no longer show it. */
+  trackingNumber?: null
+}
 
 /**
  * The one tracking link, checked against the courier it went with.
@@ -47,6 +63,16 @@ export function trackingLinkFor(
   courierId: string | null,
   trackingUrl: string | null,
 ): { ok: true; link: TrackingLink } | { ok: false; error: string } {
+  // AIT: the short link and nothing else, kept in one canonical shape, and no
+  // tracking number. No code is stored beside the link - the reader takes it
+  // back out, and a code column holding something that is not a DPD code would
+  // be read as one.
+  if (courierTakesAitLink(config, courierId)) {
+    if (!trackingUrl) return { ok: true, link: { trackingUrl: null, trackingShortCode: null, trackingNumber: null } }
+    const parts = aitLinkParts(trackingUrl)
+    if (!parts) return { ok: false, error: WRONG_AIT_LINK }
+    return { ok: true, link: { trackingUrl: aitLink(parts), trackingShortCode: null, trackingNumber: null } }
+  }
   if (!trackingUrl) return { ok: true, link: { trackingUrl: null, trackingShortCode: null } }
   if (!courierTakesDpdLink(config, courierId)) return { ok: true, link: { trackingUrl, trackingShortCode: null } }
   const code = dpdFollowLinkCode(trackingUrl)

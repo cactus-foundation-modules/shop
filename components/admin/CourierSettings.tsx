@@ -157,12 +157,13 @@ export function CourierSettings({ value, onChange }: {
               <option value="multidrop">Yes - Multidrop tracking pages</option>
               <option value="gfs">Yes - GFS parcel pages</option>
               <option value="dpd">Yes - DPD</option>
+              <option value="ait">Yes - AIT Home Delivery</option>
             </select>
             <span className="field-hint">
               Checks each parcel once an hour - every minute once it is out on a van - and keeps the
               answer on your own site, so the customer never has to visit theirs. Pick the one that
               matches your tracking links: Multidrop for multidrop.link, GFS for parcels booked
-              through Global Freight Solutions, DPD for track.dpd.co.uk.
+              through Global Freight Solutions, DPD for track.dpd.co.uk, AIT for aithd.com links.
             </span>
           </div>
 
@@ -180,6 +181,14 @@ export function CourierSettings({ value, onChange }: {
                 actually carrying it - usually DPD.
               </span>
             </div>
+          )}
+
+          {courier.trackingSource === 'ait' && (
+            <span className="field-hint" style={{ display: 'block', marginTop: '0.5rem' }}>
+              AIT say for themselves when a parcel is out, has arrived or could not be delivered
+              (&ldquo;Out for delivery&rdquo;, &ldquo;Delivered&rdquo;, &ldquo;Unsuccessful&rdquo;), so
+              the three lists below can stay empty. Anything you add to them still counts.
+            </span>
           )}
 
           {courier.trackingSource !== 'none' && (

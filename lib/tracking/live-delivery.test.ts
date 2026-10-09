@@ -4,6 +4,7 @@ import {
   SLOW_POLL_MS,
   livePollIntervalMs,
   positionFreshness,
+  storedPositionFreshness,
 } from '@/modules/shop/lib/tracking/live-delivery'
 
 const NOW = new Date('2026-09-08T13:30:00.000Z')
@@ -58,5 +59,21 @@ describe('livePollIntervalMs', () => {
     // other way would put every parcel on the fast tick the day they reword it.
     expect(livePollIntervalMs(null)).toBe(SLOW_POLL_MS)
     expect(livePollIntervalMs(undefined)).toBe(SLOW_POLL_MS)
+  })
+})
+
+describe('storedPositionFreshness', () => {
+  // AIT send a position with no time of its own. Saying "Updated" against our
+  // own clock would be a claim about the van that nobody made.
+  it('says Checked when only our own clock is known', () => {
+    expect(storedPositionFreshness(null, agedBy(90_000), NOW)).toEqual({ text: 'Checked 1 minute ago', stale: false })
+  })
+
+  it("prefers the van's own time where there is one", () => {
+    expect(storedPositionFreshness(agedBy(12_000), agedBy(1_000), NOW)?.text).toBe('Updated 12 seconds ago')
+  })
+
+  it('is nothing when neither is known', () => {
+    expect(storedPositionFreshness(null, null, NOW)).toBeNull()
   })
 })

@@ -11,7 +11,7 @@ import { readParcelTracking } from '@/modules/shop/lib/tracking/read-parcel'
 import { storeParcelReading } from '@/modules/shop/lib/tracking/store-reading'
 import { fetchVehiclePosition, positionUrl } from '@/modules/shop/lib/tracking/multidrop-position'
 import { cachedVehiclePosition } from '@/modules/shop/lib/tracking/position-cache'
-import { livePollIntervalMs, positionFreshness, SLOW_POLL_MS } from '@/modules/shop/lib/tracking/live-delivery'
+import { livePollIntervalMs, SLOW_POLL_MS, storedPositionFreshness } from '@/modules/shop/lib/tracking/live-delivery'
 import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
 import { getClientIp } from '@/lib/auth/rate-limit'
 
@@ -121,16 +121,32 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const url = current.trackingUrl && current.trackingClientId && current.trackingRouteId
     ? positionUrl(current.trackingUrl, current.trackingClientId, current.trackingRouteId)
     : null
-  // Out for delivery, but the scheduled job has not yet read the ids the
-  // courier's map needs. Keep asking on the slow tick - the next hourly run
-  // fills them in, and the page picks the van up without a reload.
+  // No separate map endpoint to ask. Either the courier hands the crew's
+  // position over in the same answer as everything else (AIT), in which case
+  // the reading above has just written it to the row, or this is a Multidrop
+  // parcel whose ids the scheduled job has not read yet - keep asking on the
+  // slow tick, and the page picks the van up without a reload once they land.
   if (!url) {
+    const stored = current.vehicleLat && current.vehicleLng
+      ? {
+          lat: current.vehicleLat,
+          lng: current.vehicleLng,
+          heading: current.vehicleHeading,
+          fixedAt: current.vehicleFixedAt ? current.vehicleFixedAt.toISOString() : null,
+        }
+      : null
     return NextResponse.json({
       ...base,
       live: true,
       crewLine: current.crewLine,
       dropsAway: current.dropsAway,
       pollAfterMs: livePollIntervalMs(current.dropsAway),
+      ...(stored
+        ? {
+            position: stored,
+            freshness: storedPositionFreshness(current.vehicleFixedAt, current.vehiclePolledAt, new Date()),
+          }
+        : {}),
     })
   }
 
@@ -180,6 +196,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       : null,
     // Worded here rather than in the browser, so one machine's clock being
     // wrong cannot age somebody else's delivery.
-    freshness: positionFreshness(shown?.fixedAt ?? null, new Date()),
+    // The same rule the page renders with, so the first tick never rewords it:
+    // the van's own time where it gave one, else when we last asked.
+    freshness: storedPositionFreshness(
+      shown?.fixedAt ?? null,
+      position ? new Date() : current.vehiclePolledAt,
+      new Date(),
+    ),
   })
 }

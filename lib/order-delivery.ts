@@ -7,7 +7,7 @@ import {
   type DeliveryProgress,
 } from '@/modules/shop/lib/delivery-slot'
 import { courierForShipment, courierWillRebook, customerMaySeeTracking, faqsForShipment, type ShpCourier } from '@/modules/shop/lib/courier-faqs'
-import { failedReason, stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
+import { courierAloneSaysArrived, failedReason, stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
 import { liveProgress, type LiveProgress } from '@/modules/shop/lib/tracking/live-line'
 import type { TrackingEvent } from '@/modules/shop/lib/tracking/reading'
@@ -127,7 +127,7 @@ export function parcelDelivery(
     || Boolean(shipment.deliveredAt)
     || Boolean(shipment.signedAt)
     || Boolean(shipment.signedBy?.trim())
-    || (meaning === 'progress' && progress?.phase === 'passed'))
+    || (meaning === 'progress' && progress?.phase === 'passed' && !courierAloneSaysArrived(courier, shipment.trackingStage)))
 
   // The courier's own flag where they report one, and the owner's reading of
   // their stage words where they do not. Same rule as `delivered` in the

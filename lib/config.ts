@@ -577,7 +577,7 @@ export const ShpConfigSchema = z.object({
         // not need a release. Match is case-insensitive and trimmed; a stage
         // named in neither list is progress the shop notes and says nothing
         // about.
-        trackingSource: z.enum(['none', 'multidrop', 'gfs', 'dpd']).default('none'),
+        trackingSource: z.enum(['none', 'multidrop', 'gfs', 'dpd', 'ait']).default('none'),
         // Which carrier to ask GFS about. GFS are a broker - they hand the
         // parcel to somebody, and their page wants to be told who. Only read
         // when trackingSource is 'gfs'.

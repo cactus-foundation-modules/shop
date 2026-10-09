@@ -134,6 +134,73 @@ describe('parcelDelivery', () => {
   })
 })
 
+describe('an AIT parcel with the stage lists left empty', () => {
+  const aitConfig = {
+    deliveryCouriers: [{
+      ...config.deliveryCouriers[0]!,
+      id: 'cou_ait',
+      name: 'AIT',
+      trackingSource: 'ait' as const,
+      outForDeliveryStages: [],
+      deliveredStages: [],
+      failedStages: [],
+    }],
+  }
+  const late = {
+    courierId: 'cou_ait',
+    deliveryWindowFrom: new Date('2026-10-09T10:27:00.000Z'),
+    deliveryWindowTo: new Date('2026-10-09T12:27:00.000Z'),
+  }
+
+  // The van running past the end of its two-hour window is still out, not
+  // arrived: the clock must not outrank AIT's own "out for delivery".
+  it('is still out for delivery after its window has passed', () => {
+    const delivery = parcelDelivery(
+      aitConfig,
+      shipment({ ...late, carrierOutForDelivery: true, trackingStage: 'Out for delivery' }),
+      new Date('2026-10-09T13:30:00.000Z'),
+      'Europe/London',
+    )
+    expect(delivery.arrived).toBe(false)
+    expect(delivery.outForDelivery).toBe(true)
+  })
+
+  it('is not arrived when cancelled, on hold or part delivered, whatever the clock says', () => {
+    for (const trackingStage of ['Cancelled', 'On hold', 'Partial success']) {
+      const delivery = parcelDelivery(
+        aitConfig,
+        shipment({ ...late, carrierOutForDelivery: false, trackingStage }),
+        new Date('2026-10-09T13:30:00.000Z'),
+        'Europe/London',
+      )
+      expect(delivery.arrived).toBe(false)
+    }
+  })
+
+  // Never read from AIT - no link yet, or their feed refusing us - so there is
+  // no word of theirs to wait for, and the clock decides as for any courier.
+  it('falls back to the clock for a parcel AIT have never been read for', () => {
+    const delivery = parcelDelivery(
+      aitConfig,
+      shipment({ ...late, deliveryDate: '2026-10-09', deliverySlotStart: '11:27', deliverySlotEnd: '13:27' }),
+      new Date('2026-10-09T13:30:00.000Z'),
+      'Europe/London',
+    )
+    expect(delivery.arrived).toBe(true)
+  })
+
+  it('is failed, not arrived, after an unsuccessful attempt', () => {
+    const delivery = parcelDelivery(
+      aitConfig,
+      shipment({ ...late, carrierOutForDelivery: false, trackingStage: 'Unsuccessful - No access to property' }),
+      new Date('2026-10-09T13:30:00.000Z'),
+      'Europe/London',
+    )
+    expect(delivery.failed).toBe(true)
+    expect(delivery.arrived).toBe(false)
+  })
+})
+
 describe('what the courier says beats what the stage words say', () => {
   // DPD write to the customer - "Your parcel will be with you today between
   // 11:41 and 12:41" - which no settings box could ever match. Their flag can.

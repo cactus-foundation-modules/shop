@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from 'react'
 import { DPD_FOLLOW_LINK_EXAMPLE, dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
+import { AIT_LINK_EXAMPLE, aitLinkParts } from '@/modules/shop/lib/tracking/ait-link'
 
 // The details that hang off a parcel rather than off its contents: who is
 // carrying it, when it is booked to arrive, and how to follow it.
@@ -21,6 +22,10 @@ export type CourierOption = {
    *  older deployment still renders - it then accepts any web address, as it
    *  always did, and the route has the final say either way. */
   dpdFollowLink?: boolean
+  /** The courier's tracking is read from AIT Home Delivery: its one link is
+   *  the short aithd.com address, and there is no tracking number to type -
+   *  the code in the link is the parcel. Optional for the same reason. */
+  aitLink?: boolean
 }
 
 export type ParcelDetails = {
@@ -83,6 +88,16 @@ export function ParcelDetailsFields({ couriers, value, onChange }: {
   const dpd = couriers.find((c) => c.id === value.courierId)?.dpdFollowLink === true
   const typedLink = value.trackingUrl.trim()
   const wrongDpdLink = dpd && typedLink.length > 0 && !dpdFollowLinkCode(typedLink)
+  const ait = couriers.find((c) => c.id === value.courierId)?.aitLink === true
+  const wrongAitLink = ait && typedLink.length > 0 && !aitLinkParts(typedLink)
+  const wrongLink = wrongDpdLink || wrongAitLink
+
+  // Picking AIT takes away the tracking number box, so a number typed for the
+  // courier picked before goes with it rather than being saved unseen.
+  const pickCourier = (courierId: string) => {
+    const toAit = couriers.find((c) => c.id === courierId)?.aitLink === true
+    onChange({ ...value, courierId, ...(toAit ? { trackingNumber: '' } : {}) })
+  }
 
   return (
     <>
@@ -90,7 +105,7 @@ export function ParcelDetailsFields({ couriers, value, onChange }: {
         {couriers.length > 0 ? (
           <select
             value={value.courierId}
-            onChange={(e) => set('courierId', e.target.value)}
+            onChange={(e) => pickCourier(e.target.value)}
             style={fieldStyle}
           >
             <option value="">Other (type the name)</option>
@@ -157,20 +172,33 @@ export function ParcelDetailsFields({ couriers, value, onChange }: {
         </label>
       </div>
 
-      <label>Tracking number (optional)
-        <input value={value.trackingNumber} onChange={(e) => set('trackingNumber', e.target.value)} style={fieldStyle} />
-      </label>
+      {!ait && (
+        <label>Tracking number (optional)
+          <input value={value.trackingNumber} onChange={(e) => set('trackingNumber', e.target.value)} style={fieldStyle} />
+        </label>
+      )}
 
       <label>Tracking link (optional)
         <input
           value={value.trackingUrl}
           onChange={(e) => set('trackingUrl', e.target.value)}
-          placeholder={dpd ? DPD_FOLLOW_LINK_EXAMPLE : 'https://…'}
+          placeholder={dpd ? DPD_FOLLOW_LINK_EXAMPLE : ait ? AIT_LINK_EXAMPLE : 'https://…'}
           inputMode="url"
-          aria-invalid={wrongDpdLink || undefined}
-          style={wrongDpdLink ? { ...fieldStyle, borderColor: 'var(--color-danger)' } : fieldStyle}
+          aria-invalid={wrongLink || undefined}
+          style={wrongLink ? { ...fieldStyle, borderColor: 'var(--color-danger)' } : fieldStyle}
         />
-        {wrongDpdLink ? (
+        {wrongAitLink ? (
+          <span style={{ ...hintStyle, color: 'var(--color-danger)' }}>
+            That is not AIT&rsquo;s tracking link. Use the short one from their message, which looks
+            like {AIT_LINK_EXAMPLE}.
+          </span>
+        ) : ait ? (
+          <span style={hintStyle}>
+            The short link from AIT&rsquo;s message, like {AIT_LINK_EXAMPLE}. That one link is all it
+            takes: the customer&rsquo;s order page shows the two-hour window, the driver, how many
+            drops away they are and the van on a map, and the signature once it is delivered.
+          </span>
+        ) : wrongDpdLink ? (
           <span style={{ ...hintStyle, color: 'var(--color-danger)' }}>
             That is not DPD&rsquo;s follow-my-parcel link. Use the one from their email, which looks
             like {DPD_FOLLOW_LINK_EXAMPLE}.

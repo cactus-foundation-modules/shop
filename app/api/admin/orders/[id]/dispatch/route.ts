@@ -23,6 +23,7 @@ import {
   maybeSendDayEmail,
   maybeSendSlotEmail,
   maybeSendTrackingEmail,
+  courierTakesAitLink,
   trackingLinkFor,
 } from '@/modules/shop/lib/dispatch-follow-up'
 import type { ShpOrderItem } from '@/modules/shop/lib/types'
@@ -200,7 +201,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // being fetched separately because every screen that offers dispatch is
     // already waiting on this one, and a second round trip for six words would
     // show up as a dropdown that populates a beat late.
-    couriers: config.deliveryCouriers.map((c) => ({ id: c.id, name: c.name, dpdFollowLink: c.trackingSource === 'dpd' })),
+    couriers: config.deliveryCouriers.map((c) => ({
+      id: c.id,
+      name: c.name,
+      dpdFollowLink: c.trackingSource === 'dpd',
+      aitLink: c.trackingSource === 'ait',
+    })),
     preOrderHold: {
       active: holdAll && outstanding.length > 0,
       outstandingCount: outstanding.length,
@@ -339,8 +345,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   // rule, and left as it was, is not refused for an address nobody changed.
   const nextCourierId = courier?.ok ? courier.choice.courierId : existing.courierId
   const nextUrl = rest.trackingUrl !== undefined ? rest.trackingUrl : existing.trackingUrl
+  // An AIT parcel takes no number at all, so a save that sends one is judged
+  // too - the link rule is where the number gets cleared.
   const linkTouched = (rest.trackingUrl !== undefined && rest.trackingUrl !== existing.trackingUrl)
     || nextCourierId !== existing.courierId
+    || (courierTakesAitLink(config, nextCourierId) && Boolean(rest.trackingNumber ?? existing.trackingNumber))
   const tracking = linkTouched ? trackingLinkFor(config, nextCourierId, nextUrl) : null
   if (tracking && !tracking.ok) return NextResponse.json({ error: tracking.error }, { status: 400 })
 

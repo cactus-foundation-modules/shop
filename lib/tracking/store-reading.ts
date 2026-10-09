@@ -4,6 +4,7 @@ import {
   recordSignature,
   recordTrackingPageDetails,
   recordTrackingStage,
+  recordVehiclePosition,
 } from '@/modules/shop/lib/db/shipments'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { maybeSendCarrierWindowEmail } from '@/modules/shop/lib/delivery-slot-email'
@@ -18,7 +19,8 @@ import type { ShpShipment } from '@/modules/shop/lib/types'
 /** Write one courier reading to the parcel row, shared by the hourly job and
  *  the page poll that runs while somebody is watching. */
 export async function storeParcelReading(
-  courier: Pick<ShpCourier, 'outForDeliveryStages' | 'deliveredStages' | 'failedStages'>,
+  courier: Pick<ShpCourier, 'outForDeliveryStages' | 'deliveredStages' | 'failedStages'>
+    & Partial<Pick<ShpCourier, 'trackingSource'>>,
   parcel: ShpShipment,
   reading: ParcelReading,
   timezone: string,
@@ -65,6 +67,19 @@ export async function storeParcelReading(
     destinationLng: reading.destinationLng,
   })
 
+  // A courier that hands the crew's position over with everything else (AIT)
+  // has it written here, so the order page opens with the van already on the
+  // map. No time of the courier's own comes with it: the row's polled-at is
+  // the only clock, and the page says "Checked" rather than "Updated" for it.
+  if (reading.vehicle && !delivered) {
+    await recordVehiclePosition(parcel.id, {
+      lat: reading.vehicle.lat,
+      lng: reading.vehicle.lng,
+      heading: null,
+      fixedAt: null,
+    })
+  }
+
   if (reading.receivedBy) {
     await recordReceipt(parcel.id, { receivedBy: reading.receivedBy, receivedAt: reading.receivedAt })
   }
@@ -80,7 +95,7 @@ export async function storeParcelReading(
       : reading.proofImage
         ? await captureSignature(reading.proofImage.url, reference, {
             headers: reading.proofImage.headers,
-            label: 'delivery-photo',
+            label: reading.proofImage.label,
             orderNumber: order?.orderNumber,
           })
         : null
