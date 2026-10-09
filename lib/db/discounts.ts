@@ -1,6 +1,6 @@
-import { prisma } from '@/lib/db/prisma'
+import { prisma, type PrismaTransactionClient } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
-import type { ShpCoupon, ShpAutomaticDiscount, ShpDiscountType } from '@/modules/shop/lib/types'
+import type { ShpCoupon, ShpAutomaticDiscount, ShpAutomaticDiscountScope, ShpDiscountType } from '@/modules/shop/lib/types'
 
 function mapCoupon(r: Record<string, unknown>): ShpCoupon {
   return {
@@ -20,7 +20,7 @@ function mapCoupon(r: Record<string, unknown>): ShpCoupon {
   }
 }
 
-function mapAutoDiscount(r: Record<string, unknown>): ShpAutomaticDiscount {
+function mapAutoDiscount(r: Record<string, unknown>, products: ShpAutomaticDiscount['products']): ShpAutomaticDiscount {
   return {
     id: r.id as string,
     name: r.name as string,
@@ -32,6 +32,9 @@ function mapAutoDiscount(r: Record<string, unknown>): ShpAutomaticDiscount {
     expiresAt: (r.expires_at as Date | null) ?? null,
     isActive: r.is_active as boolean,
     priority: r.priority as number,
+    appliesTo: r.applies_to === 'PRODUCTS' ? 'PRODUCTS' : 'ALL',
+    products,
+    minimumQuantity: (r.minimum_quantity as number | null) ?? null,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
   }
@@ -152,25 +155,60 @@ export async function listAutomaticDiscounts(activeOnly = false): Promise<ShpAut
         ORDER BY "priority" DESC
       `
     : await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_automatic_discounts" ORDER BY "priority" DESC`
-  return rows.map(mapAutoDiscount)
+  // The products only for the rules that have any: the checkout calls this on
+  // every total, and a shop with nothing but whole-basket rules should not pay
+  // a second query for them.
+  const scopedIds = rows.filter((r) => r.applies_to === 'PRODUCTS').map((r) => r.id as string)
+  const productsByDiscount = new Map<string, ShpAutomaticDiscount['products']>()
+  if (scopedIds.length > 0) {
+    const links = await prisma.$queryRaw<Array<{ discount_id: string; product_id: string; name: string }>>`
+      SELECT l."discount_id", l."product_id", p."name"
+      FROM "shp_automatic_discount_products" l
+      JOIN "shp_products" p ON p."id" = l."product_id"
+      WHERE l."discount_id" IN (${Prisma.join(scopedIds)})
+      ORDER BY p."name"
+    `
+    for (const link of links) {
+      const list = productsByDiscount.get(link.discount_id) ?? []
+      list.push({ id: link.product_id, name: link.name })
+      productsByDiscount.set(link.discount_id, list)
+    }
+  }
+  return rows.map((r) => mapAutoDiscount(r, productsByDiscount.get(r.id as string) ?? []))
 }
 
-export async function createAutomaticDiscount(data: {
-  name: string; type: ShpDiscountType; value?: number | null; minimumOrderValue?: number | null
-  freeShippingThreshold?: number | null; startsAt?: Date | null; expiresAt?: Date | null; priority?: number
-}): Promise<{ id: string }> {
-  const rows = await prisma.$queryRaw<[{ id: string }]>`
-    INSERT INTO "shp_automatic_discounts" ("name", "type", "value", "minimum_order_value", "free_shipping_threshold", "starts_at", "expires_at", "priority")
-    VALUES (${data.name}, ${data.type}, ${data.value ?? null}, ${data.minimumOrderValue ?? null}, ${data.freeShippingThreshold ?? null}, ${data.startsAt ?? null}, ${data.expiresAt ?? null}, ${data.priority ?? 0})
-    RETURNING "id"
-  `
-  return rows[0]
-}
-
-export async function updateAutomaticDiscount(id: string, fields: Partial<{
+type AutomaticDiscountFields = {
   name: string; type: ShpDiscountType; value: number | null; minimumOrderValue: number | null
   freeShippingThreshold: number | null; startsAt: Date | null; expiresAt: Date | null; priority: number; isActive: boolean
-}>): Promise<void> {
+  appliesTo: ShpAutomaticDiscountScope; productIds: string[]; minimumQuantity: number | null
+}
+
+// The rule's product list is replaced whole, in the same transaction as the
+// row, so a save can never leave a rule pointed at half of what was picked.
+async function replaceDiscountProducts(tx: PrismaTransactionClient, id: string, productIds: string[]): Promise<void> {
+  await tx.$executeRaw`DELETE FROM "shp_automatic_discount_products" WHERE "discount_id" = ${id}`
+  const unique = [...new Set(productIds)]
+  if (unique.length === 0) return
+  await tx.$executeRaw`
+    INSERT INTO "shp_automatic_discount_products" ("discount_id", "product_id")
+    SELECT ${id}, p."id" FROM "shp_products" p WHERE p."id" IN (${Prisma.join(unique)})
+    ON CONFLICT DO NOTHING
+  `
+}
+
+export async function createAutomaticDiscount(data: Partial<AutomaticDiscountFields> & { name: string; type: ShpDiscountType }): Promise<{ id: string }> {
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<[{ id: string }]>`
+      INSERT INTO "shp_automatic_discounts" ("name", "type", "value", "minimum_order_value", "free_shipping_threshold", "starts_at", "expires_at", "priority", "applies_to", "minimum_quantity")
+      VALUES (${data.name}, ${data.type}, ${data.value ?? null}, ${data.minimumOrderValue ?? null}, ${data.freeShippingThreshold ?? null}, ${data.startsAt ?? null}, ${data.expiresAt ?? null}, ${data.priority ?? 0}, ${data.appliesTo ?? 'ALL'}, ${data.minimumQuantity ?? null})
+      RETURNING "id"
+    `
+    if (data.productIds?.length) await replaceDiscountProducts(tx, rows[0].id, data.productIds)
+    return rows[0]
+  })
+}
+
+export async function updateAutomaticDiscount(id: string, fields: Partial<AutomaticDiscountFields>): Promise<void> {
   const sets: Prisma.Sql[] = []
   if (fields.name !== undefined) sets.push(Prisma.sql`"name" = ${fields.name}`)
   if (fields.type !== undefined) sets.push(Prisma.sql`"type" = ${fields.type}`)
@@ -181,9 +219,14 @@ export async function updateAutomaticDiscount(id: string, fields: Partial<{
   if (fields.expiresAt !== undefined) sets.push(Prisma.sql`"expires_at" = ${fields.expiresAt}`)
   if (fields.priority !== undefined) sets.push(Prisma.sql`"priority" = ${fields.priority}`)
   if (fields.isActive !== undefined) sets.push(Prisma.sql`"is_active" = ${fields.isActive}`)
-  if (sets.length === 0) return
+  if (fields.appliesTo !== undefined) sets.push(Prisma.sql`"applies_to" = ${fields.appliesTo}`)
+  if (fields.minimumQuantity !== undefined) sets.push(Prisma.sql`"minimum_quantity" = ${fields.minimumQuantity}`)
+  if (sets.length === 0 && fields.productIds === undefined) return
   sets.push(Prisma.sql`"updated_at" = CURRENT_TIMESTAMP`)
-  await prisma.$executeRaw`UPDATE "shp_automatic_discounts" SET ${Prisma.join(sets, ', ')} WHERE "id" = ${id}`
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`UPDATE "shp_automatic_discounts" SET ${Prisma.join(sets, ', ')} WHERE "id" = ${id}`
+    if (fields.productIds !== undefined) await replaceDiscountProducts(tx, id, fields.productIds)
+  })
 }
 
 export async function deleteAutomaticDiscount(id: string): Promise<void> {

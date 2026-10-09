@@ -477,12 +477,30 @@ CREATE TABLE IF NOT EXISTS "shp_automatic_discounts" (
     "expires_at" TIMESTAMP(3),
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "priority" INTEGER NOT NULL DEFAULT 0,
+    -- 'ALL' reads the whole basket; 'PRODUCTS' only the listings in
+    -- shp_automatic_discount_products (069).
+    "applies_to" TEXT NOT NULL DEFAULT 'ALL',
+    -- How many matched items the basket must hold, pooled across the products.
+    "minimum_quantity" INTEGER,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "shp_automatic_discounts_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "shp_automatic_discounts_type_check" CHECK ("type" IN ('PERCENTAGE', 'FIXED_AMOUNT', 'FREE_SHIPPING'))
+    CONSTRAINT "shp_automatic_discounts_type_check" CHECK ("type" IN ('PERCENTAGE', 'FIXED_AMOUNT', 'FREE_SHIPPING')),
+    CONSTRAINT "shp_automatic_discounts_applies_to_check" CHECK ("applies_to" IN ('ALL', 'PRODUCTS')),
+    CONSTRAINT "shp_automatic_discounts_minimum_quantity_check" CHECK ("minimum_quantity" IS NULL OR "minimum_quantity" >= 1)
 );
+
+CREATE TABLE IF NOT EXISTS "shp_automatic_discount_products" (
+    "discount_id" TEXT NOT NULL,
+    "product_id" TEXT NOT NULL,
+
+    CONSTRAINT "shp_automatic_discount_products_pkey" PRIMARY KEY ("discount_id", "product_id"),
+    CONSTRAINT "shp_automatic_discount_products_discount_id_fkey" FOREIGN KEY ("discount_id") REFERENCES "shp_automatic_discounts"("id") ON DELETE CASCADE,
+    CONSTRAINT "shp_automatic_discount_products_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "shp_products"("id") ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS "shp_automatic_discount_products_product_id_idx" ON "shp_automatic_discount_products" ("product_id");
 
 -- ---------------------------------------------------------------------------
 -- Orders

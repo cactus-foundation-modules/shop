@@ -6,8 +6,11 @@ import { useTabParam } from '@/modules/shop/lib/admin/tab-url'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { useConfirm, useAlert } from '@/modules/shop/components/admin/dialogs'
+import { ProductPicker } from '@/modules/shop/components/admin/ProductPicker'
 
 type DiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FREE_SHIPPING'
+type DiscountScope = 'ALL' | 'PRODUCTS'
+type PickedProduct = { id: string; name: string }
 
 // `startsOn` / `expiresOn` are the days the server worked out in the site's own
 // timezone (lib/discount-window.ts). The form reads and shows those rather than
@@ -23,6 +26,7 @@ type AutoDiscount = {
   id: string; name: string; type: DiscountType; value: string | null; priority: number; isActive: boolean
   minimumOrderValue: string | null; freeShippingThreshold: string | null; startsAt: string | null; expiresAt: string | null
   startsOn: string | null; expiresOn: string | null
+  appliesTo: DiscountScope; products: PickedProduct[]; minimumQuantity: number | null
 }
 
 type CouponForm = {
@@ -30,10 +34,14 @@ type CouponForm = {
 }
 type AutoDiscountForm = {
   name: string; type: DiscountType; value: string; minimumOrderValue: string; freeShippingThreshold: string; priority: string; startsAt: string; expiresAt: string
+  appliesTo: DiscountScope; products: PickedProduct[]; minimumQuantity: string
 }
 
 const emptyCouponForm: CouponForm = { code: '', type: 'PERCENTAGE', value: '', minimumOrderValue: '', usageLimit: '', perCustomerLimit: '', startsAt: '', expiresAt: '' }
-const emptyAutoForm: AutoDiscountForm = { name: '', type: 'PERCENTAGE', value: '', minimumOrderValue: '', freeShippingThreshold: '', priority: '0', startsAt: '', expiresAt: '' }
+const emptyAutoForm: AutoDiscountForm = {
+  name: '', type: 'PERCENTAGE', value: '', minimumOrderValue: '', freeShippingThreshold: '', priority: '0', startsAt: '', expiresAt: '',
+  appliesTo: 'ALL', products: [], minimumQuantity: '',
+}
 
 function numOrNull(v: string): number | null {
   return v.trim() === '' ? null : Number(v)
@@ -63,6 +71,15 @@ function formatDay(day: string): string {
 // it is switched off, and saying so beats a dash that could mean "not set up".
 function formatLastDay(day: string | null): string {
   return day ? formatDay(day) : 'No end'
+}
+// The Applies to column. A pinned rule whose products have all been deleted
+// applies to nothing, and says so rather than looking like a whole-basket one.
+function formatScope(d: AutoDiscount): string {
+  const qty = d.minimumQuantity != null ? ` (${d.minimumQuantity}+)` : ''
+  if (d.appliesTo === 'ALL') return `Whole basket${qty}`
+  if (d.products.length === 0) return 'Nothing - its products have gone'
+  const names = d.products.length === 1 ? d.products[0]!.name : `${d.products.length} products`
+  return `${names}${qty}`
 }
 
 export function DiscountsScreen() {
@@ -130,6 +147,7 @@ export function DiscountsScreen() {
         name: d.name, type: d.type, value: d.value ?? '', minimumOrderValue: d.minimumOrderValue ?? '',
         freeShippingThreshold: d.freeShippingThreshold ?? '', priority: d.priority.toString(),
         startsAt: d.startsOn ?? '', expiresAt: d.expiresOn ?? '',
+        appliesTo: d.appliesTo, products: d.products, minimumQuantity: d.minimumQuantity?.toString() ?? '',
       })
     } else {
       setEditingAutoId(null)
@@ -143,6 +161,11 @@ export function DiscountsScreen() {
       name: autoForm.name, type: autoForm.type, value: autoForm.type === 'FREE_SHIPPING' ? null : numOrNull(autoForm.value),
       minimumOrderValue: numOrNull(autoForm.minimumOrderValue), freeShippingThreshold: numOrNull(autoForm.freeShippingThreshold),
       priority: Number(autoForm.priority) || 0, startsAt: dateOrNull(autoForm.startsAt), expiresAt: dateOrNull(autoForm.expiresAt),
+      appliesTo: autoForm.appliesTo,
+      // A whole-basket rule keeps no product list, so switching one back to the
+      // basket cannot leave a hidden selection waiting to come back.
+      productIds: autoForm.appliesTo === 'PRODUCTS' ? autoForm.products.map((p) => p.id) : [],
+      minimumQuantity: numOrNull(autoForm.minimumQuantity),
     }
     const url = editingAutoId ? `/api/m/shop/admin/automatic-discounts/${editingAutoId}` : '/api/m/shop/admin/automatic-discounts'
     const res = await fetch(url, { method: editingAutoId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -227,11 +250,11 @@ export function DiscountsScreen() {
         <div>
           <button onClick={() => startEditAuto()} className="btn btn-primary" style={{ marginBottom: '1rem' }}>New automatic discount</button>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}><th style={{ padding: '0.5rem' }}>Name</th><th>Type</th><th>Value</th><th>Priority</th><th>Last day</th><th>Active</th><th /></tr></thead>
+            <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}><th style={{ padding: '0.5rem' }}>Name</th><th>Type</th><th>Value</th><th>Applies to</th><th>Priority</th><th>Last day</th><th>Active</th><th /></tr></thead>
             <tbody>
               {autoDiscounts.map((d) => (
                 <tr key={d.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                  <td style={{ padding: '0.5rem' }}>{d.name}</td><td>{d.type}</td><td>{formatDiscountValue(d.type, d.value, currencySymbol)}</td><td>{d.priority}</td>
+                  <td style={{ padding: '0.5rem' }}>{d.name}</td><td>{d.type}</td><td>{formatDiscountValue(d.type, d.value, currencySymbol)}</td><td>{formatScope(d)}</td><td>{d.priority}</td>
                   <td>{formatLastDay(d.expiresOn)}</td>
                   <td><button onClick={() => toggleAutoDiscount(d)} style={linkButton}>{d.isActive ? 'Deactivate' : 'Activate'}</button></td>
                   <td style={{ display: 'flex', gap: '0.5rem' }}>
@@ -258,7 +281,33 @@ export function DiscountsScreen() {
               {autoForm.type !== 'FREE_SHIPPING' && (
                 <label>{autoForm.type === 'PERCENTAGE' ? 'Percentage off (e.g. 10)' : 'Amount off'}<input type="number" step="0.01" value={autoForm.value} onChange={(e) => setAutoForm({ ...autoForm, value: e.target.value })} style={inputStyle} /></label>
               )}
-              <label>Minimum order value<input type="number" step="0.01" value={autoForm.minimumOrderValue} onChange={(e) => setAutoForm({ ...autoForm, minimumOrderValue: e.target.value })} style={inputStyle} /></label>
+              <label>
+                Applies to
+                <select value={autoForm.appliesTo} onChange={(e) => setAutoForm({ ...autoForm, appliesTo: e.target.value as DiscountScope })} style={inputStyle}>
+                  <option value="ALL">The whole basket</option>
+                  <option value="PRODUCTS">Particular products</option>
+                </select>
+              </label>
+              {autoForm.appliesTo === 'PRODUCTS' && (
+                <>
+                  <ProductPicker
+                    value={autoForm.products}
+                    onChange={(next) => setAutoForm({ ...autoForm, products: next })}
+                    label="Products"
+                  />
+                  <span className="field-hint" style={hintStyle}>The discount comes off these alone, and covers every option of each (colours, sizes). A fixed amount comes off once per order.</span>
+                </>
+              )}
+              <label>
+                Minimum quantity
+                <input type="number" min={1} step={1} value={autoForm.minimumQuantity} onChange={(e) => setAutoForm({ ...autoForm, minimumQuantity: e.target.value })} style={inputStyle} />
+                <span className="field-hint" style={hintStyle}>
+                  {autoForm.appliesTo === 'PRODUCTS'
+                    ? 'How many of the products above the basket must hold, counted together - four of one and two of another makes six. Leave empty for no minimum.'
+                    : 'How many items the basket must hold. Leave empty for no minimum.'}
+                </span>
+              </label>
+              <label>Minimum order value<input type="number" step="0.01" value={autoForm.minimumOrderValue} onChange={(e) => setAutoForm({ ...autoForm, minimumOrderValue: e.target.value })} style={inputStyle} />{autoForm.appliesTo === 'PRODUCTS' && <span className="field-hint" style={hintStyle}>Of the whole basket, not just the products above.</span>}</label>
               {autoForm.type === 'FREE_SHIPPING' && (
                 <label>Free-shipping threshold<input type="number" step="0.01" value={autoForm.freeShippingThreshold} onChange={(e) => setAutoForm({ ...autoForm, freeShippingThreshold: e.target.value })} style={inputStyle} /></label>
               )}

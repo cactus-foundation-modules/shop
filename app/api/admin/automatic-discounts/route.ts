@@ -24,7 +24,15 @@ const Body = z.object({
   // A bare day here is the LAST day the discount works; a full instant is kept as sent.
   expiresAt: DiscountWindowInput.nullable().optional(),
   priority: z.number().int().optional(),
-})
+  // 'PRODUCTS' pins the rule to the listings picked; 'ALL' is the whole basket.
+  appliesTo: z.enum(['ALL', 'PRODUCTS']).optional(),
+  productIds: z.array(z.string().min(1).max(64)).max(500).optional(),
+  // How many of the matched items the basket must hold, pooled across them.
+  minimumQuantity: z.number().int().min(1).max(100000).nullable().optional(),
+}).refine(
+  (b) => b.appliesTo !== 'PRODUCTS' || (b.productIds?.length ?? 0) > 0,
+  { message: 'Pick at least one product, or set the discount to apply to the whole basket' },
+)
 
 export async function POST(request: NextRequest) {
   const gate = await requireShopUser('shop.discounts')

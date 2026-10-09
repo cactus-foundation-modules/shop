@@ -5,12 +5,14 @@ import { useState } from 'react'
 type PickedProduct = { id: string; name: string }
 
 // Search-to-add product picker used by the Recommendations panel (related /
-// upsell / auto-exclude lists) - searches the existing admin products list
-// route rather than a dedicated endpoint.
+// upsell / auto-exclude lists) and the products an automatic discount is pinned
+// to - searches the existing admin products list route rather than a dedicated
+// endpoint. `excludeId` keeps a product out of its own list; omit it where
+// there is no product of its own.
 export function ProductPicker({
   excludeId, value, onChange, reorderable = false, label,
 }: {
-  excludeId: string
+  excludeId?: string
   value: PickedProduct[]
   onChange: (next: PickedProduct[]) => void
   reorderable?: boolean

@@ -90,6 +90,11 @@ export type ResolvedCartLine = {
   // the sale price right now (see isOnSale below). Snapshotted onto the order
   // item unchanged - see ShpOrderItem.saleSku for why it is never re-derived.
   saleSku: string | null
+  // The listing this line is a way of buying - a variation child's parent, or
+  // the product itself (see CartLineResolution.listingId). What a discount
+  // pinned to products matches against. Optional only so a line built by hand
+  // elsewhere still type-checks; read it as `listingId ?? product.id`.
+  listingId?: string | null
 }
 
 // Turns a resolver's per-unit charge attributions into this line's own totals,
@@ -294,6 +299,7 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[], opts?: Res
       // the requirement itself can rise there too.
       minOrderPooled: false,
       minOrderGroupKey: metaResolution.minOrder?.key ?? null,
+      listingId: metaResolution.listingId ?? product.id,
       lineId: line.lineId,
       lineMeta: metaResolution.persistMeta,
       control: metaResolution.control ?? null,
@@ -490,7 +496,14 @@ export type DiscountResolution = {
 //   wherever an owner sets it. It used to read the undiscounted subtotal, so a
 //   coupon could take a £110 basket to £80 and still collect free delivery
 //   "over £100".
-export async function resolveDiscounts(subtotal: number, couponCode: string | null, customerEmail: string | null): Promise<DiscountResolution> {
+//
+// An automatic rule can also be pinned to products. It then reads only the
+// lines buying one of them: its percentage or fixed amount comes off those
+// lines alone (a fixed amount once per order, not per item), and its minimum
+// QUANTITY counts the matched items together. The minimum order value is still
+// the whole basket's - it is the gate to the offer, not the offer.
+export async function resolveDiscounts(lines: DiscountLine[], couponCode: string | null, customerEmail: string | null): Promise<DiscountResolution> {
+  const subtotal = lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
   let discountAmount = 0
   let freeShipping = false
   let couponId: string | null = null
@@ -527,7 +540,14 @@ export async function resolveDiscounts(subtotal: number, couponCode: string | nu
   // The comparisons below round the remainder to the penny first, so a basket
   // that comes to exactly £100.00 once a discount is off is not refused a £100
   // threshold over a floating-point crumb (128.01 - 28.01 is 99.99999999999999).
+  //
+  // Held per LINE as well as in total, because a rule pinned to products only
+  // bites into the lines it matched, and the next rule has to see what that
+  // left of each line rather than an average. A coupon and a whole-basket rule
+  // come off every line in proportion, which is how the order's own tax split
+  // already treats a discount, so the total below moves exactly as it always did.
   let remainingSubtotal = Math.max(subtotal - discountAmount, 0)
+  const remaining = lines.map((l) => (subtotal > 0 ? l.lineSubtotal * (remainingSubtotal / subtotal) : 0))
   const autoDiscounts = await listAutomaticDiscounts(true)
   // Free-delivery thresholds are judged once every discount is off, not at the
   // rule's own place in the priority order: a lower-priority "10% off" coming
@@ -535,20 +555,38 @@ export async function resolveDiscounts(subtotal: number, couponCode: string | nu
   // "free over" figure reads the final total too.
   const freeShippingThresholds: number[] = []
   for (const disc of autoDiscounts) {
+    // Which lines the rule is about. A rule pinned to products matches a line
+    // on its LISTING, so a discount on a chair covers every colour of it; one
+    // with no products left (all deleted since) matches nothing at all.
+    const productIds = new Set(disc.products.map((p) => p.id))
+    const matched = disc.appliesTo === 'PRODUCTS'
+      ? lines.flatMap((l, i) => (productIds.has(l.productId) || (l.listingId != null && productIds.has(l.listingId)) ? [i] : []))
+      : lines.map((_, i) => i)
+    if (matched.length === 0) continue
+    // The minimum quantity counts the matched items together: four of one
+    // picked chair and two of another is six.
+    if (disc.minimumQuantity != null && matched.reduce((sum, i) => sum + lines[i]!.quantity, 0) < disc.minimumQuantity) continue
+    // The minimum order value stays a figure about the whole basket, whichever
+    // lines the rule then takes its money from.
     if (disc.minimumOrderValue != null && round2(remainingSubtotal) < Number(disc.minimumOrderValue)) continue
     // Only a free-shipping rule has a threshold the owner can see: the form
     // offers the box on that type alone, but keeps whatever was typed in it when
     // a rule is switched to another type. Read off any rule, that hidden figure
     // quietly gave "10% off" free delivery as well.
     const threshold = disc.type === 'FREE_SHIPPING' && disc.freeShippingThreshold != null ? Number(disc.freeShippingThreshold) : null
+    const base = matched.reduce((sum, i) => sum + remaining[i]!, 0)
     let applied = 0
-    if (disc.type === 'PERCENTAGE') applied = remainingSubtotal * (Number(disc.value ?? 0) / 100)
-    else if (disc.type === 'FIXED_AMOUNT') applied = Math.min(Number(disc.value ?? 0), remainingSubtotal)
+    if (disc.type === 'PERCENTAGE') applied = base * (Number(disc.value ?? 0) / 100)
+    else if (disc.type === 'FIXED_AMOUNT') applied = Math.min(Number(disc.value ?? 0), base)
     // A free-shipping rule with a threshold waits for it. It used to hand out
     // free shipping the moment it was considered, whatever the threshold said -
     // and the admin form only offers the threshold on a free-shipping rule, so
     // "free delivery over £100" was free delivery on every order.
     else if (disc.type === 'FREE_SHIPPING' && threshold == null) freeShipping = true
+    if (applied > 0 && base > 0) {
+      const keep = 1 - applied / base
+      for (const i of matched) remaining[i] = remaining[i]! * keep
+    }
     discountAmount += applied
     remainingSubtotal = Math.max(remainingSubtotal - applied, 0)
     if (threshold != null) freeShippingThresholds.push(threshold)
@@ -556,6 +594,15 @@ export async function resolveDiscounts(subtotal: number, couponCode: string | nu
   if (freeShippingThresholds.some((threshold) => round2(remainingSubtotal) >= threshold)) freeShipping = true
 
   return { discountAmount: Math.min(round2(discountAmount), subtotal), freeShipping, couponId, couponCode: resolvedCode }
+}
+
+/** What resolveDiscounts needs of a basket line: its money and quantity, and
+ *  which product and listing it is buying for the rules pinned to products. */
+export type DiscountLine = { productId: string; listingId?: string | null; quantity: number; lineSubtotal: number }
+
+/** A resolved basket, as resolveDiscounts reads it. */
+export function discountLines(lines: ResolvedCartLine[]): DiscountLine[] {
+  return lines.map((l) => ({ productId: l.product.id, listingId: l.listingId ?? null, quantity: l.quantity, lineSubtotal: l.lineSubtotal }))
 }
 
 export type ShippingResolution = { rateId: string | null; rateName: string | null; amount: number }
@@ -647,7 +694,7 @@ export async function resolveOrderTotals(params: {
 }): Promise<OrderTotals> {
   const config = await getShopConfigCached()
   const subtotal = params.lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
-  const discounts = await resolveDiscounts(subtotal, params.couponCode, params.customerEmail)
+  const discounts = await resolveDiscounts(discountLines(params.lines), params.couponCode, params.customerEmail)
   const discountRatio = subtotal > 0 ? discounts.discountAmount / subtotal : 0
 
   let taxAmount = 0

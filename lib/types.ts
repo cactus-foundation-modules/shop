@@ -492,9 +492,19 @@ export type ShpAutomaticDiscount = {
   expiresAt: Date | null
   isActive: boolean
   priority: number
+  // 'ALL' reads the whole basket; 'PRODUCTS' only lines buying one of
+  // `products` (matched on the line's listing, so a variation counts towards
+  // its parent). A 'PRODUCTS' rule with no products left applies to nothing.
+  appliesTo: ShpAutomaticDiscountScope
+  products: Array<{ id: string; name: string }>
+  // How many matched items the basket must hold, counted together across the
+  // products. Null is no minimum.
+  minimumQuantity: number | null
   createdAt: Date
   updatedAt: Date
 }
+
+export type ShpAutomaticDiscountScope = 'ALL' | 'PRODUCTS'
 
 export type ShpOrderStatus =
   | 'PENDING' | 'PROCESSING' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | 'ON_HOLD'

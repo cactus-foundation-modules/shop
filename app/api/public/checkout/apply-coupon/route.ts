@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { resolveCartLines, resolveDiscounts } from '@/modules/shop/lib/checkout'
+import { discountLines, resolveCartLines, resolveDiscounts } from '@/modules/shop/lib/checkout'
 import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
 import { getClientIp } from '@/lib/auth/rate-limit'
 import { checkoutClosedResponse } from '@/modules/shop/lib/access'
@@ -32,8 +32,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: checkoutLinesRefusal(parsed.error) ?? 'Invalid request' }, { status: 400 })
 
   const resolvedLines = await resolveCartLines(parsed.data.lines)
-  const subtotal = resolvedLines.reduce((sum, l) => sum + l.lineSubtotal, 0)
-  const result = await resolveDiscounts(subtotal, parsed.data.couponCode, parsed.data.customerEmail ?? null)
+  const result = await resolveDiscounts(discountLines(resolvedLines), parsed.data.couponCode, parsed.data.customerEmail ?? null)
 
   if (result.error) return NextResponse.json({ error: result.error }, { status: 400 })
   return NextResponse.json({ discountAmount: result.discountAmount, freeShipping: result.freeShipping, couponCode: result.couponCode })

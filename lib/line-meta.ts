@@ -158,6 +158,13 @@ export type CartLineResolution = {
   // Absent/null leaves the line standing on its own product row, exactly as an
   // ordinary product does.
   minOrder?: CartLineMinOrder | null
+  // The id of the LISTING this line is a way of buying, where that is not the
+  // line's own product: a variation child returns its parent's id. Read by
+  // rules an owner pins to a product in the admin - an automatic discount on
+  // "the ISO chair" has to cover every colour of it, and the owner only ever
+  // picks the listing, never the hidden child rows. Absent/null means the line
+  // is its own listing, which is every ordinary product.
+  listingId?: string | null
   // What the returns policy says about this line, where the product row alone
   // gives the wrong answer - the same shape of problem CartLineMinOrder solves,
   // and for the same reason. A variation child's own `returnable` is very nearly
@@ -339,6 +346,8 @@ export async function resolveLineMeta(
   // of it is silently dropped, which is exactly how the minimum reached the
   // checkout as "no minimum" the first time.
   let minOrder: CartLineMinOrder | null = null
+  // First resolver to name a listing keeps it, as with the pool above.
+  let listingId: string | null = null
   // Likewise one bucket per line: the first resolver to claim one keeps it (see
   // LineMetaBatch). Two modules bucketing the same line differently is a
   // question shop cannot answer, so it does not try.
@@ -401,6 +410,7 @@ export async function resolveLineMeta(
         minOrder.quantity = Math.max(minOrder.quantity ?? 1, res.minOrder.quantity)
       }
     }
+    if (!listingId && res.listingId) listingId = res.listingId
     if (!batch && res.persistMeta?.batch) batch = res.persistMeta.batch
     if (res.returns) {
       returnsAnswered = true
@@ -438,6 +448,7 @@ export async function resolveLineMeta(
     charges: charges.length ? charges : null,
     group,
     minOrder,
+    listingId,
     returns: returnsAnswered
       ? { returnable: returnsFlag, note: returnsNote, discretionary: returnsDiscretion }
       : null,
