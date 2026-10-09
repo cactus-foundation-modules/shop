@@ -17,6 +17,12 @@ export type PositionFreshness = {
    *  rather than hidden - a stale position with an honest label still tells
    *  somebody the crew was two streets away ten minutes ago. */
   stale: boolean
+  /** The age the text describes, measured on the server, and whose clock it
+   *  is. The page carries on counting from here between answers - by its own
+   *  elapsed time, never its own idea of what time it is - so the line does
+   *  not sit at "0 seconds ago" until somebody reloads. */
+  ageMs: number
+  clock: 'van' | 'us'
 }
 
 const SECOND = 1000
@@ -66,20 +72,26 @@ export function positionFreshness(
    *  claim, since a van that has not moved since breakfast reads the same. */
   clock: 'van' | 'us' = 'van',
 ): PositionFreshness | null {
-  const verb = clock === 'van' ? 'Updated' : 'Checked'
   if (!fixedAt) return null
-  const age = now.getTime() - fixedAt.getTime()
+  return freshnessFromAge(now.getTime() - fixedAt.getTime(), clock)
+}
+
+/** The freshness line for an age already known - the server's own answer, or
+ *  the page counting on from it. */
+export function freshnessFromAge(age: number, clock: 'van' | 'us' = 'van'): PositionFreshness {
+  const verb = clock === 'van' ? 'Updated' : 'Checked'
+  const line = (text: string, stale: boolean): PositionFreshness => ({ text, stale, ageMs: age, clock })
   // A fix from the future is a clock disagreement, not a fresher fix. Treated
   // as "just now" rather than shown as a negative age.
-  if (age < 0) return { text: `${verb} just now`, stale: false }
+  if (age < 0) return line(`${verb} just now`, false)
 
-  if (age < MINUTE) return { text: `${verb} ${plural(Math.floor(age / SECOND), 'second')} ago`, stale: false }
+  if (age < MINUTE) return line(`${verb} ${plural(Math.floor(age / SECOND), 'second')} ago`, false)
   if (age < HOUR) {
     const minutes = Math.floor(age / MINUTE)
-    return { text: `${verb} ${plural(minutes, 'minute')} ago`, stale: age >= STALE_AFTER_MS }
+    return line(`${verb} ${plural(minutes, 'minute')} ago`, age >= STALE_AFTER_MS)
   }
-  if (age < DAY) return { text: `${verb} ${plural(Math.floor(age / HOUR), 'hour')} ago`, stale: true }
-  return { text: `${verb} over a day ago`, stale: true }
+  if (age < DAY) return line(`${verb} ${plural(Math.floor(age / HOUR), 'hour')} ago`, true)
+  return line(`${verb} over a day ago`, true)
 }
 
 /**
