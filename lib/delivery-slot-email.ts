@@ -9,6 +9,8 @@ import {
   deliveryBookingForShipment,
   formatDeliveryDay,
   formatDeliveryWindow,
+  isWholeDayWindow,
+  slotTimeFromInstant,
 } from '@/modules/shop/lib/delivery-slot'
 import { courierFaqUrl, faqsForShipment } from '@/modules/shop/lib/courier-faqs'
 import { isStaleCarrierWindow } from '@/modules/shop/lib/delivery-delay'
@@ -171,6 +173,9 @@ export async function maybeSendCarrierWindowEmail(
   // The window for the day a reported delay missed is the booking that fell
   // through, still in the courier's feed - not news, and not worth the stamp.
   if (isStaleCarrierWindow(parcel, calendarDateIn(reading.windowFrom, timezone))) return false
+  // The whole day is the day booked, not a time: there is no window to tell,
+  // and the stamp is kept for the real one when it comes.
+  if (isWholeDayWindow(slotTimeFromInstant(reading.windowFrom, timezone), slotTimeFromInstant(reading.windowTo, timezone))) return false
   if (!(await claimSlotNotification(parcel.id, parcel.orderId))) return false
 
   try {

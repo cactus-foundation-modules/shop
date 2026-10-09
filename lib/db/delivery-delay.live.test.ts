@@ -184,6 +184,12 @@ suite('reported delivery delays, against a real database', () => {
     expect(await shipments.claimDelayAnsweredByCourier('shp-1', '2026-10-14')).toBe(false)
   })
 
+  it('a day from the courier with no time answers a delay without taking the window stamp', async () => {
+    await shipments.recordDeliveryDelay('shp-1', 'ord-1', { kind: 'rebooking', missedDay: '2026-10-09', note: null })
+    expect(await shipments.claimDelayAnsweredByCourier('shp-1', '2026-10-12', false)).toBe(true)
+    expect(await row()).toMatchObject({ delivery_delay: null, delivery_date: '2026-10-12', slot_notified_at: null })
+  })
+
   it('the courier answers nothing on a completed order', async () => {
     await shipments.recordDeliveryDelay('shp-1', 'ord-1', { kind: 'today', missedDay: '2026-10-09', note: null })
     await client.query(`UPDATE "shp_orders" SET "status" = 'COMPLETED' WHERE "id" = 'ord-1'`)

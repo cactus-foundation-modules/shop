@@ -827,14 +827,16 @@ export async function setSlotNotification(shipmentId: string, orderId: string, t
  * True exactly once: the statement that reads the delay also closes it, so
  * the hourly job and a watched page reading the same window cannot both send.
  */
-export async function claimDelayAnsweredByCourier(shipmentId: string, windowDate: string): Promise<boolean> {
+export async function claimDelayAnsweredByCourier(shipmentId: string, windowDate: string, withWindow = true): Promise<boolean> {
   const claimed = await prisma.$executeRaw`
     UPDATE "shp_shipments"
     SET "delivery_delay" = NULL,
         "delivery_date" = ${windowDate}::text,
         "delivery_slot_start" = NULL,
         "delivery_slot_end" = NULL,
-        "slot_notified_at" = CURRENT_TIMESTAMP,
+        -- A day with no time (a whole-day window) leaves the stamp free for
+        -- the window email when the courier does give a time.
+        "slot_notified_at" = ${withWindow ? Prisma.sql`CURRENT_TIMESTAMP` : Prisma.sql`NULL`},
         "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${shipmentId}
       AND "delivery_delay" IS NOT NULL

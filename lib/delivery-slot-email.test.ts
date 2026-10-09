@@ -51,6 +51,20 @@ describe('maybeSendCarrierWindowEmail', () => {
     expect(claimSlotNotification).not.toHaveBeenCalled()
   })
 
+  it('does not send, or take the stamp, for a whole-day window - that is a day, not a time', async () => {
+    const sent = await slotEmail.maybeSendCarrierWindowEmail(
+      parcel,
+      {
+        windowFrom: new Date('2026-10-11T23:00:00.000Z'),
+        windowTo: new Date('2026-10-12T22:59:59.000Z'),
+      },
+      'Europe/London',
+    )
+
+    expect(sent).toBe(false)
+    expect(claimSlotNotification).not.toHaveBeenCalled()
+  })
+
   it('does nothing when dispatch already has a complete booked slot', async () => {
     const sent = await slotEmail.maybeSendCarrierWindowEmail(
       {

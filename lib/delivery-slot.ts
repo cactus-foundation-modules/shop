@@ -98,6 +98,8 @@ export function deliveryBookingForShipment(
     // through, still sitting in the courier's feed. See lib/delivery-delay.ts.
     if (isDeliveryDate(date) && isSlotTime(slotStart) && isSlotTime(slotEnd)
       && !isStaleCarrierWindow(shipment, date)) {
+      // The courier has booked the day and not the time.
+      if (isWholeDayWindow(slotStart, slotEnd)) return { date, slotStart: null, slotEnd: null }
       return { date, slotStart, slotEnd }
     }
   }
@@ -107,6 +109,17 @@ export function deliveryBookingForShipment(
     slotStart: shipment.deliverySlotStart,
     slotEnd: shipment.deliverySlotEnd,
   }
+}
+
+/**
+ * A "window" that is really the whole day: 00:00 to 23:59, or anything within
+ * an hour of it. AIT send exactly that once they have booked a day and not yet
+ * given a time - and "between midnight and 11.59pm" is not a time somebody can
+ * plan around, it is the day. Read as a day with no window, everywhere.
+ */
+export function isWholeDayWindow(start: string | null, end: string | null): boolean {
+  if (!isSlotTime(start) || !isSlotTime(end)) return false
+  return slotMinutes(end) - slotMinutes(start) >= 23 * 60
 }
 
 /** Minutes since midnight, for comparing times of day without dates. */
@@ -169,7 +182,7 @@ export function formatDeliveryDayShort(date: string): string {
 /** "between 10:00 and 13:00", or '' unless both ends are real times. The exact
  *  form, for anywhere the 24-hour clock is what is wanted. */
 export function formatDeliveryWindow(start: string | null, end: string | null): string {
-  if (!isSlotTime(start) || !isSlotTime(end)) return ''
+  if (!isSlotTime(start) || !isSlotTime(end) || isWholeDayWindow(start, end)) return ''
   return `between ${start} and ${end}`
 }
 
@@ -236,7 +249,7 @@ export function formatClockTime(time: string): string {
 
 /** "between 10am and 1pm" - the window for a customer to read. */
 export function formatDeliveryWindowSpoken(start: string | null, end: string | null): string {
-  if (!isSlotTime(start) || !isSlotTime(end)) return ''
+  if (!isSlotTime(start) || !isSlotTime(end) || isWholeDayWindow(start, end)) return ''
   return `between ${formatClockTime(start)} and ${formatClockTime(end)}`
 }
 

@@ -1,8 +1,8 @@
-import { claimDelayAnsweredByCourier, getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
+import { claimDelayAnsweredByCourier, getShipmentsForOrder, setSlotNotification } from '@/modules/shop/lib/db/shipments'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { parcelEmailVars } from '@/modules/shop/lib/delivery-slot-email'
-import { deliveryBookingForShipment, formatDeliveryDay, formatDeliveryWindow } from '@/modules/shop/lib/delivery-slot'
+import { deliveryBookingForShipment, formatDeliveryDay, formatDeliveryWindow, isWholeDayWindow, slotTimeFromInstant } from '@/modules/shop/lib/delivery-slot'
 import { delayNoteForCustomer, isStaleCarrierWindow, type DelayKind } from '@/modules/shop/lib/delivery-delay'
 import { calendarDateIn } from '@/lib/config/timezone'
 import { getSiteTimezone } from '@/lib/config/timezone.server'
@@ -42,6 +42,19 @@ async function newDayVars(shipment: ShpShipment): Promise<Record<string, string>
   }
 }
 
+/**
+ * An email that names the new window has told it, whichever the window came
+ * from - typed with the day, or already in the courier's feed for it. Taking
+ * the window email's stamp here is what stops the next tracking check sending
+ * "your delivery time is confirmed" with the same news a minute later. Before
+ * the send, as every once-only stamp in this module is.
+ */
+async function stampWhenItCarriesTheWindow(shipment: ShpShipment, vars: Record<string, string>): Promise<void> {
+  if (vars.hasNewDayWindow === 'true' && !shipment.slotNotifiedAt) {
+    await setSlotNotification(shipment.id, shipment.orderId, true)
+  }
+}
+
 async function loadParcel(orderId: string, shipmentId: string) {
   const order = await getOrderById(orderId)
   if (!order) return null
@@ -76,6 +89,7 @@ export async function sendDeliveryDelayEmail(params: {
   // 'rebooking' cleared the day, so newDayVars gives the no-new-day version.
   const vars: Record<string, string> = { ...base, ...await newDayVars(shipment) }
   if (params.kind === 'new-date' && vars.hasNewDay !== 'true') return false
+  await stampWhenItCarriesTheWindow(shipment, vars)
   await notifyOrderCustomer('DELIVERY_DELAYED', order, vars)
   return true
 }
@@ -88,6 +102,7 @@ export async function sendDeliveryNewDateEmail(params: { orderId: string; shipme
 
   const day = await newDayVars(shipment)
   if (day.hasNewDay !== 'true') return false
+  await stampWhenItCarriesTheWindow(shipment, day)
   await notifyOrderCustomer('DELIVERY_NEW_DATE', order, { ...await parcelEmailVars(order, shipment), ...day })
   return true
 }
@@ -111,7 +126,8 @@ export async function maybeAnswerDelayFromCourier(
   if (!reading.windowFrom || !reading.windowTo) return false
   const windowDate = calendarDateIn(reading.windowFrom, timezone)
   if (isStaleCarrierWindow(parcel, windowDate) || windowDate <= parcel.deliveryDelayedFrom) return false
-  if (!(await claimDelayAnsweredByCourier(parcel.id, windowDate))) return false
+  const withWindow = !isWholeDayWindow(slotTimeFromInstant(reading.windowFrom, timezone), slotTimeFromInstant(reading.windowTo, timezone))
+  if (!(await claimDelayAnsweredByCourier(parcel.id, windowDate, withWindow))) return false
   if (parcel.quietCustomerEmails) return true
 
   try {
