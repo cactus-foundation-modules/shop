@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
 import { getClientIp } from '@/lib/auth/rate-limit'
 import { blockedLinesMessage, resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkout'
-import { resolveShippingZoneForPostcode, listShippingRatesForZone } from '@/modules/shop/lib/db/tax-shipping'
+import { findCatchAllShippingZone, resolveShippingZoneForPostcode, listShippingRatesForZone } from '@/modules/shop/lib/db/tax-shipping'
 import { excludedPostcodeMessage, refusesDelivery } from '@/modules/shop/lib/excluded-postcode'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
@@ -67,9 +67,16 @@ export async function POST(request: NextRequest) {
   const zone = resolvedZone?.zone ?? null
   const shippingRates = zone ? await listShippingRatesForZone(zone.id) : []
 
+  // No postcode yet: no delivery zone, but the goods are still taxed - by the
+  // catch-all zone, where the shop has one, which is where an address no zone
+  // claims ends up. Without it the review showed a total with no VAT in it and
+  // the card was then charged with it. The figure is re-worked out the moment
+  // a postcode arrives, so a shopper in a more particular zone sees theirs.
+  const taxZone = postcode?.trim() ? undefined : (await findCatchAllShippingZone())?.id ?? null
   const totals = await resolveOrderTotals({
     lines: resolvedLines,
     zoneId: zone?.id ?? null,
+    taxZoneId: taxZone,
     shippingRateId: shippingRateId ?? null,
     couponCode: couponCode ?? null,
     customerEmail: customerEmail ?? null,

@@ -688,6 +688,12 @@ export type OrderTotals = {
 export async function resolveOrderTotals(params: {
   lines: ResolvedCartLine[]
   zoneId: string | null
+  // The zone the goods are TAXED by, where that is not the delivery zone. Only
+  // the review step sets it, before the shopper has given a postcode: there is
+  // no delivery zone yet, but the goods still carry VAT, and showing a total
+  // without it only for the payment to come out higher was showing the wrong
+  // figure. Absent means "the delivery zone", which is every other caller.
+  taxZoneId?: string | null
   shippingRateId: string | null
   couponCode: string | null
   customerEmail: string | null
@@ -703,8 +709,9 @@ export async function resolveOrderTotals(params: {
   // discount, and what that value is rated at.
   let taxableTotal = 0
   let weightedRate = 0
+  const taxZoneId = params.taxZoneId !== undefined ? params.taxZoneId : params.zoneId
   for (const line of params.lines) {
-    const taxRate = params.zoneId ? await getTaxRateForZoneAndClass(params.zoneId, line.product.taxClassId) : 0
+    const taxRate = taxZoneId ? await getTaxRateForZoneAndClass(taxZoneId, line.product.taxClassId) : 0
     const taxableBase = line.lineSubtotal * (1 - discountRatio)
     const lineTax = config.taxMode === 'INCLUSIVE'
       ? taxableBase - taxableBase / (1 + taxRate)

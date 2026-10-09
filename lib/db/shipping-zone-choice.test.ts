@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { decideShippingZone } from '@/modules/shop/lib/db/tax-shipping'
+import { catchAllShippingZone, decideShippingZone } from '@/modules/shop/lib/db/tax-shipping'
 import { refusesDelivery } from '@/modules/shop/lib/excluded-postcode'
 
 // Which zone a shopper lands in, and - the part that is new and the part that
@@ -134,5 +134,24 @@ describe('refusesDelivery', () => {
   // uncovered, so a new install carries on taking orders.
   it('never refuses a shop that has no zones yet', () => {
     expect(refusesDelivery(decideShippingZone([], 'M1 1AE'), [physical])).toBe(false)
+  })
+})
+
+// Before a postcode is typed the review step taxes the goods by this zone, so
+// a total without VAT is not shown only for the card to be charged with it.
+describe('the catch-all zone, for taxing before an address', () => {
+  const z = (name: string, postcodes: string[] = [], excludedPostcodes: string[] = []) => ({ name, postcodes, excludedPostcodes })
+
+  it('is the zone with no postcodes listed, exclusions or not', () => {
+    expect(catchAllShippingZone([z('London', ['E', 'EC']), z('United Kingdom', [], ['IV', 'HS'])])?.name).toBe('United Kingdom')
+  })
+
+  it('is nothing on a shop whose zones all list postcodes', () => {
+    expect(catchAllShippingZone([z('London', ['E']), z('Bristol', ['BS'])])).toBeNull()
+  })
+
+  it('is the same zone decideShippingZone falls back to', () => {
+    const zones = [z('Alpha'), z('Beta'), z('London', ['E'])]
+    expect(catchAllShippingZone(zones)).toBe(decideShippingZone(zones, 'BS1 1AA').zone)
   })
 })

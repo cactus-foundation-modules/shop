@@ -196,6 +196,19 @@ export function decideShippingZone<Z extends ZoneLists>(zones: Z[], postcode: st
   }
 }
 
+/** The catch-all zone - the one with no postcodes listed, which covers every
+ *  address no other zone claims - or null when the shop has none. What an
+ *  address nobody has typed yet is most likely to land in, so it is what the
+ *  review step taxes the goods by until there is a postcode. The first by name
+ *  where there are several, the same zone decideShippingZone would pick. */
+export function catchAllShippingZone<Z extends ZoneLists>(zones: Z[]): Z | null {
+  return zones.find((zone) => zone.postcodes.length === 0) ?? null
+}
+
+export async function findCatchAllShippingZone(): Promise<ShpShippingZone | null> {
+  return catchAllShippingZone(await listShippingZones())
+}
+
 /** The zone alone, for callers with nothing useful to do about an exclusion. */
 export async function findShippingZoneForPostcode(postcode: string): Promise<ShpShippingZone | null> {
   return (await resolveShippingZoneForPostcode(postcode)).zone
