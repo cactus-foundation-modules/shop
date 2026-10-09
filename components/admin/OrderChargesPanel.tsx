@@ -53,7 +53,7 @@ function taxed(net: number, rate: number): { tax: number; total: number } {
 }
 
 export function OrderChargesPanel({
-  orderId, orderStatus, currencySymbol, onChanged,
+  orderId, orderStatus, currencySymbol, onChanged, onPendingChange,
 }: {
   orderId: string
   /** Re-read when the order moves, since whether cancelling is still on offer
@@ -62,6 +62,7 @@ export function OrderChargesPanel({
   currencySymbol: string
   /** Tell the order screen something changed - its status, its refunds. */
   onChanged: () => void
+  onPendingChange?: (pending: boolean) => void
 }) {
   const [data, setData] = useState<ChargesData | null>(null)
   const [busy, setBusy] = useState(false)
@@ -84,6 +85,10 @@ export function OrderChargesPanel({
 
   // orderStatus is the reason to read again, not an input to the read.
   useEffect(load, [load, orderStatus])
+
+  useEffect(() => {
+    if (data) onPendingChange?.(data.charges.some((charge) => charge.status === 'PENDING'))
+  }, [data, onPendingChange])
 
   if (!data) return null
 

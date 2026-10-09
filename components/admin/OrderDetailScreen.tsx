@@ -9,6 +9,7 @@ import { DispatchModal } from '@/modules/shop/components/admin/DispatchModal'
 import { EditParcelModal } from '@/modules/shop/components/admin/EditParcelModal'
 import { EmailCustomerModal } from '@/modules/shop/components/admin/EmailCustomerModal'
 import { ReplacementModal } from '@/modules/shop/components/admin/ReplacementModal'
+import { orderDetailCss } from '@/modules/shop/components/admin/order-detail-css'
 import { ordersScreenCss } from '@/modules/shop/components/admin/orders-screen-css'
 import {
   ORDER_STATUS_BADGE,
@@ -343,6 +344,8 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   const [invoicing, setInvoicing] = useState<InvoiceState | null>(null)
   const [crediting, setCrediting] = useState<CreditNoteState | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [section, setSection] = useState('overview')
+  const [pendingCharge, setPendingCharge] = useState(false)
   const [note, setNote] = useState('')
   const [sendEmailOnChange, setSendEmailOnChange] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -797,8 +800,8 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   }
 
   return (
-    <div>
-      <style dangerouslySetInnerHTML={{ __html: ordersScreenCss }} />
+    <div className="sod-app">
+      <style dangerouslySetInnerHTML={{ __html: ordersScreenCss + orderDetailCss }} />
 
       <a className="sox-back" href={`/${adminPath}/m/shop/orders`}>← All orders</a>
 
@@ -824,17 +827,23 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
             {data.items.some((i) => i.isPreOrder) && <span className="badge badge-info">Has a pre-order</span>}
             {order.kind === 'REPLACEMENT' && <span className="badge badge-info">Replacement</span>}
             {waitingRequests > 0 && (
-              <a className="badge badge-warning" href="#customer-reports">
+              <a className="badge badge-warning" href="#customer-reports" onClick={() => setSection('overview')}>
                 {waitingRequests === 1 ? 'Customer report waiting' : `${waitingRequests} customer reports waiting`}
               </a>
             )}
           </div>
         </div>
         <div className="sox-orderhead-actions">
+          {awaitingManualPayment && (
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={confirmPayment}>Payment received</button>
+          )}
           {hasOutstandingItems && (
             <button type="button" className="btn btn-primary btn-sm" onClick={() => setDispatchOpen(true)}>Dispatch items</button>
           )}
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEmailOpen(true)}>Email customer</button>
+          <details className="sod-more sox-noprint">
+            <summary>More actions</summary>
+            <div className="sod-more-menu">
           {order.kind !== 'REPLACEMENT' && (
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReplacementOpen(true)}>Send a replacement</button>
           )}
@@ -842,8 +851,17 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRefundOpen(true)}>Refund</button>
           )}
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => window.print()}>Print</button>
+            </div>
+          </details>
         </div>
       </div>
+
+      <dl className="sod-summary" aria-label="Order at a glance">
+        <div><dt>Order total</dt><dd>{formatMoney(order.total, currencySymbol)}<small>{order.currency} · {totalUnits} item{totalUnits === 1 ? '' : 's'}</small></dd></div>
+        <div><dt>Customer</dt><dd>{organisation || order.customerName}<small>{organisation ? order.customerName : order.customerEmail}</small></dd></div>
+        <div><dt>Payment</dt><dd>{paymentBadge.label}<small>{paymentMethodLabel(order.paymentMethod)}</small></dd></div>
+        <div><dt>Delivery</dt><dd>{dispatchBadge.label}<small>{dispatch ? `${dispatchedUnits} sent · ${outstandingUnits} still to go` : 'Checking parcels…'}</small></dd></div>
+      </dl>
 
       {hold?.active && (
         <p className="sox-notice sox-noprint" style={{ marginBottom: '1rem' }}>
@@ -856,373 +874,650 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
         </p>
       )}
 
-      <div className="sox-cols">
-        <div className="sox-col">
-          {/* What the customer has told us about this order. First in the column
-              while anything is still waiting, because a photograph of a broken
-              leg is the reason somebody opened the order in the first place; the
-              decision itself is made on the requests screen, which carries the
-              refund and replacement steps that go with it. */}
-          {requests.length > 0 && waitingRequests > 0 && (
-            <CustomerReports requests={requests} itemNames={itemNames} replacementNumbers={replacementNumbers} adminPath={adminPath} currencySymbol={currencySymbol} />
-          )}
+      {pendingCharge && (
+        <p className="sox-notice sox-noprint">
+          A redelivery charge is awaiting payment.{' '}
+          <button type="button" className="sox-copy" onClick={() => setSection('delivery')}>Review charge</button>
+        </p>
+      )}
+      {parcels.some((parcel) => parcel.deliveryFailed && !parcel.deliveredAt) && (
+        <p className="sox-notice sox-noprint">
+          A parcel has a failed delivery attempt.{' '}
+          <button type="button" className="sox-copy" onClick={() => setSection('delivery')}>Review delivery</button>
+        </p>
+      )}
+      <nav className="sod-navigation sox-noprint" aria-label="Order sections">
+        {([
+          ['overview', 'Overview'], ['delivery', 'Delivery'],
+          ['payment', 'Payment & documents'], ['activity', 'Activity'],
+        ] as const).map(([key, label]) => (
+          <button key={key} type="button" aria-current={section === key ? 'page' : undefined}
+            aria-controls={`order-${key}`} onClick={() => setSection(key)}>{label}</button>
+        ))}
+      </nav>
+      <div className="sod-workspace">
+        <div className="sod-main">
+          <section className="sod-panel" id="order-overview" aria-label="Order overview" hidden={section !== 'overview'}>
+            {/* What the customer has told us about this order. First in the column
+                while anything is still waiting, because a photograph of a broken
+                leg is the reason somebody opened the order in the first place; the
+                decision itself is made on the requests screen, which carries the
+                refund and replacement steps that go with it. */}
+            {requests.length > 0 && waitingRequests > 0 && (
+              <CustomerReports requests={requests} itemNames={itemNames} replacementNumbers={replacementNumbers} adminPath={adminPath} currencySymbol={currencySymbol} />
+            )}
 
-          <section className="sox-card">
-            <div className="sox-card-head">
-              <h2>Items</h2>
-              <span className="sox-muted" style={{ fontSize: '0.8125rem' }}>
-                {totalUnits} item{totalUnits === 1 ? '' : 's'}
-                {dispatch ? ` · ${dispatchedUnits} sent · ${outstandingUnits} still to go` : ''}
-              </span>
-            </div>
-            <div className="sox-card-body is-flush">
-              <table className="sox-items">
-                <thead>
-                  <tr>
-                    <th>Item</th>
-                    <th className="sox-num">Unit price</th>
-                    <th className="sox-num">Qty</th>
-                    <th className="sox-num">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.items.map((item) => {
-                    const line = dispatchByItem.get(item.id)
-                    const deliveredQty = deliveredByItem.get(item.id) ?? 0
-                    // "Sent" means still on its way once anything has landed,
-                    // so a line that has fully arrived reads "1 delivered"
-                    // rather than "1 sent" and "1 delivered" side by side.
-                    const inTransitQty = Math.max(0, (line?.dispatchedQty ?? 0) - deliveredQty)
-                    const split = splitLines.get(item.id) ?? splitOrderLine(item)
-                    const storefrontHref = item.productId ? data.storefrontHrefs?.[item.productId] : undefined
-                    // A charge sits beside the detail row it is the price of
-                    // (the "Delivery" line naming the service), matched on its
-                    // label. One with no row of its own gets a row to itself.
-                    const chargeFor = (label: string) => split.charges.find((c) => c.label.trim().toLowerCase() === label.trim().toLowerCase())
-                    const fields = item.lineMeta?.fields ?? []
-                    const looseCharges = split.charges.filter((c) => !fields.some((f) => f.label.trim().toLowerCase() === c.label.trim().toLowerCase()))
-                    return (
-                      <tr key={item.id}>
-                        <td>
-                          {/* The page the customer bought it from, in a new tab -
-                              not the product editor, which for a variation is
-                              only a note saying to edit it somewhere else. */}
-                          {storefrontHref ? (
-                            <a className="sox-item-name" href={storefrontHref} target="_blank" rel="noopener noreferrer">{item.productName}</a>
-                          ) : (
-                            <span className="sox-item-name">{item.productName}</span>
-                          )}
-                          {item.productSku && <p className="sox-sub sox-mono">{item.productSku}</p>}
-                          {fields.length > 0 || looseCharges.length > 0 ? (
-                            <ul className="sox-meta-list">
-                              {fields.map((f, i) => {
-                                const charge = chargeFor(f.label)
-                                return (
-                                  <li key={i}>
-                                    <b>{f.label}:</b>{' '}
-                                    {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
-                                    {charge && <> · <b>{formatMoney(charge.amount, currencySymbol)}</b></>}
+            <section className="sox-card">
+              <div className="sox-card-head">
+                <h2>Items</h2>
+                <span className="sox-muted" style={{ fontSize: '0.8125rem' }}>
+                  {totalUnits} item{totalUnits === 1 ? '' : 's'}
+                  {dispatch ? ` · ${dispatchedUnits} sent · ${outstandingUnits} still to go` : ''}
+                </span>
+              </div>
+              <div className="sox-card-body is-flush">
+                <table className="sox-items">
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th className="sox-num">Unit price</th>
+                      <th className="sox-num">Qty</th>
+                      <th className="sox-num">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.items.map((item) => {
+                      const line = dispatchByItem.get(item.id)
+                      const deliveredQty = deliveredByItem.get(item.id) ?? 0
+                      // "Sent" means still on its way once anything has landed,
+                      // so a line that has fully arrived reads "1 delivered"
+                      // rather than "1 sent" and "1 delivered" side by side.
+                      const inTransitQty = Math.max(0, (line?.dispatchedQty ?? 0) - deliveredQty)
+                      const split = splitLines.get(item.id) ?? splitOrderLine(item)
+                      const storefrontHref = item.productId ? data.storefrontHrefs?.[item.productId] : undefined
+                      // A charge sits beside the detail row it is the price of
+                      // (the "Delivery" line naming the service), matched on its
+                      // label. One with no row of its own gets a row to itself.
+                      const chargeFor = (label: string) => split.charges.find((c) => c.label.trim().toLowerCase() === label.trim().toLowerCase())
+                      const fields = item.lineMeta?.fields ?? []
+                      const looseCharges = split.charges.filter((c) => !fields.some((f) => f.label.trim().toLowerCase() === c.label.trim().toLowerCase()))
+                      return (
+                        <tr key={item.id}>
+                          <td>
+                            {/* The page the customer bought it from, in a new tab -
+                                not the product editor, which for a variation is
+                                only a note saying to edit it somewhere else. */}
+                            {storefrontHref ? (
+                              <a className="sox-item-name" href={storefrontHref} target="_blank" rel="noopener noreferrer">{item.productName}</a>
+                            ) : (
+                              <span className="sox-item-name">{item.productName}</span>
+                            )}
+                            {item.productSku && <p className="sox-sub sox-mono">{item.productSku}</p>}
+                            {fields.length > 0 || looseCharges.length > 0 ? (
+                              <ul className="sox-meta-list">
+                                {fields.map((f, i) => {
+                                  const charge = chargeFor(f.label)
+                                  return (
+                                    <li key={i}>
+                                      <b>{f.label}:</b>{' '}
+                                      {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
+                                      {charge && <> · <b>{formatMoney(charge.amount, currencySymbol)}</b></>}
+                                    </li>
+                                  )
+                                })}
+                                {looseCharges.map((c) => (
+                                  <li key={`charge-${c.label}`}>
+                                    <b>{c.label}:</b> {formatMoney(c.amount, currencySymbol)}
                                   </li>
-                                )
-                              })}
-                              {looseCharges.map((c) => (
-                                <li key={`charge-${c.label}`}>
-                                  <b>{c.label}:</b> {formatMoney(c.amount, currencySymbol)}
-                                </li>
-                              ))}
-                            </ul>
-                          ) : null}
-                          <div className="sox-linepills">
-                            {item.isPreOrder && (
-                              <span className="badge badge-info">
-                                Pre-order{item.preOrderDispatchDate ? ` · due ${formatDate(item.preOrderDispatchDate)}` : ''}
-                              </span>
-                            )}
-                            {deliveredQty > 0 && <span className="badge badge-success">{deliveredQty} delivered</span>}
-                            {inTransitQty > 0 && <span className="badge badge-success">{inTransitQty} sent</span>}
-                            {line && line.outstandingQty > 0 && line.dispatchedQty > 0 && <span className="badge badge-warning">{line.outstandingQty} to go</span>}
-                            {item.refundedQty > 0 && <span className="badge badge-warning">{item.refundedQty} refunded</span>}
-                          </div>
-                          {/* What was sent out to put THIS line right. Against
-                              the line rather than only in the card below,
-                              because "we sent a gas lift" is an answer about
-                              the chair and nothing else on the order. */}
-                          {(replacementsByItem.get(item.id) ?? []).map((sent, i) => (
-                            <p className="sox-sub" key={`${sent.orderId}-${i}`}>
-                              {sent.quantity} × {sent.productName} sent as{' '}
-                              <a href={`/${adminPath}/m/shop/orders/${sent.orderId}`}>{sent.orderNumber}</a>
-                              {' · '}
-                              {badgeFor(ORDER_STATUS_BADGE, sent.status).label.toLowerCase()}
-                            </p>
-                          ))}
-                        </td>
-                        <td className="sox-num">{formatMoney(split.goodsUnitPrice, currencySymbol)}</td>
-                        <td className="sox-num">{item.quantity}</td>
-                        <td className="sox-num">{formatMoney(split.goodsTotal, currencySymbol)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                                ))}
+                              </ul>
+                            ) : null}
+                            <div className="sox-linepills">
+                              {item.isPreOrder && (
+                                <span className="badge badge-info">
+                                  Pre-order{item.preOrderDispatchDate ? ` · due ${formatDate(item.preOrderDispatchDate)}` : ''}
+                                </span>
+                              )}
+                              {deliveredQty > 0 && <span className="badge badge-success">{deliveredQty} delivered</span>}
+                              {inTransitQty > 0 && <span className="badge badge-success">{inTransitQty} sent</span>}
+                              {line && line.outstandingQty > 0 && line.dispatchedQty > 0 && <span className="badge badge-warning">{line.outstandingQty} to go</span>}
+                              {item.refundedQty > 0 && <span className="badge badge-warning">{item.refundedQty} refunded</span>}
+                            </div>
+                            {/* What was sent out to put THIS line right. Against
+                                the line rather than only in the card below,
+                                because "we sent a gas lift" is an answer about
+                                the chair and nothing else on the order. */}
+                            {(replacementsByItem.get(item.id) ?? []).map((sent, i) => (
+                              <p className="sox-sub" key={`${sent.orderId}-${i}`}>
+                                {sent.quantity} × {sent.productName} sent as{' '}
+                                <a href={`/${adminPath}/m/shop/orders/${sent.orderId}`}>{sent.orderNumber}</a>
+                                {' · '}
+                                {badgeFor(ORDER_STATUS_BADGE, sent.status).label.toLowerCase()}
+                              </p>
+                            ))}
+                          </td>
+                          <td className="sox-num">{formatMoney(split.goodsUnitPrice, currencySymbol)}</td>
+                          <td className="sox-num">{item.quantity}</td>
+                          <td className="sox-num">{formatMoney(split.goodsTotal, currencySymbol)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
 
-          {dispatch && dispatch.shipments.length > 0 && (
             <section className="sox-card">
-              <div className="sox-card-head"><h2>Parcels &amp; tracking</h2></div>
+              <div className="sox-card-head"><h2>Totals</h2></div>
               <div className="sox-card-body">
-                <ul className="sox-list">
-                  {dispatch.shipments.map((shipment) => (
-                    <li key={shipment.id}>
-                      <div className="sox-list-main">
-                        <p className="sox-list-title">
-                          {formatDate(shipment.shippedAt)}
-                          {shipment.carrier ? ` · ${shipment.carrier}` : ''}
-                          {/* Only ever set on a parcel that went out with
-                              nothing to follow and was given something later,
-                              so it says what happened rather than restating
-                              what the dispatch note already carried. */}
-                          {shipment.trackingNotifiedAt ? ' · tracking sent to the customer' : ''}
-                        </p>
-                        <AdminShipmentTracking shipment={shipment} />
-                        <p className="sox-list-sub">
-                          {shipment.items.map((si) => `${si.quantity} × ${itemNames.get(si.orderItemId) ?? 'an item no longer on this order'}`).join(', ')}
-                          {shipment.notes ? ` - ${shipment.notes}` : ''}
-                        </p>
-                        {shipment.deliveryDate && (
-                          <p className="sox-list-sub">
-                            Delivery booked for {shipment.deliveryDate}
-                            {shipment.deliverySlotStart && shipment.deliverySlotEnd
-                              ? `, ${shipment.deliverySlotStart} to ${shipment.deliverySlotEnd}`
-                              : ' - no time window yet'}
-                            {shipment.slotNotifiedAt ? ' · customer told' : ''}
-                          </p>
-                        )}
-                        {shipment.trackingStage && (
-                          <p className="sox-list-sub">
-                            Courier says: {shipment.trackingStage}
-                            {shipment.deliveredAt ? ` · delivered ${formatDate(shipment.deliveredAt)}` : ''}
-                          </p>
-                        )}
-                        {/* A failed attempt, and what the customer is being
-                            told to do about it. The courier sometimes rings
-                            the customer themselves once the shop has spoken to
-                            them, and the customer should not be chasing a
-                            depot that is about to ring them. */}
-                        {shipment.deliveryFailed && (
-                          <div className="sox-list-sub" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem' }}>
-                            <span>
-                              {shipment.courierRebooks || shipment.courierRearrangingAt
-                                ? `Delivery failed · customer told ${shipment.carrier || 'the courier'} will be in touch to rebook`
-                                : `Delivery failed · customer told to contact ${shipment.carrier || 'the courier'} to rebook`}
-                              {shipment.failedNotifiedAt ? ' · customer emailed' : ''}
-                            </span>
-                            {!shipment.courierRebooks && (
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-sm sox-noprint"
-                                disabled={busy}
-                                onClick={() => setCourierRearranging(shipment, !shipment.courierRearrangingAt)}
-                              >
-                                {shipment.courierRearrangingAt
-                                  ? 'Customer should contact them instead'
-                                  : `${shipment.carrier || 'Courier'} will contact the customer`}
-                              </button>
-                            )}
-                          </div>
-                        )}
-                        {shipment.signatureUrl && (
-                          <>
-                            <p className="sox-list-sub">
-                              Signed for
-                              {shipment.signedBy ? ` by ${shipment.signedBy}` : ''}
-                              {shipment.signedAt ? ` · ${formatDateTime(shipment.signedAt)}` : ''}
-                            </p>
-                            {/* eslint-disable-next-line @next/next/no-img-element -- a third-party
-                                signature of unknown dimensions; next/image wants a size nobody here
-                                can give it. */}
-                            <img
-                              className="sox-signature"
-                              src={shipment.signatureUrl}
-                              alt={shipment.signedBy ? `Signature of ${shipment.signedBy}` : 'Delivery signature'}
-                              loading="lazy"
-                            />
-                          </>
-                        )}
-                      </div>
-                      <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => setEditingParcelId(shipment.id)}>Edit tracking</button>
-                      <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => undoDispatch(shipment)}>Undo</button>
-                    </li>
+                <dl className="sox-totals">
+                  <dt>Subtotal</dt><dd>{formatMoney(goodsSubtotal, currencySymbol)}</dd>
+                  {/* What the lines paid for services priced per item - the
+                      delivery tier each one went by - under the name the module
+                      that charged it gave. Already inside the total, so these
+                      come out of the subtotal rather than being added to it. */}
+                  {chargeRows.map((charge) => (
+                    <Fragment key={charge.label}>
+                      <dt>{charge.label}</dt>
+                      <dd>{formatMoney(charge.amount, currencySymbol)}</dd>
+                    </Fragment>
                   ))}
-                </ul>
-              </div>
-            </section>
-          )}
-
-          {requests.length > 0 && waitingRequests === 0 && (
-            <CustomerReports requests={requests} itemNames={itemNames} replacementNumbers={replacementNumbers} adminPath={adminPath} currencySymbol={currencySymbol} />
-          )}
-
-          {/* What has been sent out to put this one right. Under the parcels
-              rather than beside the items, because it is about the aftermath
-              of the order and not about what was bought. */}
-          {(data.replacements ?? []).length > 0 && (
-            <section className="sox-card">
-              <div className="sox-card-head"><h2>Replacements sent</h2></div>
-              <div className="sox-card-body">
-                <ul className="sox-list">
-                  {(data.replacements ?? []).map((replacement) => (
-                    <li key={replacement.id} className="sox-list-row">
-                      <div>
-                        <a className="sox-item-name" href={`/${adminPath}/m/shop/orders/${replacement.id}`}>
-                          {replacement.orderNumber}
-                        </a>
-                        <p className="sox-list-sub">
-                          Raised {formatDate(replacement.createdAt)}
-                          {' · '}
-                          {badgeFor(ORDER_STATUS_BADGE, replacement.status).label}
-                          {' · '}
-                          {Number(replacement.total) > 0
-                            ? formatMoney(replacement.total, currencySymbol)
-                            : 'free of charge'}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </section>
-          )}
-
-          {data.downloads.length > 0 && (
-            <section className="sox-card sox-noprint">
-              <div className="sox-card-head"><h2>Digital downloads</h2></div>
-              <div className="sox-card-body">
-                <ul className="sox-list">
-                  {data.downloads.map((d) => (
-                    <li key={d.id}>
-                      <div className="sox-list-main">
-                        <p className="sox-list-title">{itemNames.get(d.orderItemId) ?? 'Download'}</p>
-                        <p className="sox-list-sub">
-                          Downloaded {d.downloadCount} time{d.downloadCount === 1 ? '' : 's'}
-                          {d.expiresAt ? ` · link expires ${formatDate(d.expiresAt)}` : ' · link does not expire'}
-                        </p>
-                      </div>
-                      <button type="button" className="sox-copy" onClick={() => copy(`${window.location.origin}/shop/downloads/${d.token}`, 'The download link')}>Copy link</button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </section>
-          )}
-
-          {/* The point of storing what was ticked is being able to look at it, so
-              it is on the order rather than buried in an export. The statement is
-              the one the shopper actually saw, not today's wording. */}
-          {order.agreements && order.agreements.length > 0 && (
-            <section className="sox-card">
-              <div className="sox-card-head"><h2>Agreed at checkout</h2></div>
-              <div className="sox-card-body">
-                <ul className="sox-list">
-                  {order.agreements.map((agreement) => (
-                    <li key={agreement.id}>
-                      <div className="sox-list-main" style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline' }}>
-                        <span aria-hidden="true" style={{ color: agreement.accepted ? 'var(--color-success)' : 'var(--color-text-secondary)' }}>
-                          {agreement.accepted ? '✓' : '✗'}
-                        </span>
-                        <span>
-                          {agreement.statement.replace(/\[([^\]]*)\]/g, '$1')}
-                          {agreement.required && <span className="sox-muted"> (required)</span>}
-                          {agreement.acceptedAt && <span className="sox-muted"> - {formatDateTime(agreement.acceptedAt)}</span>}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </section>
-          )}
-
-          <section className="sox-card">
-            <div className="sox-card-head"><h2>History</h2></div>
-            <div className="sox-card-body">
-              <div className="sox-composer sox-noprint" style={{ marginTop: 0, paddingTop: 0, borderTop: 0 }}>
-                <textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Add a note - only you and your team ever see these."
-                  aria-label="Add a note to this order"
-                />
-                <div className="sox-composer-row">
-                  <span className="sox-muted" style={{ fontSize: '0.75rem' }}>Notes are never shown to the customer.</span>
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={busy || !note.trim()} onClick={addNote}>Add note</button>
-                </div>
-              </div>
-              <ul className="sox-timeline" style={{ marginTop: '1rem' }}>
-                {events.map((event) => (
-                  <li key={event.id} className="sox-event">
-                    <span className="sox-event-icon" aria-hidden="true">{event.icon}</span>
-                    <div className="sox-event-body">
-                      <p className="sox-event-title">{event.title}</p>
-                      {event.note && <p className="sox-event-note">{event.note}</p>}
-                      <p className="sox-event-when">{formatDateTime(event.at)}</p>
-                      {event.resend && (
-                        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => resendFailedEmail(event.resend!.noteId)}>
-                          Resend email
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </section>
-
-          {children}
-        </div>
-
-        <div className="sox-col">
-          <section className="sox-card sox-noprint">
-            <div className="sox-card-head"><h2>Status</h2></div>
-            <div className="sox-card-body" style={{ display: 'grid', gap: '0.625rem' }}>
-              <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.8125rem' }}>
-                Order status
-                <select className="sox-select" value={order.status} disabled={busy} onChange={(e) => setStatus(e.target.value)}>
-                  {/* A refunded order's status is set by the refund, so it is
-                      shown when it applies but never offered as a choice. */}
-                  {!(SETTABLE_STATUSES as readonly string[]).includes(order.status) && (
-                    <option value={order.status}>{badgeFor(ORDER_STATUS_BADGE, order.status).label}</option>
+                  {Number(order.discountAmount) > 0 && (
+                    <>
+                      <dt>Discount{order.couponCode ? ` (${order.couponCode})` : ''}</dt>
+                      <dd>-{formatMoney(order.discountAmount, currencySymbol)}</dd>
+                    </>
                   )}
-                  {SETTABLE_STATUSES.map((s) => <option key={s} value={s}>{ORDER_STATUS_BADGE[s]?.label ?? s}</option>)}
-                </select>
-              </label>
-              {order.status !== 'SHIPPED' && (
-                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                  Courier, tracking number and tracking links are recorded per parcel when you <strong>Dispatch items</strong>,
-                  or later with <strong>Edit tracking</strong> on each parcel. That is also what goes into the customer&rsquo;s email.
-                </p>
-              )}
-              <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.8125rem' }}>
-                <input type="checkbox" checked={sendEmailOnChange} onChange={(e) => setSendEmailOnChange(e.target.checked)} />
-                Email the customer when this changes
-              </label>
-              {/* A replacement's last email is its own, and asks for nothing. */}
-              {order.kind !== 'REPLACEMENT' && (
-                <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.8125rem' }}>
-                  <input type="checkbox" checked={order.askForReview !== false} disabled={busy} onChange={(e) => setAskForReview(e.target.checked)} />
-                  Ask for a review in the completion email
-                </label>
-              )}
-              {awaitingManualPayment && (
-                <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={confirmPayment}>Payment received</button>
-              )}
-            </div>
+                  {showCarriage && (
+                    <>
+                      <dt>Delivery{order.shippingRateName ? ` (${order.shippingRateName})` : ''}</dt>
+                      <dd>{formatMoney(order.shippingAmount, currencySymbol)}</dd>
+                    </>
+                  )}
+                  <dt>Tax{order.taxMode === 'INCLUSIVE' ? ' (included)' : ''}</dt>
+                  <dd>{formatMoney(order.taxAmount, currencySymbol)}</dd>
+                  <dt className="sox-total-row">Total</dt>
+                  <dd className="sox-total-row">{formatMoney(order.total, currencySymbol)}</dd>
+                  {refundedTotal > 0 && (
+                    <>
+                      <dt>Refunded</dt><dd>-{formatMoney(refundedTotal, currencySymbol)}</dd>
+                      <dt style={{ fontWeight: 600 }}>Kept</dt>
+                      <dd style={{ fontWeight: 600 }}>{formatMoney(Number(order.total) - refundedTotal, currencySymbol)}</dd>
+                    </>
+                  )}
+                </dl>
+              </div>
+            </section>
+            {requests.length > 0 && waitingRequests === 0 && (
+              <CustomerReports requests={requests} itemNames={itemNames} replacementNumbers={replacementNumbers} adminPath={adminPath} currencySymbol={currencySymbol} />
+            )}
+
+            {/* Replacement orders remain with the original items for context. */}
+            {(data.replacements ?? []).length > 0 && (
+              <section className="sox-card">
+                <div className="sox-card-head"><h2>Replacements sent</h2></div>
+                <div className="sox-card-body">
+                  <ul className="sox-list">
+                    {(data.replacements ?? []).map((replacement) => (
+                      <li key={replacement.id} className="sox-list-row">
+                        <div>
+                          <a className="sox-item-name" href={`/${adminPath}/m/shop/orders/${replacement.id}`}>
+                            {replacement.orderNumber}
+                          </a>
+                          <p className="sox-list-sub">
+                            Raised {formatDate(replacement.createdAt)}
+                            {' · '}
+                            {badgeFor(ORDER_STATUS_BADGE, replacement.status).label}
+                            {' · '}
+                            {Number(replacement.total) > 0
+                              ? formatMoney(replacement.total, currencySymbol)
+                              : 'free of charge'}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </section>
+            )}
+
+            {data.downloads.length > 0 && (
+              <section className="sox-card sox-noprint">
+                <div className="sox-card-head"><h2>Digital downloads</h2></div>
+                <div className="sox-card-body">
+                  <ul className="sox-list">
+                    {data.downloads.map((d) => (
+                      <li key={d.id}>
+                        <div className="sox-list-main">
+                          <p className="sox-list-title">{itemNames.get(d.orderItemId) ?? 'Download'}</p>
+                          <p className="sox-list-sub">
+                            Downloaded {d.downloadCount} time{d.downloadCount === 1 ? '' : 's'}
+                            {d.expiresAt ? ` · link expires ${formatDate(d.expiresAt)}` : ' · link does not expire'}
+                          </p>
+                        </div>
+                        <button type="button" className="sox-copy" onClick={() => copy(`${window.location.origin}/shop/downloads/${d.token}`, 'The download link')}>Copy link</button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </section>
+            )}
+
+            {children}
           </section>
+          <section className="sod-panel" id="order-delivery" aria-label="Delivery" hidden={section !== 'delivery'}>
+            <section className="sox-card">
+              <div className="sox-card-head">
+                <h2>Delivery address</h2>
+                <button type="button" className="sox-copy sox-noprint" onClick={() => copy(addressLines(order.shippingAddress).join('\n'), 'The address')}>Copy</button>
+              </div>
+              <div className="sox-card-body">
+                <address className="sox-address">
+                  {addressLines(order.shippingAddress).map((line, i) => <span key={i}>{line}<br /></span>)}
+                </address>
+                {order.shippingAddress.phone && <p className="sox-sub">{order.shippingAddress.phone}</p>}
+                {/* Only where the customer actually said something. Under the
+                    address rather than in a card of its own, because it is the
+                    rest of that sentence - and set apart, because a gate code
+                    read as though it were an address line is a gate code nobody
+                    acts on. Kept in the print, unlike the Copy button beside it:
+                    a picking list wants it. */}
+                {order.deliveryInstructions?.trim() && (
+                  <div className="sox-instructions">
+                    <strong>{instructionsLabel}</strong>
+                    <p>{order.deliveryInstructions.trim()}</p>
+                  </div>
+                )}
+              </div>
+            </section>
 
-          {/* Something the customer owes on top of the order - a redelivery
-              fee - and their choice of paying it or cancelling instead. */}
-          <OrderChargesPanel orderId={orderId} orderStatus={order.status} currencySymbol={currencySymbol} onChanged={refresh} />
+            {dispatch && dispatch.shipments.length === 0 && (
+              <p className="sox-notice">No parcels recorded yet. Use Dispatch items when the goods are ready to go.</p>
+            )}
+            {dispatch && dispatch.shipments.length > 0 && (
+              <section className="sox-card">
+                <div className="sox-card-head"><h2>Parcels &amp; tracking</h2></div>
+                <div className="sox-card-body">
+                  <ul className="sox-list">
+                    {dispatch.shipments.map((shipment) => (
+                      <li key={shipment.id}>
+                        <div className="sox-list-main">
+                          <p className="sox-list-title">
+                            {formatDate(shipment.shippedAt)}
+                            {shipment.carrier ? ` · ${shipment.carrier}` : ''}
+                            {/* Only ever set on a parcel that went out with
+                                nothing to follow and was given something later,
+                                so it says what happened rather than restating
+                                what the dispatch note already carried. */}
+                            {shipment.trackingNotifiedAt ? ' · tracking sent to the customer' : ''}
+                          </p>
+                          <AdminShipmentTracking shipment={shipment} />
+                          <p className="sox-list-sub">
+                            {shipment.items.map((si) => `${si.quantity} × ${itemNames.get(si.orderItemId) ?? 'an item no longer on this order'}`).join(', ')}
+                            {shipment.notes ? ` - ${shipment.notes}` : ''}
+                          </p>
+                          {shipment.deliveryDate && (
+                            <p className="sox-list-sub">
+                              Delivery booked for {shipment.deliveryDate}
+                              {shipment.deliverySlotStart && shipment.deliverySlotEnd
+                                ? `, ${shipment.deliverySlotStart} to ${shipment.deliverySlotEnd}`
+                                : ' - no time window yet'}
+                              {shipment.slotNotifiedAt ? ' · customer told' : ''}
+                            </p>
+                          )}
+                          {shipment.trackingStage && (
+                            <p className="sox-list-sub">
+                              Courier says: {shipment.trackingStage}
+                              {shipment.deliveredAt ? ` · delivered ${formatDate(shipment.deliveredAt)}` : ''}
+                            </p>
+                          )}
+                          {/* A failed attempt, and what the customer is being
+                              told to do about it. The courier sometimes rings
+                              the customer themselves once the shop has spoken to
+                              them, and the customer should not be chasing a
+                              depot that is about to ring them. */}
+                          {shipment.deliveryFailed && (
+                            <div className="sox-list-sub" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem' }}>
+                              <span>
+                                {shipment.courierRebooks || shipment.courierRearrangingAt
+                                  ? `Delivery failed · customer told ${shipment.carrier || 'the courier'} will be in touch to rebook`
+                                  : `Delivery failed · customer told to contact ${shipment.carrier || 'the courier'} to rebook`}
+                                {shipment.failedNotifiedAt ? ' · customer emailed' : ''}
+                              </span>
+                              {!shipment.courierRebooks && (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm sox-noprint"
+                                  disabled={busy}
+                                  onClick={() => setCourierRearranging(shipment, !shipment.courierRearrangingAt)}
+                                >
+                                  {shipment.courierRearrangingAt
+                                    ? 'Customer should contact them instead'
+                                    : `${shipment.carrier || 'Courier'} will contact the customer`}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {shipment.signatureUrl && (
+                            <>
+                              <p className="sox-list-sub">
+                                Signed for
+                                {shipment.signedBy ? ` by ${shipment.signedBy}` : ''}
+                                {shipment.signedAt ? ` · ${formatDateTime(shipment.signedAt)}` : ''}
+                              </p>
+                              {/* eslint-disable-next-line @next/next/no-img-element -- a third-party
+                                  signature of unknown dimensions; next/image wants a size nobody here
+                                  can give it. */}
+                              <img
+                                className="sox-signature"
+                                src={shipment.signatureUrl}
+                                alt={shipment.signedBy ? `Signature of ${shipment.signedBy}` : 'Delivery signature'}
+                                loading="lazy"
+                              />
+                            </>
+                          )}
+                        </div>
+                        <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => setEditingParcelId(shipment.id)}>Edit tracking</button>
+                        <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => undoDispatch(shipment)}>Undo</button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </section>
+            )}
 
+            {/* Something the customer owes on top of the order - a redelivery
+                fee - and their choice of paying it or cancelling instead. */}
+            <OrderChargesPanel orderId={orderId} orderStatus={order.status} currencySymbol={currencySymbol} onChanged={refresh} onPendingChange={setPendingCharge} />
+
+          </section>
+          <section className="sod-panel" id="order-payment" aria-label="Payment and documents" hidden={section !== 'payment'}>
+            <section className="sox-card">
+              <div className="sox-card-head"><h2>Payment</h2></div>
+              <div className="sox-card-body">
+                <dl className="sox-detail">
+                  <div className="sox-detail-row">
+                    <dt>Method</dt>
+                    <dd>{paymentMethodLabel(order.paymentMethod)}</dd>
+                  </div>
+                  <div className="sox-detail-row">
+                    <dt>State</dt>
+                    <dd><span className={`badge ${paymentBadge.cls}`}>{paymentBadge.label}</span></dd>
+                  </div>
+                  {order.paidAt && (
+                    <div className="sox-detail-row">
+                      <dt>Paid</dt>
+                      <dd>{formatDateTime(order.paidAt)}</dd>
+                    </div>
+                  )}
+                  {order.paymentReference && (
+                    <div className="sox-detail-row">
+                      <dt>Reference</dt>
+                      <dd className="sox-mono" style={{ fontSize: '0.8125rem' }}>{order.paymentReference}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            </section>
+
+            {/* The proforma. Its own card rather than a row on the invoice one,
+                because a shop can perfectly well want proformas and not want
+                invoices - the two switches are separate and this card follows its
+                own. Nothing to press: there is no document to raise, only one to
+                read, since it is drawn from the order every time it is opened. */}
+            {invoicing?.proforma && (
+              <section className="sox-card sox-noprint">
+                <div className="sox-card-head"><h2>Proforma</h2></div>
+                <div className="sox-card-body" style={{ display: 'grid', gap: '0.75rem' }}>
+                  <p className="sox-sub" style={{ margin: 0 }}>
+                    {invoicing.proforma.paid
+                      ? 'This order has been paid, so the proforma now says so. It stays available for the customer\u2019s own records.'
+                      : 'What is owed, how to pay it, and how long each line takes once payment reaches us. Not a VAT invoice, and it says so on its face.'}
+                  </p>
+                  <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                    <a className="btn btn-secondary btn-sm" href={invoicing.proforma.viewUrl} target="_blank" rel="noreferrer">View</a>
+                    {invoicing.pdfEnabled && (
+                      <a className="btn btn-secondary btn-sm" href={invoicing.proforma.pdfUrl}>PDF</a>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Invoicing. The whole card is absent on a shop that has not switched
+                it on, which is nearly all of them - see the panel's own comment in
+                app/api/admin/orders/[id]/invoice/route.ts. */}
+            {invoicing?.enabled && (
+              <section className="sox-card sox-noprint">
+                <div className="sox-card-head"><h2>Invoice</h2></div>
+                <div className="sox-card-body" style={{ display: 'grid', gap: '0.75rem' }}>
+                  {invoicing.invoices.length === 0 && (
+                    <>
+                      <p className="sox-sub" style={{ margin: 0 }}>
+                        {invoicing.issueOn === 'MANUAL'
+                          ? 'This shop raises invoices by hand.'
+                          : `Raised automatically when an order is ${INVOICE_TRIGGER_WORDING[invoicing.issueOn]}. This one has not been yet.`}
+                      </p>
+                      <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={issueInvoice}>
+                        Raise the invoice now
+                      </button>
+                    </>
+                  )}
+                  {invoicing.invoices.map((invoice) => (
+                    <div key={invoice.id} style={{ display: 'grid', gap: '0.375rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <strong className="sox-mono">{invoice.invoiceNumber}</strong>
+                        {invoice.status === 'VOID'
+                          ? <span className="badge badge-default">Void</span>
+                          : invoice.supersededAt
+                            ? <span className="badge badge-warning">Replaced</span>
+                            : <span className="badge badge-success">Issued</span>}
+                        <span className="sox-muted">{formatDate(invoice.issuedAt)}</span>
+                      </div>
+                      <div className="sox-sub">
+                        {formatMoney(invoice.total, invoice.currencySymbol || currencySymbol)}
+                        {Number(invoice.taxAmount) > 0 && ` · tax ${formatMoney(invoice.taxAmount, invoice.currencySymbol || currencySymbol)}`}
+                        {invoice.issuedBy === 'MANUAL' ? ' · raised by hand' : ''}
+                      </div>
+                      {invoice.voidReason && <div className="sox-sub">Voided: {invoice.voidReason}</div>}
+                      {invoice.supersedeReason && <div className="sox-sub">{invoice.supersedeReason}</div>}
+                      {/* What the books made of it. A failure here is the one that
+                          otherwise goes unnoticed until the VAT return is due, so
+                          it is stated rather than logged. */}
+                      {invoice.sinkResults.map((result) => (
+                        <div key={result.id} className="sox-sub">
+                          {result.ok ? '✓' : '⚠'} {result.id}: {result.message}
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                        <a className="btn btn-secondary btn-sm" href={invoice.viewUrl} target="_blank" rel="noreferrer">View</a>
+                        {invoicing.pdfEnabled && (
+                          <a className="btn btn-secondary btn-sm" href={invoice.pdfUrl}>PDF</a>
+                        )}
+                        {/* Voided invoices get the button too, and it says the
+                            opposite thing: take the sale back out. Without it, an
+                            invoice voided while the books were down leaves VAT
+                            standing on a sale that never happened. */}
+                        {invoicing.hasBookkeeping && (
+                          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => resendInvoice(invoice.id)}>
+                            {invoice.status === 'VOID' ? 'Tell the books it is void' : 'Send to the books again'}
+                          </button>
+                        )}
+                        {invoice.status === 'ISSUED' && (
+                          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => voidTheInvoice(invoice)}>
+                            Void
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Credit notes. Absent unless the shop invoices and has credit notes
+                switched on, and quiet until there is something to show - a card
+                saying "no refunds" on every order would be noise on the great
+                majority of them. */}
+            {crediting?.enabled
+              && (crediting.creditNotes.length > 0
+                || uncreditedRefunds.length > 0
+                || nettedRefunds.length > 0
+                || preInvoiceRefunds.length > 0) && (
+              <section className="sox-card sox-noprint">
+                <div className="sox-card-head"><h2>Credit notes</h2></div>
+                <div className="sox-card-body" style={{ display: 'grid', gap: '0.75rem' }}>
+                  {crediting.creditNotes.map((note) => (
+                    <div key={note.id} style={{ display: 'grid', gap: '0.375rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <strong className="sox-mono">{note.creditNoteNumber}</strong>
+                        <span className="badge badge-default">Credited</span>
+                        <span className="sox-muted">{formatDate(note.issuedAt)}</span>
+                      </div>
+                      <div className="sox-sub">
+                        {formatMoney(note.total, note.currencySymbol || currencySymbol)}
+                        {Number(note.taxAmount) > 0 && ` · tax ${formatMoney(note.taxAmount, note.currencySymbol || currencySymbol)}`}
+                        {note.invoiceNumber ? ` · against ${note.invoiceNumber}` : ''}
+                        {note.issuedBy === 'MANUAL' ? ' · raised by hand' : ''}
+                      </div>
+                      {note.reason && <div className="sox-sub">Reason: {note.reason}</div>}
+                      {/* What the books made of it. Same reasoning as the
+                          invoice's: a credit that never reached them is VAT the
+                          shop hands over on money it gave back, and nobody
+                          notices until the return is due. */}
+                      {note.sinkResults.map((result) => (
+                        <div key={result.id} className="sox-sub">
+                          {result.ok ? '✓' : '⚠'} {result.id}: {result.message}
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                        <a className="btn btn-secondary btn-sm" href={note.viewUrl} target="_blank" rel="noreferrer">View</a>
+                        {crediting.pdfEnabled && <a className="btn btn-secondary btn-sm" href={note.pdfUrl}>PDF</a>}
+                        {crediting.hasBookkeeping && (
+                          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => resendCreditNote(note.id)}>
+                            Send to the books again
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {/* Money that went back before the invoice was raised. The
+                      invoice went out without those units on it, so there is
+                      nothing to credit and nothing to press - said plainly here
+                      so an empty credit note panel does not read as a job
+                      somebody forgot to do. */}
+                  {nettedRefunds.map((refund) => (
+                    <div key={refund.id} className="sox-sub">
+                      The {formatMoney(refund.amount, currencySymbol)} refund of {formatDate(refund.createdAt)} went back before
+                      the invoice was raised, so it was left off the invoice. No credit note needed.
+                    </div>
+                  ))}
+                  {/* The same thing, before the invoice exists. */}
+                  {preInvoiceRefunds.map((refund) => (
+                    <div key={refund.id} className="sox-sub">
+                      The {formatMoney(refund.amount, currencySymbol)} refund of {formatDate(refund.createdAt)} came back before
+                      this order was invoiced. It will be left off the invoice when it goes out, so no credit note is needed.
+                    </div>
+                  ))}
+                  {/* A refund whose credit note never got raised - the books were
+                      down, credit notes were off at the time, or the refund
+                      settled hours later on the reconcile run. Left visible
+                      rather than retried silently, because the owner is the one
+                      who knows whether it should exist. */}
+                  {uncreditedRefunds.map((refund) => (
+                    <div key={refund.id} style={{ display: 'grid', gap: '0.375rem' }}>
+                      <div className="sox-sub">
+                        No credit note for the {formatMoney(refund.amount, currencySymbol)} refund of {formatDate(refund.createdAt)}.
+                      </div>
+                      <div>
+                        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => issueCreditNote(refund.id)}>
+                          Raise the credit note
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {order.billingAddress && (
+              <section className="sox-card">
+                <div className="sox-card-head"><h2>Billing address</h2></div>
+                <div className="sox-card-body">
+                  <address className="sox-address">
+                    {addressLines(order.billingAddress).map((line, i) => <span key={i}>{line}<br /></span>)}
+                  </address>
+                </div>
+              </section>
+            )}
+
+          </section>
+          <section className="sod-panel" id="order-activity" aria-label="Activity and checkout agreements" hidden={section !== 'activity'}>
+            <section className="sox-card">
+              <div className="sox-card-head"><h2>History</h2></div>
+              <div className="sox-card-body">
+                <div className="sox-composer sox-noprint" style={{ marginTop: 0, paddingTop: 0, borderTop: 0 }}>
+                  <textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Add a note - only you and your team ever see these."
+                    aria-label="Add a note to this order"
+                  />
+                  <div className="sox-composer-row">
+                    <span className="sox-muted" style={{ fontSize: '0.75rem' }}>Notes are never shown to the customer.</span>
+                    <button type="button" className="btn btn-secondary btn-sm" disabled={busy || !note.trim()} onClick={addNote}>Add note</button>
+                  </div>
+                </div>
+                <ul className="sox-timeline" style={{ marginTop: '1rem' }}>
+                  {events.map((event) => (
+                    <li key={event.id} className="sox-event">
+                      <span className="sox-event-icon" aria-hidden="true">{event.icon}</span>
+                      <div className="sox-event-body">
+                        <p className="sox-event-title">{event.title}</p>
+                        {event.note && <p className="sox-event-note">{event.note}</p>}
+                        <p className="sox-event-when">{formatDateTime(event.at)}</p>
+                        {event.resend && (
+                          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => resendFailedEmail(event.resend!.noteId)}>
+                            Resend email
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+
+            {/* The point of storing what was ticked is being able to look at it, so
+                it is on the order rather than buried in an export. The statement is
+                the one the shopper actually saw, not today's wording. */}
+            {order.agreements && order.agreements.length > 0 && (
+              <section className="sox-card">
+                <div className="sox-card-head"><h2>Agreed at checkout</h2></div>
+                <div className="sox-card-body">
+                  <ul className="sox-list">
+                    {order.agreements.map((agreement) => (
+                      <li key={agreement.id}>
+                        <div className="sox-list-main" style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline' }}>
+                          <span aria-hidden="true" style={{ color: agreement.accepted ? 'var(--color-success)' : 'var(--color-text-secondary)' }}>
+                            {agreement.accepted ? '✓' : '✗'}
+                          </span>
+                          <span>
+                            {agreement.statement.replace(/\[([^\]]*)\]/g, '$1')}
+                            {agreement.required && <span className="sox-muted"> (required)</span>}
+                            {agreement.acceptedAt && <span className="sox-muted"> - {formatDateTime(agreement.acceptedAt)}</span>}
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </section>
+            )}
+
+          </section>
+        </div>
+        <aside className="sod-inspector" aria-label="Customer and order management">
           <section className="sox-card">
             <div className="sox-card-head"><h2>Customer</h2></div>
             <div className="sox-card-body">
@@ -1327,292 +1622,41 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
             </div>
           </section>
 
-          <section className="sox-card">
-            <div className="sox-card-head">
-              <h2>Delivery address</h2>
-              <button type="button" className="sox-copy sox-noprint" onClick={() => copy(addressLines(order.shippingAddress).join('\n'), 'The address')}>Copy</button>
-            </div>
-            <div className="sox-card-body">
-              <address className="sox-address">
-                {addressLines(order.shippingAddress).map((line, i) => <span key={i}>{line}<br /></span>)}
-              </address>
-              {order.shippingAddress.phone && <p className="sox-sub">{order.shippingAddress.phone}</p>}
-              {/* Only where the customer actually said something. Under the
-                  address rather than in a card of its own, because it is the
-                  rest of that sentence - and set apart, because a gate code
-                  read as though it were an address line is a gate code nobody
-                  acts on. Kept in the print, unlike the Copy button beside it:
-                  a picking list wants it. */}
-              {order.deliveryInstructions?.trim() && (
-                <div className="sox-instructions">
-                  <strong>{instructionsLabel}</strong>
-                  <p>{order.deliveryInstructions.trim()}</p>
-                </div>
+          <section className="sox-card sox-noprint">
+            <div className="sox-card-head"><h2>Status</h2></div>
+            <div className="sox-card-body" style={{ display: 'grid', gap: '0.625rem' }}>
+              <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.8125rem' }}>
+                Order status
+                <select className="sox-select" value={order.status} disabled={busy} onChange={(e) => setStatus(e.target.value)}>
+                  {/* A refunded order's status is set by the refund, so it is
+                      shown when it applies but never offered as a choice. */}
+                  {!(SETTABLE_STATUSES as readonly string[]).includes(order.status) && (
+                    <option value={order.status}>{badgeFor(ORDER_STATUS_BADGE, order.status).label}</option>
+                  )}
+                  {SETTABLE_STATUSES.map((s) => <option key={s} value={s}>{ORDER_STATUS_BADGE[s]?.label ?? s}</option>)}
+                </select>
+              </label>
+              {order.status !== 'SHIPPED' && (
+                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                  Courier, tracking number and tracking links are recorded per parcel when you <strong>Dispatch items</strong>,
+                  or later with <strong>Edit tracking</strong> on each parcel. That is also what goes into the customer&rsquo;s email.
+                </p>
+              )}
+              <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.8125rem' }}>
+                <input type="checkbox" checked={sendEmailOnChange} onChange={(e) => setSendEmailOnChange(e.target.checked)} />
+                Email the customer when this changes
+              </label>
+              {/* A replacement's last email is its own, and asks for nothing. */}
+              {order.kind !== 'REPLACEMENT' && (
+                <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.8125rem' }}>
+                  <input type="checkbox" checked={order.askForReview !== false} disabled={busy} onChange={(e) => setAskForReview(e.target.checked)} />
+                  Ask for a review in the completion email
+                </label>
               )}
             </div>
           </section>
 
-          {order.billingAddress && (
-            <section className="sox-card">
-              <div className="sox-card-head"><h2>Billing address</h2></div>
-              <div className="sox-card-body">
-                <address className="sox-address">
-                  {addressLines(order.billingAddress).map((line, i) => <span key={i}>{line}<br /></span>)}
-                </address>
-              </div>
-            </section>
-          )}
-
-          <section className="sox-card">
-            <div className="sox-card-head"><h2>Payment</h2></div>
-            <div className="sox-card-body">
-              <dl className="sox-detail">
-                <div className="sox-detail-row">
-                  <dt>Method</dt>
-                  <dd>{paymentMethodLabel(order.paymentMethod)}</dd>
-                </div>
-                <div className="sox-detail-row">
-                  <dt>State</dt>
-                  <dd><span className={`badge ${paymentBadge.cls}`}>{paymentBadge.label}</span></dd>
-                </div>
-                {order.paidAt && (
-                  <div className="sox-detail-row">
-                    <dt>Paid</dt>
-                    <dd>{formatDateTime(order.paidAt)}</dd>
-                  </div>
-                )}
-                {order.paymentReference && (
-                  <div className="sox-detail-row">
-                    <dt>Reference</dt>
-                    <dd className="sox-mono" style={{ fontSize: '0.8125rem' }}>{order.paymentReference}</dd>
-                  </div>
-                )}
-              </dl>
-            </div>
-          </section>
-
-          {/* The proforma. Its own card rather than a row on the invoice one,
-              because a shop can perfectly well want proformas and not want
-              invoices - the two switches are separate and this card follows its
-              own. Nothing to press: there is no document to raise, only one to
-              read, since it is drawn from the order every time it is opened. */}
-          {invoicing?.proforma && (
-            <section className="sox-card sox-noprint">
-              <div className="sox-card-head"><h2>Proforma</h2></div>
-              <div className="sox-card-body" style={{ display: 'grid', gap: '0.75rem' }}>
-                <p className="sox-sub" style={{ margin: 0 }}>
-                  {invoicing.proforma.paid
-                    ? 'This order has been paid, so the proforma now says so. It stays available for the customer\u2019s own records.'
-                    : 'What is owed, how to pay it, and how long each line takes once payment reaches us. Not a VAT invoice, and it says so on its face.'}
-                </p>
-                <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
-                  <a className="btn btn-secondary btn-sm" href={invoicing.proforma.viewUrl} target="_blank" rel="noreferrer">View</a>
-                  {invoicing.pdfEnabled && (
-                    <a className="btn btn-secondary btn-sm" href={invoicing.proforma.pdfUrl}>PDF</a>
-                  )}
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* Invoicing. The whole card is absent on a shop that has not switched
-              it on, which is nearly all of them - see the panel's own comment in
-              app/api/admin/orders/[id]/invoice/route.ts. */}
-          {invoicing?.enabled && (
-            <section className="sox-card sox-noprint">
-              <div className="sox-card-head"><h2>Invoice</h2></div>
-              <div className="sox-card-body" style={{ display: 'grid', gap: '0.75rem' }}>
-                {invoicing.invoices.length === 0 && (
-                  <>
-                    <p className="sox-sub" style={{ margin: 0 }}>
-                      {invoicing.issueOn === 'MANUAL'
-                        ? 'This shop raises invoices by hand.'
-                        : `Raised automatically when an order is ${INVOICE_TRIGGER_WORDING[invoicing.issueOn]}. This one has not been yet.`}
-                    </p>
-                    <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={issueInvoice}>
-                      Raise the invoice now
-                    </button>
-                  </>
-                )}
-                {invoicing.invoices.map((invoice) => (
-                  <div key={invoice.id} style={{ display: 'grid', gap: '0.375rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <strong className="sox-mono">{invoice.invoiceNumber}</strong>
-                      {invoice.status === 'VOID'
-                        ? <span className="badge badge-default">Void</span>
-                        : invoice.supersededAt
-                          ? <span className="badge badge-warning">Replaced</span>
-                          : <span className="badge badge-success">Issued</span>}
-                      <span className="sox-muted">{formatDate(invoice.issuedAt)}</span>
-                    </div>
-                    <div className="sox-sub">
-                      {formatMoney(invoice.total, invoice.currencySymbol || currencySymbol)}
-                      {Number(invoice.taxAmount) > 0 && ` · tax ${formatMoney(invoice.taxAmount, invoice.currencySymbol || currencySymbol)}`}
-                      {invoice.issuedBy === 'MANUAL' ? ' · raised by hand' : ''}
-                    </div>
-                    {invoice.voidReason && <div className="sox-sub">Voided: {invoice.voidReason}</div>}
-                    {invoice.supersedeReason && <div className="sox-sub">{invoice.supersedeReason}</div>}
-                    {/* What the books made of it. A failure here is the one that
-                        otherwise goes unnoticed until the VAT return is due, so
-                        it is stated rather than logged. */}
-                    {invoice.sinkResults.map((result) => (
-                      <div key={result.id} className="sox-sub">
-                        {result.ok ? '✓' : '⚠'} {result.id}: {result.message}
-                      </div>
-                    ))}
-                    <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
-                      <a className="btn btn-secondary btn-sm" href={invoice.viewUrl} target="_blank" rel="noreferrer">View</a>
-                      {invoicing.pdfEnabled && (
-                        <a className="btn btn-secondary btn-sm" href={invoice.pdfUrl}>PDF</a>
-                      )}
-                      {/* Voided invoices get the button too, and it says the
-                          opposite thing: take the sale back out. Without it, an
-                          invoice voided while the books were down leaves VAT
-                          standing on a sale that never happened. */}
-                      {invoicing.hasBookkeeping && (
-                        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => resendInvoice(invoice.id)}>
-                          {invoice.status === 'VOID' ? 'Tell the books it is void' : 'Send to the books again'}
-                        </button>
-                      )}
-                      {invoice.status === 'ISSUED' && (
-                        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => voidTheInvoice(invoice)}>
-                          Void
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Credit notes. Absent unless the shop invoices and has credit notes
-              switched on, and quiet until there is something to show - a card
-              saying "no refunds" on every order would be noise on the great
-              majority of them. */}
-          {crediting?.enabled
-            && (crediting.creditNotes.length > 0
-              || uncreditedRefunds.length > 0
-              || nettedRefunds.length > 0
-              || preInvoiceRefunds.length > 0) && (
-            <section className="sox-card sox-noprint">
-              <div className="sox-card-head"><h2>Credit notes</h2></div>
-              <div className="sox-card-body" style={{ display: 'grid', gap: '0.75rem' }}>
-                {crediting.creditNotes.map((note) => (
-                  <div key={note.id} style={{ display: 'grid', gap: '0.375rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <strong className="sox-mono">{note.creditNoteNumber}</strong>
-                      <span className="badge badge-default">Credited</span>
-                      <span className="sox-muted">{formatDate(note.issuedAt)}</span>
-                    </div>
-                    <div className="sox-sub">
-                      {formatMoney(note.total, note.currencySymbol || currencySymbol)}
-                      {Number(note.taxAmount) > 0 && ` · tax ${formatMoney(note.taxAmount, note.currencySymbol || currencySymbol)}`}
-                      {note.invoiceNumber ? ` · against ${note.invoiceNumber}` : ''}
-                      {note.issuedBy === 'MANUAL' ? ' · raised by hand' : ''}
-                    </div>
-                    {note.reason && <div className="sox-sub">Reason: {note.reason}</div>}
-                    {/* What the books made of it. Same reasoning as the
-                        invoice's: a credit that never reached them is VAT the
-                        shop hands over on money it gave back, and nobody
-                        notices until the return is due. */}
-                    {note.sinkResults.map((result) => (
-                      <div key={result.id} className="sox-sub">
-                        {result.ok ? '✓' : '⚠'} {result.id}: {result.message}
-                      </div>
-                    ))}
-                    <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
-                      <a className="btn btn-secondary btn-sm" href={note.viewUrl} target="_blank" rel="noreferrer">View</a>
-                      {crediting.pdfEnabled && <a className="btn btn-secondary btn-sm" href={note.pdfUrl}>PDF</a>}
-                      {crediting.hasBookkeeping && (
-                        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => resendCreditNote(note.id)}>
-                          Send to the books again
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {/* Money that went back before the invoice was raised. The
-                    invoice went out without those units on it, so there is
-                    nothing to credit and nothing to press - said plainly here
-                    so an empty credit note panel does not read as a job
-                    somebody forgot to do. */}
-                {nettedRefunds.map((refund) => (
-                  <div key={refund.id} className="sox-sub">
-                    The {formatMoney(refund.amount, currencySymbol)} refund of {formatDate(refund.createdAt)} went back before
-                    the invoice was raised, so it was left off the invoice. No credit note needed.
-                  </div>
-                ))}
-                {/* The same thing, before the invoice exists. */}
-                {preInvoiceRefunds.map((refund) => (
-                  <div key={refund.id} className="sox-sub">
-                    The {formatMoney(refund.amount, currencySymbol)} refund of {formatDate(refund.createdAt)} came back before
-                    this order was invoiced. It will be left off the invoice when it goes out, so no credit note is needed.
-                  </div>
-                ))}
-                {/* A refund whose credit note never got raised - the books were
-                    down, credit notes were off at the time, or the refund
-                    settled hours later on the reconcile run. Left visible
-                    rather than retried silently, because the owner is the one
-                    who knows whether it should exist. */}
-                {uncreditedRefunds.map((refund) => (
-                  <div key={refund.id} style={{ display: 'grid', gap: '0.375rem' }}>
-                    <div className="sox-sub">
-                      No credit note for the {formatMoney(refund.amount, currencySymbol)} refund of {formatDate(refund.createdAt)}.
-                    </div>
-                    <div>
-                      <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => issueCreditNote(refund.id)}>
-                        Raise the credit note
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          <section className="sox-card">
-            <div className="sox-card-head"><h2>Totals</h2></div>
-            <div className="sox-card-body">
-              <dl className="sox-totals">
-                <dt>Subtotal</dt><dd>{formatMoney(goodsSubtotal, currencySymbol)}</dd>
-                {/* What the lines paid for services priced per item - the
-                    delivery tier each one went by - under the name the module
-                    that charged it gave. Already inside the total, so these
-                    come out of the subtotal rather than being added to it. */}
-                {chargeRows.map((charge) => (
-                  <Fragment key={charge.label}>
-                    <dt>{charge.label}</dt>
-                    <dd>{formatMoney(charge.amount, currencySymbol)}</dd>
-                  </Fragment>
-                ))}
-                {Number(order.discountAmount) > 0 && (
-                  <>
-                    <dt>Discount{order.couponCode ? ` (${order.couponCode})` : ''}</dt>
-                    <dd>-{formatMoney(order.discountAmount, currencySymbol)}</dd>
-                  </>
-                )}
-                {showCarriage && (
-                  <>
-                    <dt>Delivery{order.shippingRateName ? ` (${order.shippingRateName})` : ''}</dt>
-                    <dd>{formatMoney(order.shippingAmount, currencySymbol)}</dd>
-                  </>
-                )}
-                <dt>Tax{order.taxMode === 'INCLUSIVE' ? ' (included)' : ''}</dt>
-                <dd>{formatMoney(order.taxAmount, currencySymbol)}</dd>
-                <dt className="sox-total-row">Total</dt>
-                <dd className="sox-total-row">{formatMoney(order.total, currencySymbol)}</dd>
-                {refundedTotal > 0 && (
-                  <>
-                    <dt>Refunded</dt><dd>-{formatMoney(refundedTotal, currencySymbol)}</dd>
-                    <dt style={{ fontWeight: 600 }}>Kept</dt>
-                    <dd style={{ fontWeight: 600 }}>{formatMoney(Number(order.total) - refundedTotal, currencySymbol)}</dd>
-                  </>
-                )}
-              </dl>
-            </div>
-          </section>
-        </div>
+        </aside>
       </div>
 
       {dispatchOpen && dispatch && (
