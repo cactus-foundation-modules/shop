@@ -49,6 +49,11 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     trackingNotifiedAt: (r.tracking_notified_at as Date | null) ?? null,
     courierRearrangingAt: (r.courier_rearranging_at as Date | null) ?? null,
     failedNotifiedAt: (r.failed_notified_at as Date | null) ?? null,
+    // Migration 070. Anything but the two known words reads as no delay.
+    deliveryDelay: r.delivery_delay === 'today' || r.delivery_delay === 'rebooking' ? r.delivery_delay : null,
+    deliveryDelayedAt: (r.delivery_delayed_at as Date | null) ?? null,
+    deliveryDelayedFrom: (r.delivery_delayed_from as string | null) ?? null,
+    deliveryDelayNote: (r.delivery_delay_note as string | null) ?? null,
     // Migration 068. Absent reads as false: a parcel recorded before it was
     // never quiet.
     quietCustomerEmails: r.quiet_customer_emails === true,
@@ -557,6 +562,20 @@ export async function updateShipmentDetails(
   if (patch.carrier !== undefined) set('carrier', patch.carrier)
   if (patch.courierId !== undefined) set('courier_id', patch.courierId)
   if (patch.deliveryDate !== undefined) set('delivery_date', patch.deliveryDate)
+  // A new day after the one a reported delay missed (070) is the answer to
+  // it, so it closes the delay. The same day saved again, an earlier day, or
+  // the day cleared, leave it open. The window email's stamp is the caller's
+  // business (see newDayAfterDelay in lib/dispatch-follow-up.ts): only the
+  // caller knows whether the customer was still waiting on this day.
+  if (typeof patch.deliveryDate === 'string') {
+    assignments.push(Prisma.sql`"delivery_delay" = CASE
+      WHEN "delivery_delay" IS NOT NULL
+        AND ${patch.deliveryDate}::text IS DISTINCT FROM "delivery_date"
+        AND ("delivery_delayed_from" IS NULL OR ${patch.deliveryDate}::text > "delivery_delayed_from")
+      THEN NULL
+      ELSE "delivery_delay"
+    END`)
+  }
   if (patch.deliverySlotStart !== undefined) set('delivery_slot_start', patch.deliverySlotStart)
   if (patch.deliverySlotEnd !== undefined) set('delivery_slot_end', patch.deliverySlotEnd)
   if (patch.notes !== undefined) set('notes', patch.notes)
@@ -585,6 +604,104 @@ export async function updateShipmentDetails(
 
   const shipments = await getShipmentsForOrder(orderId)
   return shipments.find((s) => s.id === shipmentId) ?? null
+}
+
+/**
+ * Record a delay the shop has been told about (migration 070).
+ *
+ *   today      running late, still trying today. The booking stands.
+ *   rebooking  a new day to follow. The booking is cleared - it is the day
+ *              that is not happening - and so is the window email's stamp, so
+ *              the customer is told the new window when there is one.
+ *   new-date   delayed to `newDate`. Any open delay closes. The window email's
+ *              stamp is taken here when the new window comes with it, because
+ *              the delay email carries the window and the customer must not
+ *              get the same news twice; without a window it is cleared, so the
+ *              window email follows once there is one.
+ *
+ * `missedDay` is the day that was booked when the delay was reported, kept for
+ * lib/delivery-delay.ts. Returns false when the parcel is not on this order.
+ */
+export async function recordDeliveryDelay(shipmentId: string, orderId: string, input: {
+  kind: 'today' | 'rebooking' | 'new-date'
+  missedDay: string | null
+  note: string | null
+  newDate?: string | null
+  slotStart?: string | null
+  slotEnd?: string | null
+  /** The delay email is going, and will carry the window. */
+  told?: boolean
+}): Promise<boolean> {
+  const delay = input.kind === 'new-date' ? null : input.kind
+  const booking = input.kind === 'today'
+    ? Prisma.empty
+    : input.kind === 'rebooking'
+      ? Prisma.sql`,
+        "delivery_date" = NULL,
+        "delivery_slot_start" = NULL,
+        "delivery_slot_end" = NULL,
+        "slot_notified_at" = NULL`
+      : newBookingAssignments(input.newDate ?? null, input.slotStart ?? null, input.slotEnd ?? null, input.told === true)
+
+  const changed = await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "delivery_delay" = ${delay}::text,
+        "delivery_delayed_at" = CURRENT_TIMESTAMP,
+        "delivery_delayed_from" = ${input.missedDay}::text,
+        "delivery_delay_note" = ${input.note}::text,
+        "updated_at" = CURRENT_TIMESTAMP${booking}
+    WHERE "id" = ${shipmentId} AND "order_id" = ${orderId}
+  `
+  return changed > 0
+}
+
+/**
+ * The new day for a parcel whose delay said one would follow. Closes the delay
+ * and leaves its history (when, the missed day, the note) where it is.
+ */
+export async function recordDelayedParcelNewDate(shipmentId: string, orderId: string, input: {
+  newDate: string
+  slotStart: string | null
+  slotEnd: string | null
+  /** The new-date email is going, and will carry the window. */
+  told: boolean
+}): Promise<boolean> {
+  const changed = await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "delivery_delay" = NULL,
+        "updated_at" = CURRENT_TIMESTAMP${newBookingAssignments(input.newDate, input.slotStart, input.slotEnd, input.told)}
+    WHERE "id" = ${shipmentId} AND "order_id" = ${orderId}
+  `
+  return changed > 0
+}
+
+/** Take back a delay reported by mistake. All of it goes, the missed day
+ *  included - left behind, it would go on hiding the courier's window for that
+ *  day as the booking that fell through. The booking is not restored: a
+ *  rebooking cleared it, and only staff know what it should now say. */
+export async function clearDeliveryDelay(shipmentId: string, orderId: string): Promise<boolean> {
+  const changed = await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "delivery_delay" = NULL,
+        "delivery_delayed_at" = NULL,
+        "delivery_delayed_from" = NULL,
+        "delivery_delay_note" = NULL,
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId} AND "order_id" = ${orderId}
+  `
+  return changed > 0
+}
+
+/** The new day's columns. The window email's stamp is taken only when the
+ *  email about to go carries the window; otherwise it is let go, so the window
+ *  email can tell the customer once they are to be told. */
+function newBookingAssignments(date: string | null, slotStart: string | null, slotEnd: string | null, told: boolean): Prisma.Sql {
+  const hasWindow = Boolean(slotStart && slotEnd)
+  return Prisma.sql`,
+        "delivery_date" = ${date}::text,
+        "delivery_slot_start" = ${hasWindow ? slotStart : null}::text,
+        "delivery_slot_end" = ${hasWindow ? slotEnd : null}::text,
+        "slot_notified_at" = ${hasWindow && told ? Prisma.sql`CURRENT_TIMESTAMP` : Prisma.sql`NULL`}`
 }
 
 /**
@@ -679,6 +796,58 @@ export async function claimSlotNotification(shipmentId: string, orderId: string)
     UPDATE "shp_shipments"
     SET "slot_notified_at" = CURRENT_TIMESTAMP, "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${shipmentId} AND "order_id" = ${orderId} AND "slot_notified_at" IS NULL
+  `
+  return claimed > 0
+}
+
+/**
+ * Set the window email's stamp outright, in one statement: taken (true) when
+ * an email carrying the new window is about to go, let go (false) so the next
+ * window is told. For a delayed parcel given its new day, whose stamp belonged
+ * to the window that fell through. One statement rather than a release and a
+ * claim, so a tracking poll landing between the two cannot send the window
+ * email as well.
+ */
+export async function setSlotNotification(shipmentId: string, orderId: string, told: boolean): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "slot_notified_at" = ${told ? Prisma.sql`CURRENT_TIMESTAMP` : Prisma.sql`NULL`},
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId} AND "order_id" = ${orderId}
+  `
+}
+
+/**
+ * The courier's own tracking has booked a day after the one a reported delay
+ * missed: that is the new day the customer was promised. Closes the delay,
+ * puts the day on the parcel - clearing any times typed for the missed one, so
+ * the courier's window is the one shown - and takes the window email's stamp,
+ * because the email about to go carries the window.
+ *
+ * True exactly once: the statement that reads the delay also closes it, so
+ * the hourly job and a watched page reading the same window cannot both send.
+ */
+export async function claimDelayAnsweredByCourier(shipmentId: string, windowDate: string): Promise<boolean> {
+  const claimed = await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "delivery_delay" = NULL,
+        "delivery_date" = ${windowDate}::text,
+        "delivery_slot_start" = NULL,
+        "delivery_slot_end" = NULL,
+        "slot_notified_at" = CURRENT_TIMESTAMP,
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId}
+      AND "delivery_delay" IS NOT NULL
+      AND "delivery_delayed_from" IS NOT NULL
+      AND ${windowDate}::text > "delivery_delayed_from"
+      AND "delivered_at" IS NULL
+      -- The poller still reads a completed order's parcels for a signature;
+      -- an order that is finished, or called off, has no new day to tell.
+      AND NOT EXISTS (
+        SELECT 1 FROM "shp_orders" o
+        WHERE o."id" = "shp_shipments"."order_id"
+          AND o."status" IN ('COMPLETED', 'CANCELLED', 'REFUNDED')
+      )
   `
   return claimed > 0
 }

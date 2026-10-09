@@ -202,6 +202,49 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     transactional: false,
   },
   {
+    // Staff have heard the van is behind: still trying today, and if it cannot
+    // be today, a new day will follow. Sent from the order screen's "Report a
+    // delay" - see lib/delivery-delay-email.ts. Nothing for the customer to do,
+    // and it says so, because the question it heads off is "should I ring?".
+    key: 'shop.delivery-running-late',
+    label: 'Delivery running late today',
+    subject: 'Your delivery today is running late',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>We are sorry - your delivery for order <strong>{{orderNumber}}</strong> is running late today.</p>{{#if hasDelayNote}}<p>{{delayNote}}</p>{{/if}}<p>We are still trying to get it to you today. If we cannot make it today, we will be in touch again with a new delivery date. There is nothing you need to do in the meantime.</p>{{#if hasParcelItems}}<p><strong>Arriving:</strong></p>{{parcelItems}}{{/if}}{{#if hasCarrier}}<p>Coming with {{carrier}}.</p>{{/if}}<p>Thanks for bearing with us - {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'delayNote', 'hasDelayNote', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'shopName', 'orderUrl', 'hasOrderUrl'],
+    rawTags: ['parcelItems'],
+    transactional: false,
+  },
+  {
+    // The delivery will not happen on the day booked. Two versions in one
+    // template, picked by flags: a new day is already known (hasNewDay, with
+    // its window where there is one), or it is not (noNewDay) and a second
+    // email, 'Delayed delivery: new date', follows when it is. Core's {{#if}}
+    // neither nests nor has an else, hence the flat flags.
+    key: 'shop.delivery-delayed',
+    label: 'Delivery delayed',
+    subject: '{{#if hasNewDay}}Your delivery has moved to {{deliveryDay}}{{/if}}{{#if noNewDay}}Your delivery for order {{orderNumber}} is delayed{{/if}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>We are sorry - your delivery for order <strong>{{orderNumber}}</strong> has been delayed.</p>{{#if hasDelayNote}}<p>{{delayNote}}</p>{{/if}}{{#if hasNewDayOnly}}<p>It is now booked in for <strong>{{deliveryDay}}</strong>. We do not have a time for it yet, and will email you as soon as we do.</p>{{/if}}{{#if hasNewDayWindow}}<p>It is now booked in for <strong>{{deliveryDay}}</strong>, {{deliveryWindow}}.</p>{{/if}}{{#if noNewDay}}<p>We do not have a new delivery date yet. As soon as we do, we will email you with it - there is nothing you need to do in the meantime.</p>{{/if}}{{#if hasParcelItems}}<p><strong>In this delivery:</strong></p>{{parcelItems}}{{/if}}{{#if hasNewDay}}<p>Please make sure somebody is in to take it. If nobody is, the driver will have to bring it back and we will have to book it in all over again.</p>{{/if}}{{#if hasFaq}}<p><a href="{{faqUrl}}">Questions about your delivery</a> - what happens on the day, and what to do if it does not suit.</p>{{/if}}<p>Thanks for bearing with us - {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'delayNote', 'hasDelayNote', 'deliveryDay', 'deliveryWindow', 'hasNewDay', 'hasNewDayOnly', 'hasNewDayWindow', 'noNewDay', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl'],
+    rawTags: ['parcelItems'],
+    transactional: false,
+  },
+  {
+    // The second half of a delay reported with no new day: the day, now that
+    // there is one. Sent when staff give a delayed parcel its new date - see
+    // lib/delivery-delay-email.ts. Carries the window where it came with the
+    // day, and says one will follow where it did not.
+    key: 'shop.delivery-new-date',
+    label: 'Delayed delivery: new date',
+    subject: 'A new delivery date for your order {{orderNumber}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>Thanks for your patience. We now have a new delivery date for your order <strong>{{orderNumber}}</strong>.</p>{{#if hasNewDayOnly}}<p>It is booked in for <strong>{{deliveryDay}}</strong>. We do not have a time for it yet, and will email you as soon as we do.</p>{{/if}}{{#if hasNewDayWindow}}<p>It is booked in for <strong>{{deliveryDay}}</strong>, {{deliveryWindow}}.</p>{{/if}}{{#if hasParcelItems}}<p><strong>Arriving:</strong></p>{{parcelItems}}{{/if}}{{#if hasCarrier}}<p>Coming with {{carrier}}.</p>{{/if}}<p>Please make sure somebody is in to take it. If nobody is, the driver will have to bring it back and we will have to book it in all over again.</p>{{#if hasFaq}}<p><a href="{{faqUrl}}">Questions about your delivery</a> - what happens on the day, and what to do if it does not suit.</p>{{/if}}<p>Thanks for shopping with {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'deliveryDay', 'deliveryWindow', 'hasNewDayOnly', 'hasNewDayWindow', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl'],
+    rawTags: ['parcelItems'],
+    transactional: false,
+  },
+  {
     // A redelivery fee raised on an order after a failed delivery, and the two
     // ways out of it: pay it, or cancel and be refunded less the fee (owed
     // either way - the attempt has happened) and any cancellation charge. See
@@ -213,8 +256,8 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Redelivery fee to pay',
     subject: '{{chargeReason}} to pay on your order {{orderNumber}}',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>We tried to deliver your order <strong>{{orderNumber}}</strong>, but could not. The courier charges us for another attempt, so there is a redelivery fee to pay: <strong>{{chargeTotal}}</strong>{{#if hasChargeTax}} ({{chargeNet}} plus {{chargeTax}} {{taxLabel}}){{/if}}.</p>{{#if hasChargeNote}}<p>{{chargeNote}}</p>{{/if}}{{#if isOnHold}}<p>We have put your order on hold until it is sorted.</p>{{/if}}{{#if hasChargeUrl}}<p><a href="{{chargeUrl}}">Pay it from your order page</a></p>{{/if}}{{#if canCancel}}<p>If you would rather not go ahead, you can cancel the order from the same page instead. The first delivery attempt has already been made, and the courier has charged us for it, so the {{chargeTotal}} redelivery fee is still due if you cancel.{{#if hasCancellationCharge}} There is also a {{cancellationTotal}} cancellation charge.{{#if hasCancellationNote}} {{cancellationNote}}{{/if}}{{/if}} We would refund {{cancelRefund}}: the {{paidAmount}} you paid, less {{keptTotal}}.</p>{{/if}}<p>Any questions, just reply to this email - {{shopName}}.</p>',
-    mergeTags: ['customerName', 'orderNumber', 'chargeReason', 'chargeNote', 'hasChargeNote', 'chargeNet', 'chargeTax', 'chargeTotal', 'hasChargeTax', 'cancellationTotal', 'hasCancellationCharge', 'cancellationNote', 'hasCancellationNote', 'keptTotal', 'taxLabel', 'chargeUrl', 'hasChargeUrl', 'isOnHold', 'canCancel', 'cancelRefund', 'paidAmount', 'shopName', 'orderUrl', 'hasOrderUrl'],
+      '<p>Hi {{customerName}},</p><p>We tried to deliver your order <strong>{{orderNumber}}</strong>, but could not. The courier charges us for another attempt, so there is a redelivery fee to pay: <strong>{{chargeTotal}}</strong>{{#if hasChargeTax}} ({{chargeNet}} plus {{chargeTax}} {{taxLabel}}){{/if}}.</p>{{#if hasChargeNote}}<p>{{chargeNote}}</p>{{/if}}{{#if isOnHold}}<p>We have put your order on hold until it is sorted.</p>{{/if}}{{#if hasChargeUrl}}<p><a href="{{chargeUrl}}">Pay it from your order page</a></p>{{/if}}{{#if canCancel}}<p>If you would rather not go ahead, you can cancel the order from the same page instead. The first delivery attempt has already been made, and the courier has charged us for it, so the {{chargeTotal}} redelivery fee is still due if you cancel.{{/if}}{{#if canCancelWithCharge}} There is also a {{cancellationTotal}} cancellation charge.{{/if}}{{#if canCancelWithChargeNote}} {{cancellationNote}}{{/if}}{{#if canCancel}} We would refund {{cancelRefund}}: the {{paidAmount}} you paid, less {{keptTotal}}.</p>{{/if}}<p>Any questions, just reply to this email - {{shopName}}.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'chargeReason', 'chargeNote', 'hasChargeNote', 'chargeNet', 'chargeTax', 'chargeTotal', 'hasChargeTax', 'cancellationTotal', 'hasCancellationCharge', 'cancellationNote', 'hasCancellationNote', 'keptTotal', 'taxLabel', 'chargeUrl', 'hasChargeUrl', 'isOnHold', 'canCancel', 'canCancelWithCharge', 'canCancelWithChargeNote', 'cancelRefund', 'paidAmount', 'shopName', 'orderUrl', 'hasOrderUrl'],
     transactional: false,
   },
   {
@@ -536,6 +579,9 @@ export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   DELIVERY_SLOT_CONFIRMED: 'shop.delivery-slot-confirmed',
   DELIVERY_DAY_BOOKED: 'shop.delivery-day-booked',
   DELIVERY_FAILED: 'shop.delivery-failed',
+  DELIVERY_RUNNING_LATE: 'shop.delivery-running-late',
+  DELIVERY_DELAYED: 'shop.delivery-delayed',
+  DELIVERY_NEW_DATE: 'shop.delivery-new-date',
   CHARGE_RAISED: 'shop.charge-raised',
   CHARGE_PAID: 'shop.charge-paid',
   CHARGE_ORDER_CANCELLED: 'shop.charge-order-cancelled',

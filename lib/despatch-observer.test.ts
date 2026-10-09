@@ -18,6 +18,7 @@ const slotEmail = vi.hoisted(() => vi.fn())
 const dayEmail = vi.hoisted(() => vi.fn())
 const trackingEmail = vi.hoisted(() => vi.fn())
 const dispatchEmail = vi.hoisted(() => vi.fn())
+const newDay = vi.hoisted(() => vi.fn())
 
 vi.mock('@/modules/shop/lib/config', () => ({ getShopConfigCached: config }))
 vi.mock('@/modules/shop/lib/db/orders', () => ({ getOrderById: order }))
@@ -35,6 +36,7 @@ vi.mock('@/modules/shop/lib/dispatch-follow-up', () => ({
   maybeSendSlotEmail: slotEmail,
   maybeSendDayEmail: dayEmail,
   maybeSendTrackingEmail: trackingEmail,
+  newDayAfterDelay: newDay,
 }))
 vi.mock('@/modules/shop/lib/shipment-email', () => ({ sendShipmentDispatchedEmail: dispatchEmail }))
 vi.mock('@/modules/shop/lib/tracking-added-email', () => ({
@@ -89,7 +91,9 @@ function mode(value: 'off' | 'record' | 'record-and-tell') {
 }
 
 beforeEach(() => {
-  for (const mock of [config, order, shipments, summary, create, fill, update, follow, slotEmail, dayEmail, trackingEmail, dispatchEmail]) mock.mockReset()
+  for (const mock of [config, order, shipments, summary, create, fill, update, follow, slotEmail, dayEmail, trackingEmail, dispatchEmail, newDay]) mock.mockReset()
+  // Not the new day a reported delay (070) was waiting on, unless a test says.
+  newDay.mockResolvedValue(null)
   mode('record-and-tell')
   order.mockResolvedValue({ id: 'ord-1', orderNumber: 'DW000001', status: 'PROCESSING' })
   shipments.mockResolvedValue([])
@@ -395,5 +399,45 @@ describe('the tracking in the shop’s own terms', () => {
     expect(carriesTracking(parcel({ trackingNumber: '1234 5678 901 234' }), { trackingNumber: '12345678901234', trackingUrl: null, trackingShortCode: null })).toBe(true)
     expect(carriesTracking(parcel({ trackingShortCode: 'Q9' }), { trackingNumber: null, trackingUrl: null, trackingShortCode: 'Q9' })).toBe(true)
     expect(carriesTracking(parcel(), { trackingNumber: null, trackingUrl: null, trackingShortCode: null })).toBe(false)
+  })
+})
+
+describe('a parcel with a reported delay (070)', () => {
+  const delayed = (overrides: Partial<ShpShipmentWithItems> = {}) => parcel({
+    trackingNumber: '12345678901234',
+    deliveryDate: '2026-10-09',
+    deliverySlotStart: '08:00',
+    deliverySlotEnd: '12:00',
+    deliveryDelay: 'today',
+    deliveryDelayedFrom: '2026-10-09',
+    ...overrides,
+  })
+
+  it('ignores a supplier announcing the day that was missed, or an earlier one', async () => {
+    shipments.mockResolvedValue([delayed()])
+    await observeDespatchRecorded(event({ change: 'update', deliveryDate: '2026-10-09', deliverySlot: ['13:00', '17:00'] }))
+    await observeDespatchRecorded(event({ change: 'update', deliveryDate: '2026-10-08' }))
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('keeps a window the supplier gave for the new day, even one that matches the old times', async () => {
+    shipments.mockResolvedValue([delayed()])
+    await observeDespatchRecorded(event({ change: 'update', deliveryDate: '2026-10-13', deliverySlot: ['08:00', '12:00'] }))
+    expect(update).toHaveBeenCalledWith('s1', 'ord-1', { deliveryDate: '2026-10-13' })
+  })
+
+  it('clears the missed day\'s times when the new day comes with none', async () => {
+    shipments.mockResolvedValue([delayed()])
+    await observeDespatchRecorded(event({ change: 'update', deliveryDate: '2026-10-13' }))
+    expect(update).toHaveBeenCalledWith('s1', 'ord-1', { deliveryDate: '2026-10-13', deliverySlotStart: null, deliverySlotEnd: null })
+  })
+
+  it('sends the new-date email in place of the day and window ones when it answers the delay', async () => {
+    shipments.mockResolvedValue([delayed()])
+    newDay.mockResolvedValue(true)
+    await observeDespatchRecorded(event({ change: 'update', deliveryDate: '2026-10-13', deliverySlot: ['10:00', '13:00'] }))
+    expect(newDay).toHaveBeenCalled()
+    expect(slotEmail).not.toHaveBeenCalled()
+    expect(dayEmail).not.toHaveBeenCalled()
   })
 })

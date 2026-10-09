@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { shopEmailTemplates } from '@/modules/shop/lib/email-templates'
+import { shopSmsTemplates } from '@/modules/shop/lib/sms-templates'
 
 // Core fills these on every render, so no template declares them.
 const SITE_TAGS = new Set(['siteName', 'siteUrl', 'logoUrl', 'year'])
@@ -8,6 +9,24 @@ function tagsIn(body: string): string[] {
   return [...body.matchAll(/\{\{(?:#if )?(\w+)\}\}/g)]
     .map((m) => m[1])
     .filter((tag): tag is string => Boolean(tag))
+}
+
+/** The first {{#if}} that core's applyConditionals would mangle, or null. It
+ *  is a non-greedy regex, so an outer block closes at the first inner {{/if}}
+ *  and the rest of it leaks into the email; a stray {{/if}} or an unclosed
+ *  {{#if}} is never matched at all and goes out as typed. */
+function nestedIf(text: string): string | null {
+  let open: string | null = null
+  for (const m of text.matchAll(/\{\{#if (\w+)\}\}|\{\{\/if\}\}/g)) {
+    if (m[1]) {
+      if (open) return `{{#if ${m[1]}}} inside {{#if ${open}}}`
+      open = m[1]
+    } else {
+      if (!open) return 'stray {{/if}}'
+      open = null
+    }
+  }
+  return open ? `{{#if ${open}}} never closed` : null
 }
 
 describe('shop email template defaults', () => {
@@ -49,5 +68,18 @@ describe('shop email template defaults', () => {
     for (const template of shopEmailTemplates) {
       expect(template.key.startsWith('shop.'), template.key).toBe(true)
     }
+  })
+
+  // shop.charge-raised nested its cancellation lines inside {{#if canCancel}}
+  // and every customer got raw {{#if}} markers or a stray {{/if}}. Combine the
+  // flags in the sender instead.
+  it.each([
+    ...shopEmailTemplates.flatMap((t) => [
+      [`${t.key} subject`, t.subject],
+      [`${t.key} body`, t.bodyHtml],
+    ]),
+    ...shopSmsTemplates.map((t) => [`${t.key} sms`, t.body]),
+  ] as [string, string][])('%s has no nested or unbalanced {{#if}}', (_where, text) => {
+    expect(nestedIf(text)).toBeNull()
   })
 })

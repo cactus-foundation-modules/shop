@@ -14,6 +14,7 @@ import {
   maybeSendDayEmail,
   maybeSendSlotEmail,
   maybeSendTrackingEmail,
+  newDayAfterDelay,
 } from '@/modules/shop/lib/dispatch-follow-up'
 import { sendShipmentDispatchedEmail } from '@/modules/shop/lib/shipment-email'
 import { hasFollowableTracking } from '@/modules/shop/lib/tracking-added-email'
@@ -209,16 +210,33 @@ async function updateDelivery(
   event: DespatchRecordedEvent,
   tell: boolean,
 ): Promise<boolean> {
-  const { date, slot } = deliveryFrom(event)
-  const patch: { deliveryDate?: string; deliverySlotStart?: string; deliverySlotEnd?: string } = {}
+  const announced = deliveryFrom(event)
+  // A supplier announcing the day a reported delay missed (070) - a repeat, or
+  // an update that crossed with the phone call - is the booking that fell
+  // through, not a new one. Neither its day nor its window goes back on.
+  const missed = before.deliveryDelayedFrom ?? ''
+  const stale = Boolean(missed && announced.date && announced.date <= missed)
+  const date = stale ? null : announced.date
+  const slot = stale ? null : announced.slot
+  const patch: { deliveryDate?: string; deliverySlotStart?: string | null; deliverySlotEnd?: string | null } = {}
   if (date && date !== before.deliveryDate) patch.deliveryDate = date
   if (slot && (slot[0] !== before.deliverySlotStart || slot[1] !== before.deliverySlotEnd)) {
     patch.deliverySlotStart = slot[0]
     patch.deliverySlotEnd = slot[1]
+  } else if (!slot && patch.deliveryDate && before.deliveryDelay) {
+    // A new day for a delayed parcel, announced without a window: the times
+    // still on the row belong to the day that fell through, and must not be
+    // read as this day's - nor emailed as them (newDayAfterDelay).
+    patch.deliverySlotStart = null
+    patch.deliverySlotEnd = null
   }
   if (Object.keys(patch).length === 0) return false
   const after = await updateShipmentDetails(before.id, orderId, patch)
-  if (!after || !tell) return Boolean(after)
+  if (!after) return false
+  // The new day a reported delay was waiting on: its own email, and the
+  // window that fell through stops blocking the next one.
+  if ((await newDayAfterDelay(orderId, before, after, tell)) !== null) return true
+  if (!tell) return true
   await maybeSendSlotEmail(orderId, after, true)
   await maybeSendDayEmail(orderId, before, after, true)
   return true

@@ -55,6 +55,9 @@ export type OrderDelivery = {
    *  nothing has arrived - but it stops claiming to be scheduled or out, and
    *  says so. */
   failed?: boolean
+  /** A delay the shop has reported: 'today' is running late but still coming
+   *  today, 'rebooking' is a new day to follow. See lib/delivery-delay.ts. */
+  delay?: 'today' | 'rebooking' | null
   /** The day it ACTUALLY arrived, already worded and relative - 'today',
    *  'yesterday', or '8/9/26' - where the courier has given a time for it.
    *  Printed after the word Delivered, so it reads "Delivered today".
@@ -149,7 +152,11 @@ export function orderProgressSteps(input: OrderProgressInput): OrderStep[] {
       ? 'Delivery'
       : delivery?.failed
         ? 'Delivery not possible'
-        : delivery?.underway ? 'Out for delivery' : 'Delivery scheduled',
+        : delivery?.delay === 'rebooking'
+          ? 'Delivery delayed'
+          : delivery?.delay === 'today'
+            ? 'Running late'
+            : delivery?.underway ? 'Out for delivery' : 'Delivery scheduled',
     complete: 'Complete',
   }
   const at: Record<OrderStep['key'], Date | null> = {
@@ -192,6 +199,10 @@ export function orderProgressSteps(input: OrderProgressInput): OrderStep[] {
             // under the step reads as the plan still standing.
             : delivery.failed && !arrived
               ? 'A new day is needed'
+            : delivery.delay === 'rebooking' && !arrived
+              ? 'New date to follow'
+            : delivery.delay === 'today' && !arrived
+              ? 'Still on its way today'
             // "Tomorrow between 10am and 1pm". One sentence, capitalised at the
             // front, because the day arrives lower case so it can also sit
             // inside "Arranged for tomorrow" on the parcel card.

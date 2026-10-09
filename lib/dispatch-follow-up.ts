@@ -1,9 +1,11 @@
 import type { ShpConfig } from '@/modules/shop/lib/config'
-import { claimSlotNotification, claimTrackingNotification, getOrderDispatchSummary } from '@/modules/shop/lib/db/shipments'
+import { claimSlotNotification, claimTrackingNotification, getOrderDispatchSummary, setSlotNotification } from '@/modules/shop/lib/db/shipments'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 import { hasFollowableTracking, sendTrackingAddedEmail } from '@/modules/shop/lib/tracking-added-email'
 import { sendDeliveryDayEmail, sendDeliverySlotEmail } from '@/modules/shop/lib/delivery-slot-email'
-import { isDeliveryDate } from '@/modules/shop/lib/delivery-slot'
+import { deliveryBookingForShipment, isDeliveryDate, nowInTimezone } from '@/modules/shop/lib/delivery-slot'
+import { currentDelay } from '@/modules/shop/lib/delivery-delay'
+import { sendDeliveryNewDateEmail } from '@/modules/shop/lib/delivery-delay-email'
 import { getSiteTimezone } from '@/lib/config/timezone.server'
 import { DPD_FOLLOW_LINK_EXAMPLE, dpdFollowLink, dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
 import { AIT_LINK_EXAMPLE, aitLink, aitLinkParts } from '@/modules/shop/lib/tracking/ait-link'
@@ -145,6 +147,49 @@ export async function maybeSendDayEmail(
     console.error('[shop] delivery day email failed', error)
   }
   return true
+}
+
+/**
+ * A save that gave a delayed parcel its new day (migration 070), from the
+ * order screen or from a supplier's own tracking.
+ *
+ * "Delayed" is judged as the customer was being told it BEFORE the save
+ * (currentDelay), not off the stored column: a delay the courier's later
+ * booking already answered has already been told, by the window email, and
+ * treating it as open here would tell them again.
+ *
+ * When it is one, the window email's stamp is let go - it belonged to the
+ * window that fell through - and the 'new date' email goes in place of the
+ * plain day and window ones, which would read as though nothing had gone
+ * wrong. Where the new window came with the day, the email carries it and the
+ * stamp is taken back, so the window email does not follow with the same news.
+ *
+ * Null when this save was not that, and the caller's usual emails apply;
+ * otherwise whether the email went.
+ */
+export async function newDayAfterDelay(
+  orderId: string,
+  before: ShpShipmentWithItems,
+  after: ShpShipmentWithItems,
+  wanted: boolean,
+): Promise<boolean | null> {
+  if (!after.deliveryDate || after.deliveryDate === before.deliveryDate) return null
+  // Still open after the save: the day was not after the missed one, so it
+  // answered nothing (see updateShipmentDetails).
+  if (after.deliveryDelay) return null
+  const timezone = await getSiteTimezone()
+  const today = nowInTimezone(new Date(), timezone).date
+  if (!currentDelay(before, deliveryBookingForShipment(before, timezone).date, today)) return null
+
+  const telling = wanted && !after.quietCustomerEmails
+  await setSlotNotification(after.id, orderId, telling && Boolean(after.deliverySlotStart && after.deliverySlotEnd))
+  if (!telling) return false
+  try {
+    return await sendDeliveryNewDateEmail({ orderId, shipmentId: after.id })
+  } catch (error) {
+    console.error('[shop] delivery new-date email failed', error)
+    return false
+  }
 }
 
 /**

@@ -12,7 +12,8 @@ import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
 import { liveProgress, type LiveProgress } from '@/modules/shop/lib/tracking/live-line'
 import type { TrackingEvent } from '@/modules/shop/lib/tracking/reading'
 import type { ShpConfig } from '@/modules/shop/lib/config'
-import type { ShpShipmentWithItems } from '@/modules/shop/lib/types'
+import type { ShpDeliveryDelay, ShpShipmentWithItems } from '@/modules/shop/lib/types'
+import { currentDelay, delayIsNewerThanStage, delayNoteForCustomer } from '@/modules/shop/lib/delivery-delay'
 
 // What the customer's order page needs to know about the deliveries booked on
 // it: which parcel is coming when, what to call the courier, whether they may
@@ -57,6 +58,10 @@ export type ParcelDelivery = {
   /** How to get a failed delivery booked in again, where that is the courier's
    *  job rather than the shop's. Null unless `failed`. */
   rearrange: DeliveryRearrange | null
+  /** A delay the shop has reported and not yet closed with a new day. Null
+   *  when there is none. While it is 'rebooking' the booking is blank - the
+   *  day it names is the one that is not happening. See lib/delivery-delay.ts. */
+  delay: DeliveryDelayNote | null
   /** Whether the customer is offered the courier's own tracking page. */
   showTracking: boolean
   /** What that button says, and the line under it. The courier's setting where
@@ -90,6 +95,14 @@ export type DeliveryRearrange = {
   reason: string
 }
 
+export type DeliveryDelayNote = {
+  /** 'today': running late, still trying today. 'rebooking': a new day to
+   *  follow. */
+  kind: ShpDeliveryDelay
+  /** Staff's sentence for the customer, '' for none. */
+  note: string
+}
+
 /** What the button out to the courier says when nobody has changed it. The
  *  wording the shop used before couriers had their own, so an install that
  *  updates into this feature sees no difference. */
@@ -101,7 +114,12 @@ export function parcelDelivery(
   now: Date,
   timezone: string,
 ): ParcelDelivery {
-  const booking = deliveryBookingForShipment(shipment, timezone)
+  const booked = deliveryBookingForShipment(shipment, timezone)
+  const today = nowInTimezone(now, timezone).date
+  const delayKind = currentDelay(shipment, booked.date, today)
+  // Waiting on a new day: whatever is still on the parcel is the day that fell
+  // through, and the page must not go on promising it.
+  const booking = delayKind === 'rebooking' ? { date: '', slotStart: null, slotEnd: null } : booked
   const date = booking.date
   const courier = courierForShipment(config, shipment)
   const meaning = stageMeaning(courier, shipment.trackingStage)
@@ -118,7 +136,12 @@ export function parcelDelivery(
   // A failed attempt is the courier's word and outranks the clock: the window
   // passing after one is not the parcel having arrived, whatever the fallback
   // below would make of it.
+  //
+  // Unless the shop has reported a delay since the courier said so: then the
+  // shop's word is the newer one, and it is what the customer is told.
+  const delayIsNewer = delayIsNewerThanStage(delayKind, shipment)
   const failed = meaning === 'failed'
+    && !delayIsNewer
     && !shipment.deliveredAt
     && !shipment.signedAt
     && !shipment.signedBy?.trim()
@@ -127,7 +150,9 @@ export function parcelDelivery(
     || Boolean(shipment.deliveredAt)
     || Boolean(shipment.signedAt)
     || Boolean(shipment.signedBy?.trim())
-    || (meaning === 'progress' && progress?.phase === 'passed' && !courierAloneSaysArrived(courier, shipment.trackingStage)))
+    // Never off the clock while the shop has said it is late: the window
+    // passing is exactly what a delay reported against it means.
+    || (meaning === 'progress' && progress?.phase === 'passed' && !delayKind && !courierAloneSaysArrived(courier, shipment.trackingStage)))
 
   // The courier's own flag where they report one, and the owner's reading of
   // their stage words where they do not. Same rule as `delivered` in the
@@ -141,7 +166,7 @@ export function parcelDelivery(
   return {
     shipmentId: shipment.id,
     date,
-    day: formatDeliveryDayRelative(date, nowInTimezone(now, timezone).date),
+    day: formatDeliveryDayRelative(date, today),
     window: formatDeliveryWindowSpoken(booking.slotStart, booking.slotEnd),
     slotStart: booking.slotStart,
     slotEnd: booking.slotEnd,
@@ -157,6 +182,9 @@ export function parcelDelivery(
           courierWillContact: courierWillRebook(courier, shipment),
           reason: courier?.showFailedReason ? failedReason(courier, shipment.trackingStage) : '',
         }
+      : null,
+    delay: delayKind && !failed && !arrived
+      ? { kind: delayKind, note: delayNoteForCustomer(shipment.deliveryDelayNote) }
       : null,
     showTracking: customerMaySeeTracking(config, shipment),
     trackingLabel: courier?.trackingLinkLabel.trim() || DEFAULT_TRACKING_LABEL,
@@ -196,15 +224,20 @@ export function parcelDelivery(
 export function railDelivery(deliveries: ParcelDelivery[]): ParcelDelivery | null {
   // A parcel that has arrived counts even when nobody typed a delivery day in
   // at dispatch - the courier's own timestamp is the booking at that point.
-  const booked = deliveries.filter((d) => d.arrived || (d.day && d.progress))
+  // A delivery waiting on a new day has no day, but it is still the next
+  // thing to happen to the order - and the thing the customer is here about.
+  const booked = deliveries.filter((d) => d.arrived || d.delay || (d.day && d.progress))
   if (booked.length === 0) return null
 
   const upcoming = booked.filter((d) => !d.arrived)
   const pool = upcoming.length > 0 ? upcoming : booked
   // Compared on the ISO day, which sorts correctly as text and is the only
-  // reason that field is carried around next to the worded one.
+  // reason that field is carried around next to the worded one. A delivery
+  // waiting on a new day has none, and sorts last: a parcel that is coming
+  // tomorrow is the next thing somebody has to be in for.
   const first = pool[0] as ParcelDelivery
+  const sortDay = (d: ParcelDelivery): string => d.date || '9999-12-31'
   return upcoming.length > 0
-    ? pool.reduce((soonest, d) => (soonest.date <= d.date ? soonest : d), first)
+    ? pool.reduce((soonest, d) => (sortDay(soonest) <= sortDay(d) ? soonest : d), first)
     : pool.reduce((latest, d) => (latest.date >= d.date ? latest : d), first)
 }

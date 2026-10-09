@@ -7,6 +7,7 @@ import { OrderChargesPanel } from '@/modules/shop/components/admin/OrderChargesP
 import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
 import { DispatchModal } from '@/modules/shop/components/admin/DispatchModal'
 import { EditParcelModal } from '@/modules/shop/components/admin/EditParcelModal'
+import { DeliveryDelayModal } from '@/modules/shop/components/admin/DeliveryDelayModal'
 import { EmailCustomerModal } from '@/modules/shop/components/admin/EmailCustomerModal'
 import { ReplacementModal } from '@/modules/shop/components/admin/ReplacementModal'
 import { orderDetailCss } from '@/modules/shop/components/admin/order-detail-css'
@@ -175,6 +176,14 @@ type ShipmentDetail = {
   courierRebooks?: boolean
   /** When the customer was emailed about the current failed attempt. */
   failedNotifiedAt?: string | null
+  /** A delay staff reported (migration 070) as it stands today, worked out by
+   *  the dispatch GET. Optional so a response from an older deployment still
+   *  renders. */
+  delayOpen?: 'today' | 'rebooking' | null
+  deliveryDelayedAt?: string | null
+  deliveryDelayedFrom?: string | null
+  deliveryDelayNote?: string | null
+  quietCustomerEmails?: boolean
   signedBy: string | null; signedAt: string | null; signatureUrl: string | null
   items: Array<{ id: string; orderItemId: string; quantity: number }>
 }
@@ -356,6 +365,8 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   // the modal cannot leave it editing a stale copy.
   const [editingParcelId, setEditingParcelId] = useState<string | null>(null)
   const editingParcel = dispatch?.shipments.find((s) => s.id === editingParcelId) ?? null
+  const [delayParcelId, setDelayParcelId] = useState<string | null>(null)
+  const delayParcel = dispatch?.shipments.find((s) => s.id === delayParcelId) ?? null
   const [emailOpen, setEmailOpen] = useState(false)
   const [replacementOpen, setReplacementOpen] = useState(false)
   // The customer's reference, while it is being edited. Null means "not being
@@ -532,6 +543,26 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
     setBusy(false)
     if (!res.ok) {
       await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That parcel could not be updated.')
+      return
+    }
+    refresh()
+  }
+
+  // Take back a delay reported by mistake. The customer is not told - and a
+  // "new date to follow" delay cleared the booked day, which stays cleared.
+  async function clearDelay(shipment: ShipmentDetail) {
+    if (!(await confirm({
+      title: 'Take back this delay?',
+      message: shipment.delayOpen === 'rebooking'
+        ? 'Their order page stops saying the delivery is delayed. The customer is not emailed, and the booked day is not put back - add it with Edit tracking.'
+        : 'Their order page stops saying the delivery is running late. The customer is not emailed.',
+      confirmLabel: 'Take it back',
+    }))) return
+    setBusy(true)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/dispatch/delay?shipmentId=${encodeURIComponent(shipment.id)}`, { method: 'DELETE' })
+    setBusy(false)
+    if (!res.ok) {
+      await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That delay could not be taken back.')
       return
     }
     refresh()
@@ -1198,6 +1229,25 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                               )}
                             </div>
                           )}
+                          {/* A delay staff have reported, and what the
+                              customer's page is saying about it. */}
+                          {shipment.delayOpen && !shipment.deliveredAt && (
+                            <div className="sox-list-sub" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem' }}>
+                              <span>
+                                {shipment.delayOpen === 'today'
+                                  ? 'Running late · customer told you are still trying today'
+                                  : 'Delayed · customer told a new date will follow'}
+                                {shipment.deliveryDelayedAt ? ` · reported ${formatDateTime(shipment.deliveryDelayedAt)}` : ''}
+                                {shipment.deliveryDelayNote ? ` · "${shipment.deliveryDelayNote}"` : ''}
+                              </span>
+                              <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => clearDelay(shipment)}>
+                                Take back
+                              </button>
+                            </div>
+                          )}
+                          {!shipment.delayOpen && shipment.deliveryDelayedAt && (
+                            <p className="sox-list-sub">Was delayed (reported {formatDateTime(shipment.deliveryDelayedAt)}){shipment.deliveredAt || order.status === 'COMPLETED' ? '' : ' · since given a new date'}</p>
+                          )}
                           {shipment.signatureUrl && (
                             <>
                               <p className="sox-list-sub">
@@ -1217,6 +1267,11 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                             </>
                           )}
                         </div>
+                        {!shipment.deliveredAt && !shipment.signedAt && !shipment.signedBy?.trim() && order.status !== 'COMPLETED' && (
+                          <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => setDelayParcelId(shipment.id)}>
+                            {shipment.delayOpen === 'rebooking' ? 'Add new date' : 'Report delay'}
+                          </button>
+                        )}
                         <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => setEditingParcelId(shipment.id)}>Edit tracking</button>
                         <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => undoDispatch(shipment)}>Undo</button>
                       </li>
@@ -1675,6 +1730,14 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
           couriers={dispatch?.couriers ?? []}
           onClose={() => setEditingParcelId(null)}
           onDone={() => { setEditingParcelId(null); refresh() }}
+        />
+      )}
+      {delayParcel && (
+        <DeliveryDelayModal
+          orderId={orderId}
+          parcel={delayParcel}
+          onClose={() => setDelayParcelId(null)}
+          onDone={() => { setDelayParcelId(null); refresh() }}
         />
       )}
       {refundOpen && (

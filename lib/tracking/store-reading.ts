@@ -8,6 +8,7 @@ import {
 } from '@/modules/shop/lib/db/shipments'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { maybeSendCarrierWindowEmail } from '@/modules/shop/lib/delivery-slot-email'
+import { maybeAnswerDelayFromCourier } from '@/modules/shop/lib/delivery-delay-email'
 import { maybeSendFailedDeliveryEmail } from '@/modules/shop/lib/failed-delivery-email'
 import { parseSignature } from '@/modules/shop/lib/tracking/multidrop-page'
 import { captureSignature } from '@/modules/shop/lib/tracking/signature-capture'
@@ -56,7 +57,10 @@ export async function storeParcelReading(
     outForDelivery: delivered ? false : reading.outForDelivery,
   })
 
-  await maybeSendCarrierWindowEmail(parcel, reading, timezone)
+  // A delayed parcel's new day, booked by the courier, is the 'new date'
+  // email the delay promised rather than the ordinary window one.
+  const answeredDelay = !delivered && await maybeAnswerDelayFromCourier(parcel, reading, timezone)
+  if (!answeredDelay) await maybeSendCarrierWindowEmail(parcel, reading, timezone)
 
   await recordTrackingPageDetails(parcel.id, {
     clientId: reading.clientId,

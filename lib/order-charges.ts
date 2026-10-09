@@ -256,6 +256,10 @@ export async function sendChargeRaisedEmail(order: ShpOrder, charge: ShpOrderCha
       hasChargeUrl: orderPageUrl(order) ? 'true' : 'false',
       isOnHold: charge.holdOrder ? 'true' : 'false',
       canCancel: plan.ok ? 'true' : 'false',
+      // The renderer cannot nest {{#if}}, so the template's cancellation lines
+      // sit beside the canCancel block rather than inside it.
+      canCancelWithCharge: plan.ok && Number(charge.cancellationTotal) > 0 ? 'true' : 'false',
+      canCancelWithChargeNote: plan.ok && Number(charge.cancellationTotal) > 0 && charge.cancellationNote ? 'true' : 'false',
       cancelRefund: plan.ok ? formatMoney(plan.refund, shop.currencySymbol) : '',
       paidAmount: plan.ok ? formatMoney(plan.held, shop.currencySymbol) : '',
       ...(plan.ok ? { keptTotal: formatMoney(plan.kept, shop.currencySymbol) } : {}),

@@ -42,6 +42,11 @@ export type EditableParcel = {
    *  only": the customer has been told nothing about it, and nothing that
    *  follows from it tells them. Optional for the same reason as above. */
   quietCustomerEmails?: boolean
+  /** A delay reported on this parcel and still open (lib/delivery-delay.ts),
+   *  from the dispatch GET. A new day saved here answers it, and sends the
+   *  'new date' email rather than the ordinary ones. Optional for the same
+   *  reason as above. */
+  delayOpen?: 'today' | 'rebooking' | null
 }
 
 export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: {
@@ -75,6 +80,15 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   // once per parcel. Saying so here stops an owner tidying up a typo and
   // wondering whether they have just emailed the customer all over again.
   const alreadyTold = Boolean(parcel.slotNotifiedAt)
+  // A new day on a delayed parcel is the news the delay promised, and goes
+  // whatever was told about the window that fell through.
+  const answersDelay = Boolean(parcel.delayOpen) && Boolean(details.deliveryDate)
+    && details.deliveryDate !== (parcel.deliveryDate ?? '')
+  // The times still in the form were for the day that was missed. Saved
+  // against the new day unchanged, the customer would be told them for it.
+  const staleTimes = answersDelay && Boolean(details.deliverySlotStart || details.deliverySlotEnd)
+    && details.deliverySlotStart === (parcel.deliverySlotStart ?? '')
+    && details.deliverySlotEnd === (parcel.deliverySlotEnd ?? '')
   const windowComplete = Boolean(details.deliveryDate && details.deliverySlotStart && details.deliverySlotEnd)
   // Until the window is in, the day alone is worth an email whenever it is new
   // or has moved - the window email follows once the times are filled in.
@@ -183,7 +197,19 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
             </p>
           )}
 
-          {quiet ? null : alreadyTold ? (
+          {staleTimes && (
+            <p style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
+              The window times above are still the ones for the day that was missed. Change or clear
+              them, or the customer will be told them for the new day.
+            </p>
+          )}
+
+          {quiet ? null : answersDelay ? (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input type="checkbox" checked={emailCustomer} onChange={(e) => setEmailCustomer(e.target.checked)} />
+              Email the customer their new delivery date
+            </label>
+          ) : alreadyTold ? (
             <p style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
               The customer has already been told this delivery window, so saving again will not email
               them a second time.

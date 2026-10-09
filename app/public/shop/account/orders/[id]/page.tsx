@@ -38,7 +38,8 @@ import {
 import { orderProgressSteps, orderStopped } from '@/modules/shop/lib/order-progress'
 import { ParcelTracking } from '@/modules/shop/components/public/ParcelTracking'
 import { FailedDeliveryNote } from '@/modules/shop/components/public/FailedDeliveryNote'
-import { DEFAULT_TRACKING_LABEL, parcelDelivery, railDelivery, type DeliveryRearrange, type ParcelDelivery } from '@/modules/shop/lib/order-delivery'
+import { DelayedDeliveryNote } from '@/modules/shop/components/public/DelayedDeliveryNote'
+import { DEFAULT_TRACKING_LABEL, parcelDelivery, railDelivery, type DeliveryDelayNote, type DeliveryRearrange, type ParcelDelivery } from '@/modules/shop/lib/order-delivery'
 import { formatDeliveredDayRelative, nowInTimezone } from '@/modules/shop/lib/delivery-slot'
 import { calendarDateIn } from '@/lib/config/timezone'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
@@ -335,7 +336,14 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   // describe the same moment, and taking `new Date()` three times would let a
   // window close between two of them.
   const now = new Date()
-  const deliveries = shipments.map((shipment) => parcelDelivery(config, shipment, now, timezone))
+  // A completed order has arrived, whatever a delay reported on the way said:
+  // an untracked parcel has nothing else to close one (lib/delivery-delay.ts).
+  const deliveries = shipments.map((shipment) => parcelDelivery(
+    config,
+    order.status === 'COMPLETED' ? { ...shipment, deliveryDelay: null, deliveryDelayedFrom: null } : shipment,
+    now,
+    timezone,
+  ))
   const deliveryById = new Map(deliveries.map((d) => [d.shipmentId, d]))
   const railBooking = railDelivery(deliveries)
 
@@ -378,6 +386,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
             && (railBooking.outForDelivery || railBooking.progress?.phase === 'during'),
           arrived: railBooking.arrived,
           failed: railBooking.failed,
+          delay: railBooking.delay?.kind ?? null,
           // The day it actually came, where the courier gave one. Worded here
           // because this is where the timezone is.
           deliveredOn: deliveredOn.has(railBooking.shipmentId)
@@ -394,7 +403,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   const railShipment = railBooking ? shipments.find((s) => s.id === railBooking.shipmentId) ?? null : null
   // Nor for one the courier has already tried and failed - the clock would go
   // on driving it across the rail towards a door it has left.
-  const van = railBooking && !railBooking.arrived && !railBooking.failed
+  const van = railBooking && !railBooking.arrived && !railBooking.failed && railBooking.delay?.kind !== 'rebooking'
     ? {
         date: railBooking.date,
         slotStart: railBooking.slotStart,
@@ -922,6 +931,15 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                       <FailedDeliveryNote
                         rearrange={deliveryById.get(shipment.id)?.rearrange as DeliveryRearrange}
                         trackingNumber={shipment.trackingNumber}
+                      />
+                    ) : deliveryById.get(shipment.id)?.delay ? (
+                      /* The shop has said it is late. Running late keeps the
+                         day it is still aiming for; a new day to follow drops
+                         the day that is not happening. */
+                      <DelayedDeliveryNote
+                        delay={deliveryById.get(shipment.id)?.delay as DeliveryDelayNote}
+                        day={deliveryById.get(shipment.id)?.day ?? ''}
+                        window={deliveryById.get(shipment.id)?.window ?? ''}
                       />
                     ) : deliveryById.get(shipment.id)?.day ? (
                       /* The booked delivery, in the customer's own words. The

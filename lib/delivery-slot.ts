@@ -18,6 +18,7 @@
 // read in the shop's timezone and compared like for like.
 
 import { calendarDateIn } from '@/lib/config/timezone'
+import { isStaleCarrierWindow, type DelayedParcel } from '@/modules/shop/lib/delivery-delay'
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -76,7 +77,7 @@ export function deliveryBookingForShipment(
     deliverySlotEnd: string | null
     deliveryWindowFrom: Date | null
     deliveryWindowTo: Date | null
-  },
+  } & DelayedParcel,
   timezone: string,
 ): DeliveryBooking {
   if (isDeliveryDate(shipment.deliveryDate ?? '')
@@ -93,7 +94,10 @@ export function deliveryBookingForShipment(
     const date = calendarDateIn(shipment.deliveryWindowFrom, timezone)
     const slotStart = slotTimeFromInstant(shipment.deliveryWindowFrom, timezone)
     const slotEnd = slotTimeFromInstant(shipment.deliveryWindowTo, timezone)
-    if (isDeliveryDate(date) && isSlotTime(slotStart) && isSlotTime(slotEnd)) {
+    // A window on the day a reported delay missed is the booking that fell
+    // through, still sitting in the courier's feed. See lib/delivery-delay.ts.
+    if (isDeliveryDate(date) && isSlotTime(slotStart) && isSlotTime(slotEnd)
+      && !isStaleCarrierWindow(shipment, date)) {
       return { date, slotStart, slotEnd }
     }
   }

@@ -14,7 +14,9 @@ import { listRequestsForOrder } from '@/modules/shop/lib/db/order-requests'
 import { pendingRequestUnits } from '@/modules/shop/lib/order-requests'
 import { ORDER_LINE_BATCH_MAX, ORDER_LINE_BATCH_MAX_MESSAGE } from '@/modules/shop/lib/order-line-limits'
 import { sendShipmentDispatchedEmail } from '@/modules/shop/lib/shipment-email'
-import { isDeliveryDate, isSlotTime, slotMinutes } from '@/modules/shop/lib/delivery-slot'
+import { deliveryBookingForShipment, formatDeliveryDay, isDeliveryDate, isSlotTime, nowInTimezone, slotMinutes } from '@/modules/shop/lib/delivery-slot'
+import { currentDelay, delayIsNewerThanStage } from '@/modules/shop/lib/delivery-delay'
+import { getSiteTimezone } from '@/lib/config/timezone.server'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
@@ -23,10 +25,11 @@ import {
   maybeSendDayEmail,
   maybeSendSlotEmail,
   maybeSendTrackingEmail,
+  newDayAfterDelay,
   courierTakesAitLink,
   trackingLinkFor,
 } from '@/modules/shop/lib/dispatch-follow-up'
-import type { ShpOrderItem } from '@/modules/shop/lib/types'
+import type { ShpOrderItem, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
 // Ceilings on what a parcel record may carry. Every one of these is stored on
 // the shipment, sent back on every read of the order and, bar the notes, put in
@@ -148,13 +151,15 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const order = await getOrderById(id)
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
-  const [summary, shipments, config, items, requests] = await Promise.all([
+  const [summary, shipments, config, items, requests, timezone] = await Promise.all([
     getOrderDispatchSummary(id),
     getShipmentsForOrder(id),
     getShopConfigCached(),
     getOrderItems(id),
     listRequestsForOrder(id),
+    getSiteTimezone(),
   ])
+  const today = nowInTimezone(new Date(), timezone).date
 
   // What the customer has asked to call off or send back that nobody has
   // decided yet, per line. Deliberately not a cap - the owner may yet say no,
@@ -188,13 +193,23 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // rebook - the two must never disagree about which parcels those are.
     shipments: shipments.map((shipment) => {
       const courier = courierForShipment(config, shipment)
+      const delayOpen = order.status === 'COMPLETED'
+        ? null
+        : currentDelay(shipment, deliveryBookingForShipment(shipment, timezone).date, today)
       return {
         ...shipment,
+        // A delay reported after the courier's failed stage is the newer word,
+        // and the customer's page shows it instead (lib/order-delivery.ts).
         deliveryFailed: !shipment.deliveredAt
-          && stageMeaning(courier, shipment.trackingStage) === 'failed',
+          && stageMeaning(courier, shipment.trackingStage) === 'failed'
+          && !delayIsNewerThanStage(delayOpen, shipment),
         // The courier's own setting says they rebook, so there is nothing for
         // staff to switch on this parcel.
         courierRebooks: courier?.rebookedBy === 'courier',
+        // The delay as the customer's page reads it today: a 'today' delay
+        // has become a new day to follow by the next morning. Null for none,
+        // and for a completed order - the order page reads it the same way.
+        delayOpen,
       }
     }),
     // The dispatch modal's courier list. It rides on this call rather than
@@ -329,6 +344,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const existing = (await getShipmentsForOrder(id)).find((s) => s.id === shipmentId)
   if (!existing) return NextResponse.json({ error: 'That parcel is no longer on this order.' }, { status: 404 })
 
+  // A delay is open and this save names the day it missed, or an earlier one.
+  // That answers nothing - the delay would stay open and the customer's page
+  // go on saying a new date will follow - so it is refused, with the way out.
+  if (typeof rest.deliveryDate === 'string' && rest.deliveryDate !== existing.deliveryDate && existing.deliveryDelayedFrom) {
+    const timezone = await getSiteTimezone()
+    const today = nowInTimezone(new Date(), timezone).date
+    const open = currentDelay(existing, deliveryBookingForShipment(existing, timezone).date, today)
+    if (open && rest.deliveryDate <= existing.deliveryDelayedFrom) {
+      return NextResponse.json({
+        error: `This delivery has a delay reported for ${formatDeliveryDay(existing.deliveryDelayedFrom)}. Give a day after that, or take the delay back first.`,
+      }, { status: 400 })
+    }
+  }
+
   const nextStart = rest.deliverySlotStart !== undefined ? rest.deliverySlotStart : existing.deliverySlotStart
   const nextEnd = rest.deliverySlotEnd !== undefined ? rest.deliverySlotEnd : existing.deliverySlotEnd
   const windowError = checkWindow(nextStart, nextEnd)
@@ -359,6 +388,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     ...(courier?.ok ? { courierId: courier.choice.courierId, carrier: courier.choice.carrier } : {}),
   })
   if (!shipment) return NextResponse.json({ error: 'That parcel is no longer on this order.' }, { status: 404 })
+
+  // A new day on a parcel with a delay open is the day that delay promised,
+  // and gets its own email in place of the plain day and window ones - which
+  // would read as though nothing had ever gone wrong. See lib/delivery-delay.ts.
+  const newDayTold = await newDayAfterDelay(id, existing, shipment, emailCustomer !== false)
+  if (newDayTold !== null) {
+    const told = newDayTold
+    const trackingTold = await maybeSendTrackingEmail(id, existing, shipment, emailTracking !== false)
+    return NextResponse.json({ shipment, slotEmailSent: false, dayEmailSent: told, trackingEmailSent: trackingTold })
+  }
 
   const notified = await maybeSendSlotEmail(id, shipment, emailCustomer !== false)
   const dayTold = await maybeSendDayEmail(id, existing, shipment, emailCustomer !== false)

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { loadMapLibre, type MapLibreMap, type MapLibreMarker } from '@/modules/shop/components/public/maplibre-loader'
-import { MAX_LIVE_SESSION_MS, SLOW_POLL_MS } from '@/modules/shop/lib/tracking/live-delivery'
+import { freshnessFromAge, MAX_LIVE_SESSION_MS, SLOW_POLL_MS } from '@/modules/shop/lib/tracking/live-delivery'
 
 // The van, while it is on its way.
 //
@@ -44,7 +44,7 @@ export type LiveDeliveryState = {
   position?: LiveVehicle | null
   /** 'Updated 1 minute ago', and whether that is old enough to distrust.
    *  Worded on the server so one visitor's wrong clock cannot age a delivery. */
-  freshness?: { text: string; stale: boolean } | null
+  freshness?: { text: string; stale: boolean; ageMs?: number; clock?: 'van' | 'us' } | null
   /** The server has just learned the parcel arrived. Reload so the rest of the
    *  page - the progress rail, the tracking lines - catches up. */
   refreshPage?: boolean
@@ -79,6 +79,26 @@ function asPosition(point: { lat: string; lng: string }): [number, number] {
   return [Number(point.lng), Number(point.lat)]
 }
 
+/** Room round the pins, so neither sits under the edge or the attribution. */
+const FIT_PADDING = 60
+/** Close enough to read the streets once the van is round the corner, and no
+ *  closer: two pins a few doors apart would otherwise zoom to the brickwork. */
+const FIT_MAX_ZOOM = 16
+
+/** The box holding the van and, when we have it, the delivery address. */
+function framing(
+  van: { lat: string; lng: string },
+  home: { lat: string; lng: string } | null,
+): [[number, number], [number, number]] {
+  const points = home ? [asPosition(van), asPosition(home)] : [asPosition(van)]
+  const lngs = points.map((p) => p[0])
+  const lats = points.map((p) => p[1])
+  return [
+    [Math.min(...lngs), Math.min(...lats)],
+    [Math.max(...lngs), Math.max(...lats)],
+  ]
+}
+
 export default function DeliveryLiveMap({ orderId, shipmentId, initial }: Props) {
   const [state, setState] = useState<LiveDeliveryState>(initial)
   const [expired, setExpired] = useState(false)
@@ -92,6 +112,26 @@ export default function DeliveryLiveMap({ orderId, shipmentId, initial }: Props)
   const startedAt = useRef<number>(0)
 
   const position = state.position ?? null
+
+  // The freshness line counts on between answers. The server says how old the
+  // position was when it answered; the page adds how long it has been holding
+  // that answer, timed on its own stopwatch, so a visitor's wrong clock still
+  // cannot age a delivery.
+  // The stopwatch reading is tied to the answer it was timed against, so a new
+  // answer starts from nought without anything having to reset it.
+  const [held, setHeld] = useState<{ answer: LiveDeliveryState['freshness']; ms: number } | null>(null)
+  useEffect(() => {
+    const answer = state.freshness
+    if (state.arrived || expired || typeof answer?.ageMs !== 'number') return
+    const answeredAt = Date.now()
+    const timer = setInterval(() => setHeld({ answer, ms: Date.now() - answeredAt }), 1000)
+    return () => clearInterval(timer)
+  }, [state.freshness, state.arrived, expired])
+  const heldFor = held && held.answer === state.freshness ? held.ms : 0
+  const freshness =
+    state.freshness && typeof state.freshness.ageMs === 'number'
+      ? freshnessFromAge(state.freshness.ageMs + heldFor, state.freshness.clock)
+      : state.freshness
 
   const refresh = useCallback(async (): Promise<number> => {
     try {
@@ -168,8 +208,10 @@ export default function DeliveryLiveMap({ orderId, shipmentId, initial }: Props)
       const instance = new maplibre.Map({
         container: container.current,
         style: MAP_STYLE,
-        center: asPosition(position),
-        zoom: 13,
+        // Opens framed on the van and the delivery address together, so the
+        // customer sees where the crew is in relation to them, not just a van.
+        bounds: framing(position, state.destination),
+        fitBoundsOptions: { padding: FIT_PADDING, maxZoom: FIT_MAX_ZOOM },
         attributionControl: { compact: true },
         // Nothing on this map is worth spinning or tilting, and both gestures
         // are easy to trigger by accident on a phone held one-handed.
@@ -199,13 +241,19 @@ export default function DeliveryLiveMap({ orderId, shipmentId, initial }: Props)
     }
   }, [position, state.destination])
 
-  // Moving what is already there, rather than rebuilding it: a map that is torn
-  // down and recreated every minute loses the zoom somebody just set.
+  // Moving what is already there, rather than rebuilding it, then reframing so
+  // the van and the address are both in view again - zooming in as the van gets
+  // closer. Without the reframe the pin simply drives off the edge.
   useEffect(() => {
     if (!map.current || !position) return
     vanMarker.current?.setLngLat(asPosition(position))
     if (typeof position.heading === 'number') vanMarker.current?.setRotation(position.heading)
-  }, [position])
+    map.current.fitBounds(framing(position, state.destination), {
+      padding: FIT_PADDING,
+      maxZoom: FIT_MAX_ZOOM,
+      duration: 800,
+    })
+  }, [position, state.destination])
 
   useEffect(() => {
     return () => {
@@ -223,10 +271,10 @@ export default function DeliveryLiveMap({ orderId, shipmentId, initial }: Props)
 
       {position && !mapFailed && <div className="sod-live-map" ref={container} role="presentation" />}
 
-      <p className={state.freshness?.stale ? 'sod-live-age sod-live-age-stale' : 'sod-live-age'}>
+      <p className={freshness?.stale ? 'sod-live-age sod-live-age-stale' : 'sod-live-age'}>
         {expired
           ? 'Refresh the page for the latest position.'
-          : (state.freshness?.text ?? 'Waiting for the crew to report their position.')}
+          : (freshness?.text ?? 'Waiting for the crew to report their position.')}
       </p>
 
       {/* Their disclaimer, in our words. A live position is a courtesy and not

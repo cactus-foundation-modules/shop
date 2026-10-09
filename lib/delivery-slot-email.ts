@@ -11,6 +11,8 @@ import {
   formatDeliveryWindow,
 } from '@/modules/shop/lib/delivery-slot'
 import { courierFaqUrl, faqsForShipment } from '@/modules/shop/lib/courier-faqs'
+import { isStaleCarrierWindow } from '@/modules/shop/lib/delivery-delay'
+import { calendarDateIn } from '@/lib/config/timezone'
 import type { ShpOrder, ShpShipment, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
 // "Your delivery is confirmed for Tuesday, between 10:00 and 13:00."
@@ -44,7 +46,7 @@ function deliveryEmailParts(
 
 /** What is in THIS parcel and who is bringing it, shared by the day and the
  *  window emails so the two read as one conversation. */
-async function parcelEmailVars(
+export async function parcelEmailVars(
   order: ShpOrder,
   shipment: ShpShipmentWithItems,
 ): Promise<Record<string, string>> {
@@ -157,6 +159,8 @@ export async function maybeSendCarrierWindowEmail(
     | 'deliveryWindowTo'
     | 'slotNotifiedAt'
     | 'quietCustomerEmails'
+    | 'deliveryDelay'
+    | 'deliveryDelayedFrom'
   >,
   reading: { windowFrom: Date | null; windowTo: Date | null },
   timezone: string,
@@ -164,6 +168,9 @@ export async function maybeSendCarrierWindowEmail(
   if (parcel.slotNotifiedAt || parcel.quietCustomerEmails) return false
   if (hasCompleteBookedSlot(parcel)) return false
   if (!reading.windowFrom || !reading.windowTo) return false
+  // The window for the day a reported delay missed is the booking that fell
+  // through, still in the courier's feed - not news, and not worth the stamp.
+  if (isStaleCarrierWindow(parcel, calendarDateIn(reading.windowFrom, timezone))) return false
   if (!(await claimSlotNotification(parcel.id, parcel.orderId))) return false
 
   try {

@@ -866,6 +866,14 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     -- Recorded from a supplier's tracking while the shop was set to "record
     -- only": no email that can follow from this parcel is sent (068).
     "quiet_customer_emails" BOOLEAN NOT NULL DEFAULT false,
+    -- A delay the shop has reported to the customer (070_delivery_delays.sql):
+    -- 'today' (running late, still trying today) or 'rebooking' (new day to
+    -- follow); NULL once a new day is given. The missed day, when it was
+    -- reported, and an optional sentence for the customer sit alongside.
+    "delivery_delay" TEXT,
+    "delivery_delayed_at" TIMESTAMP(3),
+    "delivery_delayed_from" TEXT,
+    "delivery_delay_note" TEXT,
     -- Where the courier's own tracking says the parcel has got to, read on a
     -- schedule rather than while a customer waits. The stage is kept in the
     -- courier's own words and translated at READ time, so an owner correcting
@@ -929,6 +937,11 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
         CHECK (
             ("delivery_slot_start" IS NULL OR "delivery_slot_start" ~ '^([01]\d|2[0-3]):[0-5]\d$')
             AND ("delivery_slot_end" IS NULL OR "delivery_slot_end" ~ '^([01]\d|2[0-3]):[0-5]\d$')
+        ),
+    CONSTRAINT "shp_shipments_delivery_delay_check"
+        CHECK (
+            ("delivery_delay" IS NULL OR "delivery_delay" IN ('today', 'rebooking'))
+            AND ("delivery_delayed_from" IS NULL OR "delivery_delayed_from" ~ '^\d{4}-\d{2}-\d{2}$')
         ),
     CONSTRAINT "shp_shipments_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "shp_shipments_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "shp_orders"("id") ON DELETE CASCADE

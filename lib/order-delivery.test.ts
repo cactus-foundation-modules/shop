@@ -290,6 +290,7 @@ const booked = (id: string, date: string, phase: 'upcoming' | 'passed'): ParcelD
   arrived: phase === 'passed',
   failed: false,
   rearrange: null,
+  delay: null,
   showTracking: true,
   trackingLabel: 'Track your parcel',
   trackingHint: '',
@@ -519,5 +520,55 @@ describe('a failed delivery', () => {
     expect(step?.label).toBe('Delivery not possible')
     expect(step?.state).toBe('now')
     expect(step?.note).toBe('A new day is needed')
+  })
+})
+
+describe('parcelDelivery with a reported delay', () => {
+  const now = new Date('2026-09-10T14:00:00Z')
+
+  it('keeps the day while running late, and puts the delay on the rail', () => {
+    const delivery = parcelDelivery(config, shipment({
+      deliveryDate: '2026-09-10', deliverySlotStart: '10:00', deliverySlotEnd: '13:00',
+      deliveryDelay: 'today', deliveryDelayedFrom: '2026-09-10', deliveryDelayedAt: now,
+      deliveryDelayNote: '  Van  broke down. ',
+    }), now, 'Europe/London')
+    expect(delivery.delay).toEqual({ kind: 'today', note: 'Van broke down.' })
+    expect(delivery.day).toBe('today')
+    const steps = orderProgressSteps({
+      order: { status: 'SHIPPED', paymentStatus: 'PAID', paidAt: now, createdAt: now },
+      lines: [{ item: { quantity: 1 }, dispatchedQty: 1 }],
+      lastShippedAt: now,
+      delivery: { day: delivery.day, window: delivery.window, progress: 1, underway: false, arrived: false, delay: 'today' },
+    })
+    expect(steps.find((s) => s.key === 'delivery')?.label).toBe('Running late')
+  })
+
+  it('drops the missed day while a new one is awaited, and still shows on the rail', () => {
+    const delivery = parcelDelivery(config, shipment({
+      deliveryDate: '2026-09-09', deliveryDelay: 'today', deliveryDelayedFrom: '2026-09-09', deliveryDelayedAt: now,
+    }), now, 'Europe/London')
+    expect(delivery.delay?.kind).toBe('rebooking')
+    expect(delivery.day).toBe('')
+    expect(delivery.progress).toBeNull()
+    expect(railDelivery([delivery])?.shipmentId).toBe('shp_1')
+  })
+})
+
+describe('parcelDelivery with a reported delay, after the window', () => {
+  it('does not count a running-late parcel as arrived because its window has passed', () => {
+    const now = new Date('2026-09-10T14:30:00Z')
+    const delivery = parcelDelivery(config, shipment({
+      deliveryDate: '2026-09-10', deliverySlotStart: '10:00', deliverySlotEnd: '13:00',
+      deliveryDelay: 'today', deliveryDelayedFrom: '2026-09-10', deliveryDelayedAt: new Date('2026-09-10T11:30:00Z'),
+    }), now, 'Europe/London')
+    expect(delivery.arrived).toBe(false)
+    expect(delivery.delay?.kind).toBe('today')
+  })
+
+  it('puts a parcel coming tomorrow on the rail ahead of one waiting on a new day', () => {
+    const waiting = { ...booked('a', '', 'upcoming'), progress: null, day: '', delay: { kind: 'rebooking' as const, note: '' } }
+    const tomorrow = booked('b', '2026-09-11', 'upcoming')
+    expect(railDelivery([waiting, tomorrow])?.shipmentId).toBe('b')
+    expect(railDelivery([waiting])?.shipmentId).toBe('a')
   })
 })

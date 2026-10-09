@@ -761,6 +761,9 @@ export type ShpRefund = {
 
 export type ShpRefundItem = { id: string; refundId: string; orderItemId: string; quantity: number; amount: string }
 
+/** See migrations/070_delivery_delays.sql. */
+export type ShpDeliveryDelay = 'today' | 'rebooking'
+
 export type ShpShipment = {
   id: string
   orderId: string
@@ -792,6 +795,17 @@ export type ShpShipment = {
   /** When the customer was emailed about the current failed attempt. Cleared
    *  when the courier's stage moves on. */
   failedNotifiedAt: Date | null
+  /** A delay the shop has reported to the customer (migration 070): 'today'
+   *  is running late but still trying today, 'rebooking' is a new day to
+   *  follow. Null when no delay is open - a new day closes one. Optional so a
+   *  parcel built by hand (a preview, a test) reads as on time. */
+  deliveryDelay?: ShpDeliveryDelay | null
+  /** When the latest delay was reported. Kept after the delay closes. */
+  deliveryDelayedAt?: Date | null
+  /** The day that was missed, 'YYYY-MM-DD'. See lib/delivery-delay.ts. */
+  deliveryDelayedFrom?: string | null
+  /** Staff's sentence of explanation for the customer, or null. */
+  deliveryDelayNote?: string | null
   /** Recorded from a supplier's tracking while the shop was set to "record
    *  only" (lib/despatch-observer.ts): no customer email that can follow from
    *  this parcel is sent. Cleared by sending its dispatch note by hand.
@@ -1304,6 +1318,10 @@ export type ShpEmailTemplateTrigger =
   // delivered, and here is how a new day gets booked - or, where staff have
   // said so, that the courier will be in touch. See lib/failed-delivery-email.ts.
   | 'DELIVERY_FAILED'
+  // Delays the shop reports from the order screen: running late today (still
+  // trying, a new day to follow if not); delayed, with the new day or with one
+  // to follow; and that new day once it is known. See lib/delivery-delay-email.ts.
+  | 'DELIVERY_RUNNING_LATE' | 'DELIVERY_DELAYED' | 'DELIVERY_NEW_DATE'
   // An extra charge on an order (a redelivery fee, say): raised - pay it or
   // cancel instead; paid; and the order cancelled with it kept back out of the
   // refund. ADMIN_CHARGE_UPDATE tells the owner which way the customer went.

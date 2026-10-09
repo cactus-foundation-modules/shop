@@ -107,6 +107,33 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     transactional: false,
   },
   {
+    // The three delay messages (lib/delivery-delay-email.ts). Texted as well as
+    // emailed, unlike the booking ones: a van running late is news somebody
+    // needs while they are out of the house waiting for it.
+    key: 'shop.delivery-running-late',
+    label: 'Delivery running late today',
+    body: '{{shopName}}: sorry, your delivery for order {{orderNumber}} is running late. We are still trying today; if not, we will be in touch with a new date.',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'carrier', 'delayNote', 'hasDelayNote', 'orderUrl', 'hasOrderUrl'],
+    requiredTags: ['orderNumber'],
+    transactional: false,
+  },
+  {
+    key: 'shop.delivery-delayed',
+    label: 'Delivery delayed',
+    body: '{{shopName}}: sorry, your delivery for order {{orderNumber}} is delayed.{{#if hasNewDay}} It is now booked for {{deliveryDay}}.{{/if}}{{#if noNewDay}} We will be in touch with a new date.{{/if}}',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'carrier', 'delayNote', 'hasDelayNote', 'deliveryDay', 'deliveryWindow', 'hasNewDay', 'hasNewDayOnly', 'hasNewDayWindow', 'noNewDay', 'orderUrl', 'hasOrderUrl'],
+    requiredTags: ['orderNumber'],
+    transactional: false,
+  },
+  {
+    key: 'shop.delivery-new-date',
+    label: 'Delayed delivery: new date',
+    body: '{{shopName}}: your delayed delivery for order {{orderNumber}} is now booked for {{deliveryDay}}{{#if hasNewDayWindow}}, {{deliveryWindow}}{{/if}}.',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'carrier', 'deliveryDay', 'deliveryWindow', 'hasNewDayOnly', 'hasNewDayWindow', 'orderUrl', 'hasOrderUrl'],
+    requiredTags: ['orderNumber', 'deliveryDay'],
+    transactional: false,
+  },
+  {
     key: 'shop.request-received',
     label: 'Cancel or return request received',
     body: '{{shopName}}: we have your {{requestType}} request for order {{orderNumber}} and will be in touch shortly.',
@@ -215,6 +242,9 @@ export const SHOP_TRIGGER_TO_SMS_KEY: Record<string, string> = {
   STATUS_COMPLETED: 'shop.status-completed',
   STATUS_CANCELLED: 'shop.status-cancelled',
   PARTIAL_SHIPPED: 'shop.partial-shipped',
+  DELIVERY_RUNNING_LATE: 'shop.delivery-running-late',
+  DELIVERY_DELAYED: 'shop.delivery-delayed',
+  DELIVERY_NEW_DATE: 'shop.delivery-new-date',
   REQUEST_RECEIVED: 'shop.request-received',
   REQUEST_APPROVED: 'shop.request-approved',
   REQUEST_DECLINED: 'shop.request-declined',
