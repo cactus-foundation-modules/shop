@@ -14,6 +14,7 @@
 // they publish into the shop.payments slot. Shop names none of them: the list
 // comes from the settings API, the panels from the manifest.
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { SettingsHeaderActions } from '@/components/admin/SettingsHeaderActions'
 import type { HostedSettingsPanel } from '@/lib/modules/hosted-settings'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import {
@@ -888,7 +889,7 @@ function BuiltInMethodPanel({
           {envAdminAllowed && (
             <>
               {envSaveError && <div className="alert alert-danger">{envSaveError}</div>}
-              <div style={{ display: 'grid', gap: '0.75rem', maxWidth: '32rem' }}>
+              <div style={{ display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 18rem), 1fr))' }}>
                 {meta?.keys?.map((f) => (
                   <div className="field" key={f.key} style={{ marginBottom: 0 }}>
                     <label htmlFor={`shp-env-${f.key}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
@@ -915,14 +916,19 @@ function BuiltInMethodPanel({
                 ))}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginTop: '1rem' }}>
-                <button className="btn btn-primary" disabled={saving || !hasEntries} onClick={() => onSaveCredentials(method.id, keys)}>
-                  {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save these details'}
-                </button>
-                <span style={mutedText}>
-                  {saved ? 'Saved. They start working on the next deployment of your site.' : 'Saved separately from the rest of this page, and live from the next deployment.'}
-                </span>
-              </div>
+              {/* Credentials go to the server's environment, not shop's settings, so
+                  they have a button of their own. It sits in the Settings bar beside
+                  Save changes, and only appears once there is something to save. */}
+              {(hasEntries || saved) && (
+                <SettingsHeaderActions>
+                  <button className="btn btn-primary" disabled={saving || !hasEntries} onClick={() => onSaveCredentials(method.id, keys)}>
+                    {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save payment details'}
+                  </button>
+                </SettingsHeaderActions>
+              )}
+              <p style={{ ...mutedText, marginTop: '1rem' }}>
+                {saved ? 'Saved. They start working on the next deployment of your site.' : 'Saved separately from the rest of this page, and live from the next deployment.'}
+              </p>
             </>
           )}
 

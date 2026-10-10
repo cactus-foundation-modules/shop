@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TabStrip } from '@/components/admin/TabStrip'
+import { SettingsHeaderActions, SettingsHeaderStatus } from '@/components/admin/SettingsHeaderActions'
 import type { ModuleSettingsTabProps } from '@/lib/modules/hosted-settings'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import type { ShpAdminPaymentMethod } from '@/modules/shop/lib/payments/admin-methods'
@@ -45,7 +46,7 @@ const HOSTED_NOTIFICATIONS_SLOT = 'shop.settings-notifications'
 const checkboxRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)', cursor: 'pointer' }
 const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.5rem 0' }
 const sectionHeading: React.CSSProperties = { margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }
-const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: 'var(--form-gap)' }
+const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 12rem), 1fr))', gap: '0.75rem', marginBottom: 'var(--form-gap)' }
 
 // A stable id for a newly added checkout tickbox. It has to outlive the wording
 // it was created with, because it is what an order's recorded agreement points
@@ -187,16 +188,18 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-4)' }}>
-        {/* A contributed sub-tab saves its own settings through its own module's
-            API. Shop's Save button would not save it, so showing one over it
-            only invites the click that appears to do nothing. */}
-        {!activeHostedSubTab && !showingHostedPaymentPanel && (
+      {/* A contributed sub-tab saves its own settings through its own module's
+          API, and puts its own Save button in the same place. Shop's button
+          would not save it, so showing both only invites the click that appears
+          to do nothing. */}
+      {!activeHostedSubTab && !showingHostedPaymentPanel && (
+        <SettingsHeaderActions>
+          <SettingsHeaderStatus message={message} error={saveError} />
           <button className="btn btn-primary" disabled={saving} onClick={save}>
-            {saving ? 'Saving…' : 'Save settings'}
+            {saving ? 'Saving…' : 'Save changes'}
           </button>
-        )}
-      </div>
+        </SettingsHeaderActions>
+      )}
 
       <TabStrip
         items={[
@@ -209,7 +212,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
       {saveError && <div className="alert alert-danger" style={{ marginBottom: '1rem' }}>{saveError}</div>}
 
       {subTab === 'general' && (
-        <div>
+        <div className="settings-masonry">
+          <div className="card">
           <div style={fieldGrid}>
             <div className="field" style={{ margin: 0 }}><label>Currency code</label><input value={config.currency} onChange={(e) => set('currency', e.target.value)} /></div>
             <div className="field" style={{ margin: 0 }}><label>Currency symbol</label><input value={config.currencySymbol} onChange={(e) => set('currencySymbol', e.target.value)} /></div>
@@ -238,8 +242,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               </select>
             </div>
           </div>
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Shop status</h3>
           <div className="field">
             <label>Status</label>
@@ -254,8 +258,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             <input value={config.shopClosedMessage} onChange={(e) => set('shopClosedMessage', e.target.value)} />
             <span className="field-hint">Shown to visitors while the shop is browse-only or closed.</span>
           </div>
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Category pages</h3>
           <div className="field">
             <label>Products shown on a category page</label>
@@ -265,8 +269,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             </select>
             <span className="field-hint">The default for every category. Any individual category can override this on the Categories screen.</span>
           </div>
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Product FAQs</h3>
           <label style={checkboxRow}>
             <input type="checkbox" checked={config.productFaqsEnabled} onChange={(e) => set('productFaqsEnabled', e.target.checked)} />
@@ -338,8 +342,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               )}
             </>
           )}
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Out of stock products</h3>
           <div className="field">
             <label>When something sells out</label>
@@ -373,8 +377,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             backorders, or one on pre-order stays put. Your Products screen always lists the lot regardless, which is
             rather the point of it.
           </p>
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Prices</h3>
           <p className="field-hint" style={{ marginTop: 0 }}>
             Every product has a price, and that one is not optional. Switch on any of the others you keep track of and they appear on the Pricing tab of each product.
@@ -426,8 +430,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
           <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
             Switching a price off hides the box but keeps whatever you had typed in it, so switching it back on gets your figures back. While a sale price is switched off, nothing is on offer and shoppers pay the normal price.
           </p>
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Suppliers</h3>
           <label style={checkboxRow}>
             <input type="checkbox" checked={config.supplierFieldEnabled} onChange={(e) => set('supplierFieldEnabled', e.target.checked)} />
@@ -480,8 +484,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               </p>
             </>
           )}
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Order-size deduction</h3>
           <label style={checkboxRow}>
             <input type="checkbox" checked={config.orderSizeDeductionEnabled} onChange={(e) => set('orderSizeDeductionEnabled', e.target.checked)} />
@@ -501,8 +505,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               </p>
             </>
           )}
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>SEO</h3>
           <div className="field"><label>Shop title</label><input value={config.shopTitle} onChange={(e) => set('shopTitle', e.target.value)} /></div>
           <div className="field"><label>Meta description</label><textarea rows={3} value={config.shopMetaDescription} onChange={(e) => set('shopMetaDescription', e.target.value)} /></div>
@@ -519,11 +523,13 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               spot - keep product names distinctive.
             </span>
           </div>
+          </div>
         </div>
       )}
 
       {subTab === 'checkout' && (
-        <div>
+        <div className="settings-masonry">
+          <div className="card">
           <div className="field">
             <label>Tax mode</label>
             <select value={config.taxMode} onChange={(e) => set('taxMode', e.target.value as ShpConfig['taxMode'])}>
@@ -531,8 +537,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               <option value="EXCLUSIVE">Exclusive (tax added at checkout)</option>
             </select>
           </div>
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Checkout rules</h3>
           <label style={checkboxRow}>
             <input type="checkbox" checked={config.guestCheckoutEnabled} onChange={(e) => set('guestCheckoutEnabled', e.target.checked)} />
@@ -569,8 +575,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             confirmation page, and nothing already sent a text carries on doing so. This only hides the choice; it
             has no bearing on whether the shop can send a text at all, which is set up separately under Twilio.
           </p>
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Order history</h3>
           <p className="field-hint" style={{ marginTop: '-0.5rem' }}>
             What a customer can do on their own copy of an order they have already placed.
@@ -616,8 +622,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             options picked on it sends them to the product page with those same options already chosen, because
             guessing at last year&rsquo;s engraving is how somebody ends up with the wrong name on it.
           </p>
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Cancellations, returns and damage</h3>
           <p className="field-hint" style={{ marginTop: '-0.5rem' }}>
             Requests arrive under Shop → Cancellations &amp; returns for you to approve or decline. Nothing is ever
@@ -689,8 +695,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               under Tax &amp; shipping. Leave this blank for the wording above.
             </p>
           </div>
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Organisation name</h3>
           <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
             Adds a box directly under the customer&apos;s own name, because it says who they are rather than where the parcel goes. Worth switching
@@ -714,8 +720,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               </div>
             </>
           )}
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Their own order reference</h3>
           <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
             A box for the customer&apos;s own number for the order - the purchase order number their finance team raised, or a job reference. It goes
@@ -748,8 +754,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               </p>
             </>
           )}
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Delivery instructions</h3>
           <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
             A box on the delivery step for whatever the driver needs to know - the gate code, the side entrance, the neighbour who takes parcels in,
@@ -780,8 +786,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               </div>
             </>
           )}
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Billing address</h3>
           <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
             Adds a tickbox under the delivery address for customers whose invoice goes somewhere other than the parcel - a head office, an accounts
@@ -792,8 +798,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             <input type="checkbox" checked={config.billingAddressEnabled} onChange={(e) => set('billingAddressEnabled', e.target.checked)} />
             Let customers give a different billing address
           </label>
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Changing the invoice details afterwards</h3>
           <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
             The business buyer who orders on the company card and is then told by their accounts department that the invoice needs to be in the
@@ -826,8 +832,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               </p>
             </>
           )}
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Tickboxes at checkout</h3>
           <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
             These appear just above the Place order button. A required one has to be ticked before the order will go through, and what was ticked is
@@ -912,8 +918,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
           >
             Add a tickbox
           </button>
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Checkout steps</h3>
           <p className="field-hint" style={{ marginBottom: '0.75rem' }}>Choose which steps appear at checkout, and which ones can&apos;t be skipped.</p>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr auto auto', border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 'var(--form-gap)' }}>
@@ -944,15 +950,15 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               )
             })}
           </div>
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Back-in-stock</h3>
           <label style={checkboxRow}>
             <input type="checkbox" checked={config.backInStockAccountPrompt} onChange={(e) => set('backInStockAccountPrompt', e.target.checked)} />
             Prompt for an account when signing up for a back-in-stock alert
           </label>
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Pre-orders</h3>
           <div className="field">
             <label>Mixed cart behaviour</label>
@@ -960,6 +966,7 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               <option value="HOLD_ALL">Hold the entire order until every item is in stock</option>
               <option value="PROMPT_SPLIT">Offer to split shipping between in-stock and pre-order items</option>
             </select>
+          </div>
           </div>
         </div>
       )}
@@ -976,7 +983,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
       )}
 
       {subTab === 'invoices' && (
-        <div>
+        <div className="settings-masonry">
+          <div className="card">
           <p style={{ margin: '0 0 var(--space-4)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
             An invoice is not a receipt. It carries your trading details, your VAT registration and a number that
             has to stay unique and in sequence - so it is off until you say otherwise. What the document actually
@@ -1255,11 +1263,13 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               </div>
             </>
           )}
+          </div>
         </div>
       )}
 
       {subTab === 'notifications' && (
-        <div>
+        <div className="settings-masonry">
+          <div className="card">
           <p style={{ margin: '0 0 var(--space-4)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
             Who gets told, and when. What the emails actually say - and the design wrapped around them -
             lives with every other email on the site, under Settings, on the Emails tab.
@@ -1277,8 +1287,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             <label>Low stock alert email</label>
             <input type="email" value={config.lowStockAlertEmail} onChange={(e) => set('lowStockAlertEmail', e.target.value)} />
           </div>
-
-          <hr style={hr} />
+          </div>
+          <div className="card">
           <h3 style={sectionHeading}>Tracking from your suppliers</h3>
           <div className="field">
             <label>When your purchasing records a supplier&apos;s despatch</label>
@@ -1299,7 +1309,7 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               {' '}A parcel you already dispatched with no tracking has the tracking filled in; tracking already on an order is never overwritten, and nothing goes on a cancelled or refunded order. A tracking link is only kept when it goes to a courier the shop knows (DPD, Royal Mail, Evri, Multidrop, GFS and the like); otherwise just the number goes on.
             </span>
           </div>
-
+          </div>
           {/* Rendered by the core config page, so shop hands it the space and
               asks nothing else about it. Its own fetch, its own save, its own
               permission check - all its module's business, not shop's. */}
