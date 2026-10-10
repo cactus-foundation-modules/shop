@@ -26,6 +26,16 @@ export async function renderShopEmail(trigger: ShpEmailTemplateTrigger, vars: Re
   return renderEmailTemplate(key, vars)
 }
 
+// Every email about one order goes on one conversation in the inbox, whatever
+// its subject - they all have their own, and the subject was all the inbox had
+// to thread them on. Staff alerts are left out: they are about the order but
+// not to the customer, and filing them under it would put "New order received"
+// in the middle of what the customer was told.
+function threadKeyFor(trigger: string, orderId: string | undefined): { threadKey?: string } {
+  if (!orderId || trigger.startsWith('ADMIN_')) return {}
+  return { threadKey: `shop-order:${orderId}` }
+}
+
 // Sends a shop email to an arbitrary address. When orderId is given, every
 // customer-facing send is logged to shp_order_emails (spec's order email log /
 // Communications tab).
@@ -49,6 +59,7 @@ export async function sendShopEmail(
       // replying to their confirmation reaches the people who deal with orders
       // rather than the site's general post. Say nothing and nothing changes.
       moduleName: 'shop',
+      ...threadKeyFor(trigger, opts?.orderId),
       to,
       subject: rendered.subject,
       html: rendered.html,
@@ -120,7 +131,7 @@ export async function resendFailedOrderEmail(orderId: string, noteId: string): P
     : undefined
 
   try {
-    await sendEmail({ moduleName: 'shop', to, subject, html, text, ...(emailAttachments ? { attachments: emailAttachments } : {}) })
+    await sendEmail({ moduleName: 'shop', ...threadKeyFor(trigger, orderId), to, subject, html, text, ...(emailAttachments ? { attachments: emailAttachments } : {}) })
   } catch (err) {
     await noteFailedOrderEmail(orderId, trigger, { subject, html, text }, to, err, emailAttachments)
     return { ok: false, status: 502, error: err instanceof Error ? err.message : 'The email service refused it.' }
