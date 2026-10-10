@@ -15,9 +15,9 @@ export const MARKETING_CONSENT_AGREEMENT_ID = 'marketing-consent'
 /**
  * What the checkout said about marketing, or null when nothing said anything.
  *
- * Null is not a no. It covers a shop with nothing asking the question and a
- * shopper who never touched the box, and the two cannot be told apart from what
- * the browser keeps. A no is only ever recorded when somebody actually answered.
+ * Null is not a no. It means nothing on the checkout put the question. A box
+ * that asks it records its answer as soon as it is on screen - an opt-out box
+ * left unticked is a yes - so a shopper who never touched it still answered.
  */
 export function marketingConsentFromAgreements(agreements: Record<string, boolean> | undefined): boolean | null {
   const answer = agreements?.[MARKETING_CONSENT_AGREEMENT_ID]

@@ -892,6 +892,30 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
         <div><dt>Customer</dt><dd>{organisation || order.customerName}<small>{organisation ? order.customerName : order.customerEmail}</small></dd></div>
         <div><dt>Payment</dt><dd>{paymentBadge.label}<small>{paymentMethodLabel(order.paymentMethod)}</small></dd></div>
         <div><dt>Delivery</dt><dd>{dispatchBadge.label}<small>{dispatch ? `${dispatchedUnits} sent · ${outstandingUnits} still to go` : 'Checking parcels…'}</small></dd></div>
+        <div className="sod-summary-status sox-noprint">
+          <dt>Status</dt>
+          <dd>
+            <select className="sox-select" aria-label="Order status" value={order.status} disabled={busy} onChange={(e) => setStatus(e.target.value)}>
+              {/* A refunded order's status is set by the refund, so it is
+                  shown when it applies but never offered as a choice. */}
+              {!(SETTABLE_STATUSES as readonly string[]).includes(order.status) && (
+                <option value={order.status}>{badgeFor(ORDER_STATUS_BADGE, order.status).label}</option>
+              )}
+              {SETTABLE_STATUSES.map((s) => <option key={s} value={s}>{ORDER_STATUS_BADGE[s]?.label ?? s}</option>)}
+            </select>
+            <label className="sod-summary-check">
+              <input type="checkbox" checked={sendEmailOnChange} onChange={(e) => setSendEmailOnChange(e.target.checked)} />
+              Email the customer when this changes
+            </label>
+            {/* A replacement's last email is its own, and asks for nothing. */}
+            {order.kind !== 'REPLACEMENT' && (
+              <label className="sod-summary-check">
+                <input type="checkbox" checked={order.askForReview !== false} disabled={busy} onChange={(e) => setAskForReview(e.target.checked)} />
+                Ask for a review in the completion email
+              </label>
+            )}
+          </dd>
+        </div>
       </dl>
 
       {hold?.active && (
@@ -1676,41 +1700,6 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
               </a>
             </div>
           </section>
-
-          <section className="sox-card sox-noprint">
-            <div className="sox-card-head"><h2>Status</h2></div>
-            <div className="sox-card-body" style={{ display: 'grid', gap: '0.625rem' }}>
-              <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.8125rem' }}>
-                Order status
-                <select className="sox-select" value={order.status} disabled={busy} onChange={(e) => setStatus(e.target.value)}>
-                  {/* A refunded order's status is set by the refund, so it is
-                      shown when it applies but never offered as a choice. */}
-                  {!(SETTABLE_STATUSES as readonly string[]).includes(order.status) && (
-                    <option value={order.status}>{badgeFor(ORDER_STATUS_BADGE, order.status).label}</option>
-                  )}
-                  {SETTABLE_STATUSES.map((s) => <option key={s} value={s}>{ORDER_STATUS_BADGE[s]?.label ?? s}</option>)}
-                </select>
-              </label>
-              {order.status !== 'SHIPPED' && (
-                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                  Courier, tracking number and tracking links are recorded per parcel when you <strong>Dispatch items</strong>,
-                  or later with <strong>Edit tracking</strong> on each parcel. That is also what goes into the customer&rsquo;s email.
-                </p>
-              )}
-              <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.8125rem' }}>
-                <input type="checkbox" checked={sendEmailOnChange} onChange={(e) => setSendEmailOnChange(e.target.checked)} />
-                Email the customer when this changes
-              </label>
-              {/* A replacement's last email is its own, and asks for nothing. */}
-              {order.kind !== 'REPLACEMENT' && (
-                <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.8125rem' }}>
-                  <input type="checkbox" checked={order.askForReview !== false} disabled={busy} onChange={(e) => setAskForReview(e.target.checked)} />
-                  Ask for a review in the completion email
-                </label>
-              )}
-            </div>
-          </section>
-
         </aside>
       </div>
 

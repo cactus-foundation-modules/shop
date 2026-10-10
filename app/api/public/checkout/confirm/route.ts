@@ -4,6 +4,7 @@ import { getOrderById, markOrderPaid, markOrderPaymentFailed, markOrderAwaitingC
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { fulfillPaidOrder } from '@/modules/shop/lib/order-fulfillment'
 import { announceOrderAwaitingPayment } from '@/modules/shop/lib/order-placed-email'
+import { notifyOrderPlacedUnpaid } from '@/modules/shop/lib/order-placed-hooks'
 import { rememberOrderAddress } from '@/modules/shop/lib/order-address-book'
 import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
 import { getClientIp } from '@/lib/auth/rate-limit'
@@ -68,6 +69,11 @@ export async function POST(request: NextRequest) {
     // that is an automated method whose money is already committed and merely
     // settling, and telling that shopper to go and pay would be wrong twice.
     await announceOrderAwaitingPayment(order)
+    // And any module that wants to know a real order exists before its money
+    // does - the address book filing the shopper as a customer, for one.
+    await notifyOrderPlacedUnpaid({
+      orderId: order.id, orderNumber: order.orderNumber, paymentMethod: order.paymentMethod,
+    })
     return NextResponse.json({ orderNumber: order.orderNumber, status: 'AWAITING_CONFIRMATION' })
   }
 

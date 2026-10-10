@@ -20,7 +20,7 @@ import { sendShipmentDispatchedEmail } from '@/modules/shop/lib/shipment-email'
 import { hasFollowableTracking } from '@/modules/shop/lib/tracking-added-email'
 import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
 import { dpdFollowLink, dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
-import { aitLink, aitLinkParts } from '@/modules/shop/lib/tracking/ait-link'
+import { LINK_ONLY, linkOnlySourceOf } from '@/modules/shop/lib/tracking/link-only'
 import { isKnownCarrierLink } from '@/modules/shop/lib/tracking/known-carrier-hosts'
 import { isMultidropUrl } from '@/modules/shop/lib/tracking/multidrop'
 import type { ShpShipmentWithItems } from '@/modules/shop/lib/types'
@@ -146,8 +146,8 @@ export function shopTrackingFor(config: Pick<ShpConfig, 'deliveryCouriers'>, eve
   const name = (event.carrier ?? '').trim().toLowerCase()
 
   const byName = name ? config.deliveryCouriers.filter((c) => c.name.trim().toLowerCase() === name) : []
-  const ait = aitLinkParts(url)
-  const source = dpdCode ? 'dpd' : isMultidropUrl(url) ? 'multidrop' : ait ? 'ait' : null
+  const linkOnly = linkOnlySourceOf(url)
+  const source = dpdCode ? 'dpd' : isMultidropUrl(url) ? 'multidrop' : linkOnly
   const bySource = source ? config.deliveryCouriers.filter((c) => c.trackingSource === source) : []
   let courier = byName.length === 1 ? byName[0]! : bySource.length === 1 ? bySource[0]! : null
 
@@ -163,16 +163,20 @@ export function shopTrackingFor(config: Pick<ShpConfig, 'deliveryCouriers'>, eve
     }
     courier = null
   }
-  // An AIT courier keeps its short link in the one shape the order screen
-  // stores it in. Anything else on an AIT courier is a link its tracking check
-  // could never read, so the parcel is not put on that courier at all.
-  if (courier && courier.trackingSource === 'ait' && !ait) courier = null
-  const onAit = courier?.trackingSource === 'ait' && ait
+  // An AIT or Fieldly courier keeps its link in the one shape the order
+  // screen stores it in. Anything else on such a courier is a link its tracking
+  // check could never read, so the parcel is not put on that courier at all.
+  if (courier && (courier.trackingSource === 'ait' || courier.trackingSource === 'fieldly')
+    && courier.trackingSource !== linkOnly) courier = null
+  const onLinkOnly = linkOnly && url && courier?.trackingSource === linkOnly
+    ? LINK_ONLY[linkOnly].canonical(url)
+    : null
   return {
-    // AIT take no tracking number - the link is the parcel - so a consignment
-    // number in the announcement stays off, as it would at the order screen.
-    trackingNumber: onAit ? null : event.trackingNumber,
-    trackingUrl: onAit ? aitLink(onAit) : url,
+    // AIT and Fieldly take no tracking number - the link is the parcel - so a
+    // consignment number in the announcement stays off, as it would at the
+    // order screen.
+    trackingNumber: onLinkOnly ? null : event.trackingNumber,
+    trackingUrl: onLinkOnly ?? url,
     trackingShortCode: null,
     carrier: courier?.name ?? event.carrier ?? null,
     courierId: courier?.id ?? null,

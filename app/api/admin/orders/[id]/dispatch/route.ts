@@ -20,13 +20,14 @@ import { getSiteTimezone } from '@/lib/config/timezone.server'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
+import { isLinkOnlySource } from '@/modules/shop/lib/tracking/link-only'
 import {
   followDispatchWithStatus,
   maybeSendDayEmail,
   maybeSendSlotEmail,
   maybeSendTrackingEmail,
   newDayAfterDelay,
-  courierTakesAitLink,
+  courierLinkOnly,
   trackingLinkFor,
 } from '@/modules/shop/lib/dispatch-follow-up'
 import type { ShpOrderItem, ShpShipmentWithItems } from '@/modules/shop/lib/types'
@@ -220,7 +221,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       id: c.id,
       name: c.name,
       dpdFollowLink: c.trackingSource === 'dpd',
-      aitLink: c.trackingSource === 'ait',
+      linkOnly: isLinkOnlySource(c.trackingSource) ? c.trackingSource : undefined,
     })),
     preOrderHold: {
       active: holdAll && outstanding.length > 0,
@@ -374,11 +375,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   // rule, and left as it was, is not refused for an address nobody changed.
   const nextCourierId = courier?.ok ? courier.choice.courierId : existing.courierId
   const nextUrl = rest.trackingUrl !== undefined ? rest.trackingUrl : existing.trackingUrl
-  // An AIT parcel takes no number at all, so a save that sends one is judged
+  // An AIT or Fieldly parcel takes no number at all, so a save that sends one is judged
   // too - the link rule is where the number gets cleared.
   const linkTouched = (rest.trackingUrl !== undefined && rest.trackingUrl !== existing.trackingUrl)
     || nextCourierId !== existing.courierId
-    || (courierTakesAitLink(config, nextCourierId) && Boolean(rest.trackingNumber ?? existing.trackingNumber))
+    || (courierLinkOnly(config, nextCourierId) !== null && Boolean(rest.trackingNumber ?? existing.trackingNumber))
   const tracking = linkTouched ? trackingLinkFor(config, nextCourierId, nextUrl) : null
   if (tracking && !tracking.ok) return NextResponse.json({ error: tracking.error }, { status: 400 })
 

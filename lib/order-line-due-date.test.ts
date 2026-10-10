@@ -10,7 +10,7 @@ const installed: Array<{ manifest: unknown }> = []
 vi.mock('@/lib/modules/extension-points.server', () => ({ moduleServerExtensionPointComponents: registry }))
 vi.mock('@/lib/modules/live-status', () => ({ getInstalledManifests: vi.fn(async () => installed) }))
 
-import { nextDueDate, resolveOrderLineDueDates, type DueParcel } from '@/modules/shop/lib/order-line-due-date'
+import { nextDue, nextDueDate, resolveOrderLineDueDates, type DueParcel } from '@/modules/shop/lib/order-line-due-date'
 
 const due = (entries: Record<string, string>) => new Map(Object.entries(entries))
 const parcel = (over: Partial<DueParcel>): DueParcel => ({ deliveryDate: null, delivered: false, itemIds: [], ...over })
@@ -101,5 +101,26 @@ describe('resolveOrderLineDueDates', () => {
     ] } })
     expect((await resolveOrderLineDueDates([line('a')])).get('a')).toBe('2026-09-23')
     error.mockRestore()
+  })
+})
+
+// The list says "Delivery by Jewell Enterprises on Mon 12 Oct" for a courier's
+// booked day and "Delivery due" only for a line's promise.
+describe('nextDue', () => {
+  it('names the courier of a booked parcel', () => {
+    const lines = [{ itemId: 'a', outstanding: 0 }]
+    const parcels = [parcel({ deliveryDate: '2026-10-12', itemIds: ['a'], carrier: 'Jewell Enterprises' })]
+    expect(nextDue(lines, parcels, due({ a: '2026-10-20' }))).toEqual({ date: '2026-10-12', booked: true, carrier: 'Jewell Enterprises' })
+  })
+
+  it('a promise is due, not booked', () => {
+    expect(nextDue([{ itemId: 'a', outstanding: 1 }], [], due({ a: '2026-10-20' })))
+      .toEqual({ date: '2026-10-20', booked: false, carrier: null })
+  })
+
+  it('a booking wins a tie with a promise', () => {
+    const lines = [{ itemId: 'a', outstanding: 1 }]
+    const parcels = [parcel({ deliveryDate: '2026-10-20', itemIds: ['b'], carrier: 'DPD' })]
+    expect(nextDue(lines, parcels, due({ a: '2026-10-20' }))?.booked).toBe(true)
   })
 })

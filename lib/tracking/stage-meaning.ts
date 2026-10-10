@@ -1,5 +1,6 @@
 import type { ShpCourier } from '@/modules/shop/lib/courier-faqs'
 import { AIT_STAGE, AIT_STAGE_MEANING } from '@/modules/shop/lib/tracking/ait-stages'
+import { FIELDLY_STAGE_MEANING } from '@/modules/shop/lib/tracking/fieldly-stages'
 
 // What one of a courier's stages MEANS, according to the shop's settings.
 //
@@ -66,17 +67,23 @@ function named(list: string[], stage: string): boolean {
   })
 }
 
-/** What a stage means to the shop before the owner has said anything: only
- *  AIT's, whose words are the reader's own rather than the courier's - see
- *  ait-stages.ts. The part before " - ", so "Unsuccessful - No access" is the
- *  failure it starts with. */
+/** What a stage means to the shop before the owner has said anything: AIT's,
+ *  whose words are the reader's own rather than the courier's - see
+ *  ait-stages.ts - and Fieldly's "Delivered", which their feed backs with a
+ *  status code of its own. The part before " - ", so "Unsuccessful - No
+ *  access" is the failure it starts with. */
 function builtInMeaning(
   courier: Partial<Pick<ShpCourier, 'trackingSource'>>,
   stage: string,
 ): StageMeaning | null {
-  if (courier.trackingSource !== 'ait') return null
+  const table = courier.trackingSource === 'ait'
+    ? AIT_STAGE_MEANING
+    : courier.trackingSource === 'fieldly'
+      ? FIELDLY_STAGE_MEANING
+      : null
+  if (!table) return null
   const opening = stage.split(/\s+-\s+/)[0]?.trim() ?? ''
-  return Object.hasOwn(AIT_STAGE_MEANING, opening) ? AIT_STAGE_MEANING[opening] ?? null : null
+  return Object.hasOwn(table, opening) ? table[opening] ?? null : null
 }
 
 export function stageMeaning(
@@ -136,18 +143,19 @@ export function failedReason(
  *  has arrived - so the clock passing the end of the window never does.
  *
  *  True for AIT, whose status code says delivered, out, failed, cancelled, on
- *  hold or part-delivered outright. The clock fallback exists for couriers who
+ *  hold or part-delivered outright, and for Fieldly, whose feed carries its
+ *  own "delivered" status. The clock fallback exists for couriers who
  *  report nothing past a stage name; on AIT it would turn a late van, a
  *  cancellation or a parcel put on hold into "arrived" at the end of the
  *  window. */
 export function courierAloneSaysArrived(
   courier: Partial<Pick<ShpCourier, 'trackingSource'>> | null,
-  /** The parcel's stored stage. Only a parcel AIT have actually been read for
-   *  is left to AIT: one with no link, or whose feed has refused us since it
+  /** The parcel's stored stage. Only a parcel the courier has actually been
+   *  read for is left to them: one with no link, or whose feed has refused us since it
    *  went out, has nothing but the clock, and keeps it like any other courier. */
   trackingStage: string | null | undefined,
 ): boolean {
-  return courier?.trackingSource === 'ait' && Boolean(trackingStage?.trim())
+  return (courier?.trackingSource === 'ait' || courier?.trackingSource === 'fieldly') && Boolean(trackingStage?.trim())
 }
 
 /** Whether this courier is one the shop reads on a schedule at all.

@@ -66,6 +66,10 @@ type RowMetrics = {
   /** Optional, like `kind` above, so a response from an older deployment
    *  still renders - it just says "All dispatched" and shows no day. */
   nextDeliveryDate?: string | null
+  /** The day is a courier's booking ("Delivery on"), not a line's promise
+   *  ("Delivery due"), and whose. Optional for the same reason. */
+  nextDeliveryBooked?: boolean
+  nextDeliveryCarrier?: string | null
   allDelivered?: boolean
 }
 type Overview = {
@@ -629,10 +633,6 @@ export function OrdersScreen() {
                             when there is one, and the person who placed it drops
                             to the line below rather than disappearing. */}
                         <span>{company ?? o.customerName}</span>
-                        {/* Worth knowing at a glance: a guest cannot look their
-                            own order up from an account, so chasing them is a
-                            different job. */}
-                        {o.memberId && <span className="badge badge-default">Account</span>}
                       </div>
                       <p className="sox-sub">{company ? `${o.customerName} · ${o.customerEmail}` : o.customerEmail}</p>
                     </td>
@@ -663,7 +663,16 @@ export function OrdersScreen() {
                           day, or a parcel's booked one - never something that
                           already has: the question this answers is "when is
                           the next van", and a delivered parcel is not it. */}
-                      {nextDelivery && <p className="sox-sub sox-nowrap">Delivery due {nextDelivery}</p>}
+                      {/* "on" for a day a courier has booked, so it never reads
+                          like the date the goods were promised for; "due" for
+                          that promise. */}
+                      {nextDelivery && (
+                        <p className="sox-sub sox-nowrap">
+                          {m?.nextDeliveryBooked
+                            ? `Delivery ${m.nextDeliveryCarrier ? `by ${m.nextDeliveryCarrier} ` : ''}on ${nextDelivery}`
+                            : `Delivery due ${nextDelivery}`}
+                        </p>
+                      )}
                     </td>
                     <td><span className={`badge ${status.cls}`}>{status.label}</span></td>
                     <td className="sox-num">

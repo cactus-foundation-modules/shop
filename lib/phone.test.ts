@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatUkPhone, isValidUkPhone, normaliseStoredPhone, parseUkPhone } from '@/modules/shop/lib/phone'
+import { formatUkPhone, isValidUkPhone, normaliseStoredPhone, parseUkPhone, withStoredPhone } from '@/modules/shop/lib/phone'
 
 // A phone number is the only way a driver reaches somebody standing outside a
 // locked office, so the accepting half of this matters as much as the rejecting
@@ -108,7 +108,9 @@ describe('isValidUkPhone', () => {
 
 describe('normaliseStoredPhone', () => {
   it('stores a readable number in canonical form', () => {
-    expect(normaliseStoredPhone(' +44 (0)7445 163570 ')).toBe('07445 163570')
+    expect(normaliseStoredPhone(' +44 (0)7445 163570 ')).toBe('07445163570')
+    expect(normaliseStoredPhone('+447311351565')).toBe('07311351565')
+    expect(normaliseStoredPhone('07311 351565')).toBe('07311351565')
     expect(normaliseStoredPhone('+44 20 8138 0512')).toBe('02081380512')
   })
 
@@ -118,9 +120,20 @@ describe('normaliseStoredPhone', () => {
     expect(normaliseStoredPhone(null)).toBeNull()
   })
 
-  it('keeps what was typed when it is not a UK number', () => {
+  it('keeps what was typed, less the spaces, when it is not a UK number', () => {
     // The admin's own order screen takes overseas customers; throwing their
     // number away would lose the only way of reaching them.
-    expect(normaliseStoredPhone(' +33 6 12 34 56 78 ')).toBe('+33 6 12 34 56 78')
+    expect(normaliseStoredPhone(' +33 6 12 34 56 78 ')).toBe('+33612345678')
+  })
+})
+
+describe('withStoredPhone', () => {
+  const address: { line1: string; postcode: string; phone?: string } = { line1: '1 High Street', postcode: 'L6 6AE' }
+  it('tidies the number on an address', () => {
+    expect(withStoredPhone({ ...address, phone: '+447311351565' })).toEqual({ ...address, phone: '07311351565' })
+  })
+  it('leaves an address with no number alone, and drops a blank one', () => {
+    expect(withStoredPhone(address)).toEqual(address)
+    expect(withStoredPhone({ ...address, phone: '  ' })).toEqual(address)
   })
 })

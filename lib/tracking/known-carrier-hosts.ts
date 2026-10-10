@@ -30,6 +30,7 @@ const KNOWN: readonly RegExp[] = [
   /(^|\.)palletways\.com$/,
   /(^|\.)gfsdeliver\.com$/,
   /(^|\.)aithd\.(com|de)$/,
+  /^fieldly\.lt-innovations\.co\.uk$/,
 ]
 
 /** Whether a link goes to a carrier this shop knows. False for anything that

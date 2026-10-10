@@ -85,13 +85,35 @@ export function formatUkPhone(input: string | null | undefined): string | null {
   return national.startsWith('07') ? `${national.slice(0, 5)} ${national.slice(5)}` : national
 }
 
-// The value to write onto an order. Canonical when we can read it, and the
-// shopper's own text (trimmed) when we cannot - this runs on the admin's manual
-// order route too, where an overseas number is a legitimate thing to type and
-// throwing it away would lose the only way of reaching that customer. The public
-// checkout refuses an unreadable number before it ever gets here.
+// The value to write onto an order: national form, digits only, no spaces -
+// 07311351565, however it was typed (+44 7311 351565, 0044..., +44 (0)7311...).
+// One shape, so an order can be searched for, matched to the customer's other
+// orders and handed to a courier without anybody tidying it first. The spaced
+// form people like to read is formatUkPhone's job, for boxes, not for storage.
+//
+// A number that is not a UK one keeps what was typed less the spaces and
+// brackets - this runs on the admin's manual order route too, where an overseas
+// number is a legitimate thing to type and throwing it away would lose the only
+// way of reaching that customer. The public checkout refuses an unreadable
+// number before it ever gets here.
 export function normaliseStoredPhone(input: string | null | undefined): string | null {
   const trimmed = (input ?? '').trim()
   if (trimmed.length === 0) return null
-  return formatUkPhone(trimmed) ?? trimmed
+  return parseUkPhone(trimmed) ?? (trimmed.replace(NOISE, '') || trimmed)
+}
+
+// The same for the phone on an address the order carries. Delivery addresses
+// arrive from the checkout, a saved address book and payment providers, and
+// each writes the number its own way - +447311351565 beside an order whose own
+// number says 07311 351565 is one phone that looked like two.
+export function withStoredPhone<A extends { phone?: string }>(address: A): A {
+  if (address.phone === undefined) return address
+  const phone = normaliseStoredPhone(address.phone)
+  if (phone === null) {
+    // A blank number is no number: dropped rather than stored as ''.
+    const rest = { ...address }
+    delete rest.phone
+    return rest
+  }
+  return { ...address, phone }
 }

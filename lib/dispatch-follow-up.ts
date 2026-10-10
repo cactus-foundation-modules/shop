@@ -8,7 +8,7 @@ import { currentDelay } from '@/modules/shop/lib/delivery-delay'
 import { sendDeliveryNewDateEmail } from '@/modules/shop/lib/delivery-delay-email'
 import { getSiteTimezone } from '@/lib/config/timezone.server'
 import { DPD_FOLLOW_LINK_EXAMPLE, dpdFollowLink, dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
-import { AIT_LINK_EXAMPLE, aitLink, aitLinkParts } from '@/modules/shop/lib/tracking/ait-link'
+import { LINK_ONLY, isLinkOnlySource, type LinkOnlySource } from '@/modules/shop/lib/tracking/link-only'
 import type { ShpOrderStatus, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
 // What happens around recording a parcel, shared by the two things that record
@@ -31,19 +31,26 @@ export function courierTakesDpdLink(config: Pick<ShpConfig, 'deliveryCouriers'>,
 /** The courier's tracking is read from AIT Home Delivery, whose one link is
  *  the short aithd.com address - the code in it is the whole parcel to them. */
 export function courierTakesAitLink(config: Pick<ShpConfig, 'deliveryCouriers'>, courierId: string | null): boolean {
-  return config.deliveryCouriers.find((c) => c.id === courierId)?.trackingSource === 'ait'
+  return courierLinkOnly(config, courierId) === 'ait'
 }
 
-export const WRONG_AIT_LINK = `For AIT Home Delivery the tracking link has to be the short link from their message, like ${AIT_LINK_EXAMPLE}.`
+/** The courier's tracking is read from a link-only source (AIT, Fieldly):
+ *  their one link is the parcel, and there is no tracking number to keep. */
+export function courierLinkOnly(config: Pick<ShpConfig, 'deliveryCouriers'>, courierId: string | null): LinkOnlySource | null {
+  const source = config.deliveryCouriers.find((c) => c.id === courierId)?.trackingSource
+  return isLinkOnlySource(source) ? source : null
+}
+
+export const WRONG_AIT_LINK = LINK_ONLY.ait.wrongLink
 
 export const WRONG_DPD_LINK = `For DPD the tracking link has to be the follow-my-parcel link from their email, like ${DPD_FOLLOW_LINK_EXAMPLE}.`
 
 export type TrackingLink = {
   trackingUrl: string | null
   trackingShortCode: string | null
-  /** Present, and null, only on an AIT courier: they take no tracking number,
-   *  so one sent anyway (by an older form, a script, a supplier's announcement)
-   *  is cleared rather than stored where the edit form can no longer show it. */
+  /** Present, and null, only on a link-only courier (AIT, Fieldly): they take
+   *  no tracking number, so one sent anyway (by an older form, a script, a
+   *  supplier's announcement) is cleared rather than stored where the edit form can no longer show it. */
   trackingNumber?: null
 }
 
@@ -65,15 +72,16 @@ export function trackingLinkFor(
   courierId: string | null,
   trackingUrl: string | null,
 ): { ok: true; link: TrackingLink } | { ok: false; error: string } {
-  // AIT: the short link and nothing else, kept in one canonical shape, and no
-  // tracking number. No code is stored beside the link - the reader takes it
-  // back out, and a code column holding something that is not a DPD code would
-  // be read as one.
-  if (courierTakesAitLink(config, courierId)) {
+  // AIT and Fieldly: their link and nothing else, kept in one canonical shape,
+  // and no tracking number. No code is stored beside the link - the reader
+  // takes it back out, and a code column holding something that is not a DPD
+  // code would be read as one.
+  const linkOnly = courierLinkOnly(config, courierId)
+  if (linkOnly) {
     if (!trackingUrl) return { ok: true, link: { trackingUrl: null, trackingShortCode: null, trackingNumber: null } }
-    const parts = aitLinkParts(trackingUrl)
-    if (!parts) return { ok: false, error: WRONG_AIT_LINK }
-    return { ok: true, link: { trackingUrl: aitLink(parts), trackingShortCode: null, trackingNumber: null } }
+    const canonical = LINK_ONLY[linkOnly].canonical(trackingUrl)
+    if (!canonical) return { ok: false, error: LINK_ONLY[linkOnly].wrongLink }
+    return { ok: true, link: { trackingUrl: canonical, trackingShortCode: null, trackingNumber: null } }
   }
   if (!trackingUrl) return { ok: true, link: { trackingUrl: null, trackingShortCode: null } }
   if (!courierTakesDpdLink(config, courierId)) return { ok: true, link: { trackingUrl, trackingShortCode: null } }

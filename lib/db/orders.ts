@@ -1,8 +1,10 @@
 import { prisma, type PrismaTransactionClient } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import { decrementPreOrderCount, getProductsByIds } from '@/modules/shop/lib/db/products'
-import { normaliseStoredPhone } from '@/modules/shop/lib/phone'
-import { nextDueDate, resolveOrderLineDueDates, type DueParcel } from '@/modules/shop/lib/order-line-due-date'
+import { normaliseStoredPhone, withStoredPhone } from '@/modules/shop/lib/phone'
+import { nextDue, resolveOrderLineDueDates, type DueParcel } from '@/modules/shop/lib/order-line-due-date'
+import { deliveryBookingForShipment } from '@/modules/shop/lib/delivery-slot'
+import { getSiteTimezone } from '@/lib/config/timezone.server'
 import type { LineMeta, ShpAddress, ShpOrder, ShpOrderAgreement, ShpOrderItem, ShpOrderKind, ShpOrderStatus, ShpPaymentMethod, ShpPaymentStatus } from '@/modules/shop/lib/types'
 
 function mapOrder(r: Record<string, unknown>): ShpOrder {
@@ -273,7 +275,8 @@ export type CreateOrderInput = {
 // lib/checkout-draft.ts). Everything about how an order row is born lives here,
 // so there is still exactly one place it happens.
 //
-// The phone number is put into canonical form here rather than at each caller:
+// The phone numbers - the order's own and any on its addresses - are put into
+// canonical form here rather than at each caller:
 // this is the one place an order row is ever born, so a number typed on the
 // checkout, on the admin's manual order screen or by a module calling in is
 // stored the same way and can be searched for as one thing. See lib/phone.ts.
@@ -295,8 +298,8 @@ export async function insertOrderRows(tx: PrismaTransactionClient, data: CreateO
       ${data.orderNumber}, ${data.memberId ?? null}, ${data.customerEmail}, ${data.customerName},
       ${data.customerOrganisation?.trim() || null}, ${data.customerReference?.trim() || null},
       ${normaliseStoredPhone(data.customerPhone)},
-      ${JSON.stringify(data.shippingAddress)}::jsonb, ${data.deliveryInstructions?.trim() || null},
-      ${data.billingAddress ? JSON.stringify(data.billingAddress) : null}::jsonb,
+      ${JSON.stringify(withStoredPhone(data.shippingAddress))}::jsonb, ${data.deliveryInstructions?.trim() || null},
+      ${data.billingAddress ? JSON.stringify(withStoredPhone(data.billingAddress)) : null}::jsonb,
       ${data.subtotal}, ${data.discountAmount}, ${data.shippingAmount}, ${data.taxAmount}, ${data.total},
       ${data.taxMode}, ${data.currency}, ${data.couponId ?? null}, ${data.couponCode ?? null},
       ${data.paymentMethod}, ${data.shippingRateId ?? null}, ${data.shippingRateName ?? null},
@@ -681,7 +684,7 @@ export async function setOrderBillingIdentity(
   const result = await prisma.$executeRaw`
     UPDATE "shp_orders"
     SET "customer_organisation" = ${input.organisation.trim() || null},
-        "billing_address" = ${input.billingAddress ? JSON.stringify(input.billingAddress) : null}::jsonb,
+        "billing_address" = ${input.billingAddress ? JSON.stringify(withStoredPhone(input.billingAddress)) : null}::jsonb,
         "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${id}
   `
@@ -892,6 +895,11 @@ export type OrderRowMetrics = {
    *  order that is finished with (completed, cancelled, refunded) and on one
    *  where nothing still to come has a day. See nextDueDate. */
   nextDeliveryDate: string | null
+  /** nextDeliveryDate is a courier's booked day for a parcel, not a line's
+   *  promise - "Delivery on" rather than "Delivery due" on the list. */
+  nextDeliveryBooked: boolean
+  /** That parcel's courier, where it has one. */
+  nextDeliveryCarrier: string | null
   /** At least one parcel, and every one of them delivered. Counted from
    *  delivered_at, the record the auto-complete and the order screen both go
    *  by, rather than from the courier's stage words. */
@@ -919,7 +927,7 @@ export async function getOrderRowMetrics(
 ): Promise<Record<string, OrderRowMetrics>> {
   if (orderIds.length === 0) return {}
   const withDueDates = opts?.dueDates !== false
-  const [rows, parcels, openLines] = await Promise.all([
+  const [rows, parcels, openLines, timezone] = await Promise.all([
     prisma.$queryRaw<Array<{
       order_id: string
       line_count: number
@@ -949,11 +957,25 @@ export async function getOrderRowMetrics(
     prisma.$queryRaw<Array<{
       order_id: string
       delivery_date: string | null
+      delivery_slot_start: string | null
+      delivery_slot_end: string | null
+      delivery_window_from: Date | null
+      delivery_window_to: Date | null
+      delivery_delay: string | null
+      delivery_delayed_from: string | null
+      carrier: string | null
       delivered: boolean
       item_ids: string[]
     }>>`
       SELECT s."order_id" AS order_id,
              s."delivery_date" AS delivery_date,
+             s."delivery_slot_start" AS delivery_slot_start,
+             s."delivery_slot_end" AS delivery_slot_end,
+             s."delivery_window_from" AS delivery_window_from,
+             s."delivery_window_to" AS delivery_window_to,
+             s."delivery_delay" AS delivery_delay,
+             s."delivery_delayed_from" AS delivery_delayed_from,
+             s."carrier" AS carrier,
              (s."delivered_at" IS NOT NULL) AS delivered,
              COALESCE(ARRAY_AGG(si."order_item_id") FILTER (WHERE si."order_item_id" IS NOT NULL), ARRAY[]::text[]) AS item_ids
       FROM "shp_shipments" s
@@ -985,6 +1007,7 @@ export async function getOrderRowMetrics(
       WHERE oi."order_id" IN (${Prisma.join(orderIds)})
         AND o."status" NOT IN (${Prisma.join(SETTLED_ORDER_STATUSES)})
     ` : Promise.resolve([]),
+    getSiteTimezone(),
   ])
 
   const dueByItem = await resolveOrderLineDueDates(openLines.map((l) => ({
@@ -997,7 +1020,18 @@ export async function getOrderRowMetrics(
   const parcelsByOrder = new Map<string, DueParcel[]>()
   for (const p of parcels) {
     const list = parcelsByOrder.get(p.order_id) ?? []
-    list.push({ deliveryDate: p.delivery_date, delivered: p.delivered, itemIds: p.item_ids })
+    // The day as the order screen shows it: the one typed in, or the one the
+    // courier's own tracking booked (AIT, Fieldly) when nobody typed one.
+    const booked = deliveryBookingForShipment({
+      deliveryDate: p.delivery_date,
+      deliverySlotStart: p.delivery_slot_start,
+      deliverySlotEnd: p.delivery_slot_end,
+      deliveryWindowFrom: p.delivery_window_from,
+      deliveryWindowTo: p.delivery_window_to,
+      deliveryDelay: p.delivery_delay === 'today' || p.delivery_delay === 'rebooking' ? p.delivery_delay : null,
+      deliveryDelayedFrom: p.delivery_delayed_from,
+    }, timezone)
+    list.push({ deliveryDate: booked.date || null, delivered: p.delivered, itemIds: p.item_ids, carrier: p.carrier })
     parcelsByOrder.set(p.order_id, list)
   }
   const openLinesByOrder = new Map<string, Array<{ itemId: string; outstanding: number }>>()
@@ -1011,6 +1045,9 @@ export async function getOrderRowMetrics(
   for (const r of rows) {
     const orderParcels = parcelsByOrder.get(r.order_id) ?? []
     const lines = openLinesByOrder.get(r.order_id)
+    // No open lines means a settled order (see the third query), which is due
+    // nothing whatever its parcels say.
+    const next = lines ? nextDue(lines, orderParcels, dueByItem) : null
     out[r.order_id] = {
       lineCount: r.line_count,
       unitCount: r.unit_count,
@@ -1018,9 +1055,9 @@ export async function getOrderRowMetrics(
       dispatchedUnits: r.dispatched_units,
       outstandingUnits: r.outstanding_units,
       hasPreOrder: r.has_pre_order,
-      // No open lines means a settled order (see the third query), which is due
-      // nothing whatever its parcels say.
-      nextDeliveryDate: lines ? nextDueDate(lines, orderParcels, dueByItem) : null,
+      nextDeliveryDate: next?.date ?? null,
+      nextDeliveryBooked: next?.booked ?? false,
+      nextDeliveryCarrier: next?.carrier ?? null,
       allDelivered: orderParcels.length > 0 && orderParcels.every((p) => p.delivered),
     }
   }

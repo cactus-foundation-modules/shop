@@ -100,6 +100,16 @@ export type DueParcel = {
   deliveryDate: string | null
   delivered: boolean
   itemIds: string[]
+  // Who is bringing it, for the orders list's "Delivery by X on ...".
+  carrier?: string | null
+}
+
+export type NextDue = {
+  date: string
+  /** A courier has booked this day for a parcel, as against a line's promise. */
+  booked: boolean
+  /** The booked parcel's courier, where it has one. */
+  carrier: string | null
 }
 
 /**
@@ -116,21 +126,31 @@ export type DueParcel = {
  * comparison is the calendar one.
  */
 export function nextDueDate(lines: DueLine[], parcels: DueParcel[], dueByItem: ReadonlyMap<string, string>): string | null {
-  const days: string[] = []
+  return nextDue(lines, parcels, dueByItem)?.date ?? null
+}
+
+/** nextDueDate, saying whether the day is a courier's booking - and whose - or
+ *  a line's promise. On a tie the booking wins: it is the firmer answer. */
+export function nextDue(lines: DueLine[], parcels: DueParcel[], dueByItem: ReadonlyMap<string, string>): NextDue | null {
+  const days: NextDue[] = []
   for (const line of lines) {
     const due = line.outstanding > 0 ? dueByItem.get(line.itemId) : undefined
-    if (due) days.push(due)
+    if (due) days.push({ date: due, booked: false, carrier: null })
   }
   for (const parcel of parcels) {
     if (parcel.delivered) continue
     if (parcel.deliveryDate) {
-      days.push(parcel.deliveryDate)
+      days.push({ date: parcel.deliveryDate, booked: true, carrier: parcel.carrier?.trim() || null })
       continue
     }
     for (const itemId of parcel.itemIds) {
       const due = dueByItem.get(itemId)
-      if (due) days.push(due)
+      if (due) days.push({ date: due, booked: false, carrier: null })
     }
   }
-  return days.reduce<string | null>((soonest, day) => (soonest === null || day < soonest ? day : soonest), null)
+  return days.reduce<NextDue | null>((soonest, day) => {
+    if (soonest === null || day.date < soonest.date) return day
+    if (day.date === soonest.date && day.booked && !soonest.booked) return day
+    return soonest
+  }, null)
 }

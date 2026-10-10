@@ -1,6 +1,6 @@
 // Asking one parcel's courier where it has got to, whoever the courier is.
 //
-// The poller does not know that Multidrop is HTML and DPD is JSON, that GFS
+// The poller does not know that Multidrop is HTML and DPD, AIT and Fieldly are JSON, that GFS
 // wants a carrier name in the query string, or that DPD's useful feed needs a
 // session minted first. It hands a parcel over and gets a reading back, and
 // every reader answers in the same terms - see reading.ts.
@@ -30,6 +30,7 @@ import {
 import { fetchDpdParcel, fetchDpdRoute, mintDpdSession } from '@/modules/shop/lib/tracking/dpd-session'
 import { aitImageHeaders, readAit } from '@/modules/shop/lib/tracking/ait'
 import { aitLinkParts } from '@/modules/shop/lib/tracking/ait-link'
+import { readFieldly } from '@/modules/shop/lib/tracking/fieldly'
 import { EMPTY_READING, type TrackingReading } from '@/modules/shop/lib/tracking/reading'
 import type { ShpCourier } from '@/modules/shop/lib/courier-faqs'
 import type { ShpShipment } from '@/modules/shop/lib/types'
@@ -211,6 +212,18 @@ async function readAitParcel(parcel: ShpShipment): Promise<ParcelReading | null>
   }
 }
 
+async function readFieldlyParcel(parcel: ShpShipment, timezone: string): Promise<ParcelReading | null> {
+  const reading = await readFieldly(parcel.trackingUrl, timezone)
+  if (!reading?.stage) return null
+  const { proofImageUrl, proofImageLabel, dropsAway, ...common } = reading
+  return {
+    ...EMPTY_PARCEL_READING,
+    ...common,
+    dropsAway,
+    proofImage: proofImageUrl ? { url: proofImageUrl, headers: {}, label: proofImageLabel } : null,
+  }
+}
+
 /**
  * One look at one parcel.
  *
@@ -235,6 +248,8 @@ export async function readParcelTracking(
       return readDpdParcel(parcel, timezone)
     case 'ait':
       return readAitParcel(parcel)
+    case 'fieldly':
+      return readFieldlyParcel(parcel, timezone)
     default:
       return null
   }

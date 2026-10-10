@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from 'react'
 import { DPD_FOLLOW_LINK_EXAMPLE, dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
-import { AIT_LINK_EXAMPLE, aitLinkParts } from '@/modules/shop/lib/tracking/ait-link'
+import { LINK_ONLY, type LinkOnlySource } from '@/modules/shop/lib/tracking/link-only'
 
 // The details that hang off a parcel rather than off its contents: who is
 // carrying it, when it is booked to arrive, and how to follow it.
@@ -22,10 +22,11 @@ export type CourierOption = {
    *  older deployment still renders - it then accepts any web address, as it
    *  always did, and the route has the final say either way. */
   dpdFollowLink?: boolean
-  /** The courier's tracking is read from AIT Home Delivery: its one link is
-   *  the short aithd.com address, and there is no tracking number to type -
-   *  the code in the link is the parcel. Optional for the same reason. */
-  aitLink?: boolean
+  /** The courier's tracking is read from a link-only source - AIT Home
+   *  Delivery or Fieldly: its one link is theirs, and there is no tracking
+   *  number to type - the code in the link is the parcel. Optional for the
+   *  same reason. */
+  linkOnly?: LinkOnlySource
 }
 
 export type ParcelDetails = {
@@ -88,15 +89,18 @@ export function ParcelDetailsFields({ couriers, value, onChange }: {
   const dpd = couriers.find((c) => c.id === value.courierId)?.dpdFollowLink === true
   const typedLink = value.trackingUrl.trim()
   const wrongDpdLink = dpd && typedLink.length > 0 && !dpdFollowLinkCode(typedLink)
-  const ait = couriers.find((c) => c.id === value.courierId)?.aitLink === true
-  const wrongAitLink = ait && typedLink.length > 0 && !aitLinkParts(typedLink)
-  const wrongLink = wrongDpdLink || wrongAitLink
+  const linkOnly = couriers.find((c) => c.id === value.courierId)?.linkOnly ?? null
+  const ait = linkOnly === 'ait'
+  const fieldly = linkOnly === 'fieldly'
+  const wrongLinkOnly = linkOnly !== null && typedLink.length > 0 && !LINK_ONLY[linkOnly].canonical(typedLink)
+  const wrongLink = wrongDpdLink || wrongLinkOnly
 
-  // Picking AIT takes away the tracking number box, so a number typed for the
-  // courier picked before goes with it rather than being saved unseen.
+  // Picking AIT or Fieldly takes away the tracking number box, so a number
+  // typed for the courier picked before goes with it rather than being saved
+  // unseen.
   const pickCourier = (courierId: string) => {
-    const toAit = couriers.find((c) => c.id === courierId)?.aitLink === true
-    onChange({ ...value, courierId, ...(toAit ? { trackingNumber: '' } : {}) })
+    const toLinkOnly = Boolean(couriers.find((c) => c.id === courierId)?.linkOnly)
+    onChange({ ...value, courierId, ...(toLinkOnly ? { trackingNumber: '' } : {}) })
   }
 
   return (
@@ -172,7 +176,7 @@ export function ParcelDetailsFields({ couriers, value, onChange }: {
         </label>
       </div>
 
-      {!ait && (
+      {!linkOnly && (
         <label>Tracking number (optional)
           <input value={value.trackingNumber} onChange={(e) => set('trackingNumber', e.target.value)} style={fieldStyle} />
         </label>
@@ -182,19 +186,30 @@ export function ParcelDetailsFields({ couriers, value, onChange }: {
         <input
           value={value.trackingUrl}
           onChange={(e) => set('trackingUrl', e.target.value)}
-          placeholder={dpd ? DPD_FOLLOW_LINK_EXAMPLE : ait ? AIT_LINK_EXAMPLE : 'https://…'}
+          placeholder={dpd ? DPD_FOLLOW_LINK_EXAMPLE : linkOnly ? LINK_ONLY[linkOnly].example : 'https://…'}
           inputMode="url"
           aria-invalid={wrongLink || undefined}
           style={wrongLink ? { ...fieldStyle, borderColor: 'var(--color-danger)' } : fieldStyle}
         />
-        {wrongAitLink ? (
+        {wrongLinkOnly && ait ? (
           <span style={{ ...hintStyle, color: 'var(--color-danger)' }}>
             That is not AIT&rsquo;s tracking link. Use the short one from their message, which looks
-            like {AIT_LINK_EXAMPLE}.
+            like {LINK_ONLY.ait.example}.
+          </span>
+        ) : wrongLinkOnly && fieldly ? (
+          <span style={{ ...hintStyle, color: 'var(--color-danger)' }}>
+            That is not a Fieldly tracking link. Use the one from the courier&rsquo;s message, which
+            looks like {LINK_ONLY.fieldly.example}.
+          </span>
+        ) : fieldly ? (
+          <span style={hintStyle}>
+            The courier&rsquo;s Fieldly tracking link, like {LINK_ONLY.fieldly.example}. That one link
+            is all it takes: the customer&rsquo;s order page shows the booked day, the time window
+            once they set one, and the courier&rsquo;s history as it happens.
           </span>
         ) : ait ? (
           <span style={hintStyle}>
-            The short link from AIT&rsquo;s message, like {AIT_LINK_EXAMPLE}. That one link is all it
+            The short link from AIT&rsquo;s message, like {LINK_ONLY.ait.example}. That one link is all it
             takes: the customer&rsquo;s order page shows the two-hour window, the driver, how many
             drops away they are and the van on a map, and the signature once it is delivered.
           </span>
