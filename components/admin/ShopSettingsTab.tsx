@@ -12,6 +12,7 @@ import { PRICE_TYPES, PRICE_TYPE_META } from '@/modules/shop/lib/pricing'
 import { setTabParams, readTabParam } from '@/modules/shop/lib/admin/tab-url'
 import { DEFAULT_EXCLUDED_POSTCODE_MESSAGE } from '@/modules/shop/lib/excluded-postcode'
 import { FaqListEditor } from '@/modules/shop/components/admin/FaqListEditor'
+import { InfoTip } from '@/components/admin/InfoTip'
 
 type SubTab = 'general' | 'checkout' | 'payments' | 'invoices' | 'notifications'
 
@@ -43,9 +44,6 @@ const HOSTED_SUB_TAB_SLOT = 'shop.settings-sub-tabs'
 const HOSTED_PAYMENTS_SLOT = 'shop.payments'
 const HOSTED_NOTIFICATIONS_SLOT = 'shop.settings-notifications'
 
-const checkboxRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)', cursor: 'pointer' }
-const sectionHeading: React.CSSProperties = { margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }
-const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 12rem), 1fr))', gap: '0.75rem', marginBottom: 'var(--form-gap)' }
 
 // A stable id for a newly added checkout tickbox. It has to outlive the wording
 // it was created with, because it is what an order's recorded agreement points
@@ -213,27 +211,28 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
       {subTab === 'general' && (
         <div className="settings-masonry">
           <div className="card">
-          <div style={fieldGrid}>
-            <div className="field" style={{ margin: 0 }}><label>Currency code</label><input value={config.currency} onChange={(e) => set('currency', e.target.value)} /></div>
-            <div className="field" style={{ margin: 0 }}><label>Currency symbol</label><input value={config.currencySymbol} onChange={(e) => set('currencySymbol', e.target.value)} /></div>
+          <h3 className="card-title">Store</h3>
+          <div className="settings-fields">
+            <div className="field"><label>Currency code</label><input value={config.currency} onChange={(e) => set('currency', e.target.value)} /></div>
+            <div className="field"><label>Currency symbol</label><input value={config.currencySymbol} onChange={(e) => set('currencySymbol', e.target.value)} /></div>
           </div>
-          <div style={fieldGrid}>
-            <div className="field" style={{ margin: 0 }}><label>Store email</label><input type="email" value={config.storeEmail} onChange={(e) => set('storeEmail', e.target.value)} /></div>
-            <div className="field" style={{ margin: 0 }}>
+          <div className="settings-fields">
+            <div className="field"><label>Store email</label><input type="email" value={config.storeEmail} onChange={(e) => set('storeEmail', e.target.value)} /></div>
+            <div className="field">
               <label>Order number prefix</label>
               <input value={config.orderNumberPrefix} onChange={(e) => set('orderNumberPrefix', e.target.value)} />
               <span className="field-hint">Order numbers look like {config.orderNumberPrefix || 'ORD-'}1001.</span>
             </div>
           </div>
-          <div style={fieldGrid}>
-            <div className="field" style={{ margin: 0 }}>
+          <div className="settings-fields">
+            <div className="field">
               <label>Weight unit</label>
               <select value={config.weightUnit} onChange={(e) => set('weightUnit', e.target.value as ShpConfig['weightUnit'])}>
                 <option value="kg">Kilograms</option>
                 <option value="lb">Pounds</option>
               </select>
             </div>
-            <div className="field" style={{ margin: 0 }}>
+            <div className="field">
               <label>Dimension unit</label>
               <select value={config.dimensionUnit} onChange={(e) => set('dimensionUnit', e.target.value as ShpConfig['dimensionUnit'])}>
                 <option value="cm">Centimetres</option>
@@ -243,7 +242,7 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
           </div>
           </div>
           <div className="card">
-          <h3 style={sectionHeading}>Shop status</h3>
+          <h3 className="card-title">Shop status and listings</h3>
           <div className="field">
             <label>Status</label>
             <select value={config.shopStatus} onChange={(e) => set('shopStatus', e.target.value as ShpConfig['shopStatus'])}>
@@ -257,9 +256,7 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             <input value={config.shopClosedMessage} onChange={(e) => set('shopClosedMessage', e.target.value)} />
             <span className="field-hint">Shown to visitors while the shop is browse-only or closed.</span>
           </div>
-          </div>
-          <div className="card">
-          <h3 style={sectionHeading}>Category pages</h3>
+
           <div className="field">
             <label>Products shown on a category page</label>
             <select value={config.categoryProductDisplayMode} onChange={(e) => set('categoryProductDisplayMode', e.target.value as ShpConfig['categoryProductDisplayMode'])}>
@@ -268,29 +265,49 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             </select>
             <span className="field-hint">The default for every category. Any individual category can override this on the Categories screen.</span>
           </div>
+          <div className="field">
+            <label>When something sells out <InfoTip>Taking it out of the listings clears it from category pages, collections, product grids, search and your sitemap, while anyone holding a link to it still lands on the product page and can ask to be told when it is back. Hiding it completely gives them a page-not-found instead. Either way it returns on its own the moment there is stock again. Only things you actually count are ever hidden: a product with stock tracking off, taking backorders or on pre-order stays put.</InfoTip></label>
+            <select value={config.outOfStockVisibility} onChange={(e) => set('outOfStockVisibility', e.target.value as ShpConfig['outOfStockVisibility'])}>
+              <option value="SHOW">Leave it where it is, marked out of stock</option>
+              <option value="HIDE_FROM_LISTS">Take it out of the listings, keep its page</option>
+              <option value="HIDE_EVERYWHERE">Hide it completely, page and all</option>
+            </select>
+          </div>
+          {config.outOfStockVisibility !== 'SHOW' && (
+            <>
+              <label className="settings-check">
+                <input type="checkbox" checked={config.outOfStockHiddenFromStaff} onChange={(e) => set('outOfStockHiddenFromStaff', e.target.checked)} />
+                Hide them from me and my staff as well
+                <InfoTip>Leave this off and anyone signed in with shop access still sees hidden products on the storefront, wearing their usual out-of-stock badge, so nothing quietly disappears without you noticing. Tick it to walk your own shop exactly as a shopper sees it.</InfoTip>
+              </label>
+            </>
+          )}
           </div>
           <div className="card">
-          <h3 style={sectionHeading}>Product FAQs</h3>
-          <label style={checkboxRow}>
+          <h3 className="card-title">Product FAQs</h3>
+          <label className="settings-check">
             <input type="checkbox" checked={config.productFaqsEnabled} onChange={(e) => set('productFaqsEnabled', e.target.checked)} />
             Show frequently asked questions on your shop pages
+            <InfoTip>
+              They appear on every product, in a section of their own. A category can add its own (Categories screen) and a
+              product can add or overrule any of them (its FAQs tab) - the nearest wins. Category, collection and tag
+              pages show them too with the <strong>Shop: FAQs</strong> piece in their layout. On a product page they sit
+              behind a search box, so thirty questions do not open as thirty headings; search engines still read them all.
+            </InfoTip>
           </label>
           {config.productFaqsEnabled && (
+            <label className="settings-check">
+              <input type="checkbox" checked={config.productQuestionsEnabled} onChange={(e) => set('productQuestionsEnabled', e.target.checked)} />
+              Let shoppers ask a question of their own
+              <InfoTip>
+                Puts a button under the questions on every product page. The shopper leaves an email address, the
+                question lands under Catalogue &rarr; Questions, and answering it emails them back <em>and</em> adds the
+                question and your answer to that product&apos;s own FAQs - so the next shopper never has to ask.
+              </InfoTip>
+            </label>
+          )}
+          {config.productFaqsEnabled && (
             <>
-              <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-                These appear on every product, in their own section on the page with a link in the product&apos;s section
-                strip. A category can add questions of its own for a whole range (Categories screen), and a single
-                product can add or overrule any of them (the product&apos;s FAQs tab). Nearest wins: ask the same question
-                on a product and its answer replaces the one below. Category, collection and tag pages can show questions
-                too, by dropping the <strong>Shop: FAQs</strong> piece into their layout under Editing pages. Unticking
-                the box above takes the lot off every page at once.
-              </p>
-              <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-                On a product page the questions start hidden behind a search box - a product inheriting thirty of them
-                would otherwise open on thirty headings. The shopper types a word or two, picks their question off the
-                suggestions and gets that answer. Search engines are unaffected: every question and answer is still in
-                the page, and still in the details they read.
-              </p>
               <div className="field">
                 <label>What the product page&apos;s search box says</label>
                 <input
@@ -299,27 +316,10 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                   placeholder="Search our answers, or ask your own question"
                 />
               </div>
-              <FaqListEditor
-                items={config.productFaqs}
-                onChange={(items) => set('productFaqs', items)}
-                emptyNote="No shop-wide questions yet. Nothing appears on a product page until a question here, on its category, or on the product itself has both a question and an answer."
-              />
-              <div style={{ marginBottom: 'var(--form-gap)' }} />
-
-              <label style={checkboxRow}>
-                <input type="checkbox" checked={config.productQuestionsEnabled} onChange={(e) => set('productQuestionsEnabled', e.target.checked)} />
-                Let shoppers ask a question of their own
-              </label>
               {config.productQuestionsEnabled && (
                 <>
-                  <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-                    Puts a button under the questions on every product page. The shopper leaves an email address, the
-                    question lands under Catalogue &rarr; Questions, and answering it emails them back <em>and</em> adds
-                    the question and your answer to that product&apos;s own FAQs - so the next shopper never has to ask.
-                    An answer you would rather not keep on the page comes off again on the product&apos;s FAQs tab.
-                  </p>
                   <div className="field">
-                    <label>What the button says</label>
+                    <label>What the ask-a-question button says</label>
                     <input value={config.productQuestionsButtonLabel} onChange={(e) => set('productQuestionsButtonLabel', e.target.value)} />
                   </div>
                   <div className="field">
@@ -336,55 +336,21 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                     <input type="email" value={config.productQuestionsNotifyEmail} onChange={(e) => set('productQuestionsNotifyEmail', e.target.value)} placeholder="sales@example.com" />
                     <span className="field-hint">Left empty, nothing is sent and the questions wait on the Questions screen.</span>
                   </div>
-                  <div style={{ marginBottom: 'var(--form-gap)' }} />
                 </>
               )}
+              <FaqListEditor
+                items={config.productFaqs}
+                onChange={(items) => set('productFaqs', items)}
+                emptyNote="No shop-wide questions yet. Nothing appears on a product page until a question here, on its category, or on the product itself has both a question and an answer."
+              />
             </>
           )}
           </div>
           <div className="card">
-          <h3 style={sectionHeading}>Out of stock products</h3>
-          <div className="field">
-            <label>When something sells out</label>
-            <select value={config.outOfStockVisibility} onChange={(e) => set('outOfStockVisibility', e.target.value as ShpConfig['outOfStockVisibility'])}>
-              <option value="SHOW">Leave it where it is, marked out of stock</option>
-              <option value="HIDE_FROM_LISTS">Take it out of the listings, keep its page</option>
-              <option value="HIDE_EVERYWHERE">Hide it completely, page and all</option>
-            </select>
-            <span className="field-hint">
-              Taking it out of the listings clears it from category pages, collections, product grids, search and your
-              sitemap, while anyone holding a link to it still lands on the product page and can ask to be told when it
-              is back. Hiding it completely gives them a page-not-found instead. Either way it returns on its own the
-              moment there is stock again.
-            </span>
-          </div>
-          {config.outOfStockVisibility !== 'SHOW' && (
-            <>
-              <label style={checkboxRow}>
-                <input type="checkbox" checked={config.outOfStockHiddenFromStaff} onChange={(e) => set('outOfStockHiddenFromStaff', e.target.checked)} />
-                Hide them from me and my staff as well
-              </label>
-              <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
-                Leave this off and anyone signed in with shop access still sees hidden products on the storefront,
-                wearing their usual out-of-stock badge, so nothing quietly disappears without you noticing. Tick it to
-                walk your own shop exactly as a shopper sees it.
-              </p>
-            </>
-          )}
-          <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
-            Only things you actually count are ever hidden: a product with stock tracking switched off, one taking
-            backorders, or one on pre-order stays put. Your Products screen always lists the lot regardless, which is
-            rather the point of it.
-          </p>
-          </div>
-          <div className="card">
-          <h3 style={sectionHeading}>Prices</h3>
-          <p className="field-hint" style={{ marginTop: 0 }}>
-            Every product has a price, and that one is not optional. Switch on any of the others you keep track of and they appear on the Pricing tab of each product.
-          </p>
+          <h3 className="card-title">Prices <InfoTip>Every product has a price, and that one is not optional. Switch on any of the others you keep track of and they appear on the Pricing tab of each product. Switching one off hides the box but keeps whatever you had typed in it; while a sale price is off, shoppers pay the normal price.</InfoTip></h3>
           {PRICE_TYPES.map((type) => (
             <div key={type}>
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input
                   type="checkbox"
                   checked={config.enabledPriceTypes.includes(type)}
@@ -402,43 +368,46 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
           ))}
           {config.enabledPriceTypes.includes('retail') && (
             <>
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input type="checkbox" checked={config.showRetailPrice} onChange={(e) => set('showRetailPrice', e.target.checked)} />
                 Show the retail price to shoppers
+                <InfoTip>Prints it as &quot;RRP&quot; beside the price, on product pages and cards, whenever it is higher than what you are charging. Leave this off to keep the RRP as your own reference.</InfoTip>
               </label>
-              <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
-                Prints it as &quot;RRP&quot; beside the price, on product pages and cards, whenever it is higher than what you are charging. Leave this off to keep the RRP as your own reference.
-              </p>
               {config.showRetailPrice && (
                 <>
-                  <label style={checkboxRow}>
+                  <label className="settings-check">
                     <input
                       type="checkbox"
                       checked={config.retailPriceInStructuredData}
                       onChange={(e) => set('retailPriceInStructuredData', e.target.checked)}
                     />
                     Send the retail price to search engines too
+                    <InfoTip>Adds the RRP to the hidden product details Google and the rest read off your pages, in the slot they print as a crossed-out price. Worth knowing before you tick it: that slot means &quot;what this used to cost here&quot;, so only switch it on if you are content for your RRP to be read that way. Products actually on offer send their own previous price instead.</InfoTip>
                   </label>
-                  <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
-                    Adds the RRP to the hidden product details Google and the rest read off your pages, in the slot they print as a crossed-out price. Worth knowing before you tick it: that slot means &quot;what this used to cost here&quot;, so only switch it on if you are content for your RRP to be read that way. Products actually on offer send their own previous price instead.
-                  </p>
                 </>
               )}
             </>
           )}
-          <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
-            Switching a price off hides the box but keeps whatever you had typed in it, so switching it back on gets your figures back. While a sale price is switched off, nothing is on offer and shoppers pay the normal price.
-          </p>
           </div>
           <div className="card">
-          <h3 style={sectionHeading}>Suppliers</h3>
-          <label style={checkboxRow}>
+          <h3 className="card-title">Suppliers and order-size deduction</h3>
+          <label className="settings-check">
             <input type="checkbox" checked={config.supplierFieldEnabled} onChange={(e) => set('supplierFieldEnabled', e.target.checked)} />
             Enable suppliers support
+            <InfoTip>Adds a Suppliers screen to the menu for keeping their account numbers, discounts and contact details, and a box on each product for picking who you got the thing from. Switching it off later hides both but keeps everything you had recorded.</InfoTip>
           </label>
-          <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
-            Adds a Suppliers screen to the menu for keeping their account numbers, discounts and contact details, and a box on each product for picking who you got the thing from. Switching it off later hides both but keeps everything you had recorded.
-          </p>
+          <label className="settings-check">
+            <input type="checkbox" checked={config.orderSizeDeductionEnabled} onChange={(e) => set('orderSizeDeductionEnabled', e.target.checked)} />
+            Take an amount off once a basket is big enough
+            <InfoTip>For when a supplier builds a per-item amount into what they charge you and stops charging it once you order enough at once. Set the amount on each product under Prices, and how big the basket has to be on the supplier under Suppliers. It comes off whatever the item is charged at, sale price or not, and nothing at all happens until you have set both.</InfoTip>
+          </label>
+          {config.orderSizeDeductionEnabled && (
+            <label className="settings-check">
+              <input type="checkbox" checked={config.orderSizeDeductionShowInBasket} onChange={(e) => set('orderSizeDeductionShowInBasket', e.target.checked)} />
+              Say so in the basket
+              <InfoTip>A line telling shoppers how much more they need to add, or how much has already come off. Off shows the lower prices with no explanation.</InfoTip>
+            </label>
+          )}
           {config.supplierFieldEnabled && (
             <>
               <div className="field">
@@ -459,13 +428,11 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                   <span className="field-hint">Leave this empty and it falls back to &quot;Supplier&quot;.</span>
                 </div>
               )}
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input type="checkbox" checked={config.supplierShowOnFrontend} onChange={(e) => set('supplierShowOnFrontend', e.target.checked)} />
                 Show the supplier&apos;s name to shoppers
+                <InfoTip>Off keeps it as your own reference, on prints it on the product page.</InfoTip>
               </label>
-              <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
-                Off keeps it as your own reference, on prints it on the product page.
-              </p>
               <div className="field">
                 <label>Add supplier field to</label>
                 <select value={config.supplierFieldScope} onChange={(e) => set('supplierFieldScope', e.target.value as ShpConfig['supplierFieldScope'])}>
@@ -474,54 +441,25 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 </select>
                 <span className="field-hint">Pick the second one when different variations of the same product come from different places.</span>
               </div>
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input type="checkbox" checked={config.supplierPagesEnabled} onChange={(e) => set('supplierPagesEnabled', e.target.checked)} />
                 Give suppliers a page of their own
+                <InfoTip>Adds a page per supplier at /shop/suppliers, listing everything of theirs with your filters on it and room for a write-up above. Each supplier still has to be switched on individually on the Suppliers screen, so turning this on publishes nothing by itself.</InfoTip>
               </label>
-              <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
-                Adds a page per supplier at /shop/suppliers, listing everything of theirs with your filters on it and room for a write-up above. Each supplier still has to be switched on individually on the Suppliers screen, so turning this on publishes nothing by itself.
-              </p>
             </>
           )}
           </div>
           <div className="card">
-          <h3 style={sectionHeading}>Order-size deduction</h3>
-          <label style={checkboxRow}>
-            <input type="checkbox" checked={config.orderSizeDeductionEnabled} onChange={(e) => set('orderSizeDeductionEnabled', e.target.checked)} />
-            Take an amount off once a basket is big enough
-          </label>
-          <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
-            For when a supplier builds a per-item amount into what they charge you and stops charging it once you order enough at once. Set the amount on each product under Prices, and how big the basket has to be on the supplier under Suppliers. It comes off whatever the item is charged at, sale price or not, and nothing at all happens until you have set both.
-          </p>
-          {config.orderSizeDeductionEnabled && (
-            <>
-              <label style={checkboxRow}>
-                <input type="checkbox" checked={config.orderSizeDeductionShowInBasket} onChange={(e) => set('orderSizeDeductionShowInBasket', e.target.checked)} />
-                Say so in the basket
-              </label>
-              <p className="field-hint" style={{ marginBottom: 'var(--form-gap)' }}>
-                A line telling shoppers how much more they need to add, or how much has already come off. Off shows the lower prices with no explanation.
-              </p>
-            </>
-          )}
-          </div>
-          <div className="card">
-          <h3 style={sectionHeading}>SEO</h3>
+          <h3 className="card-title">SEO</h3>
           <div className="field"><label>Shop title</label><input value={config.shopTitle} onChange={(e) => set('shopTitle', e.target.value)} /></div>
-          <div className="field"><label>Meta description</label><textarea rows={3} value={config.shopMetaDescription} onChange={(e) => set('shopMetaDescription', e.target.value)} /></div>
           <div className="field">
-            <label>Product page address</label>
+            <label>Product page address <InfoTip>Only the product page itself moves; categories, collections and the cart stay under /shop. The old address keeps working either way, and tells search engines where the page now lives, so switching breaks nothing already shared or indexed. A page with the same address wins the spot - keep product names distinctive.</InfoTip></label>
             <select value={config.productUrlStyle} onChange={(e) => set('productUrlStyle', e.target.value as ShpConfig['productUrlStyle'])}>
               <option value="SHOP">/shop/products/product-name (standard)</option>
               <option value="ROOT">/product-name (site root)</option>
             </select>
-            <span className="field-hint">
-              Only the product page itself moves; categories, collections and the cart stay under /shop.
-              The old address keeps working either way, and tells search engines where the page now lives,
-              so switching breaks nothing already shared or indexed. A page with the same address wins the
-              spot - keep product names distinctive.
-            </span>
           </div>
+          <div className="field"><label>Meta description</label><textarea rows={3} value={config.shopMetaDescription} onChange={(e) => set('shopMetaDescription', e.target.value)} /></div>
           </div>
         </div>
       )}
@@ -529,6 +467,7 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
       {subTab === 'checkout' && (
         <div className="settings-masonry">
           <div className="card">
+          <h3 className="card-title">Checkout rules</h3>
           <div className="field">
             <label>Tax mode</label>
             <select value={config.taxMode} onChange={(e) => set('taxMode', e.target.value as ShpConfig['taxMode'])}>
@@ -536,179 +475,60 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               <option value="EXCLUSIVE">Exclusive (tax added at checkout)</option>
             </select>
           </div>
+          <div className="field">
+            <label>Baskets mixing pre-orders and stock</label>
+            <select value={config.preOrderMixedCartBehaviour} onChange={(e) => set('preOrderMixedCartBehaviour', e.target.value as ShpConfig['preOrderMixedCartBehaviour'])}>
+              <option value="HOLD_ALL">Hold the entire order until every item is in stock</option>
+              <option value="PROMPT_SPLIT">Offer to split shipping between in-stock and pre-order items</option>
+            </select>
           </div>
-          <div className="card">
-          <h3 style={sectionHeading}>Checkout rules</h3>
-          <label style={checkboxRow}>
+          <label className="settings-check">
             <input type="checkbox" checked={config.guestCheckoutEnabled} onChange={(e) => set('guestCheckoutEnabled', e.target.checked)} />
             Allow guest checkout
           </label>
-          <label style={checkboxRow}>
+          <label className="settings-check">
             <input type="checkbox" checked={config.postPurchaseAccountPrompt} onChange={(e) => set('postPurchaseAccountPrompt', e.target.checked)} />
             Prompt guests to create an account after purchase
           </label>
           {/* Said here, where the switch is, rather than left for the owner to
               work out from a confirmation page that never mentions accounts. */}
           {config.postPurchaseAccountPrompt && members && !members.enabled && (
-            <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
+            <p className="field-hint">
               This is doing nothing at the moment: accounts are switched off for the whole site, so there is none for a
               shopper to create. Turn them on under Settings → Users → Registration.
             </p>
           )}
           {config.postPurchaseAccountPrompt && members?.enabled && members.inviteOnly && (
-            <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
+            <p className="field-hint">
               This is doing nothing at the moment: accounts are invite-only, so a shopper who accepted would only be
               turned away. Change that under Settings → Users → Registration.
             </p>
           )}
-          <label style={checkboxRow}>
+          <label className="settings-check">
             <input type="checkbox" checked={config.requirePhone} onChange={(e) => set('requirePhone', e.target.checked)} />
             Require a phone number at checkout
           </label>
-          <label style={checkboxRow}>
+          <label className="settings-check">
             <input type="checkbox" checked={config.smsUpdatesEnabled} onChange={(e) => set('smsUpdatesEnabled', e.target.checked)} />
             Offer text message updates on the confirmation page
+            <InfoTip>Switch off and every customer gets order updates by email only - the choice itself disappears from the confirmation page, and nothing already sent a text carries on doing so. This only hides the choice; it has no bearing on whether the shop can send a text at all, which is set up separately under Twilio.</InfoTip>
           </label>
-          <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
-            Switch off and every customer gets order updates by email only - the choice itself disappears from the
-            confirmation page, and nothing already sent a text carries on doing so. This only hides the choice; it
-            has no bearing on whether the shop can send a text at all, which is set up separately under Twilio.
-          </p>
+          <label className="settings-check">
+            <input type="checkbox" checked={config.backInStockAccountPrompt} onChange={(e) => set('backInStockAccountPrompt', e.target.checked)} />
+            Prompt for an account when signing up for a back-in-stock alert
+          </label>
           </div>
           <div className="card">
-          <h3 style={sectionHeading}>Order history</h3>
-          <p className="field-hint" style={{ marginTop: '-0.5rem' }}>
-            What a customer can do on their own copy of an order they have already placed.
-          </p>
-          <label style={checkboxRow}>
-            <input
-              type="checkbox"
-              checked={config.guestOrderTrackingEnabled}
-              onChange={(e) => set('guestOrderTrackingEnabled', e.target.checked)}
-            />
-            Let customers without an account see their own orders
-          </label>
-          <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
-            Somebody who checked out as a guest can open their order by giving the postcode it is being delivered to -
-            no account, no password. They get the same page a signed-in customer gets, so they can follow it, print
-            their paperwork and put right the company name on their invoice without ringing you. Every order email
-            carries a link to it, and the tracking form lives at{' '}
-            <code>/shop/track-order</code>. Too many wrong postcodes on one order and it stops answering for an hour.
-          </p>
-          {config.guestOrderTrackingEnabled && (
-            <div className="field" style={{ marginBottom: '0.75rem' }}>
-              <label>Short web address for the tracking page</label>
-              <input
-                type="text"
-                value={config.orderTrackingRootSlug}
-                onChange={(e) => set('orderTrackingRootSlug', e.target.value)}
-                placeholder="track-order"
-              />
-              <span className="field-hint">
-                The address you can print on a delivery note or read out on the telephone - yoursite.co.uk/
-                {config.orderTrackingRootSlug.trim() || 'track-order'}. Leave it empty and only the longer
-                /shop/track-order address exists. A page of your own with the same address wins, so pick something
-                nothing else is using.
-              </span>
-            </div>
-          )}
-          <label style={checkboxRow}>
-            <input type="checkbox" checked={config.buyAgainEnabled} onChange={(e) => set('buyAgainEnabled', e.target.checked)} />
-            Let customers order the same thing again
-          </label>
-          <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
-            Puts a &ldquo;Buy again&rdquo; button on every line, which drops it straight back in the basket. A line with
-            options picked on it sends them to the product page with those same options already chosen, because
-            guessing at last year&rsquo;s engraving is how somebody ends up with the wrong name on it.
-          </p>
-          </div>
-          <div className="card">
-          <h3 style={sectionHeading}>Cancellations, returns and damage</h3>
-          <p className="field-hint" style={{ marginTop: '-0.5rem' }}>
-            Requests arrive under Shop → Cancellations &amp; returns for you to approve or decline. Nothing is ever
-            decided automatically, and no money moves until you say so.
-          </p>
-          <label style={checkboxRow}>
-            <input type="checkbox" checked={config.cancelRequestsEnabled} onChange={(e) => set('cancelRequestsEnabled', e.target.checked)} />
-            Let customers ask to cancel an order
-          </label>
-          <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
-            Only offered while nothing has been dispatched. Once part of an order is on its way, it is a return - and
-            never offered at all on an order holding something you have marked &ldquo;do not take it back&rdquo;, since
-            that is work you committed to the moment the order landed.
-          </p>
-          <label style={checkboxRow}>
-            <input type="checkbox" checked={config.returnRequestsEnabled} onChange={(e) => set('returnRequestsEnabled', e.target.checked)} />
-            Let customers ask to return something
-          </label>
-          {config.returnRequestsEnabled && (
-            <div className="field" style={{ margin: '0 0 0.5rem', maxWidth: 260 }}>
-              <label>Return window (days)</label>
-              <input
-                type="number"
-                min={0}
-                max={3650}
-                value={config.returnWindowDays}
-                onChange={(e) => set('returnWindowDays', Math.max(0, Math.min(3650, Number(e.target.value) || 0)))}
-              />
-              <p className="field-hint">
-                Counted from the day the last parcel went out, not the day they ordered - an order that waited on your
-                shelf should not eat the customer&rsquo;s window. Zero takes returns off the website entirely.
-              </p>
-            </div>
-          )}
-          <label style={checkboxRow}>
-            <input type="checkbox" checked={config.damageReportsEnabled} onChange={(e) => set('damageReportsEnabled', e.target.checked)} />
-            Let customers report damage, with photographs
-          </label>
-          <p className="field-hint" style={{ marginTop: '-0.25rem', marginBottom: '0.5rem' }}>
-            Its own thing rather than a reason on the returns list, because it is your problem rather than a change of
-            mind: no window, no collection, and it works on the made-to-order goods you would never take back. The
-            photographs arrive on the report, which is usually the whole of the conversation.
-          </p>
-          <div style={fieldGrid}>
-            <div className="field" style={{ margin: 0 }}>
-              <label>Minimum order value</label>
-              <input type="number" step="0.01" min={0} value={config.minimumOrderValue ?? ''} onChange={(e) => set('minimumOrderValue', e.target.value ? Number(e.target.value) : null)} placeholder="No minimum" />
-            </div>
-            <div className="field" style={{ margin: 0 }}>
-              <label>Maximum order value</label>
-              <input type="number" step="0.01" min={0} value={config.maximumOrderValue ?? ''} onChange={(e) => set('maximumOrderValue', e.target.value ? Number(e.target.value) : null)} placeholder="No maximum" />
-            </div>
-          </div>
-          <p className="field-hint" style={{ marginTop: '0.25rem', marginBottom: '0.5rem' }}>
-            Measured on the goods before any discount, not counting delivery - so a coupon can never be what stops
-            somebody paying. A {config.currencySymbol}60 basket with {config.currencySymbol}20 off counts as
-            {config.currencySymbol}60.
-          </p>
-
-          <div className="field">
-            <label>What to say about a postcode you do not deliver to</label>
-            <input
-              value={config.excludedPostcodeMessage}
-              onChange={(e) => set('excludedPostcodeMessage', e.target.value)}
-              placeholder={DEFAULT_EXCLUDED_POSTCODE_MESSAGE}
-            />
-            <p className="field-hint">
-              Shown at checkout when the delivery postcode is on a zone&rsquo;s excluded list and no other zone covers it. Set those lists up
-              under Tax &amp; shipping. Leave this blank for the wording above.
-            </p>
-          </div>
-          </div>
-          <div className="card">
-          <h3 style={sectionHeading}>Organisation name</h3>
-          <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-            Adds a box directly under the customer&apos;s own name, because it says who they are rather than where the parcel goes. Worth switching
-            on if you sell to businesses and they need it on the paperwork. Anyone who wants the company on the delivery label puts it in the first
-            line of the address, which is where a courier reads it.
-          </p>
-          <label style={checkboxRow}>
+          <h3 className="card-title">What checkout asks for</h3>
+          <div className="settings-group">
+          <label className="settings-check">
             <input type="checkbox" checked={config.organisationFieldEnabled} onChange={(e) => set('organisationFieldEnabled', e.target.checked)} />
-            Ask for an organisation name at checkout
+            Ask for an organisation name
+            <InfoTip>Adds a box directly under the customer&apos;s own name, because it says who they are rather than where the parcel goes. Worth switching on if you sell to businesses and they need it on the paperwork. Anyone who wants the company on the delivery label puts it in the first line of the address, which is where a courier reads it.</InfoTip>
           </label>
           {config.organisationFieldEnabled && (
             <>
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input type="checkbox" checked={config.organisationRequired} onChange={(e) => set('organisationRequired', e.target.checked)} />
                 Orders can&apos;t be placed without one
               </label>
@@ -720,20 +540,15 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             </>
           )}
           </div>
-          <div className="card">
-          <h3 style={sectionHeading}>Their own order reference</h3>
-          <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-            A box for the customer&apos;s own number for the order - the purchase order number their finance team raised, or a job reference. It goes
-            on the invoice and the proforma, and you can search your orders by it. Worth switching on if you sell to businesses: an invoice that
-            arrives without their number on it tends to sit in somebody&apos;s tray rather than get paid.
-          </p>
-          <label style={checkboxRow}>
+          <div className="settings-group">
+          <label className="settings-check">
             <input type="checkbox" checked={config.customerReferenceFieldEnabled} onChange={(e) => set('customerReferenceFieldEnabled', e.target.checked)} />
-            Ask for their own reference at checkout
+            Ask for their own order reference
+            <InfoTip>A box for the customer&apos;s own number for the order - the purchase order number their finance team raised, or a job reference. It goes on the invoice and the proforma, and you can search your orders by it. Worth switching on if you sell to businesses: an invoice that arrives without their number on it tends to sit in somebody&apos;s tray rather than get paid.</InfoTip>
           </label>
           {config.customerReferenceFieldEnabled && (
             <>
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input type="checkbox" checked={config.customerReferenceRequired} onChange={(e) => set('customerReferenceRequired', e.target.checked)} />
                 Orders can&apos;t be placed without one
               </label>
@@ -742,31 +557,19 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 <input type="text" value={config.customerReferenceLabel} onChange={(e) => set('customerReferenceLabel', e.target.value)} placeholder="Purchase order number" />
                 <p className="field-hint">Whatever your customers call it. This is the wording on the checkout box and on the paperwork.</p>
               </div>
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input type="checkbox" checked={config.customerReferenceAfterOrder} onChange={(e) => set('customerReferenceAfterOrder', e.target.checked)} />
                 Let customers add it later, from their own order page
+                <InfoTip>For the buyer whose finance team raises the number a week after they ordered. It goes on their invoice the moment they add it - unless the invoice already went out with a number on it, in which case they are asked to ring you rather than quietly change paperwork you have already sent.</InfoTip>
               </label>
-              <p className="field-hint" style={{ marginTop: '-0.25rem' }}>
-                For the buyer whose finance team raises the number a week after they ordered. It goes on their invoice the moment they add it - unless
-                the invoice already went out with a number on it, in which case they are asked to ring you rather than quietly change paperwork you
-                have already sent.
-              </p>
             </>
           )}
           </div>
-          <div className="card">
-          <h3 style={sectionHeading}>Delivery instructions</h3>
-          <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-            A box on the delivery step for whatever the driver needs to know - the gate code, the side entrance, the neighbour who takes parcels in,
-            the lift that has been out for a fortnight. Always optional for the customer, and it shows up on the order beside their address.
-          </p>
-          <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-            Worth switching on if your suppliers deliver direct: what the customer writes here is carried onto the purchase order you raise against
-            their order, so it reaches the driver who actually turns up rather than sitting on a screen back here.
-          </p>
-          <label style={checkboxRow}>
+          <div className="settings-group">
+          <label className="settings-check">
             <input type="checkbox" checked={config.deliveryInstructionsEnabled} onChange={(e) => set('deliveryInstructionsEnabled', e.target.checked)} />
-            Ask for delivery instructions at checkout
+            Ask for delivery instructions
+            <InfoTip>A box on the delivery step for whatever the driver needs to know - the gate code, the side entrance, the neighbour who takes parcels in, the lift that has been out for a fortnight. Always optional for the customer, and it shows up on the order beside their address. Worth switching on if your suppliers deliver direct: it is carried onto the purchase order, so it reaches the driver who actually turns up.</InfoTip>
           </label>
           {config.deliveryInstructionsEnabled && (
             <>
@@ -776,45 +579,28 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 <p className="field-hint">The wording on the checkout box.</p>
               </div>
               <div className="field">
-                <label>The line underneath</label>
+                <label>The line underneath <InfoTip>What you would actually like to be told. Say it in your own terms - &ldquo;access for a 7.5 tonne lorry, and any stairs&rdquo; asks a different question from &ldquo;where to leave it&rdquo;. Leave it blank for no line at all.</InfoTip></label>
                 <input type="text" value={config.deliveryInstructionsHint} onChange={(e) => set('deliveryInstructionsHint', e.target.value)} placeholder="Anything the driver needs to know - a gate code, a side entrance, somewhere safe to leave it." />
-                <p className="field-hint">
-                  What you would actually like to be told. Say it in your own terms - &ldquo;access for a 7.5 tonne lorry, and any stairs&rdquo; asks a
-                  different question from &ldquo;where to leave it&rdquo;. Leave it blank for no line at all.
-                </p>
               </div>
             </>
           )}
           </div>
-          <div className="card">
-          <h3 style={sectionHeading}>Billing address</h3>
-          <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-            Adds a tickbox under the delivery address for customers whose invoice goes somewhere other than the parcel - a head office, an accounts
-            department, a landlord. Leave it off if the two are always the same, which for most shops they are. Nothing is recorded unless a customer
-            ticks the box, and what they fill in is what prints on their invoice and receipt.
-          </p>
-          <label style={checkboxRow}>
+          <div className="settings-group">
+          <label className="settings-check">
             <input type="checkbox" checked={config.billingAddressEnabled} onChange={(e) => set('billingAddressEnabled', e.target.checked)} />
             Let customers give a different billing address
+            <InfoTip>Adds a tickbox under the delivery address for customers whose invoice goes somewhere other than the parcel - a head office, an accounts department, a landlord. Leave it off if the two are always the same, which for most shops they are. Nothing is recorded unless a customer ticks the box, and what they fill in is what prints on their invoice and receipt.</InfoTip>
           </label>
           </div>
-          <div className="card">
-          <h3 style={sectionHeading}>Changing the invoice details afterwards</h3>
-          <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-            The business buyer who orders on the company card and is then told by their accounts department that the invoice needs to be in the
-            holding company&apos;s name, at the head office. Switched on, they can put it right from their own order page instead of ringing you.
-          </p>
-          <label style={checkboxRow}>
+          <div className="settings-group">
+          <label className="settings-check">
             <input type="checkbox" checked={config.customerBillingEditEnabled} onChange={(e) => set('customerBillingEditEnabled', e.target.checked)} />
-            Let customers change the company and address their invoice is made out to
+            Let customers change who their invoice is made out to
+            <InfoTip>The business buyer who orders on the company card and is then told by their accounts department that the invoice needs to be in the holding company&apos;s name, at the head office. Switched on, they can put it right from their own order page instead of ringing you. A change of address simply corrects the invoice; the delivery address is never touched.</InfoTip>
           </label>
           {config.customerBillingEditEnabled && (
             <>
-              <p className="field-hint" style={{ marginTop: '-0.25rem' }}>
-                A change of address is straightforward: if the invoice has already gone out, the address on it is corrected and that is the end of
-                it. Nothing here touches the delivery address - where the parcel goes stays yours to decide.
-              </p>
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input
                   type="checkbox"
                   checked={config.customerBillingReissueEnabled}
@@ -822,29 +608,101 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                   onChange={(e) => set('customerBillingReissueEnabled', e.target.checked)}
                 />
                 Let them change the company name after the invoice has gone out
+                <InfoTip>A different company is a different customer as far as the taxman is concerned, so this is not a case of rewriting the document. The invoice you sent is cancelled by a credit note and a fresh one goes out in the new name - the customer is told exactly that, and has to agree to it, before anything happens. Leave it off and they are asked to get in touch instead. {(!config.invoicesEnabled || !config.creditNotesEnabled) && ' Needs invoices and credit notes both switched on.'}</InfoTip>
               </label>
-              <p className="field-hint" style={{ marginTop: '-0.25rem' }}>
-                A different company is a different customer as far as the taxman is concerned, so this is not a case of rewriting the document. The
-                invoice you sent is cancelled by a credit note and a fresh one goes out in the new name - the customer is told exactly that, and has
-                to agree to it, before anything happens. Leave it off and they are asked to get in touch instead.
-                {(!config.invoicesEnabled || !config.creditNotesEnabled) && ' Needs invoices and credit notes both switched on.'}
-              </p>
             </>
           )}
           </div>
+          </div>
           <div className="card">
-          <h3 style={sectionHeading}>Tickboxes at checkout</h3>
-          <p className="field-hint" style={{ marginBottom: '0.75rem' }}>
-            These appear just above the Place order button. A required one has to be ticked before the order will go through, and what was ticked is
-            recorded on the order exactly as it was worded on the day.
-          </p>
-          <label style={checkboxRow}>
+          <h3 className="card-title">Order history <InfoTip>What a customer can do on their own copy of an order they have already placed.</InfoTip></h3>
+          <div className="settings-group">
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={config.guestOrderTrackingEnabled}
+              onChange={(e) => set('guestOrderTrackingEnabled', e.target.checked)}
+            />
+            Let customers without an account see their own orders
+            <InfoTip>Somebody who checked out as a guest can open their order by giving the postcode it is being delivered to - no account, no password. They get the same page a signed-in customer gets, so they can follow it, print their paperwork and put right the company name on their invoice without ringing you. Every order email carries a link to it, and the tracking form lives at{' '} <code>/shop/track-order</code>. Too many wrong postcodes on one order and it stops answering for an hour.</InfoTip>
+          </label>
+          {config.guestOrderTrackingEnabled && (
+            <div className="field">
+              <label>Short web address for the tracking page <InfoTip>The address you can print on a delivery note or read out on the telephone - yoursite.co.uk/ {config.orderTrackingRootSlug.trim() || 'track-order'}. Leave it empty and only the longer /shop/track-order address exists. A page of your own with the same address wins, so pick something nothing else is using.</InfoTip></label>
+              <input
+                type="text"
+                value={config.orderTrackingRootSlug}
+                onChange={(e) => set('orderTrackingRootSlug', e.target.value)}
+                placeholder="track-order"
+              />
+            </div>
+          )}
+          </div>
+          <label className="settings-check">
+            <input type="checkbox" checked={config.buyAgainEnabled} onChange={(e) => set('buyAgainEnabled', e.target.checked)} />
+            Let customers order the same thing again
+            <InfoTip>Puts a &ldquo;Buy again&rdquo; button on every line, which drops it straight back in the basket. A line with options picked on it sends them to the product page with those same options already chosen, because guessing at last year&rsquo;s engraving is how somebody ends up with the wrong name on it.</InfoTip>
+          </label>
+          </div>
+          <div className="card">
+          <h3 className="card-title">Cancellations, returns and order limits <InfoTip>Requests arrive under Shop → Cancellations &amp; returns for you to approve or decline. Nothing is ever decided automatically, and no money moves until you say so.</InfoTip></h3>
+          <label className="settings-check">
+            <input type="checkbox" checked={config.cancelRequestsEnabled} onChange={(e) => set('cancelRequestsEnabled', e.target.checked)} />
+            Let customers ask to cancel an order
+            <InfoTip>Only offered while nothing has been dispatched. Once part of an order is on its way, it is a return - and never offered at all on an order holding something you have marked &ldquo;do not take it back&rdquo;, since that is work you committed to the moment the order landed.</InfoTip>
+          </label>
+          <label className="settings-check">
+            <input type="checkbox" checked={config.damageReportsEnabled} onChange={(e) => set('damageReportsEnabled', e.target.checked)} />
+            Let customers report damage, with photographs
+            <InfoTip>Its own thing rather than a reason on the returns list, because it is your problem rather than a change of mind: no window, no collection, and it works on the made-to-order goods you would never take back. The photographs arrive on the report, which is usually the whole of the conversation.</InfoTip>
+          </label>
+          <div className="settings-group">
+          <label className="settings-check">
+            <input type="checkbox" checked={config.returnRequestsEnabled} onChange={(e) => set('returnRequestsEnabled', e.target.checked)} />
+            Let customers ask to return something
+          </label>
+          {config.returnRequestsEnabled && (
+            <div className="field">
+              <label>Return window (days) <InfoTip>Counted from the day the last parcel went out, not the day they ordered - an order that waited on your shelf should not eat the customer&rsquo;s window. Zero takes returns off the website entirely.</InfoTip></label>
+              <input
+                type="number"
+                min={0}
+                max={3650}
+                value={config.returnWindowDays}
+                onChange={(e) => set('returnWindowDays', Math.max(0, Math.min(3650, Number(e.target.value) || 0)))}
+              />
+            </div>
+          )}
+          </div>
+          <div className="settings-fields">
+            <div className="field">
+              <label>Minimum order value <InfoTip>Measured on the goods before any discount, not counting delivery - so a coupon can never be what stops somebody paying. A {config.currencySymbol}60 basket with {config.currencySymbol}20 off counts as {config.currencySymbol}60.</InfoTip></label>
+              <input type="number" step="0.01" min={0} value={config.minimumOrderValue ?? ''} onChange={(e) => set('minimumOrderValue', e.target.value ? Number(e.target.value) : null)} placeholder="No minimum" />
+            </div>
+            <div className="field">
+              <label>Maximum order value</label>
+              <input type="number" step="0.01" min={0} value={config.maximumOrderValue ?? ''} onChange={(e) => set('maximumOrderValue', e.target.value ? Number(e.target.value) : null)} placeholder="No maximum" />
+            </div>
+          </div>
+
+          <div className="field">
+            <label>What to say about a postcode you do not deliver to <InfoTip>Shown at checkout when the delivery postcode is on a zone&rsquo;s excluded list and no other zone covers it. Set those lists up under Tax &amp; shipping. Leave this blank for the wording above.</InfoTip></label>
+            <input
+              value={config.excludedPostcodeMessage}
+              onChange={(e) => set('excludedPostcodeMessage', e.target.value)}
+              placeholder={DEFAULT_EXCLUDED_POSTCODE_MESSAGE}
+            />
+          </div>
+          </div>
+          <div className="card">
+          <h3 className="card-title">Tickboxes at checkout <InfoTip>These appear just above the Place order button. A required one has to be ticked before the order will go through, and what was ticked is recorded on the order exactly as it was worded on the day.</InfoTip></h3>
+          <label className="settings-check">
             <input type="checkbox" checked={config.termsAgreementEnabled} onChange={(e) => set('termsAgreementEnabled', e.target.checked)} />
             Ask buyers to agree to your terms and conditions
           </label>
           {config.termsAgreementEnabled && (
             <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.875rem 1rem', marginBottom: 'var(--form-gap)' }}>
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input type="checkbox" checked={config.termsAgreementRequired} onChange={(e) => set('termsAgreementRequired', e.target.checked)} />
                 Must be ticked to place an order
               </label>
@@ -873,7 +731,7 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                   Remove
                 </button>
               </div>
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input
                   type="checkbox"
                   checked={agreement.enabled}
@@ -881,7 +739,7 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 />
                 Show this one at checkout
               </label>
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input
                   type="checkbox"
                   checked={agreement.required}
@@ -919,7 +777,7 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
           </button>
           </div>
           <div className="card">
-          <h3 style={sectionHeading}>Checkout steps</h3>
+          <h3 className="card-title">Checkout steps</h3>
           <p className="field-hint" style={{ marginBottom: '0.75rem' }}>Choose which steps appear at checkout, and which ones can&apos;t be skipped.</p>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr auto auto', border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', marginBottom: 'var(--form-gap)' }}>
             {(() => {
@@ -950,23 +808,6 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             })}
           </div>
           </div>
-          <div className="card">
-          <h3 style={sectionHeading}>Back-in-stock</h3>
-          <label style={checkboxRow}>
-            <input type="checkbox" checked={config.backInStockAccountPrompt} onChange={(e) => set('backInStockAccountPrompt', e.target.checked)} />
-            Prompt for an account when signing up for a back-in-stock alert
-          </label>
-          </div>
-          <div className="card">
-          <h3 style={sectionHeading}>Pre-orders</h3>
-          <div className="field">
-            <label>Mixed cart behaviour</label>
-            <select value={config.preOrderMixedCartBehaviour} onChange={(e) => set('preOrderMixedCartBehaviour', e.target.value as ShpConfig['preOrderMixedCartBehaviour'])}>
-              <option value="HOLD_ALL">Hold the entire order until every item is in stock</option>
-              <option value="PROMPT_SPLIT">Offer to split shipping between in-stock and pre-order items</option>
-            </select>
-          </div>
-          </div>
         </div>
       )}
 
@@ -984,13 +825,16 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
       {subTab === 'invoices' && (
         <div className="settings-masonry">
           <div className="card">
-          <p style={{ margin: '0 0 var(--space-4)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
-            An invoice is not a receipt. It carries your trading details, your VAT registration and a number that
-            has to stay unique and in sequence - so it is off until you say otherwise. What the document actually
-            looks like is designed under Appearance &gt; Layouts, as the &ldquo;Invoice document&rdquo; layout.
-          </p>
+          <h3 className="card-title">
+            Invoices
+            <InfoTip>
+              An invoice is not a receipt: it carries your trading details, your VAT registration and a number that has to
+              stay unique and in sequence, so it is off until you say otherwise. Its design is under Appearance &gt;
+              Layouts, as the &ldquo;Invoice document&rdquo; layout.
+            </InfoTip>
+          </h3>
 
-          <label style={checkboxRow}>
+          <label className="settings-check">
             <input type="checkbox" checked={config.invoicesEnabled} onChange={(e) => set('invoicesEnabled', e.target.checked)} />
             Raise invoices for orders
           </label>
@@ -999,15 +843,15 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               customers without invoicing anything. The two share your trading
               details below, which is why turning either on brings that section
               out. */}
-          <label style={checkboxRow}>
+          <label className="settings-check">
             <input type="checkbox" checked={config.proformaEnabled} onChange={(e) => set('proformaEnabled', e.target.checked)} />
             Send a proforma invoice on orders nobody has paid yet
           </label>
 
           {config.invoicesEnabled && (
             <>
-              <div style={fieldGrid}>
-                <div className="field" style={{ margin: 0 }}>
+              <div className="settings-fields">
+                <div className="field">
                   <label>Raise one when an order is</label>
                   <select value={config.invoiceIssueOn} onChange={(e) => set('invoiceIssueOn', e.target.value as ShpConfig['invoiceIssueOn'])}>
                     <option value="COMPLETED">Completed</option>
@@ -1017,7 +861,7 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                   </select>
                   <span className="field-hint">There is a button on every order either way.</span>
                 </div>
-                <div className="field" style={{ margin: 0 }}>
+                <div className="field">
                   <label>Invoice number prefix</label>
                   <input value={config.invoiceNumberPrefix} onChange={(e) => set('invoiceNumberPrefix', e.target.value)} />
                   <span className="field-hint">
@@ -1036,19 +880,19 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               saying "please pay" rather than "you have paid". */}
           {(config.invoicesEnabled || config.proformaEnabled) && (
             <div className="card">
-              <h3 style={sectionHeading}>Your details, as they appear on your paperwork</h3>
+              <h3 className="card-title">Your details, as they appear on your paperwork</h3>
               {!config.invoiceVatNumber.trim() && (
                 <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
                   No VAT registration number yet. Without one the document is a bill rather than a VAT invoice, and a
                   customer reclaiming the tax will be back in touch.
                 </p>
               )}
-              <div style={fieldGrid}>
-                <div className="field" style={{ margin: 0 }}>
+              <div className="settings-fields">
+                <div className="field">
                   <label>Business name</label>
                   <input value={config.invoiceBusinessName} onChange={(e) => set('invoiceBusinessName', e.target.value)} placeholder={config.shopTitle || 'Your registered business name'} />
                 </div>
-                <div className="field" style={{ margin: 0 }}>
+                <div className="field">
                   <label>VAT registration number</label>
                   <input value={config.invoiceVatNumber} onChange={(e) => set('invoiceVatNumber', e.target.value)} placeholder="GB 123 4567 89" />
                 </div>
@@ -1058,22 +902,22 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 <textarea rows={4} value={config.invoiceAddress} onChange={(e) => set('invoiceAddress', e.target.value)} placeholder={'12 Example Street\nLeeds\nLS1 1AA'} />
                 <span className="field-hint">One line each. Printed under your name at the top of the invoice.</span>
               </div>
-              <div style={fieldGrid}>
-                <div className="field" style={{ margin: 0 }}>
+              <div className="settings-fields">
+                <div className="field">
                   <label>Company number</label>
                   <input value={config.invoiceCompanyNumber} onChange={(e) => set('invoiceCompanyNumber', e.target.value)} placeholder="01234567" />
                 </div>
-                <div className="field" style={{ margin: 0 }}>
+                <div className="field">
                   <label>Accounts email</label>
                   <input type="email" value={config.invoiceContactEmail} onChange={(e) => set('invoiceContactEmail', e.target.value)} placeholder={config.storeEmail || 'accounts@example.com'} />
                 </div>
               </div>
-              <div style={fieldGrid}>
-                <div className="field" style={{ margin: 0 }}>
+              <div className="settings-fields">
+                <div className="field">
                   <label>Phone</label>
                   <input value={config.invoiceContactPhone} onChange={(e) => set('invoiceContactPhone', e.target.value)} />
                 </div>
-                <div className="field" style={{ margin: 0 }}>
+                <div className="field">
                   <label>Payment terms</label>
                   <input
                     type="number" min={0} max={365}
@@ -1087,11 +931,11 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                   credit note and proforma alike. An owner whose host cannot run
                   the printer switches it off once and keeps the on-screen
                   copies. */}
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input type="checkbox" checked={config.invoicePdfEnabled} onChange={(e) => set('invoicePdfEnabled', e.target.checked)} />
                 Offer PDF downloads
               </label>
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input
                   type="checkbox"
                   checked={config.invoiceAttachToEmail}
@@ -1106,16 +950,16 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
           {config.invoicesEnabled && (
             <>
               <div className="card">
-              <h3 style={sectionHeading}>Invoice wording</h3>
+              <h3 className="card-title">Invoice wording</h3>
               <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
                 Copied onto each invoice as it is raised, so editing these never rewrites paperwork already sent out.
               </p>
-              <div style={fieldGrid}>
-                <div className="field" style={{ margin: 0 }}>
+              <div className="settings-fields">
+                <div className="field">
                   <label>Heading</label>
                   <input value={config.invoiceHeading} onChange={(e) => set('invoiceHeading', e.target.value)} placeholder="Invoice" />
                 </div>
-                <div className="field" style={{ margin: 0 }}>
+                <div className="field">
                   <label>What the tax row is called</label>
                   <input value={config.invoiceTaxLabel} onChange={(e) => set('invoiceTaxLabel', e.target.value)} placeholder="VAT" />
                 </div>
@@ -1139,8 +983,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               </div>
 
               <div className="card">
-              <h3 style={sectionHeading}>Who can see it</h3>
-              <label style={checkboxRow}>
+              <h3 className="card-title">Who can see it</h3>
+              <label className="settings-check">
                 <input type="checkbox" checked={config.invoiceShowToCustomer} onChange={(e) => set('invoiceShowToCustomer', e.target.checked)} />
                 Show it to the customer on their own order page
               </label>
@@ -1152,13 +996,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               </div>
 
               <div className="card">
-              <h3 style={sectionHeading}>Credit notes</h3>
-              <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
-                When you refund something, the invoice you already sent is out of date and the tax on the
-                refunded part is no longer yours to hand over. A credit note is the document that says so.
-                It uses the same design as your invoice, so there is nothing else to lay out.
-              </p>
-              <label style={checkboxRow}>
+              <h3 className="card-title">Credit notes <InfoTip>When you refund something, the invoice you already sent is out of date and the tax on the refunded part is no longer yours to hand over. A credit note is the document that says so. It uses the same design as your invoice, so there is nothing else to lay out.</InfoTip></h3>
+              <label className="settings-check">
                 <input type="checkbox" checked={config.creditNotesEnabled} onChange={(e) => set('creditNotesEnabled', e.target.checked)} />
                 Raise a credit note whenever a refund goes through
               </label>
@@ -1179,11 +1018,11 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                     <label>Wording under the total</label>
                     <textarea rows={2} value={config.creditNoteWording} onChange={(e) => set('creditNoteWording', e.target.value)} />
                   </div>
-                  <label style={checkboxRow}>
+                  <label className="settings-check">
                     <input type="checkbox" checked={config.creditNoteEmailCustomer} onChange={(e) => set('creditNoteEmailCustomer', e.target.checked)} />
                     Email the customer a copy
                   </label>
-                  <label style={checkboxRow}>
+                  <label className="settings-check">
                     <input
                       type="checkbox"
                       checked={config.creditNoteAttachToEmail}
@@ -1207,25 +1046,14 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
 
           {config.proformaEnabled && (
             <div className="card">
-              <h3 style={sectionHeading}>Proforma invoices</h3>
-              <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
-                Sent on any order nobody has been paid for yet - bank transfer, cash, and anything else settled by
-                hand. It says what is owed, how to pay it and how long each item takes once the money lands, and it
-                is numbered with the order number rather than an invoice number, because it is not an invoice. Plenty
-                of buyers&rsquo; accounts departments will not release a payment without one. What it looks like is
-                designed under Appearance &gt; Layouts, as the &ldquo;Proforma document&rdquo; layout.
-              </p>
+              <h3 className="card-title">Proforma invoices <InfoTip>Sent on any order nobody has been paid for yet - bank transfer, cash, and anything else settled by hand. It says what is owed, how to pay it and how long each item takes once the money lands, and it is numbered with the order number rather than an invoice number, because it is not an invoice. Plenty of buyers&rsquo; accounts departments will not release a payment without one. What it looks like is designed under Appearance &gt; Layouts, as the &ldquo;Proforma document&rdquo; layout.</InfoTip></h3>
               <div className="field">
                 <label>Heading</label>
                 <input value={config.proformaHeading} onChange={(e) => set('proformaHeading', e.target.value)} placeholder="Proforma invoice" />
               </div>
               <div className="field">
-                <label>The line that says it is not a VAT invoice</label>
+                <label>The line that says it is not a VAT invoice <InfoTip>Printed in the panel at the top. Worth keeping: a proforma that reads like an invoice is one somebody will try to reclaim the {config.invoiceTaxLabel || 'VAT'} on.</InfoTip></label>
                 <textarea rows={2} value={config.proformaNotice} onChange={(e) => set('proformaNotice', e.target.value)} />
-                <span className="field-hint">
-                  Printed in the panel at the top. Worth keeping: a proforma that reads like an invoice is one
-                  somebody will try to reclaim the {config.invoiceTaxLabel || 'VAT'} on.
-                </span>
               </div>
               <div className="field">
                 <label>Terms, while it is still unpaid</label>
@@ -1234,12 +1062,12 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                   Once the money arrives the document switches to your invoice terms above.
                 </span>
               </div>
-              <div style={fieldGrid}>
-                <div className="field" style={{ margin: 0 }}>
+              <div className="settings-fields">
+                <div className="field">
                   <label>Line under the total, unpaid</label>
                   <input value={config.proformaUnpaidWording} onChange={(e) => set('proformaUnpaidWording', e.target.value)} />
                 </div>
-                <div className="field" style={{ margin: 0 }}>
+                <div className="field">
                   <label>Line under the total, once paid</label>
                   <input value={config.proformaPaidWording} onChange={(e) => set('proformaPaidWording', e.target.value)} />
                 </div>
@@ -1248,11 +1076,11 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 Where to send the money comes from whatever you have written for that payment method on the
                 Payments tab, so the proforma, the thank-you page and the email all quote the same account details.
               </p>
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input type="checkbox" checked={config.proformaShowToCustomer} onChange={(e) => set('proformaShowToCustomer', e.target.checked)} />
                 Give the customer a link on the thank-you page and their own order page
               </label>
-              <label style={checkboxRow}>
+              <label className="settings-check">
                 <input type="checkbox" checked={config.proformaAttachToEmail} onChange={(e) => set('proformaAttachToEmail', e.target.checked)} />
                 Attach it to the &ldquo;we have your order, here is how to pay&rdquo; email
               </label>
@@ -1269,28 +1097,28 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
       {subTab === 'notifications' && (
         <div className="settings-masonry">
           <div className="card">
-          <p style={{ margin: '0 0 var(--space-4)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
-            Who gets told, and when. What the emails actually say - and the design wrapped around them -
-            lives with every other email on the site, under Settings, on the Emails tab.
-          </p>
+          <h3 className="card-title">
+            Alerts and supplier tracking
+            <InfoTip>
+              Who gets told, and when. What the emails say, and their design, lives with every other email under
+              Settings &gt; Email &gt; Templates.
+            </InfoTip>
+          </h3>
           <div className="field">
             <label>Admin order alert email</label>
             <input type="email" value={config.adminOrderAlertEmail} onChange={(e) => set('adminOrderAlertEmail', e.target.value)} />
             <span className="field-hint">Sent every time a new order comes in.</span>
           </div>
-          <label style={checkboxRow}>
-            <input type="checkbox" checked={config.lowStockAlertEnabled} onChange={(e) => set('lowStockAlertEnabled', e.target.checked)} />
-            Send low stock alerts
-          </label>
           <div className="field">
             <label>Low stock alert email</label>
             <input type="email" value={config.lowStockAlertEmail} onChange={(e) => set('lowStockAlertEmail', e.target.value)} />
           </div>
-          </div>
-          <div className="card">
-          <h3 style={sectionHeading}>Tracking from your suppliers</h3>
+          <label className="settings-check">
+            <input type="checkbox" checked={config.lowStockAlertEnabled} onChange={(e) => set('lowStockAlertEnabled', e.target.checked)} />
+            Send low stock alerts
+          </label>
           <div className="field">
-            <label>When your purchasing records a supplier&apos;s despatch</label>
+            <label>When your purchasing records a supplier&apos;s despatch <InfoTip>{config.despatchFromSupplierTracking === 'off' ? 'For an order a supplier delivers straight to your customer. Nothing their tracking emails say reaches the order here - you record the parcel yourself, as now.' : config.despatchFromSupplierTracking === 'record' ? 'The parcel and its tracking go on the order, and the order moves to dispatched, but the parcel is marked quiet: the customer is not emailed now, nor later by anything that follows from that parcel - no delivery window, no failed delivery, no completion email when it lands (the order still completes). They can see it on their order page. To tell them, open the parcel on the order and press Send dispatch note. Worth a fortnight of checking against what actually turned up before letting it talk to anybody. Switching to the next option later does not go back and email about parcels recorded quietly.' : 'The parcel and its tracking go on the order, and the customer gets the same emails as if you had recorded it yourself: the dispatch note, the tracking when it arrives late, and their delivery window.'} {' '}A parcel you already dispatched with no tracking has the tracking filled in; tracking already on an order is never overwritten, and nothing goes on a cancelled or refunded order. A tracking link is only kept when it goes to a courier the shop knows (DPD, Royal Mail, Evri, Multidrop, GFS and the like); otherwise just the number goes on.</InfoTip></label>
             <select
               value={config.despatchFromSupplierTracking}
               onChange={(e) => set('despatchFromSupplierTracking', e.target.value as ShpConfig['despatchFromSupplierTracking'])}
@@ -1299,14 +1127,6 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               <option value="record">Put it on the customer&apos;s order, but email nobody</option>
               <option value="record-and-tell">Put it on the customer&apos;s order and tell the customer</option>
             </select>
-            <span className="field-hint">
-              {config.despatchFromSupplierTracking === 'off'
-                ? 'For an order a supplier delivers straight to your customer. Nothing their tracking emails say reaches the order here - you record the parcel yourself, as now.'
-                : config.despatchFromSupplierTracking === 'record'
-                  ? 'The parcel and its tracking go on the order, and the order moves to dispatched, but the parcel is marked quiet: the customer is not emailed now, nor later by anything that follows from that parcel - no delivery window, no failed delivery, no completion email when it lands (the order still completes). They can see it on their order page. To tell them, open the parcel on the order and press Send dispatch note. Worth a fortnight of checking against what actually turned up before letting it talk to anybody. Switching to the next option later does not go back and email about parcels recorded quietly.'
-                  : 'The parcel and its tracking go on the order, and the customer gets the same emails as if you had recorded it yourself: the dispatch note, the tracking when it arrives late, and their delivery window.'}
-              {' '}A parcel you already dispatched with no tracking has the tracking filled in; tracking already on an order is never overwritten, and nothing goes on a cancelled or refunded order. A tracking link is only kept when it goes to a courier the shop knows (DPD, Royal Mail, Evri, Multidrop, GFS and the like); otherwise just the number goes on.
-            </span>
           </div>
           </div>
           {/* Rendered by the core config page, so shop hands it the space and

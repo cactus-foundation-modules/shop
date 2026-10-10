@@ -24,6 +24,7 @@ import {
   type ShpAdminPaymentMethod,
 } from '@/modules/shop/lib/payments/admin-methods'
 import type { ShpPaymentLogo } from '@/modules/shop/lib/payments/provider'
+import { InfoTip } from '@/components/admin/InfoTip'
 
 export const PAYMENT_METHODS_TAB = 'methods'
 
@@ -546,11 +547,7 @@ function MethodList({
   return (
     <div className="settings-cols">
       <div className="card">
-      <h3 style={sectionHeading}>Payment methods</h3>
-      <p className="field-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
-        Switch on whatever you are willing to take. Drag a row, or use the arrows, to set the order shoppers meet them in at
-        checkout - the top one is the one already chosen when they get there.
-      </p>
+      <h3 style={sectionHeading}>Payment methods <InfoTip>Switch on whatever you are willing to take. Drag a row, or use the arrows, to set the order shoppers meet them in at checkout - the top one is the one already chosen when they get there.</InfoTip></h3>
 
       {ordered.map((method, index) => {
         const state = methodState(method, config)
@@ -641,12 +638,7 @@ function MethodList({
       </div>
 
       <div className="card">
-      <h3 style={sectionHeading}>How each method reads at checkout</h3>
-      <p className="field-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
-        The sentence beneath the name, saying who handles the money, and whether the method&apos;s logo sits beside it. Every
-        method arrives with wording of its own - write over it here if you would rather say it differently, or empty the box to
-        have the original back. Methods that brought no logo have nothing to switch.
-      </p>
+      <h3 style={sectionHeading}>How each method reads at checkout <InfoTip>The sentence beneath the name, saying who handles the money, and whether the method&apos;s logo sits beside it. Every method arrives with wording of its own - write over it here if you would rather say it differently, or empty the box to have the original back. Methods that brought no logo have nothing to switch.</InfoTip></h3>
       {ordered.map((method) => (
         <div
           key={method.id}
@@ -685,14 +677,7 @@ function MethodList({
       </div>
 
       <div className="card">
-      <h3 style={sectionHeading}>When each method is offered</h3>
-      <p className="field-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
-        Leave both boxes empty and the method is offered on every order, which is what they all do until you say otherwise.
-        Fill one in and the method only appears on orders of that size - handy where one way of taking money is cheaper on a
-        big order and dearer on a small one. Both figures are the order total the customer pays, VAT and delivery included,
-        and both ends count: put {formatLimitExample(config.currencySymbol)} and an order of exactly that amount still
-        qualifies.
-      </p>
+      <h3 style={sectionHeading}>When each method is offered <InfoTip>Leave both boxes empty and the method is offered on every order, which is what they all do until you say otherwise. Fill one in and the method only appears on orders of that size - handy where one way of taking money is cheaper on a big order and dearer on a small one. Both figures are the order total the customer pays, VAT and delivery included, and both ends count: put {formatLimitExample(config.currencySymbol)} and an order of exactly that amount still qualifies.</InfoTip></h3>
       {ordered.map((method) => {
         const limit = config.paymentMethodOrderValueLimits[method.id]
         return (
@@ -739,12 +724,7 @@ function MethodList({
       </div>
 
       <div className="card">
-      <h3 style={sectionHeading}>Paying an order after it has been placed</h3>
-      <p className="field-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
-        Bank transfer and cash both end the same way: the order sits there until somebody sends the money, and a fair few of
-        them never do. On, and an unpaid order offers the automated methods above on the customer&apos;s own order page, so they
-        can settle it there and then. The bank details stay put either way - this is another door, not a replacement one.
-      </p>
+      <h3 style={sectionHeading}>Paying an order after it has been placed <InfoTip>Bank transfer and cash both end the same way: the order sits there until somebody sends the money, and a fair few of them never do. On, and an unpaid order offers the automated methods above on the customer&apos;s own order page, so they can settle it there and then. The bank details stay put either way - this is another door, not a replacement one.</InfoTip></h3>
       <div style={{ marginBottom: '1rem' }}>
         <Switch
           checked={config.payOnlineOnOrderPage}
