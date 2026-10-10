@@ -159,6 +159,9 @@ type ShipmentDetail = {
   // see modules/shop/lib/delivery-slot.ts.
   deliveryDate: string | null; deliverySlotStart: string | null; deliverySlotEnd: string | null
   slotNotifiedAt: string | null
+  /** The day and window the customer is told, typed in or courier-reported.
+   *  Optional so a response from an older deployment still renders. */
+  booking?: { date: string; slotStart: string | null; slotEnd: string | null }
   /** Set once the customer has been sent tracking the parcel went out without.
    *  Optional so a response from an older deployment still renders. */
   trackingNotifiedAt?: string | null
@@ -1211,11 +1214,12 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                             {shipment.items.map((si) => `${si.quantity} × ${itemNames.get(si.orderItemId) ?? 'an item no longer on this order'}`).join(', ')}
                             {shipment.notes ? ` - ${shipment.notes}` : ''}
                           </p>
-                          {shipment.deliveryDate && (
+                          {(shipment.booking?.date || shipment.deliveryDate) && (
                             <p className="sox-list-sub">
-                              Delivery booked for {shipment.deliveryDate}
-                              {shipment.deliverySlotStart && shipment.deliverySlotEnd
-                                ? `, ${shipment.deliverySlotStart} to ${shipment.deliverySlotEnd}`
+                              Delivery booked for {shipment.booking?.date || shipment.deliveryDate}
+                              {(shipment.booking?.slotStart ?? shipment.deliverySlotStart)
+                                && (shipment.booking?.slotEnd ?? shipment.deliverySlotEnd)
+                                ? `, ${shipment.booking?.slotStart ?? shipment.deliverySlotStart} to ${shipment.booking?.slotEnd ?? shipment.deliverySlotEnd}`
                                 : ' - no time window yet'}
                               {shipment.slotNotifiedAt ? ' · customer told' : ''}
                             </p>

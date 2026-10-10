@@ -122,7 +122,6 @@ const BUILT_IN_META: Record<string, BuiltInMethodMeta> = {
 // has. Only the two built-ins with keys appear here.
 const CREDENTIAL_METHODS = ['STRIPE', 'PAYPAL'] as const
 
-const hr: CSSProperties = { border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.5rem 0' }
 const sectionHeading: CSSProperties = { margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 600 }
 const mutedText: CSSProperties = { color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', margin: 0 }
 
@@ -238,7 +237,7 @@ function WebhookAddress({ path, hint }: { path: string; hint: string }) {
   }, [path])
 
   return (
-    <div className="field" style={{ marginBottom: 0 }}>
+    <div className="field field--wide" style={{ marginBottom: 0 }}>
       <label htmlFor={`shp-webhook-${path}`}>Address to give them</label>
       <p className="field-hint" style={{ marginTop: 0, marginBottom: '0.375rem' }}>{hint}</p>
       <input id={`shp-webhook-${path}`} type="text" value={url} readOnly onFocus={(e) => e.target.select()} />
@@ -545,7 +544,8 @@ function MethodList({
   if (ordered.length === 0) return <p style={mutedText}>No payment methods are installed.</p>
 
   return (
-    <div>
+    <div className="settings-cols">
+      <div className="card">
       <h3 style={sectionHeading}>Payment methods</h3>
       <p className="field-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
         Switch on whatever you are willing to take. Drag a row, or use the arrows, to set the order shoppers meet them in at
@@ -638,7 +638,9 @@ function MethodList({
         )
       })}
 
-      <hr style={hr} />
+      </div>
+
+      <div className="card">
       <h3 style={sectionHeading}>How each method reads at checkout</h3>
       <p className="field-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
         The sentence beneath the name, saying who handles the money, and whether the method&apos;s logo sits beside it. Every
@@ -680,7 +682,9 @@ function MethodList({
         </div>
       ))}
 
-      <hr style={hr} />
+      </div>
+
+      <div className="card">
       <h3 style={sectionHeading}>When each method is offered</h3>
       <p className="field-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
         Leave both boxes empty and the method is offered on every order, which is what they all do until you say otherwise.
@@ -732,7 +736,9 @@ function MethodList({
         )
       })}
 
-      <hr style={hr} />
+      </div>
+
+      <div className="card">
       <h3 style={sectionHeading}>Paying an order after it has been placed</h3>
       <p className="field-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
         Bank transfer and cash both end the same way: the order sits there until somebody sends the money, and a fair few of
@@ -747,7 +753,9 @@ function MethodList({
         />
       </div>
 
-      <hr style={hr} />
+      </div>
+
+      <div className="card">
       <h3 style={sectionHeading}>What a shopper will see</h3>
       {liveMethods.length === 0 ? (
         <div className="alert alert-warning" style={{ marginBottom: 0 }}>
@@ -760,6 +768,7 @@ function MethodList({
           {liveMethods.length === 1 ? ' - and nothing else.' : '.'}
         </p>
       )}
+      </div>
     </div>
   )
 }
@@ -821,7 +830,8 @@ function BuiltInMethodPanel({
   const awaitingDeploy = needsCredentials && (meta?.requiredKeys ?? []).every((k) => envKeyStatus[k])
 
   return (
-    <div>
+    <div className="settings-cols">
+      <div className="card">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
         <div style={{ flex: '1 1 20rem' }}>
           <h3 style={sectionHeading}>{method.label}</h3>
@@ -844,10 +854,10 @@ function BuiltInMethodPanel({
       )}
 
       {meta?.manualNote && <p className="field-hint" style={{ marginTop: 0 }}>{meta.manualNote}</p>}
+      </div>
 
       {meta?.instructionsKey && (
-        <>
-          <hr style={hr} />
+        <div className="card">
           <div className="field" style={{ marginBottom: 0 }}>
             <label htmlFor={`shp-${method.id}-instructions`}>{meta.instructionsLabel}</label>
             <p className="field-hint" style={{ marginTop: 0, marginBottom: '0.375rem' }}>{meta.instructionsHint}</p>
@@ -871,12 +881,12 @@ function BuiltInMethodPanel({
               />
             </div>
           )}
-        </>
+        </div>
       )}
 
       {needsCredentials && (
         <>
-          <hr style={hr} />
+        <div className="card">
           <h3 style={sectionHeading}>Your {meta?.shortName ?? method.label} details</h3>
           <p className="field-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>{meta?.keysIntro}</p>
 
@@ -889,7 +899,7 @@ function BuiltInMethodPanel({
           {envAdminAllowed && (
             <>
               {envSaveError && <div className="alert alert-danger">{envSaveError}</div>}
-              <div style={{ display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 18rem), 1fr))' }}>
+              <div className="settings-fields" style={{ rowGap: '0.75rem' }}>
                 {meta?.keys?.map((f) => (
                   <div className="field" key={f.key} style={{ marginBottom: 0 }}>
                     <label htmlFor={`shp-env-${f.key}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
@@ -931,13 +941,13 @@ function BuiltInMethodPanel({
               </p>
             </>
           )}
+        </div>
 
           {meta?.webhookPath && (
-            <>
-              <hr style={hr} />
+            <div className="card">
               <h3 style={sectionHeading}>Letting them tell us when a payment lands</h3>
               <WebhookAddress path={meta.webhookPath} hint={meta.webhookHint ?? ''} />
-            </>
+            </div>
           )}
         </>
       )}

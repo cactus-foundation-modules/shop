@@ -44,7 +44,6 @@ const HOSTED_PAYMENTS_SLOT = 'shop.payments'
 const HOSTED_NOTIFICATIONS_SLOT = 'shop.settings-notifications'
 
 const checkboxRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)', cursor: 'pointer' }
-const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid var(--color-border)', margin: '1.5rem 0' }
 const sectionHeading: React.CSSProperties = { margin: '0 0 1rem', fontSize: '1rem', fontWeight: 600 }
 const fieldGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 12rem), 1fr))', gap: '0.75rem', marginBottom: 'var(--form-gap)' }
 
@@ -1029,14 +1028,14 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
               </div>
             </>
           )}
+          </div>
 
           {/* Shared by both documents, so it comes out when either is switched
               on. A proforma carries the same trading details and the same VAT
               number as an invoice - it is the same business on the same paper,
               saying "please pay" rather than "you have paid". */}
           {(config.invoicesEnabled || config.proformaEnabled) && (
-            <>
-              <hr style={hr} />
+            <div className="card">
               <h3 style={sectionHeading}>Your details, as they appear on your paperwork</h3>
               {!config.invoiceVatNumber.trim() && (
                 <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
@@ -1101,13 +1100,12 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 />
                 Attach the invoice to the &ldquo;your order is complete&rdquo; email
               </label>
-
-            </>
+            </div>
           )}
 
           {config.invoicesEnabled && (
             <>
-              <hr style={hr} />
+              <div className="card">
               <h3 style={sectionHeading}>Invoice wording</h3>
               <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
                 Copied onto each invoice as it is raised, so editing these never rewrites paperwork already sent out.
@@ -1138,8 +1136,9 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 <label>Footer line</label>
                 <input value={config.invoiceFooter} onChange={(e) => set('invoiceFooter', e.target.value)} />
               </div>
+              </div>
 
-              <hr style={hr} />
+              <div className="card">
               <h3 style={sectionHeading}>Who can see it</h3>
               <label style={checkboxRow}>
                 <input type="checkbox" checked={config.invoiceShowToCustomer} onChange={(e) => set('invoiceShowToCustomer', e.target.checked)} />
@@ -1150,8 +1149,9 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 <input value={config.invoicePdfFilenamePrefix} onChange={(e) => set('invoicePdfFilenamePrefix', e.target.value)} />
                 <span className="field-hint">Saves as {config.invoicePdfFilenamePrefix || 'invoice'}-{config.invoiceNumberPrefix || 'INV-'}000123.pdf.</span>
               </div>
+              </div>
 
-              <hr style={hr} />
+              <div className="card">
               <h3 style={sectionHeading}>Credit notes</h3>
               <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
                 When you refund something, the invoice you already sent is out of date and the tax on the
@@ -1201,12 +1201,12 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                   </div>
                 </>
               )}
+              </div>
             </>
           )}
 
           {config.proformaEnabled && (
-            <>
-              <hr style={hr} />
+            <div className="card">
               <h3 style={sectionHeading}>Proforma invoices</h3>
               <p style={{ margin: '0 0 var(--space-3)', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)' }}>
                 Sent on any order nobody has been paid for yet - bank transfer, cash, and anything else settled by
@@ -1261,9 +1261,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                 <input value={config.proformaPdfFilenamePrefix} onChange={(e) => set('proformaPdfFilenamePrefix', e.target.value)} />
                 <span className="field-hint">Saves as {config.proformaPdfFilenamePrefix || 'proforma'}-{config.orderNumberPrefix || 'ORD-'}000123.pdf.</span>
               </div>
-            </>
+            </div>
           )}
-          </div>
         </div>
       )}
 

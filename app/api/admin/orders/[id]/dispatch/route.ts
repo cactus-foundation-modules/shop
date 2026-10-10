@@ -204,6 +204,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         deliveryFailed: !shipment.deliveredAt
           && stageMeaning(courier, shipment.trackingStage) === 'failed'
           && !delayIsNewerThanStage(delayOpen, shipment),
+        // The day and window the customer is being told: the typed-in slot, or
+        // the one the courier's tracking reported when none was typed. The
+        // order screen reads this rather than the typed columns, which are
+        // empty on a courier-followed parcel and made it say "no time window
+        // yet" about a window the customer had already been emailed.
+        booking: deliveryBookingForShipment(shipment, timezone),
         // The courier's own setting says they rebook, so there is nothing for
         // staff to switch on this parcel.
         courierRebooks: courier?.rebookedBy === 'courier',
