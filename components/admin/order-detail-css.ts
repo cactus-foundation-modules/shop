@@ -1,7 +1,7 @@
 /** Order workspace only. Uses the inbox's surface/background pairing in both themes. */
 export const orderDetailCss = `
 .sod-app{min-width:0;background:var(--color-bg);color:var(--color-text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.sod-app>.sox-orderhead{padding:0;margin:1rem 0 1.25rem}
+.sod-app>.sox-orderhead{padding:0;margin:0 0 1.25rem}
 .sod-app .sox-orderhead-title{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:0.875rem;row-gap:0.125rem}
 .sod-app .sox-orderhead-title .sox-orderhead-meta{margin:0}
 .sod-app .sox-orderhead-title .sox-badges{align-self:center}
@@ -43,6 +43,8 @@ export const orderDetailCss = `
 @media(max-width:800px){.sod-app .sod-pair{grid-template-columns:minmax(0,1fr)}}
 .sod-app .sox-card-body.is-flush{overflow-x:auto}
 .sod-app .sox-items{min-width:450px}
+.sod-sku-row{display:flex;flex-wrap:wrap;align-items:center;gap:0.25rem 0.5rem}
+.sod-sku-row>.sox-sub{margin:0}
 .sod-app .sox-items .sox-num{text-align:right}
 /* A line's delivery row sits under it as part of the same line: no rule between them, quieter type, indented a touch. */
 .sod-app .sox-items tr.sod-has-charges>td,.sod-app .sox-items tr.sod-charge-row:not(.is-last)>td{border-bottom:0}
@@ -89,6 +91,10 @@ export const orderDetailCss = `
 .sod-head-note{font-size:0.8125rem;color:var(--color-text-secondary)}
 .sod-app .sod-consent{display:flex;align-items:center;gap:0.35rem}
 .sod-consent-yes,.sod-consent-no{display:inline-flex}
+.sod-check-slot{flex:none;display:inline-flex;align-items:center;justify-content:center;width:1rem}
+.sod-check-slot input{margin:0}
+.sod-check-slot svg{width:14px;height:14px}
+.sod-app .sox-detail-row dt.sod-dt-icons{display:flex;align-items:center;gap:0.25rem}
 .sod-consent-yes{color:var(--color-success)}
 .sod-consent-no{color:var(--color-danger)}
 @media(max-width:1100px){.sod-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.sod-summary>div:nth-child(3),.sod-summary>div:nth-child(5){border-left:0}.sod-summary>div:nth-child(5){grid-column:1/-1}.sod-summary>div:nth-child(n+3){border-top:1px solid var(--color-border)}.sod-workspace{grid-template-columns:minmax(0,1fr) 270px}}

@@ -34,3 +34,7 @@ export const ClockIcon = <svg {...ICON}><circle cx="12" cy="12" r="8" /><path d=
 export const UndoIcon = <svg {...ICON}><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg>
 export const BooksIcon = <svg {...ICON}><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" /><path d="M19.5 3.5V9H14" /></svg>
 export const VoidIcon = <svg {...ICON}><circle cx="12" cy="12" r="8" /><path d="m6.5 17.5 11-11" /></svg>
+export const ReceiptIcon = <svg {...ICON}><path d="M6 3.5h12v17l-3-2-3 2-3-2-3 2z" /><path d="M9 8.5h6" /><path d="M9 12h6" /></svg>
+export const AlertIcon = <svg {...ICON}><path d="M12 4 3 19.5h18z" /><path d="M12 10v4" /><circle cx="12" cy="16.8" r="0.6" {...dot} /></svg>
+export const HandIcon = <svg {...ICON}><path d="M8 12V6.5a1.5 1.5 0 0 1 3 0V11" /><path d="M11 10V4.5a1.5 1.5 0 0 1 3 0V11" /><path d="M14 10.5V6a1.5 1.5 0 0 1 3 0v7a6 6 0 0 1-6 6h-.5a5 5 0 0 1-4-2L4 13.5a1.5 1.5 0 0 1 2.5-1.5L8 13" /></svg>
+export const CheckCircleIcon = <svg {...ICON}><circle cx="12" cy="12" r="8.5" /><path d="m8.5 12.3 2.4 2.4 4.6-5" /></svg>

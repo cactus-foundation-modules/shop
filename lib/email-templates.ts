@@ -519,18 +519,22 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     transactional: true,
   },
   {
-    // Staff changed the delivery address and chose to tell the customer. The
-    // new address goes in raw HTML built (and escaped) by
+    // Staff changed the delivery address, the delivery instructions or both,
+    // and chose to tell the customer. One template for all three: the flags
+    // hasAddressChange and hasInstructionsChange gate their halves, and
+    // hasBothChanges puts the "and" in the subject. Core's {{#if}} neither
+    // nests nor has an else, hence flags rather than wording. The new address
+    // and instructions go in as raw HTML built (and escaped) by
     // lib/address-updated-email.ts. Transactional: somebody whose parcel is
     // going somewhere new is owed the sentence whatever they think of the
     // newsletter.
     key: 'shop.address-updated',
-    label: 'Delivery address updated',
-    subject: 'Delivery address updated for order {{orderNumber}}',
+    label: 'Delivery address or instructions updated',
+    subject: 'Delivery {{#if hasAddressChange}}address{{/if}}{{#if hasBothChanges}} and {{/if}}{{#if hasInstructionsChange}}instructions{{/if}} updated for order {{orderNumber}}',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>We have updated the delivery address on your order <strong>{{orderNumber}}</strong>. It will now be delivered to:</p>{{newAddress}}<p>If that does not look right, reply to this email as soon as you can and we will put it straight.</p><p>Thanks - {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['customerName', 'orderNumber', 'newAddress', 'shopName', 'orderUrl', 'hasOrderUrl'],
-    rawTags: ['newAddress'],
+      '<p>Hi {{customerName}},</p><p>We have updated the delivery details on your order <strong>{{orderNumber}}</strong>.</p>{{#if hasAddressChange}}<p>It will now be delivered to:</p>{{newAddress}}{{/if}}{{#if hasNewInstructions}}<p>The {{instructionsLabel}} we have for the driver are now:</p>{{newDeliveryInstructions}}{{/if}}{{#if hasInstructionsRemoved}}<p>We no longer have any {{instructionsLabel}} for the driver on this order.</p>{{/if}}<p>If that does not look right, reply to this email as soon as you can and we will put it straight.</p><p>Thanks - {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'newAddress', 'newDeliveryInstructions', 'instructionsLabel', 'hasAddressChange', 'hasInstructionsChange', 'hasNewInstructions', 'hasInstructionsRemoved', 'hasBothChanges', 'shopName', 'orderUrl', 'hasOrderUrl'],
+    rawTags: ['newAddress', 'newDeliveryInstructions'],
     transactional: true,
   },
   {

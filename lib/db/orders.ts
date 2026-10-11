@@ -708,6 +708,16 @@ export async function setOrderShippingAddress(id: string, address: ShpAddress): 
   return result > 0
 }
 
+/** Staff adding, correcting or clearing what the customer asked the driver to
+ *  know. Blank clears it, same as the checkout box leaving it empty. */
+export async function setOrderDeliveryInstructions(id: string, instructions: string | null): Promise<boolean> {
+  const value = instructions?.trim() || null
+  const result = await prisma.$executeRaw`
+    UPDATE "shp_orders" SET "delivery_instructions" = ${value}, "updated_at" = CURRENT_TIMESTAMP WHERE "id" = ${id}
+  `
+  return result > 0
+}
+
 /** Staff switching the review request in the completion email on or off. */
 export async function setOrderAskForReview(id: string, askForReview: boolean): Promise<boolean> {
   const result = await prisma.$executeRaw`

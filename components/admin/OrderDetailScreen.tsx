@@ -1,13 +1,13 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { TabStrip } from '@/components/admin/TabStrip'
 import { AdminTooltip } from '@/components/admin/Tooltip'
 import { OrderMoreMenu } from '@/modules/shop/components/admin/OrderMoreMenu'
 import {
-  BackIcon, BanknoteIcon, BellIcon, BooksIcon, ClockIcon, CopyIcon, CrossIcon, DownloadIcon, EyeIcon,
-  MailIcon, NewTabIcon, PenIcon, TickIcon, TruckIcon, UndoIcon, VoidIcon,
+  AlertIcon, BackIcon, BanknoteIcon, BellIcon, BooksIcon, CheckCircleIcon, ClockIcon, CopyIcon, CrossIcon, DownloadIcon, EyeIcon,
+  HandIcon, MailIcon, NewTabIcon, PenIcon, ReceiptIcon, TickIcon, TruckIcon, UndoIcon, VoidIcon,
 } from '@/modules/shop/components/admin/order-icons'
 import { RefundModal } from '@/modules/shop/components/admin/RefundModal'
 import { OrderChargesPanel } from '@/modules/shop/components/admin/OrderChargesPanel'
@@ -34,6 +34,7 @@ import { formatMoney } from '@/modules/shop/lib/money'
 import { reasonLabel } from '@/modules/shop/lib/order-requests'
 import { REQUEST_STATUS_DISPLAY, REQUEST_TYPE_LABEL, badgeClass } from '@/modules/shop/lib/order-display'
 import type { ShpOrderRequestStatus, ShpOrderRequestType } from '@/modules/shop/lib/types'
+import { DELIVERY_INSTRUCTIONS_MAX_LENGTH } from '@/modules/shop/lib/delivery-instructions'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { useAlert, useConfirm, usePrompt } from '@/modules/shop/components/admin/dialogs'
 import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
@@ -282,7 +283,7 @@ const EMAIL_TRIGGER_LABEL: Record<string, string> = {
   REPLY_CATCHER: 'Reply',
 }
 
-type TimelineEvent = { id: string; at: string; icon: string; title: string; note?: string; resend?: { noteId: string } }
+type TimelineEvent = { id: string; at: string; icon: React.ReactNode; title: string; note?: string; resend?: { noteId: string } }
 
 /** How the invoice panel says when invoices go out, in the words the order
  *  screen already uses for those states. */
@@ -418,6 +419,44 @@ function CopyAction({ label, onCopy }: { label: string; onCopy: () => Promise<bo
   )
 }
 
+/** The customer's email with its copy button straight after it. When the
+ *  address is too long for the button to sit on the same line, the button
+ *  moves up beside the Email label instead of dropping onto a line of its own.
+ *  The one in the value stays in the layout (hidden) while it is up there, so
+ *  moving it cannot change the measurement and flip it back. */
+function CustomerEmailRow({ email, onCopy }: { email: string; onCopy: () => Promise<boolean> }) {
+  const linkRef = useRef<HTMLAnchorElement>(null)
+  const buttonRef = useRef<HTMLSpanElement>(null)
+  const [wrapped, setWrapped] = useState(false)
+  useLayoutEffect(() => {
+    const link = linkRef.current
+    const button = buttonRef.current
+    if (!link || !button) return
+    const measure = () => {
+      setWrapped(button.getBoundingClientRect().top >= link.getBoundingClientRect().bottom - 1)
+    }
+    measure()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(link.parentElement ?? link)
+    return () => observer?.disconnect()
+  }, [email])
+  const button = <CopyAction label="Copy the email address" onCopy={onCopy} />
+  return (
+    <div className="sox-detail-row">
+      <dt className="sod-dt-icons">
+        Email
+        {wrapped && <span className="sod-head-icons sox-noprint">{button}</span>}
+      </dt>
+      <dd>
+        <span className="sod-value-row">
+          <a ref={linkRef} href={`mailto:${email}`}>{email}</a>
+          <span ref={buttonRef} className="sod-head-icons sox-noprint" style={wrapped ? { visibility: 'hidden' } : undefined}>{button}</span>
+        </span>
+      </dd>
+    </div>
+  )
+}
+
 export function OrderDetailScreen({ orderId, children, panels }: {
   orderId: string
   children?: React.ReactNode
@@ -458,6 +497,8 @@ export function OrderDetailScreen({ orderId, children, panels }: {
   const [referenceDraft, setReferenceDraft] = useState<string | null>(null)
   // The delivery address while it is being amended; null when it is not.
   const [addressDraft, setAddressDraft] = useState<Address | null>(null)
+  // Edited alongside the address: both are "where and how it is delivered".
+  const [instructionsDraft, setInstructionsDraft] = useState('')
   const [emailAddressChange, setEmailAddressChange] = useState(false)
 
   const refresh = useCallback(() => {
@@ -568,17 +609,17 @@ export function OrderDetailScreen({ orderId, children, panels }: {
     setBusy(true)
     const res = await fetch(`/api/m/shop/admin/orders/${orderId}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ shippingAddress: addressDraft, emailCustomer: emailAddressChange }),
+      body: JSON.stringify({ shippingAddress: addressDraft, deliveryInstructions: instructionsDraft, emailCustomer: emailAddressChange }),
     })
     setBusy(false)
     if (!res.ok) {
-      await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That address could not be saved.', 'The address was left as it was')
+      await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That address could not be saved.', 'The delivery details were left as they were')
       return
     }
     const result = (await res.json().catch(() => ({}))) as { emailFailed?: boolean }
     setAddressDraft(null)
     setEmailAddressChange(false)
-    if (result.emailFailed) await alert('The address was saved, but the email to the customer could not be sent.', 'Address saved')
+    if (result.emailFailed) await alert('The changes were saved, but the email to the customer could not be sent.', 'Changes saved')
     refresh()
   }
 
@@ -870,18 +911,18 @@ export function OrderDetailScreen({ orderId, children, panels }: {
   // which meant answering "what happened here?" by reading four lists and doing
   // the chronology in your head.
   const events: TimelineEvent[] = [
-    { id: 'created', at: order.createdAt, icon: '🧾', title: 'Order placed', note: `${totalUnits} item${totalUnits === 1 ? '' : 's'} · ${formatMoney(order.total, currencySymbol)}` },
+    { id: 'created', at: order.createdAt, icon: ReceiptIcon, title: 'Order placed', note: `${totalUnits} item${totalUnits === 1 ? '' : 's'} · ${formatMoney(order.total, currencySymbol)}` },
     ...(order.paidAt ? [{
       id: 'paid',
       at: order.paidAt,
-      icon: '💷',
+      icon: BanknoteIcon,
       title: `Payment received by ${paymentMethodLabel(order.paymentMethod).toLowerCase()}`,
       note: order.paymentReference ? `Reference ${order.paymentReference}` : undefined,
     }] : []),
     ...data.notes.map((n) => ({
       id: `note-${n.id}`,
       at: n.createdAt,
-      icon: '📝',
+      icon: PenIcon,
       title: n.createdBy ? `Note from ${data.authors[n.createdBy] ?? 'a member of staff'}` : 'Note',
       note: n.content,
       resend: n.resendableTrigger ? { noteId: n.id } : undefined,
@@ -889,14 +930,14 @@ export function OrderDetailScreen({ orderId, children, panels }: {
     ...data.emails.map((e) => ({
       id: `email-${e.id}`,
       at: e.sentAt,
-      icon: '✉️',
+      icon: MailIcon,
       title: `Email: ${e.subject}`,
       note: `${EMAIL_TRIGGER_LABEL[e.trigger] ?? e.trigger} · to ${e.to}`,
     })),
     ...(dispatch?.shipments ?? []).map((s) => ({
       id: `parcel-${s.id}`,
       at: s.shippedAt,
-      icon: '📦',
+      icon: TruckIcon,
       title: 'Parcel dispatched',
       note: [
         s.items.map((si) => `${si.quantity} × ${itemNames.get(si.orderItemId) ?? 'an item no longer on this order'}`).join(', '),
@@ -909,7 +950,7 @@ export function OrderDetailScreen({ orderId, children, panels }: {
     ...requests.map((r) => ({
       id: `request-${r.id}`,
       at: r.createdAt,
-      icon: r.type === 'DAMAGE' ? '⚠️' : '🙋',
+      icon: r.type === 'DAMAGE' ? AlertIcon : HandIcon,
       title: `${REQUEST_TYPE_LABEL[r.type]} reported by the customer`,
       note: [
         reasonLabel(r.type, r.reason),
@@ -919,14 +960,14 @@ export function OrderDetailScreen({ orderId, children, panels }: {
     ...requests.filter((r) => r.decidedAt && r.status !== 'PENDING').map((r) => ({
       id: `request-decided-${r.id}`,
       at: r.decidedAt as string,
-      icon: '✅',
+      icon: CheckCircleIcon,
       title: `${REQUEST_TYPE_LABEL[r.type]} ${REQUEST_STATUS_DISPLAY[r.status].label.toLowerCase()}`,
       note: r.adminNote ?? undefined,
     })),
     ...data.refunds.map((r) => ({
       id: `refund-${r.id}`,
       at: r.createdAt,
-      icon: '↩️',
+      icon: UndoIcon,
       title: r.status === 'FAILED'
         ? `Refund of ${formatMoney(r.amount, currencySymbol)} failed`
         : `Refunded ${formatMoney(r.amount, currencySymbol)}`,
@@ -940,6 +981,55 @@ export function OrderDetailScreen({ orderId, children, panels }: {
       ].filter(Boolean).join('\n'),
     })),
   ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+
+  // The invoice's icons, drawn beside the card title (one invoice) or beside
+  // that invoice's number (several), never on a row of their own.
+  function invoiceActions(invoice: NonNullable<typeof invoicing>['invoices'][number]) {
+    return (
+      <>
+        <div className="sod-action-group" role="group" aria-label="The invoice">
+          <IconLink label="View the invoice" icon={EyeIcon} href={invoice.viewUrl} newTab />
+          {invoicing?.pdfEnabled && <IconLink label="Download as PDF" icon={DownloadIcon} href={invoice.pdfUrl} />}
+        </div>
+        {(invoicing?.hasBookkeeping || invoice.status === 'ISSUED') && (
+          <div className="sod-action-group" role="group" aria-label="The books">
+            {/* Voided invoices get the button too, and it says the
+                opposite thing: take the sale back out. Without it, an
+                invoice voided while the books were down leaves VAT
+                standing on a sale that never happened. */}
+            {invoicing?.hasBookkeeping && (
+              <IconAction
+                label={invoice.status === 'VOID' ? 'Tell the books it is void' : 'Send to the books again'}
+                icon={BooksIcon}
+                disabled={busy}
+                onClick={() => resendInvoice(invoice.id)}
+              />
+            )}
+            {invoice.status === 'ISSUED' && (
+              <IconAction label="Void the invoice" icon={VoidIcon} disabled={busy} onClick={() => voidTheInvoice(invoice)} />
+            )}
+          </div>
+        )}
+
+      </>
+    )
+  }
+
+  function creditNoteActions(note: NonNullable<typeof crediting>['creditNotes'][number]) {
+    return (
+      <>
+        <div className="sod-action-group" role="group" aria-label="The credit note">
+          <IconLink label="View the credit note" icon={EyeIcon} href={note.viewUrl} newTab />
+          {crediting?.pdfEnabled && <IconLink label="Download as PDF" icon={DownloadIcon} href={note.pdfUrl} />}
+        </div>
+        {crediting?.hasBookkeeping && (
+          <div className="sod-action-group">
+            <IconAction label="Send to the books again" icon={BooksIcon} disabled={busy} onClick={() => resendCreditNote(note.id)} />
+          </div>
+        )}
+      </>
+    )
+  }
 
   function addressLines(address: Address): string[] {
     return [
@@ -1148,7 +1238,20 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                             ) : (
                               <span className="sox-item-name">{item.productName}</span>
                             )}
-                            {item.productSku && <p className="sox-sub sox-mono">{item.productSku}</p>}
+                            {(item.productSku || deliveredQty > 0 || inTransitQty > 0) && (
+                              <div className="sod-sku-row">
+                                {item.productSku && <p className="sox-sub sox-mono">{item.productSku}</p>}
+                                {deliveredQty > 0 && <span className="badge badge-success">{deliveredQty} delivered</span>}
+                                {/* Nothing left to send and nothing landed yet: every
+                                    unit is on its way, so say so rather than a count
+                                    that just repeats the Qty column. */}
+                                {inTransitQty > 0 && (
+                                  <span className="badge badge-success">
+                                    {line && line.outstandingQty === 0 && deliveredQty === 0 ? 'All sent' : `${inTransitQty} sent`}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                             {fields.length > 0 ? (
                               <ul className="sox-meta-list">
                                 {fields.map((f, i) => (
@@ -1165,8 +1268,6 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                                   Pre-order{item.preOrderDispatchDate ? ` · due ${formatDate(item.preOrderDispatchDate)}` : ''}
                                 </span>
                               )}
-                              {deliveredQty > 0 && <span className="badge badge-success">{deliveredQty} delivered</span>}
-                              {inTransitQty > 0 && <span className="badge badge-success">{inTransitQty} sent</span>}
                               {line && line.outstandingQty > 0 && line.dispatchedQty > 0 && <span className="badge badge-warning">{line.outstandingQty} to go</span>}
                               {item.refundedQty > 0 && <span className="badge badge-warning">{item.refundedQty} refunded</span>}
                             </div>
@@ -1317,9 +1418,9 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                     <CopyAction label="Copy the address" onCopy={() => copy(addressLines(order.shippingAddress).join('\n'), 'The address')} />
                     <IconAction
                       quiet
-                      label="Edit the address"
+                      label={`Edit the address and ${instructionsLabel.toLowerCase()}`}
                       icon={PenIcon}
-                      onClick={() => { setEmailAddressChange(false); setAddressDraft({ ...order.shippingAddress }) }}
+                      onClick={() => { setEmailAddressChange(false); setAddressDraft({ ...order.shippingAddress }); setInstructionsDraft(order.deliveryInstructions ?? '') }}
                     />
                   </span>
                 )}
@@ -1352,9 +1453,20 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                         />
                       </label>
                     ))}
+                    <label style={{ display: 'grid', gap: '0.125rem', fontSize: '0.75rem' }}>
+                      {instructionsLabel}
+                      <textarea
+                        className="sox-input"
+                        rows={3}
+                        maxLength={DELIVERY_INSTRUCTIONS_MAX_LENGTH}
+                        disabled={busy}
+                        value={instructionsDraft}
+                        onChange={(e) => setInstructionsDraft(e.target.value)}
+                      />
+                    </label>
                     <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.8125rem' }}>
                       <input type="checkbox" checked={emailAddressChange} disabled={busy} onChange={(e) => setEmailAddressChange(e.target.checked)} />
-                      Email the new address to the customer
+                      Email what changed to the customer
                     </label>
                     <div style={{ display: 'flex', gap: '0.375rem' }}>
                       <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={saveAddress}>Save</button>
@@ -1378,7 +1490,7 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                     read as though it were an address line is a gate code nobody
                     acts on. Kept in the print, unlike the Copy button beside it:
                     a picking list wants it. */}
-                {order.deliveryInstructions?.trim() && (
+                {addressDraft === null && order.deliveryInstructions?.trim() && (
                   <div className="sox-instructions">
                     <strong>{instructionsLabel}</strong>
                     <p>{order.deliveryInstructions.trim()}</p>
@@ -1566,19 +1678,19 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                 read, since it is drawn from the order every time it is opened. */}
             {invoicing?.proforma && (
               <section className="sox-card sox-noprint">
-                <div className="sox-card-head"><h2>Proforma</h2></div>
+                <div className="sox-card-head">
+                  <h2>Proforma</h2>
+                  <div className="sod-action-group" role="group" aria-label="The proforma">
+                    <IconLink label="View the proforma" icon={EyeIcon} href={invoicing.proforma.viewUrl} newTab />
+                    {invoicing.pdfEnabled && <IconLink label="Download as PDF" icon={DownloadIcon} href={invoicing.proforma.pdfUrl} />}
+                  </div>
+                </div>
                 <div className="sox-card-body" style={{ display: 'grid', gap: '0.75rem' }}>
                   <p className="sox-sub" style={{ margin: 0 }}>
                     {invoicing.proforma.paid
                       ? 'This order has been paid, so the proforma now says so. It stays available for the customer\u2019s own records.'
                       : 'What is owed, how to pay it, and how long each line takes once payment reaches us. Not a VAT invoice, and it says so on its face.'}
                   </p>
-                  <div className="sod-actions">
-                    <div className="sod-action-group" role="group" aria-label="The proforma">
-                      <IconLink label="View the proforma" icon={EyeIcon} href={invoicing.proforma.viewUrl} newTab />
-                      {invoicing.pdfEnabled && <IconLink label="Download as PDF" icon={DownloadIcon} href={invoicing.proforma.pdfUrl} />}
-                    </div>
-                  </div>
                 </div>
               </section>
             )}
@@ -1588,7 +1700,10 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                 app/api/admin/orders/[id]/invoice/route.ts. */}
             {invoicing?.enabled && (
               <section className="sox-card sox-noprint">
-                <div className="sox-card-head"><h2>Invoice</h2></div>
+                <div className="sox-card-head">
+                  <h2>Invoice</h2>
+                  {invoicing.invoices.length === 1 && <div className="sod-actions">{invoiceActions(invoicing.invoices[0]!)}</div>}
+                </div>
                 <div className="sox-card-body" style={{ display: 'grid', gap: '0.75rem' }}>
                   {invoicing.invoices.length === 0 && (
                     <>
@@ -1612,6 +1727,7 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                             ? <span className="badge badge-warning">Replaced</span>
                             : <span className="badge badge-success">Issued</span>}
                         <span className="sox-muted">{formatDate(invoice.issuedAt)}</span>
+                        {invoicing.invoices.length > 1 && <div className="sod-actions" style={{ marginLeft: 'auto' }}>{invoiceActions(invoice)}</div>}
                       </div>
                       <div className="sox-sub">
                         {formatMoney(invoice.total, invoice.currencySymbol || currencySymbol)}
@@ -1628,31 +1744,6 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                           {result.ok ? '✓' : '⚠'} {result.id}: {result.message}
                         </div>
                       ))}
-                      <div className="sod-actions">
-                        <div className="sod-action-group" role="group" aria-label="The invoice">
-                          <IconLink label="View the invoice" icon={EyeIcon} href={invoice.viewUrl} newTab />
-                          {invoicing.pdfEnabled && <IconLink label="Download as PDF" icon={DownloadIcon} href={invoice.pdfUrl} />}
-                        </div>
-                        {(invoicing.hasBookkeeping || invoice.status === 'ISSUED') && (
-                          <div className="sod-action-group" role="group" aria-label="The books">
-                            {/* Voided invoices get the button too, and it says the
-                                opposite thing: take the sale back out. Without it, an
-                                invoice voided while the books were down leaves VAT
-                                standing on a sale that never happened. */}
-                            {invoicing.hasBookkeeping && (
-                              <IconAction
-                                label={invoice.status === 'VOID' ? 'Tell the books it is void' : 'Send to the books again'}
-                                icon={BooksIcon}
-                                disabled={busy}
-                                onClick={() => resendInvoice(invoice.id)}
-                              />
-                            )}
-                            {invoice.status === 'ISSUED' && (
-                              <IconAction label="Void the invoice" icon={VoidIcon} disabled={busy} onClick={() => voidTheInvoice(invoice)} />
-                            )}
-                          </div>
-                        )}
-                      </div>
                     </div>
                   ))}
                 </div>
@@ -1669,7 +1760,10 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                 || nettedRefunds.length > 0
                 || preInvoiceRefunds.length > 0) && (
               <section className="sox-card sox-noprint">
-                <div className="sox-card-head"><h2>Credit notes</h2></div>
+                <div className="sox-card-head">
+                  <h2>Credit notes</h2>
+                  {crediting.creditNotes.length === 1 && <div className="sod-actions">{creditNoteActions(crediting.creditNotes[0]!)}</div>}
+                </div>
                 <div className="sox-card-body" style={{ display: 'grid', gap: '0.75rem' }}>
                   {crediting.creditNotes.map((note) => (
                     <div key={note.id} style={{ display: 'grid', gap: '0.375rem' }}>
@@ -1677,6 +1771,7 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                         <strong className="sox-mono">{note.creditNoteNumber}</strong>
                         <span className="badge badge-default">Credited</span>
                         <span className="sox-muted">{formatDate(note.issuedAt)}</span>
+                        {crediting.creditNotes.length > 1 && <div className="sod-actions" style={{ marginLeft: 'auto' }}>{creditNoteActions(note)}</div>}
                       </div>
                       <div className="sox-sub">
                         {formatMoney(note.total, note.currencySymbol || currencySymbol)}
@@ -1694,17 +1789,6 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                           {result.ok ? '✓' : '⚠'} {result.id}: {result.message}
                         </div>
                       ))}
-                      <div className="sod-actions">
-                        <div className="sod-action-group" role="group" aria-label="The credit note">
-                          <IconLink label="View the credit note" icon={EyeIcon} href={note.viewUrl} newTab />
-                          {crediting.pdfEnabled && <IconLink label="Download as PDF" icon={DownloadIcon} href={note.pdfUrl} />}
-                        </div>
-                        {crediting.hasBookkeeping && (
-                          <div className="sod-action-group">
-                            <IconAction label="Send to the books again" icon={BooksIcon} disabled={busy} onClick={() => resendCreditNote(note.id)} />
-                          </div>
-                        )}
-                      </div>
                     </div>
                   ))}
                   {/* Money that went back before the invoice was raised. The
@@ -1901,17 +1985,7 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                     )}
                   </dd>
                 </div>
-                <div className="sox-detail-row">
-                  <dt>Email</dt>
-                  <dd>
-                    <span className="sod-value-row">
-                      <a href={`mailto:${order.customerEmail}`}>{order.customerEmail}</a>
-                      <span className="sod-head-icons sox-noprint">
-                        <CopyAction label="Copy the email address" onCopy={() => copy(order.customerEmail, 'The email address')} />
-                      </span>
-                    </span>
-                  </dd>
-                </div>
+                <CustomerEmailRow email={order.customerEmail} onCopy={() => copy(order.customerEmail, 'The email address')} />
                 {order.customerPhone && (
                   <div className="sox-detail-row">
                     <dt>Phone</dt>
@@ -1925,23 +1999,26 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                     <dt className="sr-only">Review request</dt>
                     <dd>
                       <label className="sod-summary-check" style={{ marginTop: 0 }}>
-                        <input type="checkbox" checked={order.askForReview !== false} disabled={busy} onChange={(e) => setAskForReview(e.target.checked)} />
+                        <span className="sod-check-slot"><input type="checkbox" checked={order.askForReview !== false} disabled={busy} onChange={(e) => setAskForReview(e.target.checked)} /></span>
                         Ask for a review on completion
                       </label>
                     </dd>
                   </div>
                 )}
-                {/* A tick or a cross on the end of the label says it; words
+                {/* The tick or cross leads, in the same slot the checkbox above
+                    uses, so the words line up with "Ask for a review"; words
                     only for the customer who was never asked. */}
                 <div className="sox-detail-row">
                   <dt className="sod-consent">
+                    <span className="sod-check-slot">
+                      {order.marketingConsent === true && (
+                        <span className="sod-consent-yes">{TickIcon}<span className="sr-only">Happy to receive them: </span></span>
+                      )}
+                      {order.marketingConsent === false && (
+                        <span className="sod-consent-no">{CrossIcon}<span className="sr-only">Asked not to receive them: </span></span>
+                      )}
+                    </span>
                     Marketing emails
-                    {order.marketingConsent === true && (
-                      <span className="sod-consent-yes">{TickIcon}<span className="sr-only">: happy to receive them</span></span>
-                    )}
-                    {order.marketingConsent === false && (
-                      <span className="sod-consent-no">{CrossIcon}<span className="sr-only">: asked not to receive them</span></span>
-                    )}
                   </dt>
                   {(order.marketingConsent === null || order.marketingConsent === undefined) && (
                     <dd><span className="sox-muted">Not asked</span></dd>

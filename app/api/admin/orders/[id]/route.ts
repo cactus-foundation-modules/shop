@@ -3,9 +3,9 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db/prisma'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { deliveryInstructionsLabel } from '@/modules/shop/lib/delivery-instructions'
-import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, listReplacementOrdersForParent, setOrderAskForReview, setOrderCustomerReference, setOrderShippingAddress } from '@/modules/shop/lib/db/orders'
-import { sendAddressUpdatedEmail } from '@/modules/shop/lib/address-updated-email'
+import { DELIVERY_INSTRUCTIONS_MAX_LENGTH, deliveryInstructionsLabel } from '@/modules/shop/lib/delivery-instructions'
+import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, listReplacementOrdersForParent, setOrderAskForReview, setOrderCustomerReference, setOrderDeliveryInstructions, setOrderShippingAddress } from '@/modules/shop/lib/db/orders'
+import { sendAddressUpdatedEmail, type DeliveryDetailsChange } from '@/modules/shop/lib/address-updated-email'
 import { listRefundsForOrder, listRefundItemsForOrder } from '@/modules/shop/lib/db/refunds'
 import { listDownloadsForOrder } from '@/modules/shop/lib/db/digital'
 import { listRequestsForOrder } from '@/modules/shop/lib/db/order-requests'
@@ -138,6 +138,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   return NextResponse.json({ order, items, storefrontHrefs, notes: noteSummaries, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, deliveryInstructionsLabel: deliveryInstructionsLabelText, refundNotice, refundableDelivery, replacements, replacementLines, parentOrder, requests })
 }
 
+/** Two addresses compared the way a person would: same words, same order, case and stray spaces aside. */
+function addressText(address: Record<string, unknown>): string {
+  return ['firstName', 'lastName', 'company', 'line1', 'line2', 'city', 'county', 'postcode', 'country', 'phone']
+    .map((key) => String(address[key] ?? '').trim().toLowerCase())
+    .join('|')
+}
+
 const PatchBody = z.object({
   // The customer's own reference for the order - their purchase order number.
   // Blank clears it, which is how a number typed into the wrong order is undone.
@@ -161,9 +168,12 @@ const PatchBody = z.object({
     country: z.string().trim().length(2, 'Country must be a two letter code'),
     phone: z.string().trim().max(40).optional(),
   }).optional(),
-  // Tell the customer, via the 'Address updated' email. Only with shippingAddress.
+  // What the customer asked the driver to know. Blank clears it.
+  deliveryInstructions: z.string().max(DELIVERY_INSTRUCTIONS_MAX_LENGTH).optional(),
+  // Tell the customer, via the 'Address updated' email. Only with shippingAddress
+  // or deliveryInstructions, and only about whichever of them really changed.
   emailCustomer: z.boolean().optional(),
-}).refine((body) => body.customerReference !== undefined || body.askForReview !== undefined || body.shippingAddress !== undefined, {
+}).refine((body) => body.customerReference !== undefined || body.askForReview !== undefined || body.shippingAddress !== undefined || body.deliveryInstructions !== undefined, {
   message: 'Nothing to change',
 })
 
@@ -184,7 +194,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const parsed = PatchBody.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 })
 
-  const { customerReference, askForReview, shippingAddress, emailCustomer } = parsed.data
+  const { customerReference, askForReview, shippingAddress, deliveryInstructions, emailCustomer } = parsed.data
   if (customerReference !== undefined && !(await setOrderCustomerReference(id, customerReference))) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
@@ -192,21 +202,37 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 
-  if (shippingAddress !== undefined) {
+  // Read before writing, so the email only names what actually changed.
+  const before = shippingAddress !== undefined || deliveryInstructions !== undefined ? await getOrderById(id) : null
+  if ((shippingAddress !== undefined || deliveryInstructions !== undefined) && !before) {
+    return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+  }
+  const change: DeliveryDetailsChange = {}
+
+  if (shippingAddress !== undefined && before) {
     const next = { ...shippingAddress, country: shippingAddress.country.toUpperCase() }
     if (!(await setOrderShippingAddress(id, next))) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
-    if (emailCustomer) {
-      const saved = await getOrderById(id)
-      // The address is already saved; a mail server having a moment is
-      // reported, not allowed to undo it.
-      try {
-        if (saved) await sendAddressUpdatedEmail(saved, next)
-      } catch (error) {
-        console.error('[shop] address-updated email failed', error)
-        return NextResponse.json({ order: saved, emailFailed: true })
-      }
+    if (addressText(before.shippingAddress) !== addressText(next)) change.address = next
+  }
+
+  if (deliveryInstructions !== undefined && before) {
+    if (!(await setOrderDeliveryInstructions(id, deliveryInstructions))) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+    }
+    if ((before.deliveryInstructions ?? '').trim() !== deliveryInstructions.trim()) change.instructions = deliveryInstructions.trim()
+  }
+
+  if (emailCustomer && (change.address !== undefined || change.instructions !== undefined)) {
+    const saved = await getOrderById(id)
+    // Already saved; a mail server having a moment is reported, not allowed
+    // to undo it.
+    try {
+      if (saved) await sendAddressUpdatedEmail(saved, change)
+    } catch (error) {
+      console.error('[shop] address-updated email failed', error)
+      return NextResponse.json({ order: saved, emailFailed: true })
     }
   }
 
