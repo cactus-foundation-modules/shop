@@ -922,7 +922,7 @@ export function OrderDetailScreen({ orderId, children, panels }: {
         <div className="sox-orderhead-actions">
           {awaitingManualPayment && (
             <>
-              <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={sendPaymentReminder}>Send payment reminder</button>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={sendPaymentReminder}>Payment reminder</button>
               <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={confirmPayment}>Payment received</button>
             </>
           )}
