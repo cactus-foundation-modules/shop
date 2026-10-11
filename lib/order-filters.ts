@@ -6,7 +6,7 @@ import type { ShpOrderStatus, ShpPaymentStatus } from '@/modules/shop/lib/types'
 // so the two have to agree on what "the rows they are looking at" means - a
 // second parser would eventually export a different set than the screen shows.
 
-const STATUSES: ShpOrderStatus[] = ['PENDING', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'ON_HOLD']
+const STATUSES: ShpOrderStatus[] = ['PENDING', 'PROCESSING', 'PREPARING', 'SHIPPED', 'COMPLETED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'ON_HOLD']
 const PAYMENT_STATUSES: Array<ShpPaymentStatus | 'UNPAID'> = ['UNPAID', 'PENDING', 'PAID', 'PARTIALLY_REFUNDED', 'REFUNDED', 'FAILED', 'AWAITING_CONFIRMATION']
 const FULFILMENTS: OrderFulfilment[] = ['UNDISPATCHED', 'PARTIAL', 'DISPATCHED']
 const SORTS: OrderSort[] = ['newest', 'oldest', 'total-desc', 'total-asc', 'customer-asc', 'status']

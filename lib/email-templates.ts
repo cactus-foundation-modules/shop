@@ -98,6 +98,18 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     transactional: false,
   },
   {
+    // The goods have been ordered in from the supplier. Moved to by the
+    // purchasing module's announcement, not by a person - see
+    // lib/purchase-order-sent-observer.ts.
+    key: 'shop.status-preparing',
+    label: 'Order being prepared',
+    subject: 'We are preparing your order {{orderNumber}}',
+    bodyHtml: '<p>Hi {{customerName}},</p><p>Good news - we have ordered in everything for <strong>{{orderNumber}}</strong> and it is now being prepared for dispatch.</p>{{orderItems}}<p>Shipping to: {{shippingAddress}}</p><p>We will email you again as soon as it is on its way.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'orderItems', 'orderTotal', 'shippingAddress', 'customerReference', 'customerReferenceLabel', 'shopName', 'orderUrl', 'hasOrderUrl'],
+    rawTags: ['orderItems'],
+    transactional: false,
+  },
+  {
     // The whole order, out in one go. Carries everything a dispatch notice
     // wants: what is in it, where it is going, and the numbers to follow it
     // with. Those last two were passed to nobody before, so an owner who put
@@ -587,6 +599,7 @@ export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   ORDER_PLACED_UNPAID: 'shop.order-placed-unpaid',
   PAYMENT_RECEIVED: 'shop.payment-received',
   STATUS_PROCESSING: 'shop.status-processing',
+  STATUS_PREPARING: 'shop.status-preparing',
   STATUS_SHIPPED: 'shop.status-shipped',
   STATUS_COMPLETED: 'shop.status-completed',
   STATUS_CANCELLED: 'shop.status-cancelled',

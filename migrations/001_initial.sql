@@ -597,7 +597,7 @@ CREATE TABLE IF NOT EXISTS "shp_orders" (
     CONSTRAINT "shp_orders_order_number_key" UNIQUE ("order_number"),
     CONSTRAINT "shp_orders_kind_check" CHECK ("kind" IN ('SALE', 'REPLACEMENT')),
     CONSTRAINT "shp_orders_parent_order_id_fkey" FOREIGN KEY ("parent_order_id") REFERENCES "shp_orders"("id") ON DELETE SET NULL,
-    CONSTRAINT "shp_orders_status_check" CHECK ("status" IN ('PENDING', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'ON_HOLD')),
+    CONSTRAINT "shp_orders_status_check" CHECK ("status" IN ('PENDING', 'PROCESSING', 'PREPARING', 'SHIPPED', 'COMPLETED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'ON_HOLD')),
     -- No closed CHECK on payment_method: module-contributed providers (via the
     -- shop.payment-providers extension point) use their own method codes, which
     -- shop can't enumerate. The payment provider registry validates the code.

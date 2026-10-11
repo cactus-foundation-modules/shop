@@ -69,6 +69,14 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     transactional: false,
   },
   {
+    key: 'shop.status-preparing',
+    label: 'Order being prepared',
+    body: '{{shopName}}: we are preparing order {{orderNumber}} for dispatch. We will let you know as soon as it is on its way.',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'orderUrl', 'hasOrderUrl'],
+    requiredTags: ['orderNumber'],
+    transactional: false,
+  },
+  {
     key: 'shop.status-shipped',
     label: 'Order dispatched',
     body: '{{shopName}}: order {{orderNumber}} is on its way.',
@@ -238,6 +246,7 @@ export const SHOP_TRIGGER_TO_SMS_KEY: Record<string, string> = {
   ORDER_PLACED_UNPAID: 'shop.order-placed-unpaid',
   PAYMENT_RECEIVED: 'shop.payment-received',
   STATUS_PROCESSING: 'shop.status-processing',
+  STATUS_PREPARING: 'shop.status-preparing',
   STATUS_SHIPPED: 'shop.status-shipped',
   STATUS_COMPLETED: 'shop.status-completed',
   STATUS_CANCELLED: 'shop.status-cancelled',

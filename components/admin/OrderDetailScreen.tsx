@@ -264,6 +264,7 @@ const EMAIL_TRIGGER_LABEL: Record<string, string> = {
   ORDER_PLACED_UNPAID: 'Order placed, how to pay',
   PAYMENT_RECEIVED: 'Payment received',
   STATUS_PROCESSING: 'Status update',
+  STATUS_PREPARING: 'Status update',
   STATUS_SHIPPED: 'Dispatch notice',
   STATUS_COMPLETED: 'Status update',
   STATUS_CANCELLED: 'Cancellation',

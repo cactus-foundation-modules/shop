@@ -33,6 +33,7 @@ import type { ShpEmailTemplateTrigger, ShpOrder, ShpOrderItem, ShpOrderStatus } 
 
 const STATUS_EMAIL_TRIGGER: Partial<Record<ShpOrderStatus, ShpEmailTemplateTrigger>> = {
   PROCESSING: 'STATUS_PROCESSING',
+  PREPARING: 'STATUS_PREPARING',
   SHIPPED: 'STATUS_SHIPPED',
   COMPLETED: 'STATUS_COMPLETED',
   CANCELLED: 'STATUS_CANCELLED',

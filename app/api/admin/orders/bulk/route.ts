@@ -7,7 +7,7 @@ import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 const Body = z.object({
   ids: z.array(z.string().min(1)).min(1).max(200),
   action: z.literal('status'),
-  status: z.enum(['PENDING', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED', 'ON_HOLD']),
+  status: z.enum(['PENDING', 'PROCESSING', 'PREPARING', 'SHIPPED', 'COMPLETED', 'CANCELLED', 'ON_HOLD']),
   sendEmail: z.boolean().optional(),
 })
 

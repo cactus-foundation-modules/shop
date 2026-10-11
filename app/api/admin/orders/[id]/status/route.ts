@@ -4,7 +4,7 @@ import { requireShopUser } from '@/modules/shop/lib/access'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 
 const Body = z.object({
-  status: z.enum(['PENDING', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'ON_HOLD']),
+  status: z.enum(['PENDING', 'PROCESSING', 'PREPARING', 'SHIPPED', 'COMPLETED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'ON_HOLD']),
   sendEmail: z.boolean().optional(),
 })
 

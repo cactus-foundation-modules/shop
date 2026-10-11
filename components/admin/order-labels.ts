@@ -7,6 +7,7 @@ export type Badge = { cls: string; label: string }
 export const ORDER_STATUS_BADGE: Record<string, Badge> = {
   PENDING: { cls: 'badge-default', label: 'Pending' },
   PROCESSING: { cls: 'badge-info', label: 'Processing' },
+  PREPARING: { cls: 'badge-info', label: 'Preparing' },
   SHIPPED: { cls: 'badge-primary', label: 'Dispatched' },
   COMPLETED: { cls: 'badge-success', label: 'Completed' },
   CANCELLED: { cls: 'badge-default', label: 'Cancelled' },
@@ -27,7 +28,7 @@ export const PAYMENT_STATUS_BADGE: Record<string, Badge> = {
 // Statuses an owner sets by hand. REFUNDED and PARTIALLY_REFUNDED are left out
 // on purpose: they are what a refund does to an order, not something to pick
 // from a menu, and setting them by hand would say money went back when none did.
-export const SETTABLE_STATUSES = ['PENDING', 'PROCESSING', 'SHIPPED', 'COMPLETED', 'ON_HOLD', 'CANCELLED'] as const
+export const SETTABLE_STATUSES = ['PENDING', 'PROCESSING', 'PREPARING', 'SHIPPED', 'COMPLETED', 'ON_HOLD', 'CANCELLED'] as const
 
 const PAYMENT_METHOD_LABEL: Record<string, string> = {
   STRIPE: 'Card',

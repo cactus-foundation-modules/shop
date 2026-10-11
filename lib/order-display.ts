@@ -4,15 +4,16 @@ import type { ShpAddress, ShpOrderRequestStatus, ShpOrderRequestType, ShpOrderSt
 import type { MemberOrderFulfilment } from '@/modules/shop/lib/member-orders'
 
 // How an order reads to the person who placed it, rather than to the person who
-// runs the shop. PROCESSING is a workflow state; "Being prepared" is what the
-// customer wants to know. Shared by the order list, the order detail and the
+// runs the shop. PROCESSING is a workflow state; "Order received" and "Being
+// prepared" (PREPARING) are what the customer wants to know. Shared by the order list, the order detail and the
 // receipt so all three say the same thing.
 
 type Tone = 'default' | 'primary' | 'success' | 'warning' | 'error'
 
 export const ORDER_STATUS_DISPLAY: Record<ShpOrderStatus, { label: string; tone: Tone }> = {
   PENDING: { label: 'Awaiting payment', tone: 'warning' },
-  PROCESSING: { label: 'Being prepared', tone: 'primary' },
+  PROCESSING: { label: 'Order received', tone: 'primary' },
+  PREPARING: { label: 'Being prepared', tone: 'primary' },
   SHIPPED: { label: 'On its way', tone: 'primary' },
   COMPLETED: { label: 'Complete', tone: 'success' },
   CANCELLED: { label: 'Cancelled', tone: 'default' },

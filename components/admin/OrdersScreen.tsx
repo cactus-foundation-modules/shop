@@ -123,6 +123,7 @@ const STATUS_TABS: Array<{ value: string; label: string }> = [
   { value: '', label: 'All' },
   { value: 'PENDING', label: 'Pending' },
   { value: 'PROCESSING', label: 'Processing' },
+  { value: 'PREPARING', label: 'Preparing' },
   { value: 'SHIPPED', label: 'Dispatched' },
   { value: 'COMPLETED', label: 'Completed' },
   { value: 'ON_HOLD', label: 'On hold' },

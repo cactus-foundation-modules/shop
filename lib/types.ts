@@ -507,7 +507,7 @@ export type ShpAutomaticDiscount = {
 export type ShpAutomaticDiscountScope = 'ALL' | 'PRODUCTS'
 
 export type ShpOrderStatus =
-  | 'PENDING' | 'PROCESSING' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | 'ON_HOLD'
+  | 'PENDING' | 'PROCESSING' | 'PREPARING' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | 'ON_HOLD'
 // Built-in method literals keep autocomplete; `(string & {})` lets module-
 // contributed providers (via the shop.payment-providers extension point) use
 // their own method codes without shop enumerating them.
@@ -1299,7 +1299,7 @@ export type ShpGuestCart = {
 }
 
 export type ShpEmailTemplateTrigger =
-  | 'ORDER_CONFIRMED' | 'STATUS_PROCESSING' | 'STATUS_SHIPPED' | 'STATUS_COMPLETED' | 'STATUS_CANCELLED'
+  | 'ORDER_CONFIRMED' | 'STATUS_PROCESSING' | 'STATUS_PREPARING' | 'STATUS_SHIPPED' | 'STATUS_COMPLETED' | 'STATUS_CANCELLED'
   // Sent per shipment when only some of an order's lines have gone out.
   // STATUS_SHIPPED says the whole order is on its way, so it cannot stand in
   // for this one. See lib/shipment-email.ts.

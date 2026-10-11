@@ -1,4 +1,5 @@
 import { getSiteUrl } from '@/lib/config/env'
+import { notifyAdminNewOrder } from '@/modules/shop/lib/new-order-notify'
 import { countPriorCouponOrdersByEmail, flagOrderForAttention, getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { incrementPreOrderCount, getProductById, type PreOrderCounted } from '@/modules/shop/lib/db/products'
 import { getCouponById, incrementCouponUsage } from '@/modules/shop/lib/db/discounts'
@@ -187,6 +188,9 @@ export async function fulfillPaidOrder(
   // owner pressed the button that caused it, telling them what they had just
   // done. Read off the provider's confirmMode rather than a list of method
   // codes, so a module's manual method behaves the same way.
+  // The bell entry follows the same rule as the email, and for the same reason.
+  if (provider?.confirmMode !== 'manual') await notifyAdminNewOrder(order, config, 'paid')
+
   const adminAlertEmail = provider?.confirmMode === 'manual' ? '' : (config.adminOrderAlertEmail || config.storeEmail)
   if (adminAlertEmail) {
     try {

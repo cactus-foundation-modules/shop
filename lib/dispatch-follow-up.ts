@@ -247,7 +247,7 @@ export async function maybeSendTrackingEmail(
  * So the last parcel moves a PROCESSING order on to SHIPPED, and undoing a
  * parcel moves a SHIPPED order that is no longer fully dispatched back again.
  *
- * Only those two statuses are touched. PENDING has not been paid for, ON_HOLD
+ * Only PROCESSING, PREPARING and SHIPPED are touched. PENDING has not been paid for, ON_HOLD
  * was put there by somebody on purpose, and COMPLETED and the refunded and
  * cancelled states say something a parcel record has no business overruling.
  *
@@ -265,7 +265,10 @@ export async function followDispatchWithStatus(
   const wanted: { from: ShpOrderStatus; to: ShpOrderStatus } = change === 'recorded'
     ? { from: 'PROCESSING', to: 'SHIPPED' }
     : { from: 'SHIPPED', to: 'PROCESSING' }
-  if (statusBefore !== wanted.from) return
+  // An order the supplier has been sent a purchase order for is PREPARING and
+  // goes out the same way a PROCESSING one does.
+  const fromStatus = change === 'recorded' && statusBefore === 'PREPARING' ? 'PREPARING' : wanted.from
+  if (statusBefore !== fromStatus) return
 
   try {
     const { fullyDispatched } = await getOrderDispatchSummary(orderId)

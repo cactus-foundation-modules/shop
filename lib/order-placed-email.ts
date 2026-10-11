@@ -1,4 +1,5 @@
 import { escapeHtml } from '@/lib/email/blocks'
+import { notifyAdminNewOrder } from '@/modules/shop/lib/new-order-notify'
 import { getSiteUrl } from '@/lib/config/env'
 import { getOrderItems } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
@@ -119,6 +120,8 @@ export async function announceOrderAwaitingPayment(order: ShpOrder): Promise<voi
     // fulfilment stands down for manual methods so this is not sent twice -
     // and the second one would land while the owner was looking at the order,
     // having just pressed the button that sent it.
+    await notifyAdminNewOrder(order, config, 'awaiting-payment')
+
     const adminAlertEmail = config.adminOrderAlertEmail || config.storeEmail
     if (adminAlertEmail) {
       await sendShopEmail('ADMIN_NEW_ORDER_UNPAID', adminAlertEmail, {

@@ -636,7 +636,7 @@ export async function flagOrderForAttention(orderId: string, note: string, opts:
   if (opts.hold) {
     await prisma.$executeRaw`
       UPDATE "shp_orders" SET "status" = 'ON_HOLD', "updated_at" = CURRENT_TIMESTAMP
-      WHERE "id" = ${orderId} AND "status" IN ('PENDING', 'PROCESSING')
+      WHERE "id" = ${orderId} AND "status" IN ('PENDING', 'PROCESSING', 'PREPARING')
     `
   }
   await prisma.$executeRaw`
