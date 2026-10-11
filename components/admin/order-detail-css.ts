@@ -32,7 +32,8 @@ export const orderDetailCss = `
 .sod-panel>.sox-card:last-child{margin-bottom:0}
 .sod-panel[hidden]{display:none}
 .sod-app .sod-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;align-items:stretch;margin-bottom:1rem}
-.sod-app .sod-pair>.sox-card,.sod-app .sod-panels>.sox-card{margin:0}
+.sod-app .sod-pair>.sox-card,.sod-app .sod-pair>.sox-notice,.sod-app .sod-panels>.sox-card{margin:0}
+.sod-solo{margin-bottom:1rem}
 .sod-panels{display:flex;flex-direction:column;gap:1rem;min-width:0}
 .sod-panels>.sox-card:last-child{flex:1}
 .sod-panels:empty{display:none}

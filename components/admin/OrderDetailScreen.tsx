@@ -1215,7 +1215,7 @@ export function OrderDetailScreen({ orderId, children, panels }: {
             {children}
           </section>
           <section className="sod-panel" id="order-delivery" aria-label="Delivery" hidden={section !== 'delivery'}>
-            <div className={dispatch && dispatch.shipments.length > 0 ? 'sod-pair' : undefined}>
+            <div className={dispatch ? 'sod-pair' : 'sod-solo'}>
             <section className="sox-card">
               <div className="sox-card-head">
                 <h2>Delivery address</h2>
@@ -1407,18 +1407,18 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                 </div>
               </section>
             )}
-            </div>
-
             {dispatch && dispatch.shipments.length === 0 && (
               <p className="sox-notice">No parcels recorded yet. Use Dispatch items when the goods are ready to go.</p>
             )}
+            </div>
+
             {/* Something the customer owes on top of the order - a redelivery
                 fee - and their choice of paying it or cancelling instead. */}
             <OrderChargesPanel orderId={orderId} orderStatus={order.status} currencySymbol={currencySymbol} onChanged={refresh} onPendingChange={setPendingCharge} />
 
           </section>
           <section className="sod-panel" id="order-payment" aria-label="Payment and documents" hidden={section !== 'payment'}>
-            <div className={order.billingAddress ? 'sod-pair' : undefined}>
+            <div className={order.billingAddress ? 'sod-pair' : 'sod-solo'}>
             <section className="sox-card">
               <div className="sox-card-head"><h2>Payment</h2></div>
               <div className="sox-card-body">
