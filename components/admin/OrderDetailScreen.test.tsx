@@ -28,6 +28,8 @@ beforeEach(() => {
   pending = false
   manualPayment = false
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  // TabStrip watches its own width; jsdom has no ResizeObserver.
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const body = url.endsWith('/charges') ? {
       charges: pending ? [{ id: 'fee-1', status: 'PENDING', reason: 'Redelivery', total: '24', netAmount: '20', taxAmount: '4', taxRate: '20', cancellationTotal: '0', createdAt: order.createdAt }] : [],
@@ -90,7 +92,8 @@ describe('Order workspace', () => {
     await click('Overview')
     await click('Activity')
     expect(draft.value).toBe('Call before delivery')
-    expect(host.querySelector('[aria-current="page"]')?.textContent).toBe('Activity')
+    expect(panel('activity').hidden).toBe(false)
+    expect(panel('overview').hidden).toBe(true)
   })
   it('surfaces an outstanding charge and takes staff straight to it', async () => {
     pending = true
@@ -105,6 +108,12 @@ describe('Order workspace', () => {
     await render()
     expect(host.querySelector('.sox-orderhead-actions')?.textContent).toContain('Payment received')
     expect(host.querySelector('.sod-inspector')?.textContent).not.toContain('Payment received')
+  })
+  it('offers no Dispatch button while the order is unpaid', async () => {
+    manualPayment = true
+    await render()
+    expect(host.querySelector('.sox-orderhead-actions')?.textContent).not.toContain('Dispatch items')
+    expect(host.querySelector('.sox-orderhead')?.textContent).toContain('Awaiting payment')
   })
   it('retains dispatch and exceptional actions without making them the headline', async () => {
     await render()

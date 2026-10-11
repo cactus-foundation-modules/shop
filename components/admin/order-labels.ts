@@ -22,7 +22,7 @@ export const PAYMENT_STATUS_BADGE: Record<string, Badge> = {
   PARTIALLY_REFUNDED: { cls: 'badge-warning', label: 'Part refunded' },
   REFUNDED: { cls: 'badge-default', label: 'Refunded' },
   FAILED: { cls: 'badge-error', label: 'Payment failed' },
-  AWAITING_CONFIRMATION: { cls: 'badge-info', label: 'Awaiting confirmation' },
+  AWAITING_CONFIRMATION: { cls: 'badge-info', label: 'Awaiting payment' },
 }
 
 // Statuses an owner sets by hand. REFUNDED and PARTIALLY_REFUNDED are left out

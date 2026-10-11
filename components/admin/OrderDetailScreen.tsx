@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
+import { TabStrip } from '@/components/admin/TabStrip'
 import { RefundModal } from '@/modules/shop/components/admin/RefundModal'
 import { OrderChargesPanel } from '@/modules/shop/components/admin/OrderChargesPanel'
 import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
@@ -789,6 +790,10 @@ export function OrderDetailScreen({ orderId, children, panels }: {
     (placedMethod === 'BANK_TRANSFER' || placedMethod === 'CASH') &&
     (order.paymentStatus === 'AWAITING_CONFIRMATION' || order.paymentStatus === 'PENDING')
 
+  // Nothing goes out the door until the money is in, so an unpaid order offers
+  // no Dispatch button. Failed payments are the same story.
+  const paymentOutstanding = ['PENDING', 'AWAITING_CONFIRMATION', 'FAILED'].includes(order.paymentStatus)
+
   // Everything that has happened to this order, in one list, newest first.
   // Notes, emails, parcels and refunds each used to have a section of their own,
   // which meant answering "what happened here?" by reading four lists and doing
@@ -886,10 +891,12 @@ export function OrderDetailScreen({ orderId, children, panels }: {
 
       <div className="sox-orderhead">
         <div>
-          <h1>Order {order.orderNumber}</h1>
-          <p className="sox-orderhead-meta">
-            Placed {formatDateTime(order.createdAt)} ({relativeTime(order.createdAt)})
-          </p>
+          <div className="sox-orderhead-title">
+            <h1>Order {order.orderNumber}</h1>
+            <p className="sox-orderhead-meta">
+              Placed {formatDateTime(order.createdAt)} ({relativeTime(order.createdAt)})
+            </p>
+          </div>
           {/* A replacement read on its own says almost nothing - a part, an
               address, no money. The order it is putting right is the context,
               so it is a link and it is the first thing under the title. */}
@@ -919,7 +926,7 @@ export function OrderDetailScreen({ orderId, children, panels }: {
               <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={confirmPayment}>Payment received</button>
             </>
           )}
-          {hasOutstandingItems && (
+          {hasOutstandingItems && !paymentOutstanding && (
             <button type="button" className="btn btn-primary btn-sm" onClick={() => setDispatchOpen(true)}>Dispatch items</button>
           )}
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEmailOpen(true)}>Email customer</button>
@@ -956,15 +963,8 @@ export function OrderDetailScreen({ orderId, children, panels }: {
             </select>
             <label className="sod-summary-check">
               <input type="checkbox" checked={sendEmailOnChange} onChange={(e) => setSendEmailOnChange(e.target.checked)} />
-              Email the customer when this changes
+              Email the customer
             </label>
-            {/* A replacement's last email is its own, and asks for nothing. */}
-            {order.kind !== 'REPLACEMENT' && (
-              <label className="sod-summary-check">
-                <input type="checkbox" checked={order.askForReview !== false} disabled={busy} onChange={(e) => setAskForReview(e.target.checked)} />
-                Ask for a review in the completion email
-              </label>
-            )}
           </dd>
         </div>
       </dl>
@@ -992,15 +992,13 @@ export function OrderDetailScreen({ orderId, children, panels }: {
           <button type="button" className="sox-copy" onClick={() => setSection('delivery')}>Review delivery</button>
         </p>
       )}
-      <nav className="sod-navigation sox-noprint" aria-label="Order sections">
-        {([
+      <TabStrip
+        className="sod-navigation sox-noprint"
+        items={([
           ['overview', 'Overview'], ['delivery', 'Delivery'],
           ['payment', 'Payment & documents'], ['activity', 'Activity'],
-        ] as const).map(([key, label]) => (
-          <button key={key} type="button" aria-current={section === key ? 'page' : undefined}
-            aria-controls={`order-${key}`} onClick={() => setSection(key)}>{label}</button>
-        ))}
-      </nav>
+        ] as const).map(([key, label]) => ({ key, label, active: section === key, onClick: () => setSection(key) }))}
+      />
       <div className="sod-workspace">
         <div className="sod-main">
           <section className="sod-panel" id="order-overview" aria-label="Order overview" hidden={section !== 'overview'}>
@@ -1777,6 +1775,18 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                   <div className="sox-detail-row">
                     <dt>Phone</dt>
                     <dd><a href={`tel:${order.customerPhone.replace(/\s+/g, '')}`}>{order.customerPhone}</a></dd>
+                  </div>
+                )}
+                {/* A replacement's last email is its own, and asks for nothing. */}
+                {order.kind !== 'REPLACEMENT' && (
+                  <div className="sox-detail-row">
+                    <dt>Review request</dt>
+                    <dd>
+                      <label className="sod-summary-check" style={{ marginTop: 0 }}>
+                        <input type="checkbox" checked={order.askForReview !== false} disabled={busy} onChange={(e) => setAskForReview(e.target.checked)} />
+                        Ask for a review in the completion email
+                      </label>
+                    </dd>
                   </div>
                 )}
                 <div className="sox-detail-row">

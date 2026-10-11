@@ -515,7 +515,7 @@ export function OrdersScreen() {
           <option value="">Any payment</option>
           <option value="UNPAID">Unpaid (still owed)</option>
           <option value="PAID">Paid</option>
-          <option value="AWAITING_CONFIRMATION">Awaiting confirmation</option>
+          <option value="AWAITING_CONFIRMATION">Awaiting payment</option>
           <option value="PARTIALLY_REFUNDED">Part refunded</option>
           <option value="REFUNDED">Refunded</option>
           <option value="FAILED">Payment failed</option>
