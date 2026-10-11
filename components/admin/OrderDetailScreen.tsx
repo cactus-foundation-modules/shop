@@ -450,7 +450,7 @@ function CustomerEmailRow({ email, onCopy }: { email: string; onCopy: () => Prom
       <dd>
         <span className="sod-value-row">
           <a ref={linkRef} href={`mailto:${email}`}>{email}</a>
-          <span ref={buttonRef} className="sod-head-icons sox-noprint" style={wrapped ? { visibility: 'hidden' } : undefined}>{button}</span>
+          <span ref={buttonRef} className="sod-head-icons sox-noprint" style={wrapped ? { visibility: 'hidden', height: 0, overflow: 'hidden', marginTop: '-0.25rem' } : undefined}>{button}</span>
         </span>
       </dd>
     </div>
