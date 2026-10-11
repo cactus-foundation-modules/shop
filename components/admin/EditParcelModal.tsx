@@ -80,6 +80,13 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   // once per parcel. Saying so here stops an owner tidying up a typo and
   // wondering whether they have just emailed the customer all over again.
   const alreadyTold = Boolean(parcel.slotNotifiedAt)
+  // ...unless this save moves it. A customer told one window whose courier has
+  // since rebooked them needs the new one; the server sends it only when the
+  // day or times the customer would read have really changed.
+  const windowMoved = alreadyTold && Boolean(details.deliveryDate && details.deliverySlotStart && details.deliverySlotEnd)
+    && (details.deliveryDate !== (parcel.deliveryDate ?? '')
+      || details.deliverySlotStart !== (parcel.deliverySlotStart ?? '')
+      || details.deliverySlotEnd !== (parcel.deliverySlotEnd ?? ''))
   // A new day on a delayed parcel is the news the delay promised, and goes
   // whatever was told about the window that fell through.
   const answersDelay = Boolean(parcel.delayOpen) && Boolean(details.deliveryDate)
@@ -209,10 +216,15 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
               <input type="checkbox" checked={emailCustomer} onChange={(e) => setEmailCustomer(e.target.checked)} />
               Email the customer their new delivery date
             </label>
+          ) : windowMoved ? (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input type="checkbox" checked={emailCustomer} onChange={(e) => setEmailCustomer(e.target.checked)} />
+              Email the customer their new delivery window
+            </label>
           ) : alreadyTold ? (
             <p style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
               The customer has already been told this delivery window, so saving again will not email
-              them a second time.
+              them a second time. Change the day or times and they will be offered the new one.
             </p>
           ) : (
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

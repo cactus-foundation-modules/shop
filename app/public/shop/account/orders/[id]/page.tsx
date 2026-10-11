@@ -78,6 +78,7 @@ import { Icon, ICON_DOWNLOAD, OrderCard, OrderNote } from '@/modules/shop/compon
 import { OrderProgressRail } from '@/modules/shop/components/public/OrderProgressRail'
 import { CourierFaqModal } from '@/modules/shop/components/public/CourierFaqModal'
 import { OrderItemList } from '@/modules/shop/components/public/OrderItemList'
+import { splitOrderLine } from '@/modules/shop/lib/order-line-charges'
 import { OrderDocuments, type OrderDocument } from '@/modules/shop/components/public/OrderDocuments'
 import { resolveShopMemberOrderPanels } from '@/modules/shop/lib/member-order-panels'
 
@@ -274,6 +275,13 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   const itemsById = new Map(lines.map((line) => [line.item.id, line.item]))
   const decided = requests.filter((request) => request.status !== 'PENDING')
   const itemCount = lines.reduce((sum, line) => sum + line.item.quantity, 0)
+  // Delivery priced per item shows as its own row under each line (see
+  // OrderItemList). On such an order the order's carriage figure is nought, and
+  // a "Delivery £0.00" row under it would tell the customer delivery was free
+  // while the lines above say what it cost - so the row only speaks when there
+  // is carriage to speak about, the same call the invoice makes.
+  const hasLineCharges = lines.some((line) => splitOrderLine(line.item).charges.length > 0)
+  const showCarriage = Number(order.shippingAmount) > 0 || !hasLineCharges
 
   // The method to SPEAK about, which on an unpaid order is the one it was placed
   // with. A customer who started a card payment here and thought better of it
@@ -850,10 +858,12 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                   value={`-${formatMoney(order.discountAmount, symbol)}`}
                 />
               )}
-              <TotalRow
-                label={order.shippingRateName || 'Delivery'}
-                value={formatMoney(order.shippingAmount, symbol)}
-              />
+              {showCarriage && (
+                <TotalRow
+                  label={order.shippingRateName || 'Delivery'}
+                  value={formatMoney(order.shippingAmount, symbol)}
+                />
+              )}
               {Number(order.taxAmount) > 0 && (
                 <TotalRow
                   label={order.taxMode === 'INCLUSIVE' ? 'VAT (included)' : 'VAT'}

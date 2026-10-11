@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { paidPerUnit, requestRefundLines, withinRemaining } from '@/modules/shop/lib/request-refund-lines'
+import { paidPerUnit, paidPerUnitSplit, requestRefundLines, withinRemaining } from '@/modules/shop/lib/request-refund-lines'
 
 // What approving a cancellation or return sends back. Every case here is one a
 // customer holding a bank statement would notice, in one direction or the other.
@@ -91,5 +91,38 @@ describe('withinRemaining', () => {
     const lines = [line('a', 10)]
     expect(withinRemaining(lines, 0)).toEqual(lines)
     expect(withinRemaining(lines, -5)).toEqual(lines)
+  })
+})
+
+describe('paidPerUnitSplit', () => {
+  const order = { taxMode: 'INCLUSIVE' as const, subtotal: '0', discountAmount: '0' }
+
+  it('is all goods on a line with no delivery priced into it', () => {
+    const line = { quantity: 2, unitPrice: '100.00', total: '200.00', taxAmount: '33.33' }
+    expect(paidPerUnitSplit(line, order)).toEqual({ goods: 100, delivery: 0 })
+  })
+
+  it('takes the per-item delivery out of what each unit paid', () => {
+    // Two at 125.95 each, of which 25.95 each is delivery.
+    const line = {
+      quantity: 2, unitPrice: '125.95', total: '251.90', taxAmount: '41.98',
+      lineMeta: { charges: [{ label: 'Delivery', amount: 25.95 }] },
+    }
+    const split = paidPerUnitSplit(line, order)
+    expect(split.goods).toBeCloseTo(100, 2)
+    expect(split.delivery).toBeCloseTo(25.95, 2)
+    expect(split.goods + split.delivery).toBeCloseTo(paidPerUnit(line, order), 8)
+  })
+
+  it('shares a discount and exclusive VAT between the two in proportion', () => {
+    const exclusive = { taxMode: 'EXCLUSIVE' as const, subtotal: '200.00', discountAmount: '20.00' }
+    const line = {
+      quantity: 1, unitPrice: '200.00', total: '200.00', taxAmount: '36.00',
+      lineMeta: { charges: [{ label: 'Delivery', amount: 50 }] },
+    }
+    const split = paidPerUnitSplit(line, exclusive)
+    // Paid: 200 less 10% = 180, plus 36 VAT = 216. A quarter of the line was delivery.
+    expect(split.goods + split.delivery).toBeCloseTo(216, 8)
+    expect(split.delivery).toBeCloseTo(54, 8)
   })
 })

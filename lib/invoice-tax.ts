@@ -115,6 +115,33 @@ export function invoiceChargeRows(lines: ShpInvoiceLine[]): { label: string; amo
   return rows
 }
 
+/** One invoice line with its named charges taken out of its money, for a
+ *  document that prints each charge as a row of its own under the line: the
+ *  goods' own unit price and total, and each charge as a unit price and a line
+ *  amount. A line carrying no charges comes back exactly as stored. */
+export function splitInvoiceLine(line: Pick<ShpInvoiceLine, 'quantity' | 'unitPrice' | 'lineTotal' | 'charges'>): {
+  goodsUnitPrice: number
+  goodsTotal: number
+  charges: { label: string; unitPrice: number; amount: number }[]
+} {
+  const unitPrice = Number(line.unitPrice) || 0
+  const lineTotal = Number(line.lineTotal) || 0
+  const charges = (line.charges ?? [])
+    .map((charge) => ({ label: charge.label, amount: round2(Number(charge.amount) || 0) }))
+    .filter((charge) => charge.amount > 0)
+    .map((charge) => ({
+      ...charge,
+      unitPrice: line.quantity > 0 ? round2(charge.amount / line.quantity) : charge.amount,
+    }))
+  const chargeTotal = charges.reduce((sum, charge) => sum + charge.amount, 0)
+  if (chargeTotal === 0) return { goodsUnitPrice: unitPrice, goodsTotal: lineTotal, charges: [] }
+  return {
+    goodsUnitPrice: line.quantity > 0 ? round2(unitPrice - chargeTotal / line.quantity) : unitPrice,
+    goodsTotal: round2(lineTotal - chargeTotal),
+    charges,
+  }
+}
+
 export type InvoiceMoney = {
   lines: ShpInvoiceLine[]
   taxBreakdown: ShpInvoiceTaxRow[]

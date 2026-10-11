@@ -189,6 +189,12 @@ export const INVOICE_DOC_CSS = `
 .shp-inv-sku { display: block; font-size: var(--shp-inv-sku-size, 0.8125rem); color: var(--color-text-muted); }
 .shp-inv-detail { list-style: none; margin: 0.25rem 0 0; padding: 0; display: grid; gap: 0.125rem; font-size: var(--shp-inv-detail-size, 0.8125rem); color: var(--color-text-muted); }
 .shp-inv-detail span { font-weight: 500; }
+/* A line's per-item delivery, as a row of its own tucked under the line: no
+   rule between the two, quieter type, indented a touch. */
+.shp-inv-lines tr.shp-inv-has-charges > td,
+.shp-inv-lines tr.shp-inv-charge-row:not(.is-last) > td { border-bottom: 0; padding-bottom: 0.25rem; }
+.shp-inv-lines tr.shp-inv-charge-row > td { padding-top: 0.125rem; font-size: var(--shp-inv-detail-size, 0.8125rem); color: var(--color-text-muted); }
+.shp-inv-lines tr.shp-inv-charge-row > td:first-child { padding-left: 1rem; }
 .shp-inv-empty { color: var(--color-text-muted); padding: 1.25rem 0; }
 
 .shp-inv-totals { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem 1.5rem; margin: 1.25rem 0 0; margin-left: auto; max-width: 22rem; font-size: var(--shp-inv-totals-size, 0.9375rem); }

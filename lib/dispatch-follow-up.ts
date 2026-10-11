@@ -92,7 +92,8 @@ export function trackingLinkFor(
 
 /**
  * Tell the customer their delivery window, if this save is the moment it became
- * knowable and nobody has been told yet.
+ * knowable and nobody has been told yet - or if it CHANGED the window they
+ * were told.
  *
  * A day on its own is not enough: "your delivery is confirmed" with no window
  * in it is the dispatch note again, and the second email is only worth sending
@@ -100,26 +101,54 @@ export function trackingLinkFor(
  *
  * The claim is taken BEFORE the send and never given back. A mail server that
  * refuses the message has not made the parcel undelivered, and retrying it on
- * the owner's next save - which is usually a typo correction - would land a
- * second copy in front of a customer who already had the first.
+ * the owner's next save would land a second copy in front of a customer who
+ * already had the first.
+ *
+ * A window that has moved is different news. A customer told Monday 08:15 to
+ * 10:15 whose courier has rebooked them for the afternoon has to hear it, so
+ * when `before` is given and the booking as the customer reads it (the typed
+ * window, or the courier's own) differs from the one being saved, the stamp is
+ * retaken and the email goes again. A save that changes nothing about the day
+ * or times - a note, a tracking link - still sends nothing. Two staff saving
+ * the same change at once cannot both send it: the second save's `before` is
+ * the first one's result, so it sees no change.
  */
 export async function maybeSendSlotEmail(
   orderId: string,
   shipment: ShpShipmentWithItems,
   wanted: boolean,
+  before?: ShpShipmentWithItems,
 ): Promise<boolean> {
   if (!wanted || shipment.quietCustomerEmails) return false
   if (!shipment.deliveryDate || !shipment.deliverySlotStart || !shipment.deliverySlotEnd) return false
-  if (shipment.slotNotifiedAt) return false
-  if (!(await claimSlotNotification(shipment.id, orderId))) return false
+  const timezone = await getSiteTimezone()
+  if (shipment.slotNotifiedAt) {
+    if (!before || !bookingMoved(before, shipment, timezone)) return false
+    await setSlotNotification(shipment.id, orderId, true)
+  } else if (!(await claimSlotNotification(shipment.id, orderId))) {
+    return false
+  }
 
   try {
-    const timezone = await getSiteTimezone()
     await sendDeliverySlotEmail({ orderId, shipmentId: shipment.id, timezone })
   } catch (error) {
     console.error('[shop] delivery slot email failed', error)
   }
   return true
+}
+
+/** Whether the day or window the customer would read off the parcel differs
+ *  between two versions of it. Read through deliveryBookingForShipment, so a
+ *  window typed over the courier's own counts as a change only when the times
+ *  actually differ from the ones the courier gave. */
+export function bookingMoved(
+  before: ShpShipmentWithItems,
+  after: ShpShipmentWithItems,
+  timezone: string,
+): boolean {
+  const was = deliveryBookingForShipment(before, timezone)
+  const now = deliveryBookingForShipment(after, timezone)
+  return was.date !== now.date || was.slotStart !== now.slotStart || was.slotEnd !== now.slotEnd
 }
 
 /**

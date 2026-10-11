@@ -98,6 +98,15 @@ export const ORDER_CONFIRMATION_CSS = `
   font-size:0.8125rem;color:var(--color-text-secondary);grid-column:2}
 .soc-item-meta span{font-weight:600;color:var(--color-text)}
 .soc-item-meta a{color:var(--color-primary)}
+/* A line's per-item delivery, as its own priced row under the line, its price
+   in the price column. Same shape as the account order page's .sod-item-charges. */
+.soc-item-charges{list-style:none;margin:0.5rem 0 0;padding:0;display:grid;gap:0.25rem;
+  grid-column:2/-1;font-size:0.8125rem;color:var(--color-text-secondary)}
+.soc-item-charges li{display:flex;justify-content:space-between;gap:1rem;align-items:baseline}
+.soc-item-charge-name{min-width:0;overflow-wrap:anywhere}
+.soc-item-charge-name>span:first-child{font-weight:600;color:var(--color-text)}
+.soc-item-charge-qty{font-variant-numeric:tabular-nums}
+.soc-item-charge-price{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--color-text)}
 
 /* --- Totals ------------------------------------------------------------ */
 .soc-totals{display:grid;grid-template-columns:1fr auto;gap:0.375rem 1.5rem;margin:0;

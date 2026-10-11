@@ -241,7 +241,7 @@ async function updateDelivery(
   // window that fell through stops blocking the next one.
   if ((await newDayAfterDelay(orderId, before, after, tell)) !== null) return true
   if (!tell) return true
-  await maybeSendSlotEmail(orderId, after, true)
+  await maybeSendSlotEmail(orderId, after, true, before)
   await maybeSendDayEmail(orderId, before, after, true)
   return true
 }

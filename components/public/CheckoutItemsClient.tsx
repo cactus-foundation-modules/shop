@@ -24,6 +24,10 @@ type ValidatedLine = {
   imageUrl: string | null
   lineMeta: LineMeta | null
   displayTitle: { name: string; secondary?: string } | null
+  /** Services priced into the line (a delivery tier priced per item), as line
+   *  totals already inside `lineSubtotal`. Optional so an older cached
+   *  response still renders, as one undivided price. */
+  charges?: { label: string; amount: number }[] | null
 }
 
 type Note = { id: string; text: string }
@@ -303,6 +307,16 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
                 const own = line.batch?.id === batch.id ? line.batch : null
                 const fields = (line.lineMeta?.fields ?? []).filter((f) => !own || !batch.fieldLabel || f.label !== batch.fieldLabel)
                 const detail = !batch.uniform ? own?.detail : undefined
+                // A delivery service priced per item gets a priced row of its
+                // own under the line - the same split the thank-you page, the
+                // emails and the invoice make - so the goods show their own
+                // price and the money still adds up to the line.
+                const charges = (line.charges ?? []).filter((c) => c.amount > 0)
+                const chargeTotal = charges.reduce((sum, c) => sum + c.amount, 0)
+                const goodsPrice = Math.round((line.lineSubtotal - chargeTotal + Number.EPSILON) * 100) / 100
+                const sameLabel = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+                const shownFields = fields.filter((f) => !charges.some((c) => sameLabel(c.label, f.label)))
+                const allFields = line.lineMeta?.fields ?? []
                 return (
                   <li key={line.lineId ?? line.productId} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '0.75rem', alignItems: 'start', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
                     {line.imageUrl ? (
@@ -329,7 +343,7 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
                       )}
                       {/* Per-line choices a resolver persisted, minus the one the
                           heading above already carries. */}
-                      {fields.map((field) => (
+                      {shownFields.map((field) => (
                         <span key={`${field.label}:${field.value}`} style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>
                           {field.label}: {field.value}
                         </span>
@@ -338,7 +352,24 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
                         <span style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{line.availabilityReason ?? 'No longer available'}</span>
                       )}
                     </div>
-                    <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{money(line.lineSubtotal)}</span>
+                    <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{money(goodsPrice)}</span>
+                    {charges.map((charge) => {
+                      const named = allFields.find((f) => sameLabel(f.label, charge.label))
+                      const unit = line.quantity > 0 ? Math.round((charge.amount / line.quantity + Number.EPSILON) * 100) / 100 : charge.amount
+                      return (
+                        <div
+                          key={charge.label}
+                          style={{ gridColumn: '2 / -1', display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'baseline', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}
+                        >
+                          <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                            <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{charge.label}</span>
+                            {named?.value ? `: ${named.value}` : ''}
+                            {line.quantity > 1 && <span style={{ fontVariantNumeric: 'tabular-nums' }}> · {money(unit)} × {line.quantity}</span>}
+                          </span>
+                          <span style={{ fontWeight: 600, whiteSpace: 'nowrap', color: 'var(--color-text)' }}>{money(charge.amount)}</span>
+                        </div>
+                      )
+                    })}
                   </li>
                 )
               })}

@@ -9,6 +9,7 @@ import { withImagePickerFields } from '@/lib/puck/MediaPickerField'
 import { registerEditorFields } from '@/lib/puck/fields/editor'
 import { emptyDescriptionPuck } from '@/modules/shop/components/admin/description-builder/shared'
 import type { PuckData } from '@/modules/shop/lib/types'
+import { useConfirm } from '@/modules/shop/components/admin/dialogs'
 
 // The shared full-screen description builder. Products design a product
 // description with it (shp_products.description_puck) and categories design a
@@ -79,6 +80,9 @@ export function StandaloneDescriptionBuilder({
   const data = useMemo(() => (initialData ?? emptyDescriptionPuck) as Data, [initialData])
 
   const [dirty, setDirty] = useState(false)
+  const [confirm, confirmNode] = useConfirm()
+  // Set once the owner has said leave, so the browser's own guard does not ask again.
+  const leavingRef = useRef(false)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -122,16 +126,26 @@ export function StandaloneDescriptionBuilder({
   // while an edit is unsaved. The Back link handles in-app navigation separately.
   useEffect(() => {
     if (!dirty) return
-    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Already asked by our own dialog on the way out through Back.
+      if (leavingRef.current) return
+      e.preventDefault(); e.returnValue = ''
+    }
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [dirty])
 
+  // The shop's own dialog answers after the click has gone, so the click is
+  // held whenever there is something to lose and the page left by hand on a yes.
   const onBackClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (dirty && !window.confirm(unsavedMessage)) {
-      e.preventDefault()
-    }
-  }, [dirty, unsavedMessage])
+    if (!dirty) return
+    e.preventDefault()
+    void confirm({ title: 'Unsaved changes', message: unsavedMessage, confirmLabel: 'Leave' }).then((leave) => {
+      if (!leave) return
+      leavingRef.current = true
+      window.location.assign(backHref)
+    })
+  }, [dirty, unsavedMessage, confirm, backHref])
 
   // The site's design tokens, injected as a <style> tag so the canvas renders
   // headings/text/colours the way the storefront will. Same appearance fetch the
@@ -190,6 +204,7 @@ export function StandaloneDescriptionBuilder({
 
   return (
     <div className="spe-desc-standalone">
+      {confirmNode}
       <header className="spe-desc-standalone-bar">
         <a href={backHref} className="btn btn-secondary btn-sm" onClick={onBackClick}>← {backLabel}</a>
         <div className="spe-desc-standalone-title">

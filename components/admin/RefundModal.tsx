@@ -4,9 +4,13 @@ import { useState } from 'react'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { refundNoticeText, type ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
-import { paidPerUnit } from '@/modules/shop/lib/request-refund-lines'
+import { paidPerUnitSplit } from '@/modules/shop/lib/request-refund-lines'
 
-type OrderItem = { id: string; productName: string; quantity: number; unitPrice: string; total: string; taxAmount: string; refundedQty: number; isPreOrder: boolean }
+type OrderItem = {
+  id: string; productName: string; quantity: number; unitPrice: string; total: string; taxAmount: string; refundedQty: number; isPreOrder: boolean
+  /** The line's record, for the per-item delivery priced into it (lineMeta.charges). */
+  lineMeta?: { charges?: unknown } | null
+}
 
 // What one unit of a line actually cost the customer - VAT included on an
 // EXCLUSIVE shop, and less its share of any order-level discount. The same
@@ -36,7 +40,15 @@ export function RefundModal({ orderId, items, paymentMethod, refundNotice, taxMo
   onClose: () => void
   onDone: () => void
 }) {
-  const perUnit = (item: OrderItem) => paidPerUnit(item, { taxMode, subtotal, discountAmount })
+  const split = (item: OrderItem) => paidPerUnitSplit(item, { taxMode, subtotal, discountAmount })
+  // What one unit sends back: the goods always, and the delivery priced into
+  // the line only where the owner has ticked it for that line. A returned chair
+  // has usually had its delivery made, so that is never assumed - the same
+  // reasoning as the order-wide delivery tick below.
+  const perUnit = (item: OrderItem) => {
+    const { goods, delivery } = split(item)
+    return goods + (lineDelivery[item.id] ? delivery : 0)
+  }
   const currencySymbol = useCurrencySymbol()
   const notice = refundNoticeText(paymentMethod, refundNotice ?? null)
   // A refund somebody has to send themselves is the one worth reading, so it
@@ -53,6 +65,8 @@ export function RefundModal({ orderId, items, paymentMethod, refundNotice, taxMo
   // is owed its delivery back; a single returned chair usually is not - so it
   // is the owner's tick, never assumed.
   const [withDelivery, setWithDelivery] = useState(false)
+  // The same choice for each line's own per-item delivery, line by line.
+  const [lineDelivery, setLineDelivery] = useState<Record<string, boolean>>({})
   // A refund already made in the provider's own dashboard. The provider never
   // says which items it was for, so this is how the owner tells the shop - and
   // then the stock, the credit note and the books follow as for any refund,
@@ -110,13 +124,33 @@ export function RefundModal({ orderId, items, paymentMethod, refundNotice, taxMo
           )}
           {error && <p style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}>{error}</p>}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}><th style={{ padding: '0.375rem' }}>Item</th><th>Remaining</th><th>Refund qty</th></tr></thead>
+            <thead><tr style={{ textAlign: 'left', borderBottom: '1px solid var(--color-border)' }}><th style={{ padding: '0.375rem' }}>Item</th><th>Remaining</th><th>Refund qty</th><th style={{ textAlign: 'right', padding: '0.375rem' }}>Amount</th></tr></thead>
             <tbody>
               {refundable.map((item) => {
                 const remaining = item.quantity - item.refundedQty
+                const { goods, delivery } = split(item)
+                const qty = quantities[item.id] ?? 0
                 return (
-                  <tr key={item.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                    <td style={{ padding: '0.375rem' }}>{item.productName}</td>
+                  <tr key={item.id} style={{ borderBottom: '1px solid var(--color-border)', verticalAlign: 'top' }}>
+                    <td style={{ padding: '0.375rem' }}>
+                      {item.productName}
+                      {/* The goods and the delivery priced into the line, each
+                          at what was actually paid for it, and the delivery
+                          only coming back if it is ticked. */}
+                      {delivery > 0 && (
+                        <span style={{ display: 'block', fontSize: '0.8125rem', color: 'var(--color-text-secondary)', marginTop: '0.25rem' }}>
+                          {formatMoney(goods, currencySymbol)} each, plus {formatMoney(delivery, currencySymbol)} delivery
+                          <label style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', marginTop: '0.25rem', color: 'var(--color-text)' }}>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(lineDelivery[item.id])}
+                              onChange={(e) => setLineDelivery((prev) => ({ ...prev, [item.id]: e.target.checked }))}
+                            />
+                            Refund its delivery too
+                          </label>
+                        </span>
+                      )}
+                    </td>
                     <td>{remaining}</td>
                     <td>
                       <input
@@ -124,6 +158,9 @@ export function RefundModal({ orderId, items, paymentMethod, refundNotice, taxMo
                         onChange={(e) => setQuantities((prev) => ({ ...prev, [item.id]: Math.max(0, Math.min(remaining, Number(e.target.value))) }))}
                         style={{ width: 60, padding: '0.25rem 0.5rem', borderRadius: 6, border: '1px solid var(--color-border)' }}
                       />
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '0.375rem', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                      {qty > 0 ? formatMoney(perUnit(item) * qty, currencySymbol) : '-'}
                     </td>
                   </tr>
                 )

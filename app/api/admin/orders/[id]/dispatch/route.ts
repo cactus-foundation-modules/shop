@@ -406,7 +406,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ shipment, slotEmailSent: false, dayEmailSent: told, trackingEmailSent: trackingTold })
   }
 
-  const notified = await maybeSendSlotEmail(id, shipment, emailCustomer !== false)
+  const notified = await maybeSendSlotEmail(id, shipment, emailCustomer !== false, existing)
   const dayTold = await maybeSendDayEmail(id, existing, shipment, emailCustomer !== false)
   // `existing` is the row as it was BEFORE this save - read above for the window
   // check - which is the only way to tell "tracking has just been added" from

@@ -172,6 +172,15 @@ export const ORDER_DETAIL_CSS = `
   font-size:0.8125rem;color:var(--color-text-secondary);grid-column:2}
 .sod-item-meta span{font-weight:600;color:var(--color-text)}
 .sod-item-meta a{color:var(--color-primary)}
+/* A line's per-item delivery, as its own priced row under the line, its price
+   in the price column. */
+.sod-item-charges{list-style:none;margin:0.5rem 0 0;padding:0;display:grid;gap:0.25rem;
+  grid-column:2/-1;font-size:0.8125rem;color:var(--color-text-secondary)}
+.sod-item-charges li{display:flex;justify-content:space-between;gap:1rem;align-items:baseline}
+.sod-item-charge-name{min-width:0;overflow-wrap:anywhere}
+.sod-item-charge-name>span:first-child{font-weight:600;color:var(--color-text)}
+.sod-item-charge-qty{font-variant-numeric:tabular-nums}
+.sod-item-charge-price{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--color-text)}
 /* State on the left, the one thing to do on the right. They used to share a
    single wrapped flex row, so "Dispatched" and "Buy it again" read as two
    badges of equal standing. */

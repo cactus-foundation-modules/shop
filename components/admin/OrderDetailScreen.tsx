@@ -3,6 +3,12 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { TabStrip } from '@/components/admin/TabStrip'
+import { AdminTooltip } from '@/components/admin/Tooltip'
+import { OrderMoreMenu } from '@/modules/shop/components/admin/OrderMoreMenu'
+import {
+  BackIcon, BanknoteIcon, BellIcon, BooksIcon, ClockIcon, CopyIcon, CrossIcon, DownloadIcon, EyeIcon,
+  MailIcon, NewTabIcon, PenIcon, TickIcon, TruckIcon, UndoIcon, VoidIcon,
+} from '@/modules/shop/components/admin/order-icons'
 import { RefundModal } from '@/modules/shop/components/admin/RefundModal'
 import { OrderChargesPanel } from '@/modules/shop/components/admin/OrderChargesPanel'
 import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
@@ -32,7 +38,7 @@ import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-
 import { useAlert, useConfirm, usePrompt } from '@/modules/shop/components/admin/dialogs'
 import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
 import { dpdShortCodeFromUrl } from '@/modules/shop/lib/tracking/dpd'
-import { orderChargeRows, splitOrderLine } from '@/modules/shop/lib/order-line-charges'
+import { splitOrderLine } from '@/modules/shop/lib/order-line-charges'
 
 type LineMetaField = { label: string; value: string; href?: string }
 type OrderItem = {
@@ -345,6 +351,71 @@ type CreditNoteState = {
   nettedRefundIds?: string[]
   /** Whether anything has been invoiced yet. */
   invoiced?: boolean
+}
+
+/** A button that is only an icon, with the house tooltip saying what it does
+ *  and the same words hidden for a screen reader. */
+function IconAction({ label, icon, onClick, disabled, quiet }: {
+  label: string
+  icon: React.ReactNode
+  onClick: () => void
+  disabled?: boolean
+  /** No glass until hovered - for a pair of marks beside a value, not a toolbar. */
+  quiet?: boolean
+}) {
+  return (
+    <AdminTooltip body={label}>
+      <button type="button" className={quiet ? 'sod-icon-btn sod-icon-btn-quiet' : 'sod-icon-btn'} disabled={disabled} onClick={onClick}>
+        {icon}
+        <span className="sr-only">{label}</span>
+      </button>
+    </AdminTooltip>
+  )
+}
+
+/** The same, as a link: a document to view in a new tab, or a file to save. */
+function IconLink({ label, icon, href, newTab }: {
+  label: string
+  icon: React.ReactNode
+  href: string
+  newTab?: boolean
+}) {
+  return (
+    <AdminTooltip body={label}>
+      <a
+        className="sod-icon-btn"
+        href={href}
+        {...(newTab ? { target: '_blank', rel: 'noreferrer' } : {})}
+      >
+        {icon}
+        <span className="sr-only">{label}</span>
+      </a>
+    </AdminTooltip>
+  )
+}
+
+/** A copy button that answers with a tick for a moment once it has worked.
+ *  `onCopy` says whether it did - a refusal is already explained by the
+ *  caller's own alert, and a tick on top of that would be a lie. */
+function CopyAction({ label, onCopy }: { label: string; onCopy: () => Promise<boolean> }) {
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const timer = window.setTimeout(() => setCopied(false), 1500)
+    return () => window.clearTimeout(timer)
+  }, [copied])
+  return (
+    <AdminTooltip body={copied ? 'Copied' : label}>
+      <button
+        type="button"
+        className="sod-icon-btn sod-icon-btn-quiet"
+        onClick={async () => { if (await onCopy()) setCopied(true) }}
+      >
+        {copied ? TickIcon : CopyIcon}
+        <span className="sr-only">{label}</span>
+      </button>
+    </AdminTooltip>
+  )
 }
 
 export function OrderDetailScreen({ orderId, children, panels }: {
@@ -728,11 +799,13 @@ export function OrderDetailScreen({ orderId, children, panels }: {
     refresh()
   }
 
-  async function copy(text: string, what: string) {
+  async function copy(text: string, what: string): Promise<boolean> {
     try {
       await navigator.clipboard.writeText(text)
+      return true
     } catch {
       await alert(`${what} could not be copied - your browser would not allow it. It is: ${text}`)
+      return false
     }
   }
 
@@ -752,14 +825,12 @@ export function OrderDetailScreen({ orderId, children, panels }: {
   // item) taken back out, so the goods, the delivery and the totals each show
   // their own money - the figures the customer saw in the basket.
   const splitLines = new Map(data.items.map((i) => [i.id, splitOrderLine(i)]))
-  const chargeRows = orderChargeRows([...splitLines.values()])
-  const chargeTotal = chargeRows.reduce((sum, c) => sum + c.amount, 0)
-  const goodsSubtotal = Math.round((Number(order.subtotal) - chargeTotal + Number.EPSILON) * 100) / 100
+  const hasLineCharges = [...splitLines.values()].some((l) => l.charges.length > 0)
   // The order's own carriage row. On a shop that prices delivery per item it is
   // nought while the lines carry plenty, so it only speaks when there is carriage
   // to speak about - or when nothing else says what delivery cost. The invoice
   // makes the same call (components/puck/invoice-parts.tsx).
-  const showCarriage = Number(order.shippingAmount) > 0 || chargeRows.length === 0
+  const showCarriage = Number(order.shippingAmount) > 0 || !hasLineCharges
   const requests = data.requests ?? []
   const waitingRequests = requests.filter((r) => r.status === 'PENDING').length
   const replacementNumbers = new Map((data.replacements ?? []).map((r) => [r.id, r.orderNumber]))
@@ -887,11 +958,16 @@ export function OrderDetailScreen({ orderId, children, panels }: {
     <div className="sod-app">
       <style dangerouslySetInnerHTML={{ __html: ordersScreenCss + orderDetailCss }} />
 
-      <a className="sox-back" href={`/${adminPath}/m/shop/orders`}>← All orders</a>
-
       <div className="sox-orderhead">
         <div>
           <div className="sox-orderhead-title">
+            {/* The way back to the list, drawn as the inbox draws its own on a
+                phone: a chevron in glass, with the word while there is room. */}
+            <a className="sod-back sox-noprint" href={`/${adminPath}/m/shop/orders`}>
+              <span aria-hidden="true">{BackIcon}</span>
+              <span className="sod-back-words" aria-hidden="true">Back</span>
+              <span className="sr-only">Back to all orders</span>
+            </a>
             <h1>Order {order.orderNumber}</h1>
             <p className="sox-orderhead-meta">
               Placed {formatDateTime(order.createdAt)} ({relativeTime(order.createdAt)})
@@ -919,29 +995,38 @@ export function OrderDetailScreen({ orderId, children, panels }: {
             )}
           </div>
         </div>
+        {/* Icons in capsules, the way the inbox draws the actions on a
+            conversation: the two that settle a manual payment share one, the
+            rest stand alone, and the occasional ones live behind the dots. */}
         <div className="sox-orderhead-actions">
           {awaitingManualPayment && (
-            <>
-              <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={sendPaymentReminder}>Payment reminder</button>
-              <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={confirmPayment}>Payment received</button>
-            </>
+            <div className="sod-action-group" role="group" aria-label="Payment">
+              <IconAction label="Send a payment reminder" icon={BellIcon} disabled={busy} onClick={sendPaymentReminder} />
+              <IconAction label="Mark as paid" icon={BanknoteIcon} disabled={busy} onClick={confirmPayment} />
+            </div>
           )}
           {hasOutstandingItems && !paymentOutstanding && (
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => setDispatchOpen(true)}>Dispatch items</button>
-          )}
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEmailOpen(true)}>Email customer</button>
-          <details className="sod-more sox-noprint">
-            <summary>More actions</summary>
-            <div className="sod-more-menu">
-          {order.kind !== 'REPLACEMENT' && (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReplacementOpen(true)}>Send a replacement</button>
-          )}
-          {hasRefundableItems && (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRefundOpen(true)}>Refund</button>
-          )}
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => window.print()}>Print</button>
+            <div className="sod-action-group" role="group" aria-label="Dispatch">
+              <IconAction label="Dispatch items" icon={TruckIcon} onClick={() => setDispatchOpen(true)} />
             </div>
-          </details>
+          )}
+          <div className="sod-action-group" role="group" aria-label="Customer">
+            <IconAction label="Email the customer" icon={MailIcon} onClick={() => setEmailOpen(true)} />
+          </div>
+          <div className="sod-action-group sox-noprint">
+            <OrderMoreMenu
+              items={[
+                ...(order.kind !== 'REPLACEMENT'
+                  ? [{ key: 'replacement', label: 'Send a replacement', onSelect: () => setReplacementOpen(true) }]
+                  : []),
+                { key: 'print', label: 'Print', onSelect: () => window.print() },
+                // Money going back out, a step apart from the rest.
+                ...(hasRefundableItems
+                  ? [{ key: 'refund', label: 'Refund', separated: true, onSelect: () => setRefundOpen(true) }]
+                  : []),
+              ]}
+            />
+          </div>
         </div>
       </div>
 
@@ -992,15 +1077,19 @@ export function OrderDetailScreen({ orderId, children, panels }: {
           <button type="button" className="sox-copy" onClick={() => setSection('delivery')}>Review delivery</button>
         </p>
       )}
-      <TabStrip
-        className="sod-navigation sox-noprint"
-        items={([
-          ['overview', 'Overview'], ['delivery', 'Delivery'],
-          ['payment', 'Payment & documents'], ['activity', 'Activity'],
-        ] as const).map(([key, label]) => ({ key, label, active: section === key, onClick: () => setSection(key) }))}
-      />
       <div className="sod-workspace">
         <div className="sod-main">
+          {/* The tabs head the order's own column rather than the whole page:
+              the Customer card beside them is the same on every tab, so its
+              top lines up with theirs instead of sitting under a strip that
+              never changes it. */}
+          <TabStrip
+            className="sod-navigation sox-noprint"
+            items={([
+              ['overview', 'Overview'], ['delivery', 'Delivery'],
+              ['payment', 'Payment & documents'], ['activity', 'Activity'],
+            ] as const).map(([key, label]) => ({ key, label, active: section === key, onClick: () => setSection(key) }))}
+          />
           <section className="sod-panel" id="order-overview" aria-label="Order overview" hidden={section !== 'overview'}>
             {/* What the customer has told us about this order. First in the column
                 while anything is still waiting, because a photograph of a broken
@@ -1039,14 +1128,18 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                       const inTransitQty = Math.max(0, (line?.dispatchedQty ?? 0) - deliveredQty)
                       const split = splitLines.get(item.id) ?? splitOrderLine(item)
                       const storefrontHref = item.productId ? data.storefrontHrefs?.[item.productId] : undefined
-                      // A charge sits beside the detail row it is the price of
-                      // (the "Delivery" line naming the service), matched on its
-                      // label. One with no row of its own gets a row to itself.
-                      const chargeFor = (label: string) => split.charges.find((c) => c.label.trim().toLowerCase() === label.trim().toLowerCase())
-                      const fields = item.lineMeta?.fields ?? []
-                      const looseCharges = split.charges.filter((c) => !fields.some((f) => f.label.trim().toLowerCase() === c.label.trim().toLowerCase()))
+                      // Each charge folded into the line (the delivery service
+                      // it went by) gets a row of its own under it, with its
+                      // own unit price, quantity and total, so the money reads
+                      // down the table rather than turning up as a line in
+                      // Totals. The detail row naming the service ("Delivery:
+                      // Kerbside") moves onto that row, matched on its label.
+                      const sameLabel = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+                      const allFields = item.lineMeta?.fields ?? []
+                      const fields = allFields.filter((f) => !split.charges.some((c) => sameLabel(c.label, f.label)))
                       return (
-                        <tr key={item.id}>
+                        <Fragment key={item.id}>
+                        <tr className={split.charges.length > 0 ? 'sod-has-charges' : undefined}>
                           <td>
                             {/* The page the customer bought it from, in a new tab -
                                 not the product editor, which for a variation is
@@ -1057,21 +1150,12 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                               <span className="sox-item-name">{item.productName}</span>
                             )}
                             {item.productSku && <p className="sox-sub sox-mono">{item.productSku}</p>}
-                            {fields.length > 0 || looseCharges.length > 0 ? (
+                            {fields.length > 0 ? (
                               <ul className="sox-meta-list">
-                                {fields.map((f, i) => {
-                                  const charge = chargeFor(f.label)
-                                  return (
-                                    <li key={i}>
-                                      <b>{f.label}:</b>{' '}
-                                      {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
-                                      {charge && <> · <b>{formatMoney(charge.amount, currencySymbol)}</b></>}
-                                    </li>
-                                  )
-                                })}
-                                {looseCharges.map((c) => (
-                                  <li key={`charge-${c.label}`}>
-                                    <b>{c.label}:</b> {formatMoney(c.amount, currencySymbol)}
+                                {fields.map((f, i) => (
+                                  <li key={i}>
+                                    <b>{f.label}:</b>{' '}
+                                    {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
                                   </li>
                                 ))}
                               </ul>
@@ -1104,6 +1188,25 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                           <td className="sox-num">{item.quantity}</td>
                           <td className="sox-num">{formatMoney(split.goodsTotal, currencySymbol)}</td>
                         </tr>
+                        {split.charges.map((charge, i) => {
+                          const field = allFields.find((f) => sameLabel(f.label, charge.label))
+                          // Stored per unit; the line total is what was charged
+                          // (capped at the line, see order-line-charges), so the
+                          // unit figure is worked back from it.
+                          const unit = item.quantity > 0 ? Math.round((charge.amount / item.quantity + Number.EPSILON) * 100) / 100 : charge.amount
+                          return (
+                            <tr key={`${item.id}-charge-${charge.label}`} className={`sod-charge-row${i === split.charges.length - 1 ? ' is-last' : ''}`}>
+                              <td>
+                                <b>{charge.label}</b>
+                                {field?.value ? <>: {field.href ? <a href={field.href} target="_blank" rel="noopener noreferrer">{field.value}</a> : field.value}</> : null}
+                              </td>
+                              <td className="sox-num">{formatMoney(unit, currencySymbol)}</td>
+                              <td className="sox-num">{item.quantity}</td>
+                              <td className="sox-num">{formatMoney(charge.amount, currencySymbol)}</td>
+                            </tr>
+                          )
+                        })}
+                        </Fragment>
                       )
                     })}
                   </tbody>
@@ -1117,17 +1220,10 @@ export function OrderDetailScreen({ orderId, children, panels }: {
               <div className="sox-card-head"><h2>Totals</h2></div>
               <div className="sox-card-body">
                 <dl className="sox-totals">
-                  <dt>Subtotal</dt><dd>{formatMoney(goodsSubtotal, currencySymbol)}</dd>
-                  {/* What the lines paid for services priced per item - the
-                      delivery tier each one went by - under the name the module
-                      that charged it gave. Already inside the total, so these
-                      come out of the subtotal rather than being added to it. */}
-                  {chargeRows.map((charge) => (
-                    <Fragment key={charge.label}>
-                      <dt>{charge.label}</dt>
-                      <dd>{formatMoney(charge.amount, currencySymbol)}</dd>
-                    </Fragment>
-                  ))}
+                  {/* The lines as listed above, delivery rows included - each
+                      line's delivery has its own row in Items now, so it is
+                      not repeated down here. */}
+                  <dt>Subtotal</dt><dd>{formatMoney(order.subtotal, currencySymbol)}</dd>
                   {Number(order.discountAmount) > 0 && (
                     <>
                       <dt>Discount{order.couponCode ? ` (${order.couponCode})` : ''}</dt>
@@ -1202,7 +1298,7 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                             {d.expiresAt ? ` · link expires ${formatDate(d.expiresAt)}` : ' · link does not expire'}
                           </p>
                         </div>
-                        <button type="button" className="sox-copy" onClick={() => copy(`${window.location.origin}/shop/downloads/${d.token}`, 'The download link')}>Copy link</button>
+                        <CopyAction label="Copy the download link" onCopy={() => copy(`${window.location.origin}/shop/downloads/${d.token}`, 'The download link')} />
                       </li>
                     ))}
                   </ul>
@@ -1218,9 +1314,14 @@ export function OrderDetailScreen({ orderId, children, panels }: {
               <div className="sox-card-head">
                 <h2>Delivery address</h2>
                 {addressDraft === null && (
-                  <span style={{ display: 'flex', gap: '0.375rem' }}>
-                    <button type="button" className="sox-copy sox-noprint" onClick={() => copy(addressLines(order.shippingAddress).join('\n'), 'The address')}>Copy</button>
-                    <button type="button" className="sox-copy sox-noprint" onClick={() => { setEmailAddressChange(false); setAddressDraft({ ...order.shippingAddress }) }}>Edit</button>
+                  <span className="sod-head-icons sox-noprint">
+                    <CopyAction label="Copy the address" onCopy={() => copy(addressLines(order.shippingAddress).join('\n'), 'The address')} />
+                    <IconAction
+                      quiet
+                      label="Edit the address"
+                      icon={PenIcon}
+                      onClick={() => { setEmailAddressChange(false); setAddressDraft({ ...order.shippingAddress }) }}
+                    />
                   </span>
                 )}
               </div>
@@ -1390,14 +1491,17 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                             </>
                           )}
                         </div>
-                        <div className="sod-stack">
-                        {!shipment.deliveredAt && !shipment.signedAt && !shipment.signedBy?.trim() && order.status !== 'COMPLETED' && (
-                          <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => setDelayParcelId(shipment.id)}>
-                            {shipment.delayOpen === 'rebooking' ? 'Add new date' : 'Report delay'}
-                          </button>
-                        )}
-                        <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => setEditingParcelId(shipment.id)}>Edit tracking</button>
-                        <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => undoDispatch(shipment)}>Undo</button>
+                        <div className="sod-action-group sox-noprint" role="group" aria-label="This parcel">
+                          {!shipment.deliveredAt && !shipment.signedAt && !shipment.signedBy?.trim() && order.status !== 'COMPLETED' && (
+                            <IconAction
+                              label={shipment.delayOpen === 'rebooking' ? 'Add the new delivery date' : 'Report a delay'}
+                              icon={ClockIcon}
+                              disabled={busy}
+                              onClick={() => setDelayParcelId(shipment.id)}
+                            />
+                          )}
+                          <IconAction label="Edit tracking" icon={PenIcon} disabled={busy} onClick={() => setEditingParcelId(shipment.id)} />
+                          <IconAction label="Undo this dispatch" icon={UndoIcon} disabled={busy} onClick={() => undoDispatch(shipment)} />
                         </div>
                       </li>
                     ))}
@@ -1470,11 +1574,11 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                       ? 'This order has been paid, so the proforma now says so. It stays available for the customer\u2019s own records.'
                       : 'What is owed, how to pay it, and how long each line takes once payment reaches us. Not a VAT invoice, and it says so on its face.'}
                   </p>
-                  <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
-                    <a className="btn btn-secondary btn-sm" href={invoicing.proforma.viewUrl} target="_blank" rel="noreferrer">View</a>
-                    {invoicing.pdfEnabled && (
-                      <a className="btn btn-secondary btn-sm" href={invoicing.proforma.pdfUrl}>PDF</a>
-                    )}
+                  <div className="sod-actions">
+                    <div className="sod-action-group" role="group" aria-label="The proforma">
+                      <IconLink label="View the proforma" icon={EyeIcon} href={invoicing.proforma.viewUrl} newTab />
+                      {invoicing.pdfEnabled && <IconLink label="Download as PDF" icon={DownloadIcon} href={invoicing.proforma.pdfUrl} />}
+                    </div>
                   </div>
                 </div>
               </section>
@@ -1525,24 +1629,29 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                           {result.ok ? '✓' : '⚠'} {result.id}: {result.message}
                         </div>
                       ))}
-                      <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
-                        <a className="btn btn-secondary btn-sm" href={invoice.viewUrl} target="_blank" rel="noreferrer">View</a>
-                        {invoicing.pdfEnabled && (
-                          <a className="btn btn-secondary btn-sm" href={invoice.pdfUrl}>PDF</a>
-                        )}
-                        {/* Voided invoices get the button too, and it says the
-                            opposite thing: take the sale back out. Without it, an
-                            invoice voided while the books were down leaves VAT
-                            standing on a sale that never happened. */}
-                        {invoicing.hasBookkeeping && (
-                          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => resendInvoice(invoice.id)}>
-                            {invoice.status === 'VOID' ? 'Tell the books it is void' : 'Send to the books again'}
-                          </button>
-                        )}
-                        {invoice.status === 'ISSUED' && (
-                          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => voidTheInvoice(invoice)}>
-                            Void
-                          </button>
+                      <div className="sod-actions">
+                        <div className="sod-action-group" role="group" aria-label="The invoice">
+                          <IconLink label="View the invoice" icon={EyeIcon} href={invoice.viewUrl} newTab />
+                          {invoicing.pdfEnabled && <IconLink label="Download as PDF" icon={DownloadIcon} href={invoice.pdfUrl} />}
+                        </div>
+                        {(invoicing.hasBookkeeping || invoice.status === 'ISSUED') && (
+                          <div className="sod-action-group" role="group" aria-label="The books">
+                            {/* Voided invoices get the button too, and it says the
+                                opposite thing: take the sale back out. Without it, an
+                                invoice voided while the books were down leaves VAT
+                                standing on a sale that never happened. */}
+                            {invoicing.hasBookkeeping && (
+                              <IconAction
+                                label={invoice.status === 'VOID' ? 'Tell the books it is void' : 'Send to the books again'}
+                                icon={BooksIcon}
+                                disabled={busy}
+                                onClick={() => resendInvoice(invoice.id)}
+                              />
+                            )}
+                            {invoice.status === 'ISSUED' && (
+                              <IconAction label="Void the invoice" icon={VoidIcon} disabled={busy} onClick={() => voidTheInvoice(invoice)} />
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1586,13 +1695,15 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                           {result.ok ? '✓' : '⚠'} {result.id}: {result.message}
                         </div>
                       ))}
-                      <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
-                        <a className="btn btn-secondary btn-sm" href={note.viewUrl} target="_blank" rel="noreferrer">View</a>
-                        {crediting.pdfEnabled && <a className="btn btn-secondary btn-sm" href={note.pdfUrl}>PDF</a>}
+                      <div className="sod-actions">
+                        <div className="sod-action-group" role="group" aria-label="The credit note">
+                          <IconLink label="View the credit note" icon={EyeIcon} href={note.viewUrl} newTab />
+                          {crediting.pdfEnabled && <IconLink label="Download as PDF" icon={DownloadIcon} href={note.pdfUrl} />}
+                        </div>
                         {crediting.hasBookkeeping && (
-                          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => resendCreditNote(note.id)}>
-                            Send to the books again
-                          </button>
+                          <div className="sod-action-group">
+                            <IconAction label="Send to the books again" icon={BooksIcon} disabled={busy} onClick={() => resendCreditNote(note.id)} />
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1704,7 +1815,33 @@ export function OrderDetailScreen({ orderId, children, panels }: {
         </div>
         <aside className="sod-inspector" aria-label="Customer and order management">
           <section className="sox-card">
-            <div className="sox-card-head"><h2>Customer</h2></div>
+            <div className="sox-card-head">
+              <h2>Customer</h2>
+              {/* Their other orders, in a tab of their own so this one stays
+                  where it was - and only once there are other orders to see. */}
+              {data.customer.orderCount > 1 ? (
+                <AdminTooltip
+                  className="sox-noprint"
+                  placement="bottom"
+                  title={`${data.customer.orderCount} orders`}
+                  body={[
+                    `${formatMoney(data.customer.totalSpent, currencySymbol)} spent`,
+                    data.customer.firstOrderAt ? `since ${formatDate(data.customer.firstOrderAt)}` : null,
+                  ].filter(Boolean).join(' · ')}
+                >
+                  <a
+                    className="sod-head-link"
+                    href={`/${adminPath}/m/shop/customers/${encodeURIComponent(order.customerEmail)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    All their orders {NewTabIcon}
+                  </a>
+                </AdminTooltip>
+              ) : (
+                <span className="sod-head-note">Their first order</span>
+              )}
+            </div>
             <div className="sox-card-body">
               <dl className="sox-detail">
                 <div className="sox-detail-row">
@@ -1728,16 +1865,17 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                   <dt>{referenceLabel}</dt>
                   <dd>
                     {referenceDraft === null ? (
-                      <>
-                        {order.customerReference?.trim() || <span className="sox-muted">Not given</span>}{' '}
-                        <button
-                          type="button"
-                          className="sox-copy sox-noprint"
-                          onClick={() => setReferenceDraft(order.customerReference ?? '')}
-                        >
-                          {order.customerReference?.trim() ? 'Edit' : 'Add'}
-                        </button>
-                      </>
+                      <span className="sod-value-row">
+                        <span>{order.customerReference?.trim() || <span className="sox-muted">Not given</span>}</span>
+                        <span className="sod-head-icons sox-noprint">
+                          <IconAction
+                            quiet
+                            label={order.customerReference?.trim() ? `Edit the ${referenceLabel.toLowerCase()}` : `Add the ${referenceLabel.toLowerCase()}`}
+                            icon={PenIcon}
+                            onClick={() => setReferenceDraft(order.customerReference ?? '')}
+                          />
+                        </span>
+                      </span>
                     ) : (
                       <div style={{ display: 'grid', gap: '0.375rem' }}>
                         <input
@@ -1767,8 +1905,12 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                 <div className="sox-detail-row">
                   <dt>Email</dt>
                   <dd>
-                    <a href={`mailto:${order.customerEmail}`}>{order.customerEmail}</a>{' '}
-                    <button type="button" className="sox-copy sox-noprint" onClick={() => copy(order.customerEmail, 'The email address')}>Copy</button>
+                    <span className="sod-value-row">
+                      <a href={`mailto:${order.customerEmail}`}>{order.customerEmail}</a>
+                      <span className="sod-head-icons sox-noprint">
+                        <CopyAction label="Copy the email address" onCopy={() => copy(order.customerEmail, 'The email address')} />
+                      </span>
+                    </span>
                   </dd>
                 </div>
                 {order.customerPhone && (
@@ -1780,42 +1922,33 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                 {/* A replacement's last email is its own, and asks for nothing. */}
                 {order.kind !== 'REPLACEMENT' && (
                   <div className="sox-detail-row">
-                    <dt>Review request</dt>
+                    {/* Kept for a screen reader: a dl row needs its term. */}
+                    <dt className="sr-only">Review request</dt>
                     <dd>
                       <label className="sod-summary-check" style={{ marginTop: 0 }}>
                         <input type="checkbox" checked={order.askForReview !== false} disabled={busy} onChange={(e) => setAskForReview(e.target.checked)} />
-                        Ask for a review in the completion email
+                        Ask for a review on completion
                       </label>
                     </dd>
                   </div>
                 )}
+                {/* A tick or a cross on the end of the label says it; words
+                    only for the customer who was never asked. */}
                 <div className="sox-detail-row">
-                  <dt>Marketing emails</dt>
-                  <dd>
-                    {order.marketingConsent === true && 'Happy to receive them'}
-                    {order.marketingConsent === false && 'Asked not to receive them'}
-                    {(order.marketingConsent === null || order.marketingConsent === undefined) && <span className="sox-muted">Not asked</span>}
-                  </dd>
-                </div>
-                <div className="sox-detail-row">
-                  <dt>History</dt>
-                  <dd>
-                    {data.customer.orderCount === 1
-                      ? 'Their first order'
-                      : `${data.customer.orderCount} orders · ${formatMoney(data.customer.totalSpent, currencySymbol)} spent`}
-                    {data.customer.firstOrderAt && data.customer.orderCount > 1 && (
-                      <span className="sox-muted"> · since {formatDate(data.customer.firstOrderAt)}</span>
+                  <dt className="sod-consent">
+                    Marketing emails
+                    {order.marketingConsent === true && (
+                      <span className="sod-consent-yes">{TickIcon}<span className="sr-only">: happy to receive them</span></span>
                     )}
-                  </dd>
+                    {order.marketingConsent === false && (
+                      <span className="sod-consent-no">{CrossIcon}<span className="sr-only">: asked not to receive them</span></span>
+                    )}
+                  </dt>
+                  {(order.marketingConsent === null || order.marketingConsent === undefined) && (
+                    <dd><span className="sox-muted">Not asked</span></dd>
+                  )}
                 </div>
               </dl>
-              <a
-                className="btn btn-secondary btn-sm sox-noprint"
-                style={{ marginTop: '0.75rem' }}
-                href={`/${adminPath}/m/shop/customers/${encodeURIComponent(order.customerEmail)}`}
-              >
-                All their orders
-              </a>
             </div>
           </section>
         </aside>

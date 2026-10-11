@@ -2,6 +2,7 @@ import { escapeHtml } from '@/lib/email/blocks'
 import { getSiteUrl } from '@/lib/config/env'
 import { getProductMediaForProducts, getProductSlugsByIds } from '@/modules/shop/lib/db/products'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { splitOrderLine } from '@/modules/shop/lib/order-line-charges'
 import { productUrl, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 import type { ShpOrderItem, ShpProductMedia } from '@/modules/shop/lib/types'
 import type { ShpConfig } from '@/modules/shop/lib/config'
@@ -44,6 +45,10 @@ export type OrderEmailLine = {
   url?: string | null
   /** Personalisation, options, delivery notes - whatever the line carries. */
   extras?: Array<{ label: string; value: string }>
+  /** Services priced into the line (a delivery tier priced per item), each
+   *  printed as a row of its own under it. `price` above is then the goods'
+   *  own money, so the column still adds up to the same total. */
+  charges?: Array<{ name: string; quantity: number; price: string }>
 }
 
 /**
@@ -136,13 +141,29 @@ export async function orderEmailLines(
   return items.map((item) => {
     const media = item.productId ? mediaByProduct.get(item.productId) ?? [] : []
     const image = media.find((m) => m.type === 'IMAGE' && m.isPrimary) ?? media.find((m) => m.type === 'IMAGE')
+    // The same split the invoice, the thank-you page and the order page make:
+    // the goods at their own price, and each per-item delivery as a row of its
+    // own carrying the detail that names it.
+    const split = splitOrderLine(item)
+    const sameLabel = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+    const fields = item.lineMeta?.fields ?? []
     return {
       name: item.productName,
       quantity: item.quantity,
-      price: formatMoney(item.total, config.currencySymbol),
+      price: formatMoney(split.goodsTotal, config.currencySymbol),
       imageUrl: absoluteImageUrl(image?.url, siteUrl),
       url: productEmailUrl(item.productId ? slugByProduct.get(item.productId) : null, siteUrl, config.productUrlStyle),
-      extras: item.lineMeta?.fields?.map((f) => ({ label: f.label, value: f.value })) ?? [],
+      extras: fields
+        .filter((f) => !split.charges.some((c) => sameLabel(c.label, f.label)))
+        .map((f) => ({ label: f.label, value: f.value })),
+      charges: split.charges.map((charge) => {
+        const named = fields.find((f) => sameLabel(f.label, charge.label))
+        return {
+          name: named?.value ? `${charge.label}: ${named.value}` : charge.label,
+          quantity: item.quantity,
+          price: formatMoney(charge.amount, config.currencySymbol),
+        }
+      }),
     }
   })
 }
@@ -207,9 +228,12 @@ export function renderOrderItemsTable(lines: OrderEmailLine[]): string {
 
   const rows = lines.map((line, index) => {
     const last = index === lines.length - 1
+    const charges = line.charges ?? []
     // The rule goes on the cells, not the row: a border on <tr> is one of the
-    // things Outlook simply does not draw.
-    const cell = `${base}padding:12px 0;vertical-align:top;${last ? '' : `border-bottom:1px solid ${RULE};`}`
+    // things Outlook simply does not draw. A line with delivery rows under it
+    // hands its rule down to the last of them.
+    const rule = last ? '' : `border-bottom:1px solid ${RULE};`
+    const cell = `${base}padding:12px 0${charges.length > 0 ? ' 4px' : ''};vertical-align:top;${charges.length > 0 ? '' : rule}`
     const extras = (line.extras ?? [])
       .filter((f) => f.label || f.value)
       .map((f) => `<span style="color:${MUTED};font-size:13px;">${escapeHtml(f.label)}: ${escapeHtml(f.value)}</span>`)
@@ -226,7 +250,21 @@ export function renderOrderItemsTable(lines: OrderEmailLine[]): string {
       (withPrices
         ? `<td align="right" style="${cell}padding-left:12px;white-space:nowrap;">${escapeHtml(line.price ?? '')}</td>`
         : '') +
-      '</tr>'
+      '</tr>' +
+      charges.map((charge, i) => {
+        const lastCharge = i === charges.length - 1
+        const chargeCell = `${base}font-size:13px;color:${MUTED};padding:0 0 ${lastCharge ? '12px' : '4px'};vertical-align:top;${lastCharge ? rule : ''}`
+        return (
+          '<tr>' +
+          (withImages ? `<td width="${THUMB}" style="${chargeCell}width:${THUMB}px;">&nbsp;</td>` : '') +
+          `<td style="${chargeCell}${withImages ? 'padding-left:12px;' : ''}">${escapeHtml(charge.name)}</td>` +
+          `<td align="right" style="${chargeCell}padding-left:12px;white-space:nowrap;">${escapeHtml(String(charge.quantity))}</td>` +
+          (withPrices
+            ? `<td align="right" style="${chargeCell}padding-left:12px;white-space:nowrap;">${escapeHtml(charge.price)}</td>`
+            : '') +
+          '</tr>'
+        )
+      }).join('')
     )
   })
 

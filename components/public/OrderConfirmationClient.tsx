@@ -6,6 +6,7 @@ import { announceConversion } from '@/lib/analytics/conversion'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { paymentTaken } from '@/modules/shop/lib/payment-taken'
 import { sortLinesByGroup } from '@/modules/shop/lib/cart-group'
+import { splitOrderLine } from '@/modules/shop/lib/order-line-charges'
 import { ORDER_CONFIRMATION_CSS } from '@/modules/shop/components/public/order-confirmation-css'
 import { TRACK_ORDER_CSS } from '@/modules/shop/components/public/track-order-css'
 import OrderAccessForm from '@/modules/shop/components/public/OrderAccessForm'
@@ -41,6 +42,9 @@ type OrderStatusResponse = {
     total: string
     lineMeta?: {
       fields: Array<{ label: string; value: string; href?: string }>
+      // Services folded into the line's price (a delivery tier priced per
+      // item), per unit - see lib/order-line-charges.
+      charges?: unknown
       // Shop's own generic grouping, persisted at checkout - see lib/cart-group.
       group?: { key: string; role: 'main' | 'attachment'; caption?: string; depth?: number; order?: number } | null
     } | null
@@ -707,6 +711,9 @@ export function OrderConfirmationClient({
   const discount = Number(order.discountAmount)
   const shipping = Number(order.shippingAmount)
   const tax = Number(order.taxAmount)
+  // Delivery priced per item shows as its own row under each line, so the
+  // order-wide "Delivery - Free" row would contradict the lines above it.
+  const hasLineCharges = items.some((item) => splitOrderLine(item).charges.length > 0)
 
   return (
     <>
@@ -867,7 +874,14 @@ export function OrderConfirmationClient({
             <ul className="soc-items">
               {/* Grouped lines (a product and its accessories) kept together,
                   from the group persisted on the order's own line meta. */}
-              {sortLinesByGroup(items.map((item) => ({ ...item, group: item.lineMeta?.group ?? null }))).map((item, i) => (
+              {sortLinesByGroup(items.map((item) => ({ ...item, group: item.lineMeta?.group ?? null }))).map((item, i) => {
+                // A delivery service priced per item gets a priced row of its
+                // own under the line, and the detail naming it moves onto it.
+                const split = splitOrderLine(item)
+                const sameLabel = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+                const allFields = item.lineMeta?.fields ?? []
+                const fields = allFields.filter((f) => !split.charges.some((c) => sameLabel(c.label, f.label)))
+                return (
                 <li key={i} className="soc-item">
                   {item.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- product media is an absolute storage URL, not a build-time asset
@@ -883,13 +897,13 @@ export function OrderConfirmationClient({
                   </p>
                   {/* Unit price only where it tells you something a single line
                       doesn't already: on one of a thing, "£40 x 1" is noise. */}
-                  <span className="soc-item-price">{money(item.total)}</span>
+                  <span className="soc-item-price">{money(split.goodsTotal)}</span>
                   <p className="soc-item-qty">
-                    {item.quantity > 1 ? `${money(item.unitPrice)} × ${item.quantity}` : 'Qty 1'}
+                    {item.quantity > 1 ? `${money(split.goodsUnitPrice)} × ${item.quantity}` : 'Qty 1'}
                   </p>
-                  {item.lineMeta?.fields?.length ? (
+                  {fields.length ? (
                     <ul className="soc-item-meta">
-                      {item.lineMeta.fields.map((f, j) => (
+                      {fields.map((f, j) => (
                         <li key={j}>
                           <span>{f.label}:</span>{' '}
                           {f.href ? <a href={f.href} target="_blank" rel="noopener noreferrer">{f.value}</a> : f.value}
@@ -897,8 +911,27 @@ export function OrderConfirmationClient({
                       ))}
                     </ul>
                   ) : null}
+                  {split.charges.length > 0 && (
+                    <ul className="soc-item-charges">
+                      {split.charges.map((charge) => {
+                        const named = allFields.find((f) => sameLabel(f.label, charge.label))
+                        const unit = item.quantity > 0 ? Math.round((charge.amount / item.quantity + Number.EPSILON) * 100) / 100 : charge.amount
+                        return (
+                          <li key={charge.label}>
+                            <span className="soc-item-charge-name">
+                              <span>{charge.label}</span>
+                              {named?.value ? `: ${named.value}` : ''}
+                              {item.quantity > 1 && <span className="soc-item-charge-qty"> · {money(unit)} × {item.quantity}</span>}
+                            </span>
+                            <span className="soc-item-charge-price">{money(charge.amount)}</span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
                 </li>
-              ))}
+                )
+              })}
             </ul>
           </div>
 
@@ -918,7 +951,7 @@ export function OrderConfirmationClient({
             )}
             {/* Free delivery is worth saying out loud - a row that isn't there
                 reads as a charge nobody has told you about yet. */}
-            {shipping === 0 && order.shippingRateName && (
+            {shipping === 0 && order.shippingRateName && !hasLineCharges && (
               <div className="soc-row"><dt>Delivery <span className="soc-code">({order.shippingRateName})</span></dt><dd>Free</dd></div>
             )}
             {tax > 0 && (

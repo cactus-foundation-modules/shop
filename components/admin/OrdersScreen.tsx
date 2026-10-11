@@ -275,10 +275,14 @@ export function OrdersScreen() {
   // taken the order again by hand. Asked first, because the banner is the only
   // record the shop keeps that the money arrived.
   const dismissStranded = async (s: Stranded) => {
-    if (!window.confirm(`Take ${s.orderNumber} off this list? Only do this once the payment has been refunded or the order taken again - nothing else here remembers it.`)) return
+    if (!(await confirm({
+      title: `Take ${s.orderNumber} off this list?`,
+      message: 'Only do this once the payment has been refunded or the order taken again - nothing else here remembers it.',
+      confirmLabel: 'Take it off',
+    }))) return
     const r = await fetch(`/api/m/shop/admin/stranded-payments/${encodeURIComponent(s.draftId)}`, { method: 'DELETE' })
     if (!r.ok) {
-      window.alert('That could not be cleared. Try again in a moment.')
+      await alert('That could not be cleared. Try again in a moment.')
       return
     }
     setStranded((rows) => rows.filter((row) => row.draftId !== s.draftId))

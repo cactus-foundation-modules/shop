@@ -422,15 +422,12 @@ export function CheckoutReviewClient({ preview = false, heading, buttonLabel, tr
         </p>
       )}
       <dl style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.25rem 1rem', margin: 0 }}>
-        {/* Goods on their own where the server broke the charges out, else the
-            old single Subtotal - which is the same figure, just undivided. */}
+        {/* The items as the order summary lists them, per-item delivery rows
+            included - each line's delivery has its own row there now, the same
+            as on the thank-you page, the emails and the invoice, so it is not
+            repeated here. */}
         <dt>Subtotal</dt>
-        <dd style={{ margin: 0 }}>{money(summary.goodsSubtotal ?? summary.subtotal)}</dd>
-        {(summary.charges ?? []).map((charge) => (
-          <div key={charge.label} style={{ display: 'contents' }}>
-            <dt>{charge.label}</dt><dd style={{ margin: 0 }}>{money(charge.amount)}</dd>
-          </div>
-        ))}
+        <dd style={{ margin: 0 }}>{money(summary.subtotal)}</dd>
         {summary.discountAmount > 0 && <><dt>Discount</dt><dd style={{ margin: 0 }}>-{money(summary.discountAmount)}</dd></>}
         {/* Carriage priced from the delivery postcode - a different thing from a
             per-item delivery service, and worth its own row only when charged. */}

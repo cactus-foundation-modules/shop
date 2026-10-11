@@ -1,6 +1,6 @@
-import type { ReactElement } from 'react'
+import { Fragment, type ReactElement } from 'react'
 import { formatMoney } from '@/modules/shop/lib/money'
-import { invoiceChargeRows } from '@/modules/shop/lib/invoice-tax'
+import { invoiceChargeRows, splitInvoiceLine } from '@/modules/shop/lib/invoice-tax'
 import type { InvoiceDocContext } from '@/modules/shop/lib/invoice-doc-context'
 import {
   Style, FontLink, fontStyle, fontField, sizeField, radiusField, spaceField, sizeVars, cssLength,
@@ -689,25 +689,54 @@ export function ShopInvoiceLines(props: LinesProps) {
           </tr>
         </thead>
         <tbody>
-          {lines.map((line, index) => (
-            <tr key={`${line.sku ?? line.name}-${index}`}>
-              <td>
-                <span className="shp-inv-name">{line.name}</span>
-                {showSku && line.sku && <span className="shp-inv-sku">{line.sku}</span>}
-                {showDetail && line.detail?.length > 0 && (
-                  <ul className="shp-inv-detail">
-                    {line.detail.map((row, i) => (
-                      <li key={i}><span>{row.label}:</span> {row.value}</li>
-                    ))}
-                  </ul>
-                )}
-              </td>
-              <td className="shp-inv-num">{line.quantity}</td>
-              <td className="shp-inv-num">{formatMoney(line.unitPrice, symbol)}</td>
-              {showRate && <td className="shp-inv-num">{line.taxRatePercent}%</td>}
-              <td className="shp-inv-num">{formatMoney(line.lineTotal, symbol)}</td>
-            </tr>
-          ))}
+          {lines.map((line, index) => {
+            // A delivery service priced per item is a row of its own under the
+            // line it was bought with - its own unit price, quantity and amount
+            // - rather than a row in the totals. The goods row carries what the
+            // goods cost, so the money column still sums to the subtotal.
+            const split = splitInvoiceLine(line)
+            const sameLabel = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+            const detail = (line.detail ?? []).filter((row) => !split.charges.some((c) => sameLabel(c.label, row.label)))
+            const key = `${line.sku ?? line.name}-${index}`
+            return (
+              <Fragment key={key}>
+                <tr className={split.charges.length > 0 ? 'shp-inv-has-charges' : undefined}>
+                  <td>
+                    <span className="shp-inv-name">{line.name}</span>
+                    {showSku && line.sku && <span className="shp-inv-sku">{line.sku}</span>}
+                    {showDetail && detail.length > 0 && (
+                      <ul className="shp-inv-detail">
+                        {detail.map((row, i) => (
+                          <li key={i}><span>{row.label}:</span> {row.value}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </td>
+                  <td className="shp-inv-num">{line.quantity}</td>
+                  <td className="shp-inv-num">{formatMoney(split.goodsUnitPrice, symbol)}</td>
+                  {showRate && <td className="shp-inv-num">{line.taxRatePercent}%</td>}
+                  <td className="shp-inv-num">{formatMoney(split.goodsTotal, symbol)}</td>
+                </tr>
+                {split.charges.map((charge, i) => {
+                  const named = (line.detail ?? []).find((row) => sameLabel(row.label, charge.label))
+                  return (
+                    <tr
+                      key={`${key}-charge-${charge.label}`}
+                      className={`shp-inv-charge-row${i === split.charges.length - 1 ? ' is-last' : ''}`}
+                    >
+                      <td>
+                        <span className="shp-inv-charge-name">{charge.label}{showDetail && named?.value ? `: ${named.value}` : ''}</span>
+                      </td>
+                      <td className="shp-inv-num">{line.quantity}</td>
+                      <td className="shp-inv-num">{formatMoney(charge.unitPrice, symbol)}</td>
+                      {showRate && <td className="shp-inv-num">{line.taxRatePercent}%</td>}
+                      <td className="shp-inv-num">{formatMoney(charge.amount, symbol)}</td>
+                    </tr>
+                  )
+                })}
+              </Fragment>
+            )
+          })}
           {lines.length === 0 && (
             <tr>
               <td colSpan={showRate ? 5 : 4} className="shp-inv-empty">There is nothing on this invoice.</td>
@@ -806,12 +835,10 @@ export function ShopInvoiceTotals(props: TotalsProps) {
   const singleRate = rates.size === 1 ? [...rates][0] : null
   const withRate = props.showTaxRate === 'yes' && singleRate ? `${taxLabel} at ${singleRate}%` : taxLabel
   // Named charges a cart-line resolver broke out of the line prices - a delivery
-  // service priced per item rather than per order. The money is already inside
-  // the lines, so these come OUT of the subtotal instead of being added to it,
-  // and the column still sums to the same total to the penny.
-  const chargeRows = invoiceChargeRows(invoice.lines)
-  const chargeTotal = chargeRows.reduce((sum, row) => sum + row.amount, 0)
-  const goodsSubtotal = Math.round((Number(invoice.subtotal) - chargeTotal + Number.EPSILON) * 100) / 100
+  // service priced per item rather than per order. Each has its own row under
+  // its line in the items table now, so the subtotal is the lines as listed
+  // (goods and those rows together) and nothing is repeated down here.
+  const chargeTotal = invoiceChargeRows(invoice.lines).reduce((sum, row) => sum + row.amount, 0)
   // A delivery row printed even at zero, so a customer can see that delivery was
   // free rather than wondering whether it is still to come.
   //
@@ -850,16 +877,7 @@ export function ShopInvoiceTotals(props: TotalsProps) {
         }}
       >
         <dt>{props.subtotalLabel?.trim() || 'Subtotal'}</dt>
-        <dd>{formatMoney(goodsSubtotal, symbol)}</dd>
-        {/* Printed with the label the module that charged it gave, which is the
-            only name anybody has for it - the delivery row's own label belongs
-            to the order's carriage rate and would be a guess here. */}
-        {chargeRows.map((charge) => (
-          <div className="shp-inv-row" key={charge.label}>
-            <dt>{charge.label}</dt>
-            <dd>{formatMoney(charge.amount, symbol)}</dd>
-          </div>
-        ))}
+        <dd>{formatMoney(invoice.subtotal, symbol)}</dd>
         {discount > 0 && (
           <div className="shp-inv-row">
             <dt>{props.discountLabel?.trim() || 'Discount'}</dt>

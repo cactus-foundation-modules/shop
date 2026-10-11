@@ -106,8 +106,8 @@ describe('Order workspace', () => {
   it('puts manual payment confirmation in the main toolbar only when payment is outstanding', async () => {
     manualPayment = true
     await render()
-    expect(host.querySelector('.sox-orderhead-actions')?.textContent).toContain('Payment received')
-    expect(host.querySelector('.sod-inspector')?.textContent).not.toContain('Payment received')
+    expect(host.querySelector('.sox-orderhead-actions')?.textContent).toContain('Mark as paid')
+    expect(host.querySelector('.sod-inspector')?.textContent).not.toContain('Mark as paid')
   })
   it('offers no Dispatch button while the order is unpaid', async () => {
     manualPayment = true
@@ -117,9 +117,11 @@ describe('Order workspace', () => {
   })
   it('retains dispatch and exceptional actions without making them the headline', async () => {
     await render()
+    expect(host.querySelector('.sod-more')?.textContent).not.toContain('Send a replacement')
+    await click('More actions')
     expect(host.querySelector('.sod-more')?.textContent).toContain('Send a replacement')
     expect(host.querySelector('.sod-more')?.textContent).toContain('Refund')
-    expect(host.querySelector('.sox-orderhead-actions')?.textContent).not.toContain('Payment received')
+    expect(host.querySelector('.sox-orderhead-actions')?.textContent).not.toContain('Mark as paid')
     await click('Dispatch items')
     expect(host.textContent).toContain('Dispatch form')
   })

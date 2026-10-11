@@ -76,20 +76,33 @@ function matchLine(
 
 /** The share of the invoice line's named charges that goes back with a refund.
  *
- *  A delivery service priced per item is INSIDE the line's price, so refunding
- *  a line refunds its delivery whether anybody says so or not - and a credit
+ *  A delivery service priced per item is INSIDE the line's price, and a credit
  *  note that showed the whole sum as goods would have the customer's accounts
- *  department reclaiming VAT under the wrong heading. Split by the same
- *  proportion the refund itself is: all of it on a whole line, a share of it on
- *  a part refund, none of it on an invoice line that never carried one.
+ *  department reclaiming VAT under the wrong heading. But a refund no longer
+ *  takes the delivery with it as a matter of course: the refund window lets an
+ *  owner hand back a returned chair and keep the delivery that was made for it.
+ *  The refund records only its money and its units, so the money is read goods
+ *  first - the refunded units' goods are covered before a penny is called
+ *  delivery, and only what is left over (up to those units' share of the
+ *  delivery) is credited as delivery. A whole line credits all of it, a
+ *  goods-only refund credits none, and a goodwill sum smaller than the goods
+ *  is goods.
  *
  *  This is the SPLIT of money already being credited. It never adds a penny,
  *  which is why nothing below has to reconcile against it. */
-function creditedCharges(source: ShpInvoiceLine, gross: number, sourceGross: number): ShpInvoiceLine['charges'] {
+function creditedCharges(source: ShpInvoiceLine, gross: number, sourceGross: number, quantity: number): ShpInvoiceLine['charges'] {
   if (!source.charges?.length || !(sourceGross > 0) || !(gross > 0)) return undefined
-  const share = Math.min(gross / sourceGross, 1)
+  const lineTotal = Number(source.lineTotal) || 0
+  const chargeSum = source.charges.reduce((sum, charge) => sum + (Number(charge.amount) || 0), 0)
+  if (!(lineTotal > 0) || !(chargeSum > 0)) return undefined
+  const chargeRatio = Math.min(chargeSum / lineTotal, 1)
+  const unitShare = source.quantity > 0 && quantity > 0 ? Math.min(quantity / source.quantity, 1) : 1
+  const chargeGrossForUnits = sourceGross * chargeRatio * unitShare
+  const goodsGrossForUnits = sourceGross * (1 - chargeRatio) * unitShare
+  const creditedChargeGross = Math.min(Math.max(gross - goodsGrossForUnits, 0), chargeGrossForUnits)
+  const scale = creditedChargeGross / (sourceGross * chargeRatio)
   const rows = source.charges
-    .map((charge) => ({ label: charge.label, amount: money((Number(charge.amount) || 0) * share) }))
+    .map((charge) => ({ label: charge.label, amount: money((Number(charge.amount) || 0) * scale) }))
     .filter((charge) => Number(charge.amount) > 0)
   return rows.length > 0 ? rows : undefined
 }
@@ -161,7 +174,7 @@ export function buildCreditNoteMoney(
       tax: money(tax),
       gross: money(gross),
       detail: source.detail ?? [],
-      charges: creditedCharges(source, gross, sourceGross),
+      charges: creditedCharges(source, gross, sourceGross, item.quantity),
       orderItemId: item.orderItemId,
     })
   }

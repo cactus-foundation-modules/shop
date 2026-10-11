@@ -1,4 +1,5 @@
 import type { RefundLine } from '@/modules/shop/lib/return-charge'
+import { splitOrderLine } from '@/modules/shop/lib/order-line-charges'
 
 // What approving a cancellation or a return actually sends back, line by line.
 //
@@ -57,6 +58,32 @@ export function paidPerUnit(line: Pick<RefundableLine, 'quantity' | 'unitPrice' 
   const goods = Number(line.total) * (1 - discountRatio)
   const tax = order.taxMode === 'EXCLUSIVE' ? Number(line.taxAmount) : 0
   return (goods + tax) / line.quantity
+}
+
+/**
+ * paidPerUnit, split into what was paid for the goods and what was paid for a
+ * service priced into the line (a delivery tier priced per item).
+ *
+ * The line's own record says how much of its total was a named charge
+ * (lineMeta.charges, worked out by splitOrderLine exactly as every document
+ * prints it), and the discount and the VAT fall on the line as a whole - so the
+ * charge takes the same share of what was paid as it took of the line. The two
+ * halves add back up to paidPerUnit to the penny before rounding, and a line
+ * with no charges is all goods.
+ *
+ * Used by the refund window, so an owner can hand back a returned chair without
+ * handing back the delivery that was already made for it.
+ */
+export function paidPerUnitSplit(
+  line: Pick<RefundableLine, 'quantity' | 'unitPrice' | 'total' | 'taxAmount'> & { lineMeta?: { charges?: unknown } | null },
+  order: RefundableOrder,
+): { goods: number; delivery: number } {
+  const paid = paidPerUnit(line, order)
+  const lineTotal = Number(line.total) || 0
+  const chargeTotal = splitOrderLine(line).charges.reduce((sum, charge) => sum + charge.amount, 0)
+  if (!(chargeTotal > 0) || !(lineTotal > 0)) return { goods: paid, delivery: 0 }
+  const share = Math.min(chargeTotal / lineTotal, 1)
+  return { goods: paid * (1 - share), delivery: paid * share }
 }
 
 /**

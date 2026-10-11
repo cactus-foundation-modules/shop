@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { MemberOrderLine } from '@/modules/shop/lib/member-orders'
 import { effectiveGroup, sortLinesByGroup } from '@/modules/shop/lib/cart-group'
 import { formatMoney } from '@/modules/shop/lib/money'
+import { splitOrderLine } from '@/modules/shop/lib/order-line-charges'
 import { formatOrderDate } from '@/modules/shop/lib/order-display'
 import { productHref, type ProductUrlStyle } from '@/modules/shop/lib/product-url'
 import BuyAgainButton from '@/modules/shop/components/public/BuyAgainButton'
@@ -53,6 +54,13 @@ export function OrderItemList({
         const { item } = line
         const group = effectiveGroup(entry, entries)
         const quantity = item.quantity
+        // A delivery service priced per item gets a row of its own under the
+        // line, with its own price, rather than being folded into what the
+        // goods cost. The detail naming the service moves onto that row.
+        const split = splitOrderLine(item)
+        const sameLabel = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+        const allFields = item.lineMeta?.fields ?? []
+        const fields = allFields.filter((f) => !split.charges.some((c) => sameLabel(c.label, f.label)))
 
         return (
           <li key={item.id} className="sod-item">
@@ -76,17 +84,17 @@ export function OrderItemList({
               )}
             </p>
 
-            <span className="sod-item-price">{formatMoney(item.total, currencySymbol)}</span>
+            <span className="sod-item-price">{formatMoney(split.goodsTotal, currencySymbol)}</span>
 
             {/* Unit price only where it tells you something the line total does
                 not already: on one of a thing, "£40 × 1" is noise. */}
             <p className="sod-item-qty">
-              {quantity > 1 ? `${formatMoney(item.unitPrice, currencySymbol)} × ${quantity}` : 'Qty 1'}
+              {quantity > 1 ? `${formatMoney(split.goodsUnitPrice, currencySymbol)} × ${quantity}` : 'Qty 1'}
             </p>
 
-            {item.lineMeta?.fields?.length ? (
+            {fields.length ? (
               <ul className="sod-item-meta">
-                {item.lineMeta.fields.map((field, i) => (
+                {fields.map((field, i) => (
                   <li key={i}>
                     <span>{field.label}:</span>{' '}
                     {field.href ? (
@@ -98,6 +106,25 @@ export function OrderItemList({
                 ))}
               </ul>
             ) : null}
+
+            {split.charges.length > 0 && (
+              <ul className="sod-item-charges">
+                {split.charges.map((charge) => {
+                  const named = allFields.find((f) => sameLabel(f.label, charge.label))
+                  const unit = quantity > 0 ? Math.round((charge.amount / quantity + Number.EPSILON) * 100) / 100 : charge.amount
+                  return (
+                    <li key={charge.label}>
+                      <span className="sod-item-charge-name">
+                        <span>{charge.label}</span>
+                        {named?.value ? `: ${named.value}` : ''}
+                        {quantity > 1 && <span className="sod-item-charge-qty"> · {formatMoney(unit, currencySymbol)} × {quantity}</span>}
+                      </span>
+                      <span className="sod-item-charge-price">{formatMoney(charge.amount, currencySymbol)}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
 
             <div className="sod-item-foot">
               {deliveredItemIds?.has(item.id) ? (
