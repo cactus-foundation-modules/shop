@@ -35,6 +35,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     status: parsed.data.status,
     sendEmail: parsed.data.sendEmail,
     byHand: true,
+    actorId: gate.user.id,
   })
   if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
 

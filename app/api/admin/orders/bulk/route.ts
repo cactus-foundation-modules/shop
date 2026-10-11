@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
   for (const id of ids) {
     // byHand: the same money rules as the single order screen, so a paid order
     // in a batch marked cancelled is named in the failures, not cancelled.
-    const outcome = await applyOrderStatusChange({ orderId: id, status, sendEmail, byHand: true })
+    const outcome = await applyOrderStatusChange({ orderId: id, status, sendEmail, byHand: true, actorId: gate.user.id })
     if (outcome.ok) {
       if (outcome.changed) updated += 1
       else unchanged += 1

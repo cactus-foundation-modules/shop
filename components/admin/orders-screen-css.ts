@@ -5,7 +5,8 @@
 // admin's light/dark theme with no second palette to keep in step.
 export const ordersScreenCss = `
 /* --- Shared shell ------------------------------------------------------- */
-.sox-count{margin:0.25rem 0 0;font-size:0.875rem;color:var(--color-text-secondary)}
+.sox-titlebar{display:flex;align-items:baseline;flex-wrap:wrap;column-gap:0.75rem}
+.sox-count{margin:0;font-size:0.875rem;color:var(--color-text-secondary)}
 .sox-muted{color:var(--color-text-secondary)}
 .sox-mono{font-family:var(--font-mono,monospace)}
 .sox-nowrap{white-space:nowrap}
@@ -42,7 +43,6 @@ export const ordersScreenCss = `
 .sox-input{width:100%;height:34px;padding:0 0.5rem;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text);font-size:0.8125rem}
 .sox-input:focus-visible{outline:2px solid var(--color-border-focus);outline-offset:1px}
 .sox-filters{display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-bottom:1rem}
-.sox-filters-label{font-size:0.75rem;font-weight:600;letter-spacing:0.02em;text-transform:uppercase;color:var(--color-text-secondary)}
 
 .sox-seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden;background:var(--color-surface)}
 .sox-seg button{appearance:none;border:0;background:transparent;color:var(--color-text-secondary);padding:0 0.75rem;height:34px;font-size:0.8125rem;font-weight:500;cursor:pointer;border-left:1px solid var(--color-border)}
@@ -73,6 +73,7 @@ export const ordersScreenCss = `
 .sox-ordno:hover{text-decoration:underline;color:var(--color-primary)}
 .sox-sub{margin:0.125rem 0 0;font-size:0.75rem;color:var(--color-text-secondary)}
 .sox-badges{display:flex;flex-wrap:wrap;gap:0.25rem;align-items:center}
+.sox-badges .badge{white-space:normal;text-align:center;justify-content:center;max-width:9rem;line-height:1.25}
 
 /* --- Row actions kebab -------------------------------------------------- */
 .sox-actions{width:1%;text-align:right;white-space:nowrap}

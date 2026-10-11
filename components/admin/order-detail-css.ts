@@ -31,6 +31,14 @@ export const orderDetailCss = `
 .sod-panel>.sox-card,.sod-panel>.sox-notice{margin-bottom:1rem}
 .sod-panel>.sox-card:last-child{margin-bottom:0}
 .sod-panel[hidden]{display:none}
+.sod-app .sod-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;align-items:stretch;margin-bottom:1rem}
+.sod-app .sod-pair>.sox-card,.sod-app .sod-panels>.sox-card{margin:0}
+.sod-panels{display:flex;flex-direction:column;gap:1rem;min-width:0}
+.sod-panels>.sox-card:last-child{flex:1}
+.sod-panels:empty{display:none}
+.sod-pair:has(>.sod-panels:empty){grid-template-columns:minmax(0,1fr)}
+.sod-stack{display:flex;flex-direction:column;align-items:flex-start;gap:0.25rem}
+@media(max-width:800px){.sod-app .sod-pair{grid-template-columns:minmax(0,1fr)}}
 .sod-app .sox-card-body.is-flush{overflow-x:auto}
 .sod-app .sox-items{min-width:450px}
 .sod-app .sox-items .sox-num{text-align:right}

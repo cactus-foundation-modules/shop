@@ -70,6 +70,24 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     transactional: true,
   },
   {
+    // The nudge staff send from the order screen when a bank transfer or cash
+    // order is still unpaid. Not automatic: an owner presses the button once they
+    // have looked at the bank account and found nothing. Says plainly that the
+    // order is waiting, repeats how to pay and the reference to quote, and offers
+    // a way out for someone who has already paid. Transactional: it concerns a
+    // purchase the customer made.
+    key: 'shop.payment-reminder',
+    label: 'Payment reminder',
+    subject: 'Reminder: payment for your order {{orderNumber}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>A quick reminder that we are still waiting for payment for your order <strong>{{orderNumber}}</strong>, placed on {{orderDate}}. We cannot start work on it until the payment reaches us.</p><p>Total to pay: <strong>{{orderTotal}}</strong></p>{{#if hasPaymentInstructions}}<p><strong>How to pay by {{paymentMethod}}</strong></p><p>{{paymentInstructions}}</p><p>Please quote <strong>{{orderNumber}}</strong> as the reference, so we can match your payment to your order.</p>{{/if}}<p>If you have already paid, thank you - it may simply not have reached us yet, and there is nothing more you need to do. If something has gone wrong or you would like to change your order, just reply to this email.</p>{{#if hasCustomerReference}}<p>{{customerReferenceLabel}}: <strong>{{customerReference}}</strong></p>{{/if}}{{#if hasOrderUrl}}<p>Your order is here: <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'orderDate', 'orderTotal', 'paymentMethod', 'paymentInstructions', 'customerReference', 'customerReferenceLabel', 'shopName', 'hasCustomerReference', 'hasPaymentInstructions', 'orderUrl', 'hasOrderUrl'],
+    // Bank details are typed over several lines; the sending code escapes them
+    // and restores the line breaks, as the order-placed email does.
+    rawTags: ['paymentInstructions'],
+    transactional: true,
+  },
+  {
     // A bank transfer or a cash payment is cleared by hand, sometimes days
     // after the order was placed, and until now the only thing the buyer got
     // at that moment was "your order is confirmed" - which they had already
@@ -597,6 +615,7 @@ export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   INVOICE_REISSUED: 'shop.invoice-reissued',
   ORDER_CONFIRMED: 'shop.order-confirmed',
   ORDER_PLACED_UNPAID: 'shop.order-placed-unpaid',
+  PAYMENT_REMINDER: 'shop.payment-reminder',
   PAYMENT_RECEIVED: 'shop.payment-received',
   STATUS_PROCESSING: 'shop.status-processing',
   STATUS_PREPARING: 'shop.status-preparing',

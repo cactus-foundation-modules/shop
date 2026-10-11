@@ -1084,6 +1084,7 @@ export async function getOrderRowMetrics(
 // expressed as a filter belongs on a tile that does not link anywhere.
 export type OrdersOverview = {
   awaitingPayment: number
+  toPrepare: number
   toDispatch: number
   preOrdersOutstanding: number
   paidOrders30d: number
@@ -1093,6 +1094,7 @@ export type OrdersOverview = {
 export async function getOrdersOverview(): Promise<OrdersOverview> {
   const rows = await prisma.$queryRaw<Array<{
     awaiting_payment: number
+    to_prepare: number
     to_dispatch: number
     pre_orders_outstanding: number
     paid_orders_30d: number
@@ -1100,6 +1102,9 @@ export async function getOrdersOverview(): Promise<OrdersOverview> {
   }>>`
     SELECT
       COUNT(*) FILTER (WHERE ${UNPAID_SQL} AND ${OPEN_ONLY_SQL})::int AS awaiting_payment,
+      -- Status PROCESSING and nothing else, which is the "Processing" tab of the
+      -- list the tile opens.
+      COUNT(*) FILTER (WHERE o."status" = 'PROCESSING')::int AS to_prepare,
       -- The "Paid" filter itself, so the tile and the list it opens agree.
       COUNT(*) FILTER (
         WHERE ${PAID_FILTER_SQL}
@@ -1130,6 +1135,7 @@ export async function getOrdersOverview(): Promise<OrdersOverview> {
   const r = rows[0]
   return {
     awaitingPayment: r?.awaiting_payment ?? 0,
+    toPrepare: r?.to_prepare ?? 0,
     toDispatch: r?.to_dispatch ?? 0,
     preOrdersOutstanding: r?.pre_orders_outstanding ?? 0,
     paidOrders30d: r?.paid_orders_30d ?? 0,

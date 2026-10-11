@@ -262,6 +262,7 @@ function AdminShipmentTracking({ shipment }: { shipment: ShipmentDetail }) {
 const EMAIL_TRIGGER_LABEL: Record<string, string> = {
   ORDER_CONFIRMED: 'Order confirmation',
   ORDER_PLACED_UNPAID: 'Order placed, how to pay',
+  PAYMENT_REMINDER: 'Payment reminder',
   PAYMENT_RECEIVED: 'Payment received',
   STATUS_PROCESSING: 'Status update',
   STATUS_PREPARING: 'Status update',
@@ -345,7 +346,13 @@ type CreditNoteState = {
   invoiced?: boolean
 }
 
-export function OrderDetailScreen({ orderId, children }: { orderId: string; children?: React.ReactNode }) {
+export function OrderDetailScreen({ orderId, children, panels }: {
+  orderId: string
+  children?: React.ReactNode
+  /** Cards other modules contribute to the order (Purchasing, say). Drawn to
+   *  the left of Totals, half the width each; with none, Totals has the row. */
+  panels?: React.ReactNode
+}) {
   const adminPath = useAdminPath()
   const currencySymbol = useCurrencySymbol()
   const [alert, alertNode] = useAlert()
@@ -529,6 +536,21 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
     // such, since the note is still in the box to be trimmed.
     if (!res.ok) { await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That note could not be saved.'); return }
     setNote('')
+    refresh()
+  }
+
+  async function sendPaymentReminder() {
+    const choice = await confirm({
+      title: 'Send a payment reminder?',
+      message: `This emails ${order.customerEmail} to say the order is still waiting on its payment, with the payment details again. It is recorded in the order's activity.`,
+      confirmLabel: 'Send reminder',
+      danger: false,
+    })
+    if (!choice) return
+    setBusy(true)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/payment-reminder`, { method: 'POST' })
+    setBusy(false)
+    if (!res.ok) { await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That reminder could not be sent.'); return }
     refresh()
   }
 
@@ -892,7 +914,10 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
         </div>
         <div className="sox-orderhead-actions">
           {awaitingManualPayment && (
-            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={confirmPayment}>Payment received</button>
+            <>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={sendPaymentReminder}>Send payment reminder</button>
+              <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={confirmPayment}>Payment received</button>
+            </>
           )}
           {hasOutstandingItems && (
             <button type="button" className="btn btn-primary btn-sm" onClick={() => setDispatchOpen(true)}>Dispatch items</button>
@@ -1088,6 +1113,8 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
               </div>
             </section>
 
+            <div className="sod-pair">
+            <div className="sod-panels">{panels}</div>
             <section className="sox-card">
               <div className="sox-card-head"><h2>Totals</h2></div>
               <div className="sox-card-body">
@@ -1129,6 +1156,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                 </dl>
               </div>
             </section>
+            </div>
             {requests.length > 0 && waitingRequests === 0 && (
               <CustomerReports requests={requests} itemNames={itemNames} replacementNumbers={replacementNumbers} adminPath={adminPath} currencySymbol={currencySymbol} />
             )}
@@ -1187,6 +1215,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
             {children}
           </section>
           <section className="sod-panel" id="order-delivery" aria-label="Delivery" hidden={section !== 'delivery'}>
+            <div className={dispatch && dispatch.shipments.length > 0 ? 'sod-pair' : undefined}>
             <section className="sox-card">
               <div className="sox-card-head">
                 <h2>Delivery address</h2>
@@ -1260,9 +1289,6 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
               </div>
             </section>
 
-            {dispatch && dispatch.shipments.length === 0 && (
-              <p className="sox-notice">No parcels recorded yet. Use Dispatch items when the goods are ready to go.</p>
-            )}
             {dispatch && dispatch.shipments.length > 0 && (
               <section className="sox-card">
                 <div className="sox-card-head"><h2>Parcels &amp; tracking</h2></div>
@@ -1366,6 +1392,7 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                             </>
                           )}
                         </div>
+                        <div className="sod-stack">
                         {!shipment.deliveredAt && !shipment.signedAt && !shipment.signedBy?.trim() && order.status !== 'COMPLETED' && (
                           <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => setDelayParcelId(shipment.id)}>
                             {shipment.delayOpen === 'rebooking' ? 'Add new date' : 'Report delay'}
@@ -1373,19 +1400,25 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                         )}
                         <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => setEditingParcelId(shipment.id)}>Edit tracking</button>
                         <button type="button" className="btn btn-ghost btn-sm sox-noprint" disabled={busy} onClick={() => undoDispatch(shipment)}>Undo</button>
+                        </div>
                       </li>
                     ))}
                   </ul>
                 </div>
               </section>
             )}
+            </div>
 
+            {dispatch && dispatch.shipments.length === 0 && (
+              <p className="sox-notice">No parcels recorded yet. Use Dispatch items when the goods are ready to go.</p>
+            )}
             {/* Something the customer owes on top of the order - a redelivery
                 fee - and their choice of paying it or cancelling instead. */}
             <OrderChargesPanel orderId={orderId} orderStatus={order.status} currencySymbol={currencySymbol} onChanged={refresh} onPendingChange={setPendingCharge} />
 
           </section>
           <section className="sod-panel" id="order-payment" aria-label="Payment and documents" hidden={section !== 'payment'}>
+            <div className={order.billingAddress ? 'sod-pair' : undefined}>
             <section className="sox-card">
               <div className="sox-card-head"><h2>Payment</h2></div>
               <div className="sox-card-body">
@@ -1413,6 +1446,17 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                 </dl>
               </div>
             </section>
+            {order.billingAddress && (
+              <section className="sox-card">
+                <div className="sox-card-head"><h2>Billing address</h2></div>
+                <div className="sox-card-body">
+                  <address className="sox-address">
+                    {addressLines(order.billingAddress).map((line, i) => <span key={i}>{line}<br /></span>)}
+                  </address>
+                </div>
+              </section>
+            )}
+            </div>
 
             {/* The proforma. Its own card rather than a row on the invoice one,
                 because a shop can perfectly well want proformas and not want
@@ -1590,17 +1634,6 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
                       </div>
                     </div>
                   ))}
-                </div>
-              </section>
-            )}
-
-            {order.billingAddress && (
-              <section className="sox-card">
-                <div className="sox-card-head"><h2>Billing address</h2></div>
-                <div className="sox-card-body">
-                  <address className="sox-address">
-                    {addressLines(order.billingAddress).map((line, i) => <span key={i}>{line}<br /></span>)}
-                  </address>
                 </div>
               </section>
             )}

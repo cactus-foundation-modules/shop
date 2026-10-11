@@ -1332,6 +1332,9 @@ export type ShpEmailTemplateTrigger =
   // until it does. Every other method has ORDER_CONFIRMED doing that job
   // seconds later. See lib/order-placed-email.ts.
   | 'ORDER_PLACED_UNPAID'
+  // Staff nudging a customer whose bank transfer or cash payment has not
+  // arrived, from the order screen. See lib/payment-reminder.ts.
+  | 'PAYMENT_REMINDER'
   // Only for a payment the shop clears by hand (bank transfer, cash): the one
   // email that says the money actually landed. On those orders it takes the
   // place of ORDER_CONFIRMED, which until now was doing double duty as both

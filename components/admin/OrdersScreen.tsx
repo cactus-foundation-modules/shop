@@ -74,6 +74,7 @@ type RowMetrics = {
 }
 type Overview = {
   awaitingPayment: number
+  toPrepare?: number
   toDispatch: number
   preOrdersOutstanding: number
   paidOrders30d: number
@@ -370,6 +371,7 @@ export function OrdersScreen() {
   // A tile is "on" when the list is already showing exactly what it counts.
   const tileActive = {
     unpaid: filters.paymentStatus === 'UNPAID' && filters.openOnly,
+    prepare: filters.status === 'PROCESSING' && !filters.paymentStatus && !filters.fulfilment && !filters.preOrder && !filters.openOnly,
     dispatch: filters.paymentStatus === 'PAID' && filters.fulfilment === 'UNDISPATCHED' && filters.openOnly,
     preOrder: filters.preOrder && filters.openOnly,
   }
@@ -384,7 +386,7 @@ export function OrdersScreen() {
       <style dangerouslySetInnerHTML={{ __html: ordersScreenCss }} />
 
       <div className="page-header">
-        <div>
+        <div className="sox-titlebar">
           <h1 className="page-title">Orders</h1>
           {!loading && <p className="sox-count">{total} order{total === 1 ? '' : 's'}{hasFilters ? ' match these filters' : ''}</p>}
         </div>
@@ -458,6 +460,15 @@ export function OrdersScreen() {
         </button>
         <button
           type="button"
+          className={`sox-tile${tileActive.prepare ? ' is-active' : ''}${overview && (overview.toPrepare ?? 0) > 0 ? ' is-attention' : ''}`}
+          onClick={() => update(tileActive.prepare ? { status: '' } : { status: 'PROCESSING', paymentStatus: '', fulfilment: '', preOrder: false, openOnly: false })}
+        >
+          <span className="sox-tile-label">To prepare</span>
+          <span className="sox-tile-value">{overview?.toPrepare ?? '—'}</span>
+          <span className="sox-tile-note">Paid, work not started</span>
+        </button>
+        <button
+          type="button"
           className={`sox-tile${tileActive.dispatch ? ' is-active' : ''}${overview && overview.toDispatch > 0 ? ' is-attention' : ''}`}
           onClick={() => update(tileActive.dispatch ? { paymentStatus: '', fulfilment: '', openOnly: false } : { paymentStatus: 'PAID', fulfilment: 'UNDISPATCHED', openOnly: true, status: '', preOrder: false })}
         >
@@ -500,7 +511,6 @@ export function OrdersScreen() {
       </div>
 
       <div className="sox-filters">
-        <span className="sox-filters-label">Narrow it down</span>
         <select className="sox-select" aria-label="Filter by payment" value={filters.paymentStatus} onChange={(e) => update({ paymentStatus: e.target.value })}>
           <option value="">Any payment</option>
           <option value="UNPAID">Unpaid (still owed)</option>
@@ -635,7 +645,8 @@ export function OrdersScreen() {
                             to the line below rather than disappearing. */}
                         <span>{company ?? o.customerName}</span>
                       </div>
-                      <p className="sox-sub">{company ? `${o.customerName} · ${o.customerEmail}` : o.customerEmail}</p>
+                      {company && <p className="sox-sub">{o.customerName}</p>}
+                      <p className="sox-sub">{o.customerEmail}</p>
                     </td>
                     <td>
                       {delivery ? (
@@ -668,7 +679,7 @@ export function OrdersScreen() {
                           like the date the goods were promised for; "due" for
                           that promise. */}
                       {nextDelivery && (
-                        <p className="sox-sub sox-nowrap">
+                        <p className="sox-sub">
                           {m?.nextDeliveryBooked
                             ? `Delivery ${m.nextDeliveryCarrier ? `by ${m.nextDeliveryCarrier} ` : ''}on ${nextDelivery}`
                             : `Delivery due ${nextDelivery}`}

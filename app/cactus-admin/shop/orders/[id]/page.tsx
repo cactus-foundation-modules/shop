@@ -75,7 +75,13 @@ export default async function ShopOrderDetailPage({ params }: { params: Promise<
   const panelComponents = moduleExtensionPointComponents[PANELS_POINT] ?? {}
 
   return (
-    <OrderDetailScreen orderId={id}>
+    <OrderDetailScreen
+      orderId={id}
+      panels={order && panelIds.map((pid) => {
+        const Panel = panelComponents[pid]
+        return Panel ? <Panel key={pid} orderId={order.id} orderNumber={order.orderNumber} orderStatus={order.status} /> : null
+      })}
+    >
       {order && sectionIds.length > 0 && (
         // Rendered inside the order screen's main column, so it wears the same
         // card as everything else there rather than being a bare heading.
@@ -89,10 +95,6 @@ export default async function ShopOrderDetailPage({ params }: { params: Promise<
           </div>
         </section>
       )}
-      {order && panelIds.map((pid) => {
-        const Panel = panelComponents[pid]
-        return Panel ? <Panel key={pid} orderId={order.id} orderNumber={order.orderNumber} orderStatus={order.status} /> : null
-      })}
     </OrderDetailScreen>
   )
 }

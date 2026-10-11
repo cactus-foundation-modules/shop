@@ -1,4 +1,5 @@
 import {
+  addOrderNote,
   getOrderById,
   getOrderItems,
   outstandingPreOrderItems,
@@ -185,7 +186,7 @@ export async function orderStatusEmailVars(
   }
 }
 
-export async function applyOrderStatusChange({ orderId, status, sendEmail, emailOnlyIfChanged, byHand }: {
+export async function applyOrderStatusChange({ orderId, status, sendEmail, emailOnlyIfChanged, byHand, actorId }: {
   orderId: string
   status: ShpOrderStatus
   sendEmail?: boolean
@@ -201,6 +202,8 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail, email
    *  the money going back through Refund. The other callers move an order for
    *  reasons of their own and are left alone. */
   byHand?: boolean
+  /** Who pressed the button, for the activity line. Absent for the system. */
+  actorId?: string | null
 }): Promise<ApplyOrderStatusResult> {
   const order = await getOrderById(orderId)
   if (!order) return { ok: false, status: 404, error: 'Order not found' }
@@ -230,6 +233,15 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail, email
   // second time, and decrementStockOnShip clamps at zero rather than erroring,
   // so the shop silently undercounted.
   if (changed) {
+    // Work starting on a paid order is a milestone the owner looks for on the
+    // order's timeline, and with the customer email switched off nothing else
+    // would record it. Best-effort: the move has happened either way.
+    if (order.status === 'PROCESSING' && status === 'PREPARING') {
+      await addOrderNote(orderId, 'Order moved from Processing to Preparing.', true, actorId ?? null).catch((err) => {
+        console.error('[shop] could not note the move to Preparing on order', orderId, err)
+      })
+    }
+
     // Pre-order items: stock decrements on ship, not on purchase (addendum B.4).
     //
     // That decrement lives in createShipment, so it happens per parcel rather

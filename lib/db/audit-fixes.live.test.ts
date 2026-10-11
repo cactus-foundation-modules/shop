@@ -184,6 +184,7 @@ suite('audit fixes, against a real database', () => {
     await orders.listOrders({ openOnly: true, fulfilment: 'UNDISPATCHED' } as Parameters<Orders['listOrders']>[0])
     const overview = await orders.getOrdersOverview()
     expect(typeof overview.toDispatch).toBe('number')
+    expect(typeof overview.toPrepare).toBe('number')
     const summary = await orders.getCustomerSummary('a@example.com')
     expect(summary.orderCount).toBeGreaterThanOrEqual(1)
     const ids = (await q(`SELECT id FROM shp_orders`)).map((r) => r.id as string)
