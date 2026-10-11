@@ -4,7 +4,8 @@ import { prisma } from '@/lib/db/prisma'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { deliveryInstructionsLabel } from '@/modules/shop/lib/delivery-instructions'
-import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, listReplacementOrdersForParent, setOrderAskForReview, setOrderCustomerReference } from '@/modules/shop/lib/db/orders'
+import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, listReplacementOrdersForParent, setOrderAskForReview, setOrderCustomerReference, setOrderShippingAddress } from '@/modules/shop/lib/db/orders'
+import { sendAddressUpdatedEmail } from '@/modules/shop/lib/address-updated-email'
 import { listRefundsForOrder, listRefundItemsForOrder } from '@/modules/shop/lib/db/refunds'
 import { listDownloadsForOrder } from '@/modules/shop/lib/db/digital'
 import { listRequestsForOrder } from '@/modules/shop/lib/db/order-requests'
@@ -144,16 +145,34 @@ const PatchBody = z.object({
   // Whether the completion email may ask for a review. Off for an order that
   // went badly - see migration 065.
   askForReview: z.boolean().optional(),
-}).refine((body) => body.customerReference !== undefined || body.askForReview !== undefined, {
+  // The whole delivery address, replaced as one: a typo in the postcode is
+  // usually a typo in the street too, and half an address saved is worse than
+  // either. Staff correcting where the goods go, not the shopper's own
+  // billing details, which have their own route.
+  shippingAddress: z.object({
+    firstName: z.string().trim().max(100),
+    lastName: z.string().trim().max(100),
+    company: z.string().trim().max(200).optional(),
+    line1: z.string().trim().min(1, 'Address line 1 is needed').max(200),
+    line2: z.string().trim().max(200).optional(),
+    city: z.string().trim().min(1, 'Town or city is needed').max(100),
+    county: z.string().trim().max(100).optional(),
+    postcode: z.string().trim().min(1, 'Postcode is needed').max(20),
+    country: z.string().trim().length(2, 'Country must be a two letter code'),
+    phone: z.string().trim().max(40).optional(),
+  }).optional(),
+  // Tell the customer, via the 'Address updated' email. Only with shippingAddress.
+  emailCustomer: z.boolean().optional(),
+}).refine((body) => body.customerReference !== undefined || body.askForReview !== undefined || body.shippingAddress !== undefined, {
   message: 'Nothing to change',
 })
 
 // PATCH - the few things about an order somebody rings up to correct.
 //
-// The customer's own reference, and whether the completion email asks for a
-// review. Deliberately narrow: an order's figures, lines and addresses are what
-// the shopper agreed to, and a route that would quietly rewrite them is not a
-// route this screen needs.
+// The customer's own reference, whether the completion email asks for a
+// review, and the delivery address. Deliberately narrow: an order's figures and
+// lines are what the shopper agreed to, and a route that would quietly rewrite
+// them is not a route this screen needs.
 //
 // Gated on shop.orders WITHOUT allowAccess, unlike the GET above: read-only shop
 // access is enough to look at an order and not enough to change one.
@@ -165,12 +184,30 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const parsed = PatchBody.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 })
 
-  const { customerReference, askForReview } = parsed.data
+  const { customerReference, askForReview, shippingAddress, emailCustomer } = parsed.data
   if (customerReference !== undefined && !(await setOrderCustomerReference(id, customerReference))) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
   if (askForReview !== undefined && !(await setOrderAskForReview(id, askForReview))) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+  }
+
+  if (shippingAddress !== undefined) {
+    const next = { ...shippingAddress, country: shippingAddress.country.toUpperCase() }
+    if (!(await setOrderShippingAddress(id, next))) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+    }
+    if (emailCustomer) {
+      const saved = await getOrderById(id)
+      // The address is already saved; a mail server having a moment is
+      // reported, not allowed to undo it.
+      try {
+        if (saved) await sendAddressUpdatedEmail(saved, next)
+      } catch (error) {
+        console.error('[shop] address-updated email failed', error)
+        return NextResponse.json({ order: saved, emailFailed: true })
+      }
+    }
   }
 
   const order = await getOrderById(id)

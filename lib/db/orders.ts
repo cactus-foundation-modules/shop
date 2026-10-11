@@ -698,6 +698,16 @@ export async function setOrderCustomerReference(id: string, reference: string): 
   return result > 0
 }
 
+/** Staff correcting where the goods go. Replaces the delivery address whole. */
+export async function setOrderShippingAddress(id: string, address: ShpAddress): Promise<boolean> {
+  const result = await prisma.$executeRaw`
+    UPDATE "shp_orders"
+    SET "shipping_address" = ${JSON.stringify(withStoredPhone(address))}::jsonb, "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${id}
+  `
+  return result > 0
+}
+
 /** Staff switching the review request in the completion email on or off. */
 export async function setOrderAskForReview(id: string, askForReview: boolean): Promise<boolean> {
   const result = await prisma.$executeRaw`

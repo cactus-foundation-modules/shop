@@ -1360,6 +1360,9 @@ export type ShpEmailTemplateTrigger =
   // had its dispatch note sent, saying the goods have left and carrying no way
   // of following them. See lib/tracking-added-email.ts.
   | 'TRACKING_ADDED' | 'REPLACEMENT_TRACKING_ADDED'
+  // Staff corrected where the order is going and ticked "email the customer".
+  // See lib/address-updated-email.ts.
+  | 'ADDRESS_UPDATED'
   // The credit note raised when a refund goes through. See lib/credit-notes.ts.
   | 'CREDIT_NOTE_ISSUED'
   // The pair of documents raised when the company an invoice is made out to

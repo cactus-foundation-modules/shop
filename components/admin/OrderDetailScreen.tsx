@@ -376,6 +376,9 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
   // edited", which is a different state from an empty string - an empty string
   // is somebody deliberately clearing it.
   const [referenceDraft, setReferenceDraft] = useState<string | null>(null)
+  // The delivery address while it is being amended; null when it is not.
+  const [addressDraft, setAddressDraft] = useState<Address | null>(null)
+  const [emailAddressChange, setEmailAddressChange] = useState(false)
 
   const refresh = useCallback(() => {
     fetch(`/api/m/shop/admin/orders/${orderId}`)
@@ -477,6 +480,25 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
     setBusy(false)
     if (!res.ok) { await alert('That reference could not be saved.'); return }
     setReferenceDraft(null)
+    refresh()
+  }
+
+  async function saveAddress() {
+    if (addressDraft === null) return
+    setBusy(true)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shippingAddress: addressDraft, emailCustomer: emailAddressChange }),
+    })
+    setBusy(false)
+    if (!res.ok) {
+      await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That address could not be saved.', 'The address was left as it was')
+      return
+    }
+    const result = (await res.json().catch(() => ({}))) as { emailFailed?: boolean }
+    setAddressDraft(null)
+    setEmailAddressChange(false)
+    if (result.emailFailed) await alert('The address was saved, but the email to the customer could not be sent.', 'Address saved')
     refresh()
   }
 
@@ -1167,13 +1189,61 @@ export function OrderDetailScreen({ orderId, children }: { orderId: string; chil
             <section className="sox-card">
               <div className="sox-card-head">
                 <h2>Delivery address</h2>
-                <button type="button" className="sox-copy sox-noprint" onClick={() => copy(addressLines(order.shippingAddress).join('\n'), 'The address')}>Copy</button>
+                {addressDraft === null && (
+                  <span style={{ display: 'flex', gap: '0.375rem' }}>
+                    <button type="button" className="sox-copy sox-noprint" onClick={() => copy(addressLines(order.shippingAddress).join('\n'), 'The address')}>Copy</button>
+                    <button type="button" className="sox-copy sox-noprint" onClick={() => { setEmailAddressChange(false); setAddressDraft({ ...order.shippingAddress }) }}>Edit</button>
+                  </span>
+                )}
               </div>
               <div className="sox-card-body">
+                {addressDraft !== null ? (
+                  <div style={{ display: 'grid', gap: '0.5rem' }}>
+                    {([
+                      ['firstName', 'First name'],
+                      ['lastName', 'Last name'],
+                      // Legacy: only offered where the order already carries one.
+                      ...(order.shippingAddress.company ? [['company', 'Company'] as const] : []),
+                      ['line1', 'Address line 1'],
+                      ['line2', 'Address line 2'],
+                      ['city', 'Town or city'],
+                      ['county', 'County'],
+                      ['postcode', 'Postcode'],
+                      ['country', 'Country (two letter code, e.g. GB)'],
+                      ['phone', 'Phone'],
+                    ] as const).map(([key, label]) => (
+                      <label key={key} style={{ display: 'grid', gap: '0.125rem', fontSize: '0.75rem' }}>
+                        {label}
+                        <input
+                          className="sox-input"
+                          type="text"
+                          maxLength={key === 'country' ? 2 : 200}
+                          disabled={busy}
+                          value={addressDraft[key] ?? ''}
+                          onChange={(e) => setAddressDraft({ ...addressDraft, [key]: e.target.value })}
+                        />
+                      </label>
+                    ))}
+                    <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.8125rem' }}>
+                      <input type="checkbox" checked={emailAddressChange} disabled={busy} onChange={(e) => setEmailAddressChange(e.target.checked)} />
+                      Email the new address to the customer
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.375rem' }}>
+                      <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={saveAddress}>Save</button>
+                      <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => setAddressDraft(null)}>Cancel</button>
+                    </div>
+                    <span className="sox-muted" style={{ fontSize: '0.75rem' }}>
+                      Parcels already booked with a courier keep the address they were booked with.
+                    </span>
+                  </div>
+                ) : (
+                  <>
                 <address className="sox-address">
                   {addressLines(order.shippingAddress).map((line, i) => <span key={i}>{line}<br /></span>)}
                 </address>
                 {order.shippingAddress.phone && <p className="sox-sub">{order.shippingAddress.phone}</p>}
+                  </>
+                )}
                 {/* Only where the customer actually said something. Under the
                     address rather than in a card of its own, because it is the
                     rest of that sentence - and set apart, because a gate code

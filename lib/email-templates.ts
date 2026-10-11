@@ -489,6 +489,21 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     transactional: true,
   },
   {
+    // Staff changed the delivery address and chose to tell the customer. The
+    // new address goes in raw HTML built (and escaped) by
+    // lib/address-updated-email.ts. Transactional: somebody whose parcel is
+    // going somewhere new is owed the sentence whatever they think of the
+    // newsletter.
+    key: 'shop.address-updated',
+    label: 'Delivery address updated',
+    subject: 'Delivery address updated for order {{orderNumber}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>We have updated the delivery address on your order <strong>{{orderNumber}}</strong>. It will now be delivered to:</p>{{newAddress}}<p>If that does not look right, reply to this email as soon as you can and we will put it straight.</p><p>Thanks - {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'newAddress', 'shopName', 'orderUrl', 'hasOrderUrl'],
+    rawTags: ['newAddress'],
+    transactional: true,
+  },
+  {
     key: 'shop.replacement-tracking-added',
     label: 'Replacement - tracking added after dispatch',
     subject: 'Tracking for your replacement from order {{parentOrderNumber}}',
@@ -603,5 +618,6 @@ export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   REPLACEMENT_DISPATCHED: 'shop.replacement-dispatched',
   REPLACEMENT_DELIVERED: 'shop.replacement-delivered',
   TRACKING_ADDED: 'shop.tracking-added',
+  ADDRESS_UPDATED: 'shop.address-updated',
   REPLACEMENT_TRACKING_ADDED: 'shop.replacement-tracking-added',
 }
