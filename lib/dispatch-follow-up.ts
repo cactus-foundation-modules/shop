@@ -3,7 +3,7 @@ import { claimSlotNotification, claimTrackingNotification, getOrderDispatchSumma
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 import { hasFollowableTracking, sendTrackingAddedEmail } from '@/modules/shop/lib/tracking-added-email'
 import { sendDeliveryDayEmail, sendDeliverySlotEmail } from '@/modules/shop/lib/delivery-slot-email'
-import { deliveryBookingForShipment, isDeliveryDate, nowInTimezone } from '@/modules/shop/lib/delivery-slot'
+import { deliveryBookingForShipment, isDeliveryDate, nowInTimezone, toldWindowKey } from '@/modules/shop/lib/delivery-slot'
 import { currentDelay } from '@/modules/shop/lib/delivery-delay'
 import { sendDeliveryNewDateEmail } from '@/modules/shop/lib/delivery-delay-email'
 import { getSiteTimezone } from '@/lib/config/timezone.server'
@@ -105,13 +105,13 @@ export function trackingLinkFor(
  * already had the first.
  *
  * A window that has moved is different news. A customer told Monday 08:15 to
- * 10:15 whose courier has rebooked them for the afternoon has to hear it, so
- * when `before` is given and the booking as the customer reads it (the typed
- * window, or the courier's own) differs from the one being saved, the stamp is
- * retaken and the email goes again. A save that changes nothing about the day
- * or times - a note, a tracking link - still sends nothing. Two staff saving
- * the same change at once cannot both send it: the second save's `before` is
- * the first one's result, so it sees no change.
+ * 10:15 whose courier has rebooked them for the afternoon has to hear it. The
+ * window being saved is judged against the one the email actually carried
+ * (slotNotifiedWindow, migration 072) - not against the parcel a moment ago,
+ * which the courier's own tracking may have moved since the email went, making
+ * a rebooked window look like no news. A parcel told before that record
+ * existed falls back to `before`. A save that leaves the day and times as the
+ * customer was told them - a note, a tracking link - sends nothing.
  */
 export async function maybeSendSlotEmail(
   orderId: string,
@@ -123,7 +123,7 @@ export async function maybeSendSlotEmail(
   if (!shipment.deliveryDate || !shipment.deliverySlotStart || !shipment.deliverySlotEnd) return false
   const timezone = await getSiteTimezone()
   if (shipment.slotNotifiedAt) {
-    if (!before || !bookingMoved(before, shipment, timezone)) return false
+    if (!windowMovedSinceTold(shipment, before, timezone)) return false
     await setSlotNotification(shipment.id, orderId, true)
   } else if (!(await claimSlotNotification(shipment.id, orderId))) {
     return false
@@ -135,6 +135,21 @@ export async function maybeSendSlotEmail(
     console.error('[shop] delivery slot email failed', error)
   }
   return true
+}
+
+/** Whether the window on the parcel now is not the one the customer was last
+ *  emailed. Judged against the record of what went (migration 072); for a
+ *  parcel told before that record, against `before`, and with neither, no. */
+export function windowMovedSinceTold(
+  after: ShpShipmentWithItems,
+  before: ShpShipmentWithItems | undefined,
+  timezone: string,
+): boolean {
+  if (after.slotNotifiedWindow) {
+    const now = toldWindowKey(deliveryBookingForShipment(after, timezone))
+    return Boolean(now) && now !== after.slotNotifiedWindow
+  }
+  return before ? bookingMoved(before, after, timezone) : false
 }
 
 /** Whether the day or window the customer would read off the parcel differs

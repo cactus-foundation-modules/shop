@@ -962,16 +962,27 @@ export function OrderDetailScreen({ orderId, children, panels }: {
         <div>
           <div className="sox-orderhead-title">
             {/* The way back to the list, drawn as the inbox draws its own on a
-                phone: a chevron in glass, with the word while there is room. */}
-            <a className="sod-back sox-noprint" href={`/${adminPath}/m/shop/orders`}>
+                phone: a chevron in glass, icon only. */}
+            <a className="sod-back sox-noprint" href={`/${adminPath}/m/shop/orders`} title="Back to all orders">
               <span aria-hidden="true">{BackIcon}</span>
-              <span className="sod-back-words" aria-hidden="true">Back</span>
               <span className="sr-only">Back to all orders</span>
             </a>
             <h1>Order {order.orderNumber}</h1>
             <p className="sox-orderhead-meta">
               Placed {formatDateTime(order.createdAt)} ({relativeTime(order.createdAt)})
             </p>
+            <div className="sox-badges">
+              <span className={`badge ${statusBadge.cls}`}>{statusBadge.label}</span>
+              <span className={`badge ${paymentBadge.cls}`}>{paymentBadge.label}</span>
+              <span className={`badge ${dispatchBadge.cls}`}>{dispatchBadge.label}</span>
+              {data.items.some((i) => i.isPreOrder) && <span className="badge badge-info">Has a pre-order</span>}
+              {order.kind === 'REPLACEMENT' && <span className="badge badge-info">Replacement</span>}
+              {waitingRequests > 0 && (
+                <a className="badge badge-warning" href="#customer-reports" onClick={() => setSection('overview')}>
+                  {waitingRequests === 1 ? 'Customer report waiting' : `${waitingRequests} customer reports waiting`}
+                </a>
+              )}
+            </div>
           </div>
           {/* A replacement read on its own says almost nothing - a part, an
               address, no money. The order it is putting right is the context,
@@ -982,18 +993,6 @@ export function OrderDetailScreen({ orderId, children, panels }: {
               <a href={`/${adminPath}/m/shop/orders/${data.parentOrder.id}`}>{data.parentOrder.orderNumber}</a>
             </p>
           )}
-          <div className="sox-badges" style={{ marginTop: '0.5rem' }}>
-            <span className={`badge ${statusBadge.cls}`}>{statusBadge.label}</span>
-            <span className={`badge ${paymentBadge.cls}`}>{paymentBadge.label}</span>
-            <span className={`badge ${dispatchBadge.cls}`}>{dispatchBadge.label}</span>
-            {data.items.some((i) => i.isPreOrder) && <span className="badge badge-info">Has a pre-order</span>}
-            {order.kind === 'REPLACEMENT' && <span className="badge badge-info">Replacement</span>}
-            {waitingRequests > 0 && (
-              <a className="badge badge-warning" href="#customer-reports" onClick={() => setSection('overview')}>
-                {waitingRequests === 1 ? 'Customer report waiting' : `${waitingRequests} customer reports waiting`}
-              </a>
-            )}
-          </div>
         </div>
         {/* Icons in capsules, the way the inbox draws the actions on a
             conversation: the two that settle a manual payment share one, the

@@ -4,6 +4,7 @@ import { claimSlotNotification } from '@/modules/shop/lib/db/shipments'
 
 vi.mock('@/modules/shop/lib/db/shipments', () => ({
   claimSlotNotification: vi.fn(),
+  recordToldWindow: vi.fn(async () => undefined),
 }))
 
 const parcel = {

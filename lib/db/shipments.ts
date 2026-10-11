@@ -42,6 +42,7 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     deliverySlotStart: (r.delivery_slot_start as string | null) ?? null,
     deliverySlotEnd: (r.delivery_slot_end as string | null) ?? null,
     slotNotifiedAt: (r.slot_notified_at as Date | null) ?? null,
+    slotNotifiedWindow: (r.slot_notified_window as string | null) ?? null,
     // Migration 053. Defaulted here as well as in the DDL so a row read through
     // a query shape cached before the column existed answers "nobody has been
     // told" rather than undefined - which would read as truthy and silence the
@@ -798,6 +799,16 @@ export async function claimSlotNotification(shipmentId: string, orderId: string)
     WHERE "id" = ${shipmentId} AND "order_id" = ${orderId} AND "slot_notified_at" IS NULL
   `
   return claimed > 0
+}
+
+/** Record which window the customer has just been emailed (migration 072),
+ *  as 'YYYY-MM-DD HH:MM-HH:MM' - see toldWindowKey in lib/delivery-slot.ts. */
+export async function recordToldWindow(shipmentId: string, orderId: string, window: string): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "slot_notified_window" = ${window}::text, "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId} AND "order_id" = ${orderId}
+  `
 }
 
 /**

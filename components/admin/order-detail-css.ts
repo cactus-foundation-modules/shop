@@ -4,6 +4,7 @@ export const orderDetailCss = `
 .sod-app>.sox-orderhead{padding:0;margin:1rem 0 1.25rem}
 .sod-app .sox-orderhead-title{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:0.875rem;row-gap:0.125rem}
 .sod-app .sox-orderhead-title .sox-orderhead-meta{margin:0}
+.sod-app .sox-orderhead-title .sox-badges{align-self:center}
 .sod-app .sox-orderhead h1{font-size:1.5rem;letter-spacing:-0.035em;font-weight:650}
 .sod-app .btn,.sod-app .sox-select,.sod-app .sox-input{border-radius:0.65rem}
 .sod-app .badge{border-radius:999px}
@@ -79,12 +80,10 @@ export const orderDetailCss = `
 .sod-menu-sep{height:1px;margin:0.2rem 0.25rem;background:var(--color-border)}
 /* On a phone, a sheet along the bottom, as the inbox's menus are. */
 @media(max-width:599px){.sod-menu{position:fixed;top:auto;left:0;right:0;bottom:0;width:auto;max-width:none;max-height:70dvh;overflow-y:auto;z-index:10000;padding:0.5rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom,0));border-left:0;border-right:0;border-bottom:0;border-radius:var(--radius-lg,0.75rem) var(--radius-lg,0.75rem) 0 0}.sod-menu-item{min-height:2.75rem}}
-.sod-back{flex:none;align-self:center;display:inline-flex;align-items:center;gap:0.3rem;height:2rem;padding:0 0.6rem 0 0.4rem;margin-left:-0.25rem;border-radius:9999px;background:var(--sod-fill);box-shadow:var(--sod-shine);color:var(--color-text-secondary);font-size:0.8125rem;text-decoration:none;transition:background 0.15s ease-out,color 0.15s ease-out}
+.sod-back{flex:none;align-self:center;display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;padding:0;margin-left:-0.25rem;border-radius:9999px;background:var(--sod-fill);box-shadow:var(--sod-shine);color:var(--color-text-secondary);font-size:0.8125rem;text-decoration:none;transition:background 0.15s ease-out,color 0.15s ease-out}
 .sod-back:hover{background:var(--sod-fill-hover);color:var(--color-text);text-decoration:none}
 .sod-back svg{display:block}
-@media(max-width:599px){.sod-back-words{display:none}.sod-back{width:2rem;padding:0;justify-content:center}}
-@media(pointer:coarse){.sod-back{height:2.5rem}}
-@media(max-width:599px) and (pointer:coarse){.sod-back{width:2.5rem}}
+@media(pointer:coarse){.sod-back{width:2.5rem;height:2.5rem}}
 .sod-head-link{display:inline-flex;align-items:center;gap:0.3rem;font-size:0.8125rem;color:var(--color-primary);text-decoration:none}
 .sod-head-link:hover{text-decoration:underline}
 .sod-head-note{font-size:0.8125rem;color:var(--color-text-secondary)}

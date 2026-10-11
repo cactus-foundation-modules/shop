@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
-import { getOrderById, getOrderItems, outstandingPreOrderItems } from '@/modules/shop/lib/db/orders'
+import { addOrderNote, getOrderById, getOrderItems, outstandingPreOrderItems } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import {
   createShipment,
@@ -30,6 +30,7 @@ import {
   courierLinkOnly,
   trackingLinkFor,
 } from '@/modules/shop/lib/dispatch-follow-up'
+import { parcelEditNote, type ParcelEditOutcome } from '@/modules/shop/lib/parcel-edit-note'
 import type { ShpOrderItem, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
 // Ceilings on what a parcel record may carry. Every one of these is stored on
@@ -403,6 +404,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (newDayTold !== null) {
     const told = newDayTold
     const trackingTold = await maybeSendTrackingEmail(id, existing, shipment, emailTracking !== false)
+    await noteParcelEdit(id, existing, shipment, gate.user.id, { wanted: emailCustomer !== false, deliveryEmailed: told, trackingEmailed: trackingTold })
     return NextResponse.json({ shipment, slotEmailSent: false, dayEmailSent: told, trackingEmailSent: trackingTold })
   }
 
@@ -412,7 +414,24 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   // check - which is the only way to tell "tracking has just been added" from
   // "tracking has been here since it went out".
   const trackingTold = await maybeSendTrackingEmail(id, existing, shipment, emailTracking !== false)
+  await noteParcelEdit(id, existing, shipment, gate.user.id, { wanted: emailCustomer !== false, deliveryEmailed: notified || dayTold, trackingEmailed: trackingTold })
   return NextResponse.json({ shipment, slotEmailSent: notified, dayEmailSent: dayTold, trackingEmailSent: trackingTold })
+}
+
+/** The edit's line in the order's activity (lib/parcel-edit-note.ts). The
+ *  parcel is saved either way, so a failure here is logged, not returned. */
+async function noteParcelEdit(
+  orderId: string,
+  before: ShpShipmentWithItems,
+  after: ShpShipmentWithItems,
+  userId: string,
+  outcome: ParcelEditOutcome,
+): Promise<void> {
+  const note = parcelEditNote(before, after, outcome)
+  if (!note) return
+  await addOrderNote(orderId, note, true, userId).catch((error) => {
+    console.error('[shop] parcel edit note failed', orderId, error)
+  })
 }
 
 // Undo a dispatch recorded by mistake. The dispatched totals are summed from

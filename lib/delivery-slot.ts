@@ -68,6 +68,13 @@ export type DeliveryBooking = {
   slotEnd: string | null
 }
 
+/** A booking with a window, in the one shape the window email's record keeps
+ *  (migration 072): 'YYYY-MM-DD HH:MM-HH:MM'. Empty when there is no window. */
+export function toldWindowKey(booking: DeliveryBooking): string {
+  if (!booking.date || !booking.slotStart || !booking.slotEnd) return ''
+  return `${booking.date} ${booking.slotStart}-${booking.slotEnd}`
+}
+
 /** The day and window to show - the slot the shop booked, or the one the
  *  courier reported on their own tracking page when no slot was typed in. */
 export function deliveryBookingForShipment(

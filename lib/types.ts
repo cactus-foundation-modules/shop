@@ -785,6 +785,9 @@ export type ShpShipment = {
   /** When the customer was told about the window, so a later correction to the
    *  parcel does not tell them all over again. */
   slotNotifiedAt: Date | null
+  /** The window that email carried, 'YYYY-MM-DD HH:MM-HH:MM' (migration 072).
+   *  Null when it was sent before the column existed. */
+  slotNotifiedWindow: string | null
   /** Set once the customer has been told tracking that was not known when the
    *  parcel went out. Null on every parcel that never gained any. */
   trackingNotifiedAt: Date | null

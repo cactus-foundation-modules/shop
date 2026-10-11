@@ -61,6 +61,22 @@ describe('maybeSendSlotEmail on a parcel whose window was already told', () => {
     expect(setSlot).not.toHaveBeenCalled()
   })
 
+  it('judges against the window the email carried, not the parcel a moment ago', async () => {
+    // The courier moved its window to the afternoon after the email went; the
+    // owner types that afternoon window in. The parcel before the save already
+    // reads 13:00-15:00, but the customer was told 08:15-10:15.
+    const moved = { ...told, slotNotifiedWindow: '2026-10-12 08:15-10:15',
+      deliveryWindowFrom: new Date('2026-10-12T12:00:00Z'), deliveryWindowTo: new Date('2026-10-12T14:00:00Z') }
+    const after = { ...moved, deliverySlotStart: '13:00', deliverySlotEnd: '15:00' }
+    expect(await maybeSendSlotEmail('ord-1', after, true, moved)).toBe(true)
+    expect(sendSlot).toHaveBeenCalledOnce()
+  })
+
+  it('stays quiet when the saved window is the one the email carried', async () => {
+    const after = { ...told, slotNotifiedWindow: '2026-10-12 13:00-15:00', deliverySlotStart: '13:00', deliverySlotEnd: '15:00' }
+    expect(await maybeSendSlotEmail('ord-1', after, true, told)).toBe(false)
+  })
+
   it('stays quiet with no earlier version to compare against', async () => {
     const after = { ...told, deliverySlotStart: '13:00', deliverySlotEnd: '15:00' }
     expect(await maybeSendSlotEmail('ord-1', after, true)).toBe(false)

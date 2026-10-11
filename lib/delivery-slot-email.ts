@@ -1,5 +1,5 @@
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { claimSlotNotification, getOrderDispatchSummary, getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
+import { claimSlotNotification, getOrderDispatchSummary, getShipmentsForOrder, recordToldWindow } from '@/modules/shop/lib/db/shipments'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { orderTrackingUrl } from '@/modules/shop/lib/order-tracking'
@@ -11,6 +11,7 @@ import {
   formatDeliveryWindow,
   isWholeDayWindow,
   slotTimeFromInstant,
+  toldWindowKey,
 } from '@/modules/shop/lib/delivery-slot'
 import { courierFaqUrl, faqsForShipment } from '@/modules/shop/lib/courier-faqs'
 import { isStaleCarrierWindow } from '@/modules/shop/lib/delivery-delay'
@@ -38,12 +39,12 @@ function hasCompleteBookedSlot(shipment: Pick<ShpShipment, 'deliveryDate' | 'del
 function deliveryEmailParts(
   shipment: Pick<ShpShipment, 'deliveryDate' | 'deliverySlotStart' | 'deliverySlotEnd' | 'deliveryWindowFrom' | 'deliveryWindowTo'>,
   timezone: string,
-): { day: string; window: string; slotStart: string; slotEnd: string } | null {
+): { day: string; window: string; slotStart: string; slotEnd: string; told: string } | null {
   const booking = deliveryBookingForShipment(shipment, timezone)
   const day = formatDeliveryDay(booking.date)
   const window = formatDeliveryWindow(booking.slotStart, booking.slotEnd)
   if (!day || !window || !booking.slotStart || !booking.slotEnd) return null
-  return { day, window, slotStart: booking.slotStart, slotEnd: booking.slotEnd }
+  return { day, window, slotStart: booking.slotStart, slotEnd: booking.slotEnd, told: toldWindowKey(booking) }
 }
 
 /** What is in THIS parcel and who is bringing it, shared by the day and the
@@ -115,6 +116,9 @@ export async function sendDeliverySlotEmail(params: {
     deliverySlotStart: parts.slotStart,
     deliverySlotEnd: parts.slotEnd,
   })
+  // Which window went, so a later save is judged against what the customer
+  // read (see maybeSendSlotEmail).
+  await recordToldWindow(shipment.id, params.orderId, parts.told)
 }
 
 /**

@@ -12,6 +12,7 @@ vi.mock('@/modules/shop/lib/db/shipments', () => ({
   claimDelayAnsweredByCourier: claim,
   getShipmentsForOrder: shipments,
   setSlotNotification: stamp,
+  recordToldWindow: vi.fn(async () => undefined),
 }))
 vi.mock('@/modules/shop/lib/db/orders', () => ({ getOrderById: async () => ({ id: 'ord-1', orderNumber: 'DW1', customerName: 'A' }) }))
 vi.mock('@/modules/shop/lib/order-notify', () => ({ notifyOrderCustomer: notify }))

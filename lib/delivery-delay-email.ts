@@ -1,8 +1,8 @@
-import { claimDelayAnsweredByCourier, getShipmentsForOrder, setSlotNotification } from '@/modules/shop/lib/db/shipments'
+import { claimDelayAnsweredByCourier, getShipmentsForOrder, recordToldWindow, setSlotNotification } from '@/modules/shop/lib/db/shipments'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { parcelEmailVars } from '@/modules/shop/lib/delivery-slot-email'
-import { deliveryBookingForShipment, formatDeliveryDay, formatDeliveryWindow, isWholeDayWindow, slotTimeFromInstant } from '@/modules/shop/lib/delivery-slot'
+import { deliveryBookingForShipment, formatDeliveryDay, formatDeliveryWindow, isWholeDayWindow, slotTimeFromInstant, toldWindowKey } from '@/modules/shop/lib/delivery-slot'
 import { delayNoteForCustomer, isStaleCarrierWindow, type DelayKind } from '@/modules/shop/lib/delivery-delay'
 import { calendarDateIn } from '@/lib/config/timezone'
 import { getSiteTimezone } from '@/lib/config/timezone.server'
@@ -50,9 +50,12 @@ async function newDayVars(shipment: ShpShipment): Promise<Record<string, string>
  * the send, as every once-only stamp in this module is.
  */
 async function stampWhenItCarriesTheWindow(shipment: ShpShipment, vars: Record<string, string>): Promise<void> {
-  if (vars.hasNewDayWindow === 'true' && !shipment.slotNotifiedAt) {
-    await setSlotNotification(shipment.id, shipment.orderId, true)
-  }
+  if (vars.hasNewDayWindow !== 'true') return
+  if (!shipment.slotNotifiedAt) await setSlotNotification(shipment.id, shipment.orderId, true)
+  // Which window it carried (migration 072), so a later save is judged
+  // against what the customer read.
+  const told = toldWindowKey(deliveryBookingForShipment(shipment, await getSiteTimezone()))
+  if (told) await recordToldWindow(shipment.id, shipment.orderId, told)
 }
 
 async function loadParcel(orderId: string, shipmentId: string) {

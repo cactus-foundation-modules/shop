@@ -35,6 +35,12 @@ export type EditableParcel = {
   notes: string | null
   /** Set once the customer has been told the window. */
   slotNotifiedAt: string | null
+  /** Which window that email carried, 'YYYY-MM-DD HH:MM-HH:MM' (migration
+   *  072). Optional so a response from an older deployment still renders. */
+  slotNotifiedWindow?: string | null
+  /** The day and window the customer reads now, typed in or the courier's
+   *  own. Optional for the same reason. */
+  booking?: { date: string; slotStart: string | null; slotEnd: string | null }
   /** Set once the customer has been told tracking the parcel went out without.
    *  Optional so a response from an older deployment still renders. */
   trackingNotifiedAt?: string | null
@@ -83,10 +89,19 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   // ...unless this save moves it. A customer told one window whose courier has
   // since rebooked them needs the new one; the server sends it only when the
   // day or times the customer would read have really changed.
-  const windowMoved = alreadyTold && Boolean(details.deliveryDate && details.deliverySlotStart && details.deliverySlotEnd)
-    && (details.deliveryDate !== (parcel.deliveryDate ?? '')
-      || details.deliverySlotStart !== (parcel.deliverySlotStart ?? '')
-      || details.deliverySlotEnd !== (parcel.deliverySlotEnd ?? ''))
+  // Judged the way the server judges it (windowMovedSinceTold): against the
+  // window the email carried where that is recorded, otherwise against what
+  // the customer reads now - so the box never offers an email that will not go.
+  const formWindow = details.deliveryDate && details.deliverySlotStart && details.deliverySlotEnd
+    ? `${details.deliveryDate} ${details.deliverySlotStart}-${details.deliverySlotEnd}`
+    : ''
+  const shownWindow = parcel.booking
+    ? (parcel.booking.date && parcel.booking.slotStart && parcel.booking.slotEnd
+      ? `${parcel.booking.date} ${parcel.booking.slotStart}-${parcel.booking.slotEnd}`
+      : '')
+    : `${parcel.deliveryDate ?? ''} ${parcel.deliverySlotStart ?? ''}-${parcel.deliverySlotEnd ?? ''}`
+  const windowMoved = alreadyTold && Boolean(formWindow)
+    && formWindow !== (parcel.slotNotifiedWindow || shownWindow)
   // A new day on a delayed parcel is the news the delay promised, and goes
   // whatever was told about the window that fell through.
   const answersDelay = Boolean(parcel.delayOpen) && Boolean(details.deliveryDate)

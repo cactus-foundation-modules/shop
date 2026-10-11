@@ -852,6 +852,10 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     -- Set the first time the slot email goes out, so correcting a typo on the
     -- parcel afterwards does not send it again.
     "slot_notified_at" TIMESTAMP(3),
+    -- Which window that email carried, 'YYYY-MM-DD HH:MM-HH:MM'
+    -- (072_slot_notified_window.sql), so a moved window is judged against what
+    -- the customer read.
+    "slot_notified_window" TEXT,
     -- Set once somebody has been told the tracking that was not known when the
     -- parcel went (054_tracking_notified.sql). NULL is "nobody has been told",
     -- and only a parcel that GAINS tracking it did not have ever sends one.

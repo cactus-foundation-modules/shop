@@ -38,6 +38,7 @@ function shipment(patch: Partial<ShpShipmentWithItems>): ShpShipmentWithItems {
     deliverySlotStart: null,
     deliverySlotEnd: null,
     slotNotifiedAt: null,
+    slotNotifiedWindow: null,
     trackingNotifiedAt: null,
     courierRearrangingAt: null,
     failedNotifiedAt: null,
