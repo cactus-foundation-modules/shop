@@ -120,8 +120,16 @@ export async function maybeSendSlotEmail(
   before?: ShpShipmentWithItems,
 ): Promise<boolean> {
   if (!wanted || shipment.quietCustomerEmails) return false
-  if (!shipment.deliveryDate || !shipment.deliverySlotStart || !shipment.deliverySlotEnd) return false
+  if (!shipment.deliveryDate) return false
   const timezone = await getSiteTimezone()
+  const typed = Boolean(shipment.deliverySlotStart && shipment.deliverySlotEnd)
+  // A window the courier's own tracking moved after the email went - nothing
+  // typed by hand, the courier's times for the parcel's own day - is news too
+  // (order DW000219, a live ETA that shifted overnight). Only once told: the
+  // first courier window is maybeSendCarrierWindowEmail's to send, and a
+  // courier window for any other day is not this parcel's booking.
+  if (!typed && (!shipment.slotNotifiedAt
+    || deliveryBookingForShipment(shipment, timezone).date !== shipment.deliveryDate)) return false
   if (shipment.slotNotifiedAt) {
     if (!windowMovedSinceTold(shipment, before, timezone)) return false
     await setSlotNotification(shipment.id, orderId, true)

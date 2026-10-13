@@ -92,9 +92,16 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   // Judged the way the server judges it (windowMovedSinceTold): against the
   // window the email carried where that is recorded, otherwise against what
   // the customer reads now - so the box never offers an email that will not go.
+  // With the time boxes empty, the window saved is the courier's own for the
+  // parcel's day, which may have moved since the email (maybeSendSlotEmail).
+  const courierWindow = !details.deliverySlotStart && !details.deliverySlotEnd
+    && parcel.booking?.slotStart && parcel.booking.slotEnd
+    && details.deliveryDate === parcel.booking.date && details.deliveryDate === (parcel.deliveryDate ?? '')
+    ? `${parcel.booking.date} ${parcel.booking.slotStart}-${parcel.booking.slotEnd}`
+    : ''
   const formWindow = details.deliveryDate && details.deliverySlotStart && details.deliverySlotEnd
     ? `${details.deliveryDate} ${details.deliverySlotStart}-${details.deliverySlotEnd}`
-    : ''
+    : courierWindow
   const shownWindow = parcel.booking
     ? (parcel.booking.date && parcel.booking.slotStart && parcel.booking.slotEnd
       ? `${parcel.booking.date} ${parcel.booking.slotStart}-${parcel.booking.slotEnd}`
