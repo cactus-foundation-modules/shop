@@ -8,7 +8,11 @@ import { ShopUpsellProducts } from '@/modules/shop/components/puck/ShopUpsellPro
 import { getShopCartHeaderActions } from '@/modules/shop/lib/cart-header-actions'
 import { CactusRender } from '@/lib/puck/CactusRender'
 
-export const metadata = { title: 'Your basket' }
+// A function, not a static `metadata` export: the public module router only
+// forwards generateMetadata, so a static title never reached the page head.
+export async function generateMetadata() {
+  return { title: 'Your Basket' }
+}
 
 // The cart page is designable via the shopCart layout type (Appearance >
 // Layouts > Shop > Cart). A published starter renders the Puck layout (the Cart

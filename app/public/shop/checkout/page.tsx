@@ -16,7 +16,11 @@ import { CheckoutReviewClient } from '@/modules/shop/components/public/CheckoutR
 import { resolveCheckoutWalletButtons } from '@/modules/shop/lib/checkout-wallet-buttons'
 import { CactusRender } from '@/lib/puck/CactusRender'
 
-export const metadata = { title: 'Checkout' }
+// A function, not a static `metadata` export: the public module router only
+// forwards generateMetadata, so a static title never reached the page head.
+export async function generateMetadata() {
+  return { title: 'Checkout' }
+}
 
 export default async function ShopCheckoutPage() {
   const gate = await getShopGate()
