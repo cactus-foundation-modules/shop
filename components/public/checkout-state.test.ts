@@ -17,7 +17,7 @@ const FILLED: CheckoutState = {
   customerOrganisation: 'Shopper Ltd',
   customerPhone: '01234 567890',
   shippingAddress: {
-    firstName: 'A', lastName: 'Shopper',
+    firstName: 'A', lastName: 'Shopper', company: '',
     line1: '1 High Street', line2: '', city: 'Leeds', county: '',
     postcode: 'LS1 1AA', country: 'GB', phone: '',
   },
@@ -36,6 +36,11 @@ describe('missingCheckoutFields', () => {
   it('says nothing about the optional boxes unless the shop asks for them', () => {
     expect(labels(EMPTY_CHECKOUT_STATE)).not.toContain('Phone')
     expect(labels(EMPTY_CHECKOUT_STATE)).not.toContain('Organisation name')
+  })
+
+  it('never asks for the delivery organisation, even when the shop insists on the buyer organisation', () => {
+    const asked = labels(EMPTY_CHECKOUT_STATE, { organisationRequired: true, organisationLabel: 'Practice name' })
+    expect(asked.filter((l) => l.toLowerCase().includes('organisation'))).toEqual([])
   })
 
   it('asks for the phone number when the shop requires one', () => {
@@ -165,7 +170,7 @@ describe('the billing address', () => {
     const done: CheckoutState = {
       ...TICKED,
       billingAddress: {
-        firstName: '', lastName: '',
+        firstName: '', lastName: '', company: '',
         line1: 'Accounts, 90 Example Street', line2: '', city: 'Sheffield', county: '',
         postcode: 'S1 1AA', country: 'GB', phone: '',
       },

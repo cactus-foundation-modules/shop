@@ -6,6 +6,8 @@ import { deliveryBookingForShipment, formatDeliveryDay, formatDeliveryWindow, is
 import { delayNoteForCustomer, isStaleCarrierWindow, type DelayKind } from '@/modules/shop/lib/delivery-delay'
 import { calendarDateIn } from '@/lib/config/timezone'
 import { getSiteTimezone } from '@/lib/config/timezone.server'
+import { getShopConfigCached } from '@/modules/shop/lib/config'
+import { parcelCourierTimesEmailable } from '@/modules/shop/lib/tracking/provisional-window'
 import type { ShpShipment } from '@/modules/shop/lib/types'
 
 // The delay emails, sent from the order screen's "Report a delay" and from
@@ -29,7 +31,7 @@ import type { ShpShipment } from '@/modules/shop/lib/types'
  *  holds for the missed day is the one that fell through, and the booking
  *  leaves it out (see isStaleCarrierWindow). */
 async function newDayVars(shipment: ShpShipment): Promise<Record<string, string>> {
-  const booking = deliveryBookingForShipment(shipment, await getSiteTimezone())
+  const booking = await emailBooking(shipment)
   const day = formatDeliveryDay(booking.date)
   const window = day ? formatDeliveryWindow(booking.slotStart, booking.slotEnd) : ''
   return {
@@ -54,8 +56,15 @@ async function stampWhenItCarriesTheWindow(shipment: ShpShipment, vars: Record<s
   if (!shipment.slotNotifiedAt) await setSlotNotification(shipment.id, shipment.orderId, true)
   // Which window it carried (migration 072), so a later save is judged
   // against what the customer read.
-  const told = toldWindowKey(deliveryBookingForShipment(shipment, await getSiteTimezone()))
+  const told = toldWindowKey(await emailBooking(shipment))
   if (told) await recordToldWindow(shipment.id, shipment.orderId, told)
+}
+
+/** The booking as an email may word it: without the courier's own times when
+ *  their tracking page shows a holding window (lib/tracking/provisional-window.ts). */
+async function emailBooking(shipment: ShpShipment) {
+  const courierTimes = parcelCourierTimesEmailable(await getShopConfigCached(), shipment)
+  return deliveryBookingForShipment(shipment, await getSiteTimezone(), { courierTimes })
 }
 
 async function loadParcel(orderId: string, shipmentId: string) {
@@ -124,12 +133,14 @@ export async function maybeAnswerDelayFromCourier(
   parcel: Pick<ShpShipment, 'id' | 'orderId' | 'deliveryDelay' | 'deliveryDelayedFrom' | 'deliveredAt' | 'quietCustomerEmails'>,
   reading: { windowFrom: Date | null; windowTo: Date | null },
   timezone: string,
+  courierTimes = true,
 ): Promise<boolean> {
   if (!parcel.deliveryDelay || !parcel.deliveryDelayedFrom || parcel.deliveredAt) return false
   if (!reading.windowFrom || !reading.windowTo) return false
   const windowDate = calendarDateIn(reading.windowFrom, timezone)
   if (isStaleCarrierWindow(parcel, windowDate) || windowDate <= parcel.deliveryDelayedFrom) return false
-  const withWindow = !isWholeDayWindow(slotTimeFromInstant(reading.windowFrom, timezone), slotTimeFromInstant(reading.windowTo, timezone))
+  // A holding window (courierTimes false) is not told, so it takes no stamp.
+  const withWindow = courierTimes && !isWholeDayWindow(slotTimeFromInstant(reading.windowFrom, timezone), slotTimeFromInstant(reading.windowTo, timezone))
   if (!(await claimDelayAnsweredByCourier(parcel.id, windowDate, withWindow))) return false
   if (parcel.quietCustomerEmails) return true
 

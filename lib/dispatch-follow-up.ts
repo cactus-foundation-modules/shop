@@ -1,4 +1,4 @@
-import type { ShpConfig } from '@/modules/shop/lib/config'
+import { getShopConfigCached, type ShpConfig } from '@/modules/shop/lib/config'
 import { claimSlotNotification, claimTrackingNotification, getOrderDispatchSummary, setSlotNotification } from '@/modules/shop/lib/db/shipments'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 import { hasFollowableTracking, sendTrackingAddedEmail } from '@/modules/shop/lib/tracking-added-email'
@@ -9,6 +9,7 @@ import { sendDeliveryNewDateEmail } from '@/modules/shop/lib/delivery-delay-emai
 import { getSiteTimezone } from '@/lib/config/timezone.server'
 import { DPD_FOLLOW_LINK_EXAMPLE, dpdFollowLink, dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
 import { LINK_ONLY, isLinkOnlySource, type LinkOnlySource } from '@/modules/shop/lib/tracking/link-only'
+import { parcelCourierTimesEmailable } from '@/modules/shop/lib/tracking/provisional-window'
 import type { ShpOrderStatus, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
 // What happens around recording a parcel, shared by the two things that record
@@ -123,15 +124,19 @@ export async function maybeSendSlotEmail(
   if (!shipment.deliveryDate) return false
   const timezone = await getSiteTimezone()
   const typed = Boolean(shipment.deliverySlotStart && shipment.deliverySlotEnd)
+  // A courier whose tracking page shows a holding window (AIT) has only typed
+  // times emailed - by hand, or read out of their own email - never the
+  // page's (lib/tracking/provisional-window.ts).
+  const courierTimes = parcelCourierTimesEmailable(await getShopConfigCached(), shipment)
   // A window the courier's own tracking moved after the email went - nothing
   // typed by hand, the courier's times for the parcel's own day - is news too
   // (order DW000219, a live ETA that shifted overnight). Only once told: the
   // first courier window is maybeSendCarrierWindowEmail's to send, and a
   // courier window for any other day is not this parcel's booking.
-  if (!typed && (!shipment.slotNotifiedAt
+  if (!typed && (!courierTimes || !shipment.slotNotifiedAt
     || deliveryBookingForShipment(shipment, timezone).date !== shipment.deliveryDate)) return false
   if (shipment.slotNotifiedAt) {
-    if (!windowMovedSinceTold(shipment, before, timezone)) return false
+    if (!windowMovedSinceTold(shipment, before, timezone, courierTimes)) return false
     await setSlotNotification(shipment.id, orderId, true)
   } else if (!(await claimSlotNotification(shipment.id, orderId))) {
     return false
@@ -152,12 +157,13 @@ export function windowMovedSinceTold(
   after: ShpShipmentWithItems,
   before: ShpShipmentWithItems | undefined,
   timezone: string,
+  courierTimes = true,
 ): boolean {
   if (after.slotNotifiedWindow) {
-    const now = toldWindowKey(deliveryBookingForShipment(after, timezone))
+    const now = toldWindowKey(deliveryBookingForShipment(after, timezone, { courierTimes }))
     return Boolean(now) && now !== after.slotNotifiedWindow
   }
-  return before ? bookingMoved(before, after, timezone) : false
+  return before ? bookingMoved(before, after, timezone, courierTimes) : false
 }
 
 /** Whether the day or window the customer would read off the parcel differs
@@ -168,9 +174,10 @@ export function bookingMoved(
   before: ShpShipmentWithItems,
   after: ShpShipmentWithItems,
   timezone: string,
+  courierTimes = true,
 ): boolean {
-  const was = deliveryBookingForShipment(before, timezone)
-  const now = deliveryBookingForShipment(after, timezone)
+  const was = deliveryBookingForShipment(before, timezone, { courierTimes })
+  const now = deliveryBookingForShipment(after, timezone, { courierTimes })
   return was.date !== now.date || was.slotStart !== now.slotStart || was.slotEnd !== now.slotEnd
 }
 

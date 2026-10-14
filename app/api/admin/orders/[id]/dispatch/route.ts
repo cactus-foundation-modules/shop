@@ -31,6 +31,7 @@ import {
   trackingLinkFor,
 } from '@/modules/shop/lib/dispatch-follow-up'
 import { parcelEditNote, type ParcelEditOutcome } from '@/modules/shop/lib/parcel-edit-note'
+import { courierTimesEmailable } from '@/modules/shop/lib/tracking/provisional-window'
 import type { ShpOrderItem, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
 // Ceilings on what a parcel record may carry. Every one of these is stored on
@@ -211,6 +212,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         // empty on a courier-followed parcel and made it say "no time window
         // yet" about a window the customer had already been emailed.
         booking: deliveryBookingForShipment(shipment, timezone),
+        // The same as an email would word it: without the courier's own times
+        // where their tracking page shows a holding window (AIT). The edit
+        // form judges "will this save email a new window?" against this.
+        emailBooking: deliveryBookingForShipment(shipment, timezone, {
+          courierTimes: courierTimesEmailable(courier?.trackingSource),
+        }),
         // The courier's own setting says they rebook, so there is nothing for
         // staff to switch on this parcel.
         courierRebooks: courier?.rebookedBy === 'courier',

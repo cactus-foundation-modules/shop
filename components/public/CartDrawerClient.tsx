@@ -457,7 +457,7 @@ export function CartDrawerClient({
       <style dangerouslySetInnerHTML={{ __html: CART_LINE_CSS + CART_DRAWER_CSS }} />
       {/* Pointer dismissal only - the same job is done for the keyboard by
           Escape, so this needs no role of its own. */}
-      <div className={`scd-overlay${open ? ' scd-in' : ''}`} onClick={onClose} aria-hidden="true" />
+      <div className={`scd-overlay${o.drawerSide === 'bottom' ? ' scd-ov-bottom' : ''}${open ? ' scd-in' : ''}`} onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
         className={`scd-panel scd-${o.drawerSide === 'left' || o.drawerSide === 'bottom' ? o.drawerSide : 'right'}${open ? ' scd-in' : ''}`}

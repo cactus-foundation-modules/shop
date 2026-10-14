@@ -1220,3 +1220,25 @@ export async function allShipmentsDelivered(orderId: string): Promise<boolean> {
   if (!row) return false
   return row.total > 0n && row.total === row.delivered
 }
+
+/** A parcel still on its way on an AIT short link, with where it is going. */
+export type OpenAitParcel = { shipmentId: string; orderId: string; orderNumber: string; postcode: string }
+
+/**
+ * Every parcel on an AIT short link that has not arrived, on an order still
+ * open, with its delivery postcode - what an AIT window email
+ * (lib/ait-window-inbound.ts) is matched against. Recent ones only: a parcel
+ * recorded three months ago and never marked delivered is not tomorrow's.
+ */
+export async function openAitParcels(): Promise<OpenAitParcel[]> {
+  const rows = await prisma.$queryRaw<Array<{ id: string; order_id: string; order_number: string; postcode: string | null }>>`
+    SELECT s."id", s."order_id", o."order_number", o."shipping_address"->>'postcode' AS "postcode"
+      FROM "shp_shipments" s
+      JOIN "shp_orders" o ON o."id" = s."order_id"
+     WHERE s."delivered_at" IS NULL
+       AND s."tracking_url" LIKE 'https://aithd.%'
+       AND s."created_at" > now() - interval '90 days'
+       AND o."status" NOT IN ('COMPLETED', 'CANCELLED', 'REFUNDED')
+  `
+  return rows.map((r) => ({ shipmentId: r.id, orderId: r.order_id, orderNumber: r.order_number, postcode: r.postcode ?? '' }))
+}

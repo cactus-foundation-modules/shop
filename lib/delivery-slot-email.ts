@@ -15,6 +15,7 @@ import {
 } from '@/modules/shop/lib/delivery-slot'
 import { courierFaqUrl, faqsForShipment } from '@/modules/shop/lib/courier-faqs'
 import { isStaleCarrierWindow } from '@/modules/shop/lib/delivery-delay'
+import { parcelCourierTimesEmailable } from '@/modules/shop/lib/tracking/provisional-window'
 import { calendarDateIn } from '@/lib/config/timezone'
 import type { ShpOrder, ShpShipment, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
@@ -39,8 +40,9 @@ function hasCompleteBookedSlot(shipment: Pick<ShpShipment, 'deliveryDate' | 'del
 function deliveryEmailParts(
   shipment: Pick<ShpShipment, 'deliveryDate' | 'deliverySlotStart' | 'deliverySlotEnd' | 'deliveryWindowFrom' | 'deliveryWindowTo'>,
   timezone: string,
+  courierTimes: boolean,
 ): { day: string; window: string; slotStart: string; slotEnd: string; told: string } | null {
-  const booking = deliveryBookingForShipment(shipment, timezone)
+  const booking = deliveryBookingForShipment(shipment, timezone, { courierTimes })
   const day = formatDeliveryDay(booking.date)
   const window = formatDeliveryWindow(booking.slotStart, booking.slotEnd)
   if (!day || !window || !booking.slotStart || !booking.slotEnd) return null
@@ -106,7 +108,10 @@ export async function sendDeliverySlotEmail(params: {
   // A quiet parcel (068) tells the customer nothing.
   if (!shipment || shipment.quietCustomerEmails) return
 
-  const parts = deliveryEmailParts(shipment, params.timezone)
+  // A courier whose tracking page shows a holding window has only the times
+  // on the parcel itself emailed (lib/tracking/provisional-window.ts).
+  const courierTimes = parcelCourierTimesEmailable(await getShopConfigCached(), shipment)
+  const parts = deliveryEmailParts(shipment, params.timezone, courierTimes)
   if (!parts) return
 
   await notifyOrderCustomer('DELIVERY_SLOT_CONFIRMED', order, {
@@ -152,7 +157,11 @@ export async function sendDeliveryDayEmail(params: { orderId: string; shipmentId
 
 /** Tell the customer their delivery window, when the courier's own tracking
  *  reports one and nobody has been emailed yet. Uses the same message and the
- *  same once-only stamp as an owner typing the window in by hand. */
+ *  same once-only stamp as an owner typing the window in by hand.
+ *
+ *  Never for a courier whose tracking page shows a holding window (AIT, see
+ *  lib/tracking/provisional-window.ts): the caller passes `courierTimes`
+ *  false, and the stamp is kept for the window that is actually emailed. */
 export async function maybeSendCarrierWindowEmail(
   parcel: Pick<
     ShpShipment,
@@ -170,7 +179,9 @@ export async function maybeSendCarrierWindowEmail(
   >,
   reading: { windowFrom: Date | null; windowTo: Date | null },
   timezone: string,
+  courierTimes: boolean,
 ): Promise<boolean> {
+  if (!courierTimes) return false
   if (parcel.slotNotifiedAt || parcel.quietCustomerEmails) return false
   if (hasCompleteBookedSlot(parcel)) return false
   if (!reading.windowFrom || !reading.windowTo) return false

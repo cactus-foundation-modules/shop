@@ -33,7 +33,13 @@ export const CART_DRAWER_CSS = `
    below (head, body, foot, lines, buttons) is byte-identical to the side one. */
 .scd-bottom{left:0;right:0;top:auto;bottom:0;width:100%;max-width:100%;
   max-height:min(85vh,calc(100vh - 2.5rem));border-radius:16px 16px 0 0;
-  transform:translateY(100%)}
+  transform:translateY(100%);z-index:899}
+/* The Mobile Bar sits at z-index 900. Shut, and while sliding, the bottom panel
+   is one layer under it so it rises out from behind the bar; once settled it
+   steps over the bar and sits on top. Closing drops it back under the bar at
+   once, so it sinks behind the bar again. The dimmer sits under the bar too. */
+.scd-overlay.scd-ov-bottom{z-index:899}
+.scd-bottom.scd-in{z-index:901}
 .scd-panel.scd-in{transform:none;visibility:visible;transition:transform 240ms ease-out,visibility 0s}
 
 /* The way in is a keyframe animation, not the transition above, because the
@@ -51,7 +57,7 @@ export const CART_DRAWER_CSS = `
 .scd-overlay.scd-in{animation:scd-fade 220ms ease-out}
 @keyframes scd-slide-right{from{transform:translateX(100%)}to{transform:none}}
 @keyframes scd-slide-left{from{transform:translateX(-100%)}to{transform:none}}
-@keyframes scd-slide-up{from{transform:translateY(100%)}to{transform:none}}
+@keyframes scd-slide-up{0%{transform:translateY(100%);z-index:899}99%{transform:none;z-index:899}100%{transform:none;z-index:901}}
 @keyframes scd-fade{from{opacity:0}to{opacity:1}}
 
 /* ---- Header ----

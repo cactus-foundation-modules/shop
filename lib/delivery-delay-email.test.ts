@@ -18,6 +18,9 @@ vi.mock('@/modules/shop/lib/db/orders', () => ({ getOrderById: async () => ({ id
 vi.mock('@/modules/shop/lib/order-notify', () => ({ notifyOrderCustomer: notify }))
 vi.mock('@/modules/shop/lib/delivery-slot-email', () => ({ parcelEmailVars: async () => ({ orderNumber: 'DW1' }) }))
 vi.mock('@/lib/config/timezone.server', () => ({ getSiteTimezone: async () => 'Europe/London' }))
+vi.mock('@/modules/shop/lib/config', () => ({
+  getShopConfigCached: async () => ({ deliveryCouriers: [{ id: 'cou-ait', name: 'AIT', trackingSource: 'ait' }] }),
+}))
 
 const { maybeAnswerDelayFromCourier, sendDeliveryDelayEmail } = await import('./delivery-delay-email')
 
@@ -62,6 +65,20 @@ describe('maybeAnswerDelayFromCourier', () => {
     }])
     expect(await maybeAnswerDelayFromCourier(parcel, wholeDay, tz)).toBe(true)
     expect(claim).toHaveBeenCalledWith('s1', '2026-10-15', false)
+    expect(notify).toHaveBeenCalledWith('DELIVERY_NEW_DATE', expect.anything(), expect.objectContaining({
+      hasNewDayOnly: 'true', hasNewDayWindow: 'false', deliveryWindow: '',
+    }))
+  })
+
+  it('tells an AIT parcel its new day without the holding window, and leaves the stamp free', async () => {
+    shipments.mockResolvedValue([{
+      ...parcel, courierId: 'cou-ait', carrier: 'AIT', deliveryDelay: null, deliveryDate: '2026-10-15',
+      deliverySlotStart: null, deliverySlotEnd: null,
+      deliveryWindowFrom: thursday.windowFrom, deliveryWindowTo: thursday.windowTo, items: [],
+    }])
+    expect(await maybeAnswerDelayFromCourier(parcel, thursday, tz, false)).toBe(true)
+    expect(claim).toHaveBeenCalledWith('s1', '2026-10-15', false)
+    expect(stamp).not.toHaveBeenCalled()
     expect(notify).toHaveBeenCalledWith('DELIVERY_NEW_DATE', expect.anything(), expect.objectContaining({
       hasNewDayOnly: 'true', hasNewDayWindow: 'false', deliveryWindow: '',
     }))

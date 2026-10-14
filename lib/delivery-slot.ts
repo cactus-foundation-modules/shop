@@ -76,7 +76,11 @@ export function toldWindowKey(booking: DeliveryBooking): string {
 }
 
 /** The day and window to show - the slot the shop booked, or the one the
- *  courier reported on their own tracking page when no slot was typed in. */
+ *  courier reported on their own tracking page when no slot was typed in.
+ *
+ *  `courierTimes: false` keeps the courier's DAY but not their times: what an
+ *  email may say about a courier whose tracking page shows a holding window
+ *  (lib/tracking/provisional-window.ts). */
 export function deliveryBookingForShipment(
   shipment: {
     deliveryDate: string | null
@@ -86,6 +90,7 @@ export function deliveryBookingForShipment(
     deliveryWindowTo: Date | null
   } & DelayedParcel,
   timezone: string,
+  options: { courierTimes?: boolean } = {},
 ): DeliveryBooking {
   if (isDeliveryDate(shipment.deliveryDate ?? '')
     && isSlotTime(shipment.deliverySlotStart)
@@ -105,8 +110,11 @@ export function deliveryBookingForShipment(
     // through, still sitting in the courier's feed. See lib/delivery-delay.ts.
     if (isDeliveryDate(date) && isSlotTime(slotStart) && isSlotTime(slotEnd)
       && !isStaleCarrierWindow(shipment, date)) {
-      // The courier has booked the day and not the time.
-      if (isWholeDayWindow(slotStart, slotEnd)) return { date, slotStart: null, slotEnd: null }
+      // The courier has booked the day and not the time - or the time they
+      // gave is not one to repeat.
+      if (isWholeDayWindow(slotStart, slotEnd) || options.courierTimes === false) {
+        return { date, slotStart: null, slotEnd: null }
+      }
       return { date, slotStart, slotEnd }
     }
   }

@@ -13,6 +13,7 @@ import { maybeSendFailedDeliveryEmail } from '@/modules/shop/lib/failed-delivery
 import { parseSignature } from '@/modules/shop/lib/tracking/multidrop-page'
 import { captureSignature } from '@/modules/shop/lib/tracking/signature-capture'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
+import { courierTimesEmailable } from '@/modules/shop/lib/tracking/provisional-window'
 import type { ParcelReading } from '@/modules/shop/lib/tracking/read-parcel'
 import type { ShpCourier } from '@/modules/shop/lib/courier-faqs'
 import type { ShpShipment } from '@/modules/shop/lib/types'
@@ -58,9 +59,12 @@ export async function storeParcelReading(
   })
 
   // A delayed parcel's new day, booked by the courier, is the 'new date'
-  // email the delay promised rather than the ordinary window one.
-  const answeredDelay = !delivered && await maybeAnswerDelayFromCourier(parcel, reading, timezone)
-  if (!answeredDelay) await maybeSendCarrierWindowEmail(parcel, reading, timezone)
+  // email the delay promised rather than the ordinary window one. A courier
+  // whose page shows a holding window (AIT) has its day told and its times
+  // kept off every email (lib/tracking/provisional-window.ts).
+  const courierTimes = courierTimesEmailable(courier.trackingSource)
+  const answeredDelay = !delivered && await maybeAnswerDelayFromCourier(parcel, reading, timezone, courierTimes)
+  if (!answeredDelay) await maybeSendCarrierWindowEmail(parcel, reading, timezone, courierTimes)
 
   await recordTrackingPageDetails(parcel.id, {
     clientId: reading.clientId,

@@ -13,7 +13,7 @@ type SavedAddress = { id: string; label: string | null; isDefault: boolean; addr
 
 function toAddressForm(a: Partial<ShpAddressForm>): ShpAddressForm {
   return {
-    firstName: a.firstName ?? '', lastName: a.lastName ?? '',
+    firstName: a.firstName ?? '', lastName: a.lastName ?? '', company: '',
     line1: a.line1 ?? '', line2: a.line2 ?? '', city: a.city ?? '', county: a.county ?? '',
     postcode: a.postcode ?? '', country: a.country || 'GB', phone: a.phone ?? '',
   }

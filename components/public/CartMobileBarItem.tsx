@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
-import { getCart, subscribeCart } from '@/modules/shop/components/public/cart'
+import { getCart, subscribeCart, subscribeCartAdd } from '@/modules/shop/components/public/cart'
 import { DRAWER_DEFAULTS } from '@/modules/shop/components/public/cart-drawer-options'
 import type { ModuleMobileBarItemProps } from '@/lib/puck/mobileBar'
 
@@ -49,12 +49,28 @@ export function CartMobileBarItem({ label, showLabels }: ModuleMobileBarItemProp
     return subscribeCart(refresh)
   }, [])
 
+  // Adding something opens the basket, as the header widget does. Counted, then
+  // acted on in an effect, so the visibility test sees the bar as it now is. A
+  // bar hidden at desktop widths has no offsetParent and stays shut.
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const [addSignal, setAddSignal] = useState(0)
+  useEffect(() => subscribeCartAdd(() => setAddSignal((n) => n + 1)), [])
+  useEffect(() => {
+    if (addSignal === 0) return
+    const button = buttonRef.current
+    if (!button || button.offsetParent === null) return
+    setRequested(true)
+    setOpen(true)
+  }, [addSignal])
+
   const caption = (label || '').trim()
 
   return (
     <>
       <button
+        ref={buttonRef}
         type="button"
+        data-scd-bar-cart=""
         className="cmb-item"
         aria-label={caption || 'Basket'}
         aria-expanded={open}

@@ -262,7 +262,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
       customerOrganisation: state.customerOrganisation.trim() || undefined,
       customerReference: state.customerReference.trim() || undefined,
       customerPhone: (formatUkPhone(state.customerPhone) ?? state.customerPhone) || undefined,
-      shippingAddress: state.shippingAddress, shippingRateId: state.shippingRateId, couponCode: state.couponCode, paymentMethod: next,
+      shippingAddress: { ...state.shippingAddress, company: state.shippingAddress.company?.trim() || undefined }, shippingRateId: state.shippingRateId, couponCode: state.couponCode, paymentMethod: next,
       // What the shopper told the driver, where the shop asks. Sent
       // regardless of what this browser believes the setting to be - the
       // route drops it if the shop is not asking, and a checkout drawn from

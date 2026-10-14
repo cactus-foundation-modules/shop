@@ -179,7 +179,10 @@ export function CartSummaryClient(opts: Partial<CartSummaryOptions> & { preview?
   useEffect(() => {
     if (addSignal === 0) return
     const trigger = triggerRef.current
-    if (!trigger || trigger.offsetParent === null) return
+    // The Mobile Bar's basket cell opens its own panel on an add; two panels
+    // from one add would stack, so the header widget stands down when it shows.
+    const barCell = document.querySelector<HTMLElement>('[data-scd-bar-cart]')
+    if (!trigger || trigger.offsetParent === null || (barCell && barCell.offsetParent !== null)) return
     setDrawerRequested(true)
     setDrawerOpen(true)
   }, [addSignal])

@@ -170,6 +170,9 @@ type ShipmentDetail = {
   /** The day and window the customer is told, typed in or courier-reported.
    *  Optional so a response from an older deployment still renders. */
   booking?: { date: string; slotStart: string | null; slotEnd: string | null }
+  /** The same as an email words it - no courier times where their tracking
+   *  page shows a holding window (AIT). Optional for the same reason. */
+  emailBooking?: { date: string; slotStart: string | null; slotEnd: string | null }
   /** Set once the customer has been sent tracking the parcel went out without.
    *  Optional so a response from an older deployment still renders. */
   trackingNotifiedAt?: string | null

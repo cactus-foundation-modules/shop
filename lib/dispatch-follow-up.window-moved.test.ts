@@ -18,6 +18,11 @@ vi.mock('@/modules/shop/lib/tracking-added-email', () => ({}))
 vi.mock('@/modules/shop/lib/delivery-slot-email', () => ({ sendDeliverySlotEmail: sendSlot }))
 vi.mock('@/modules/shop/lib/delivery-delay-email', () => ({}))
 vi.mock('@/lib/config/timezone.server', () => ({ getSiteTimezone: vi.fn(async () => 'Europe/London') }))
+vi.mock('@/modules/shop/lib/config', () => ({
+  getShopConfigCached: vi.fn(async () => ({
+    deliveryCouriers: [{ id: 'cou-ait', name: 'AIT Home Delivery', trackingSource: 'ait' }],
+  })),
+}))
 
 const { maybeSendSlotEmail } = await import('./dispatch-follow-up')
 
@@ -102,6 +107,21 @@ describe('maybeSendSlotEmail on a parcel whose window was already told', () => {
     const fresh = { ...told, slotNotifiedAt: null }
     expect(await maybeSendSlotEmail('ord-1', fresh, true, fresh)).toBe(false)
     expect(claimSlot).not.toHaveBeenCalled()
+  })
+
+  it('never sends an AIT courier window, however it moved - their page holds a placeholder', async () => {
+    const ait = { ...told, courierId: 'cou-ait', deliveryDate: '2026-10-14', slotNotifiedWindow: '2026-10-14 07:48-09:48',
+      deliveryWindowFrom: new Date('2026-10-14T07:06:00Z'), deliveryWindowTo: new Date('2026-10-14T09:06:00Z') }
+    expect(await maybeSendSlotEmail('ord-1', ait, true, ait)).toBe(false)
+    expect(sendSlot).not.toHaveBeenCalled()
+  })
+
+  it('sends an AIT window once it is typed onto the parcel', async () => {
+    const ait = { ...told, courierId: 'cou-ait', deliveryDate: '2026-10-14', slotNotifiedWindow: '2026-10-14 07:48-09:48',
+      deliveryWindowFrom: new Date('2026-10-14T06:48:00Z'), deliveryWindowTo: new Date('2026-10-14T08:48:00Z') }
+    const after = { ...ait, deliverySlotStart: '08:06', deliverySlotEnd: '10:06' }
+    expect(await maybeSendSlotEmail('ord-1', after, true, ait)).toBe(true)
+    expect(sendSlot).toHaveBeenCalledOnce()
   })
 
   it('stays quiet with no earlier version to compare against', async () => {

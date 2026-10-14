@@ -18,6 +18,7 @@ import { z } from 'zod'
 
 export const ADDRESS_NAME_MAX_LENGTH = 80
 export const ADDRESS_LINE_MAX_LENGTH = 200
+export const ADDRESS_COMPANY_MAX_LENGTH = 160
 export const ADDRESS_CITY_MAX_LENGTH = 100
 export const ADDRESS_COUNTY_MAX_LENGTH = 100
 export const ADDRESS_POSTCODE_MAX_LENGTH = 16

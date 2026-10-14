@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.493",
+  "version": "0.1.494",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1763",
@@ -877,6 +877,13 @@
       "serverOnly": true,
       "import": "./lib/despatch-observer",
       "component": "shopDespatchRecordedObserver"
+    },
+    {
+      "point": "unified-inbox.message-received",
+      "id": "shop-ait-delivery-window-email",
+      "serverOnly": true,
+      "import": "./lib/ait-window-inbound",
+      "component": "shopAitWindowEmailHandler"
     },
     {
       "point": "core.admin-dashboard-widgets",

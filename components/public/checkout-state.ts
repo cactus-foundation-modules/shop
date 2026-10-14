@@ -7,12 +7,15 @@ import { isValidUkPhone } from '@/modules/shop/lib/phone'
 // half-finished checkout shouldn't survive across browser sessions the way
 // the cart itself does.
 
-// Deliberately no company/organisation here. It used to sit above line 1, which
-// repeated it on every saved address and described the buyer rather than the
-// door a parcel goes to. It is a contact detail now (customerOrganisation
-// below); a company that has to appear on the delivery label goes in line 1.
+// `company` is the organisation the parcel is addressed to, asked for above
+// line 1 on the DELIVERY form only. It is separate from the buyer's own
+// organisation (customerOrganisation below): it starts out as a copy of that,
+// the shopper can change or clear it, and neither edit touches the other. It is
+// never kept on a saved address - it describes this delivery, not the door - and
+// the billing form never draws it.
 export type ShpAddressForm = {
   firstName: string
+  company: string
   lastName: string
   line1: string
   line2: string
@@ -36,6 +39,10 @@ export type CheckoutState = {
   customerReference: string
   customerPhone: string
   shippingAddress: ShpAddressForm
+  // Whether the shopper has touched the delivery organisation box. While they
+  // have not, it follows customerOrganisation; once they have (clearing it
+  // counts), it is theirs and the contact step no longer refills it.
+  shippingCompanyEdited: boolean
   // What the shopper wants the driver to know, where the shop asks. Beside the
   // address rather than inside it: it is about this delivery, not about the
   // door, so picking a saved address must never bring last month's "leave it
@@ -64,12 +71,12 @@ export type CheckoutState = {
 const STORAGE_KEY = 'cactus_shop_checkout'
 const EVENT = 'cactus-shop-checkout-changed'
 export const EMPTY_ADDRESS: ShpAddressForm = {
-  firstName: '', lastName: '', line1: '', line2: '', city: '', county: '', postcode: '', country: 'GB', phone: '',
+  firstName: '', company: '', lastName: '', line1: '', line2: '', city: '', county: '', postcode: '', country: 'GB', phone: '',
 }
 
 export const EMPTY_CHECKOUT_STATE: CheckoutState = {
   customerEmail: '', customerName: '', customerOrganisation: '', customerReference: '', customerPhone: '',
-  shippingAddress: EMPTY_ADDRESS, deliveryInstructions: '', billingAddressDifferent: false, billingAddress: EMPTY_ADDRESS,
+  shippingAddress: EMPTY_ADDRESS, shippingCompanyEdited: false, deliveryInstructions: '', billingAddressDifferent: false, billingAddress: EMPTY_ADDRESS,
   shippingRateId: null, couponCode: null, paymentMethod: null,
   agreements: {},
 }

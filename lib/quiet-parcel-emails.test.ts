@@ -55,6 +55,7 @@ describe('a quiet parcel', () => {
       { ...quiet, deliveryDate: null, deliverySlotStart: null, deliverySlotEnd: null },
       { windowFrom: new Date('2026-10-06T09:00:00Z'), windowTo: new Date('2026-10-06T12:00:00Z') },
       'Europe/London',
+      true,
     )
     expect(told).toBe(false)
     expect(claimSlot).not.toHaveBeenCalled()

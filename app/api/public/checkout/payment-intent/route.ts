@@ -9,7 +9,7 @@ import { generateOrderNumber } from '@/modules/shop/lib/order-number'
 import { getShopConfigCached, getAvailablePaymentMethods, orderValueRefusal, resolveCheckoutAgreements } from '@/modules/shop/lib/config'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { DELIVERY_INSTRUCTIONS_MAX_LENGTH } from '@/modules/shop/lib/delivery-instructions'
-import { ADDRESS_NAME_MAX_LENGTH, BoundedAddressSchema, customerNameField, phoneField } from '@/modules/shop/lib/address-limits'
+import { ADDRESS_COMPANY_MAX_LENGTH, ADDRESS_NAME_MAX_LENGTH, BoundedAddressSchema, customerNameField, phoneField } from '@/modules/shop/lib/address-limits'
 import { BILLING_COMPANY_MAX_LENGTH } from '@/modules/shop/lib/customer-billing'
 import { CUSTOMER_REFERENCE_MAX_LENGTH } from '@/modules/shop/lib/customer-reference'
 import { CheckoutLinesSchema, checkoutLinesRefusal } from '@/modules/shop/lib/checkout-lines'
@@ -38,6 +38,14 @@ import type { ShpAddress } from '@/modules/shop/lib/types'
 // something the order hub would then refuse to save.
 const AddressSchema = BoundedAddressSchema
 
+// The delivery address alone may name an organisation the parcel is addressed
+// to. Optional: an order without one is exactly what every order was before. The
+// billing address and the address book stay on the shared shape, which has no
+// such box - see the notes on customerOrganisation below.
+const DeliveryAddressSchema = AddressSchema.extend({
+  company: z.string().max(ADDRESS_COMPANY_MAX_LENGTH, `Organisation name is too long - ${ADDRESS_COMPANY_MAX_LENGTH} characters at most.`).optional(),
+})
+
 // The billing address has no name boxes on the form - the name on the invoice is
 // the one the contact step already took - so the names are optional here and
 // default to blank. Kept on the shape rather than dropped so an order written
@@ -48,6 +56,12 @@ const BillingAddressSchema = AddressSchema.extend({
   firstName: z.string().max(ADDRESS_NAME_MAX_LENGTH, billingNameTooLong('First name')).default(''),
   lastName: z.string().max(ADDRESS_NAME_MAX_LENGTH, billingNameTooLong('Last name')).default(''),
 })
+
+function withoutBlankCompany<A extends { company?: string }>(address: A): A {
+  const { company, ...rest } = address
+  const trimmed = company?.trim()
+  return (trimmed ? { ...rest, company: trimmed } : rest) as A
+}
 
 const Body = z.object({
   // Capped as the basket stores cap them - see lib/checkout-lines.ts.
@@ -60,7 +74,7 @@ const Body = z.object({
   customerOrganisation: z.string().optional(),
   customerReference: z.string().optional(),
   customerPhone: phoneField.optional(),
-  shippingAddress: AddressSchema,
+  shippingAddress: DeliveryAddressSchema,
   // Never compulsory, so there is no rule to enforce below - only a ceiling, so
   // a route reachable without the box cannot be used to write an essay onto a
   // supplier's delivery label.
@@ -289,7 +303,9 @@ export async function POST(request: NextRequest) {
     // The trimmed number that was checked above, so what the courier and the
     // text-message sender get is exactly what passed.
     customerPhone: typedPhone || null,
-    shippingAddress: data.shippingAddress as ShpAddress,
+    // `company` only when something was typed: a blank or spaces-only box must
+    // not leave an empty key on the order for the purchase order to trip over.
+    shippingAddress: withoutBlankCompany(data.shippingAddress) as ShpAddress,
     // Same rule as the fields above: only kept while the shop is actually
     // asking, so switching the box off stops orders carrying whatever a stale
     // page still had in it. This one leaves the building - where the shop

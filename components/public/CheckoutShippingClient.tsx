@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ComponentType, type CSSProperties, type InputHTMLAttributes } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
-import { EMPTY_ADDRESS, getCheckoutState, updateCheckoutState, type ShpAddressForm } from '@/modules/shop/components/public/checkout-state'
+import { EMPTY_ADDRESS, getCheckoutState, subscribeCheckoutState, updateCheckoutState, type ShpAddressForm } from '@/modules/shop/components/public/checkout-state'
 import type { ShopCheckoutAddressLookupProps, ShpLookupAddress } from '@/modules/shop/components/public/checkout-address-lookup'
 import { DELIVERY_INSTRUCTIONS_MAX_LENGTH } from '@/modules/shop/lib/delivery-instructions'
 import { formatUkPhone, isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
@@ -101,6 +101,8 @@ type SavedAddress = { id: string; label: string | null; isDefault: boolean; addr
 function toAddressForm(a: Partial<ShpAddressForm>): ShpAddressForm {
   return {
     firstName: a.firstName ?? '', lastName: a.lastName ?? '',
+    // Never kept on a saved address - callers put the delivery's own back.
+    company: '',
     line1: a.line1 ?? '', line2: a.line2 ?? '', city: a.city ?? '', county: a.county ?? '',
     postcode: a.postcode ?? '', country: a.country || 'GB', phone: a.phone ?? '',
   }
@@ -130,7 +132,10 @@ type AddressChoice = { kind: 'saved'; id: string } | { kind: 'new' }
 // steps ago comes back looking like something they typed themselves.
 function sameAddress(a: ShpAddressForm, b: ShpAddressForm): boolean {
   const tidy = (v: string) => v.trim().replace(/\s+/g, ' ').toLowerCase()
+  // Not `company`: it belongs to the delivery, so a saved address never carries
+  // one and would otherwise stop matching the moment a shopper named theirs.
   return (Object.keys(EMPTY_ADDRESS) as Array<keyof ShpAddressForm>)
+    .filter((k) => k !== 'company')
     .every((k) => tidy(a[k]) === tidy(b[k]))
 }
 
@@ -194,7 +199,7 @@ export function CheckoutShippingClient({
 }) {
   const populated = useCartPopulated(preview)
   const initial = getCheckoutState()
-  const [address, setAddress] = useState<ShpAddressForm>(initial.shippingAddress)
+  const [address, setAddress] = useState<ShpAddressForm>({ ...EMPTY_ADDRESS, ...initial.shippingAddress })
   const [rates, setRates] = useState<ShippingRateOption[]>([])
   const [selectedRateId, setSelectedRateId] = useState<string | null>(initial.shippingRateId)
   const [touched, setTouched] = useState<Partial<Record<keyof ShpAddressForm, boolean>>>({})
@@ -264,7 +269,7 @@ export function CheckoutShippingClient({
         }
         const preferred = list.find((a) => a.isDefault) ?? list[0]
         if (!preferred) return
-        const form = toAddressForm(preferred.address)
+        const form = { ...toAddressForm(preferred.address), company: getCheckoutState().shippingAddress.company ?? '' }
         setAddress(form)
         setChoice({ kind: 'saved', id: preferred.id })
         updateCheckoutState({ shippingAddress: form, customerPhone: form.phone })
@@ -301,6 +306,25 @@ export function CheckoutShippingClient({
     return () => { cancelled = true }
   }, [])
 
+  // Fills the delivery organisation from the one given at the contact step, and
+  // keeps following it until the shopper edits or clears the box. One-way: the
+  // contact step's own value is never written to from here. Subscribed rather
+  // than read once because a signed-in shopper's organisation arrives from their
+  // account after this block has mounted.
+  useEffect(() => {
+    if (preview) return
+    function follow() {
+      const state = getCheckoutState()
+      if (state.shippingCompanyEdited) return
+      const org = state.customerOrganisation
+      if ((state.shippingAddress.company ?? '') === org) return
+      updateCheckoutState({ shippingAddress: { ...EMPTY_ADDRESS, ...state.shippingAddress, company: org } })
+      setAddress((a) => ({ ...a, company: org }))
+    }
+    follow()
+    return subscribeCheckoutState(follow)
+  }, [preview])
+
   function set<K extends keyof ShpAddressForm>(key: K, value: ShpAddressForm[K]) {
     const next = { ...address, [key]: value }
     setAddress(next)
@@ -309,7 +333,11 @@ export function CheckoutShippingClient({
     // admin screens show. The address keeps its own copy so the number is filed
     // with the door it belongs to, and the two are always written together so
     // they cannot drift apart.
-    updateCheckoutState(key === 'phone' ? { shippingAddress: next, customerPhone: next.phone } : { shippingAddress: next })
+    updateCheckoutState(
+      key === 'phone' ? { shippingAddress: next, customerPhone: next.phone }
+        : key === 'company' ? { shippingAddress: next, shippingCompanyEdited: true }
+          : { shippingAddress: next },
+    )
     // Typing over an address out of the book means this is no longer that
     // address. Only reachable while the fields are on screen - which is to say
     // while "a different address" is already the answer, or while a picked
@@ -319,7 +347,8 @@ export function CheckoutShippingClient({
   }
 
   function chooseSaved(saved: SavedAddress) {
-    const form = toAddressForm(saved.address)
+    // The delivery organisation stays: it is about this delivery, not the door.
+    const form = { ...toAddressForm(saved.address), company: address.company }
     // A whole-form replacement, never a merge: anything the shopper typed before
     // changing their mind is gone rather than left hiding behind a collapsed
     // form, waiting to go on the order in a field this saved address left blank.
@@ -338,9 +367,10 @@ export function CheckoutShippingClient({
     // Blank, not "the saved address, to edit". Asked for a different address and
     // handed somebody else's half of one is how a delivery ends up at the old
     // office with the new postcode on it.
-    setAddress(EMPTY_ADDRESS)
+    const blank = { ...EMPTY_ADDRESS, company: address.company }
+    setAddress(blank)
     setChoice({ kind: 'new' })
-    updateCheckoutState({ shippingAddress: EMPTY_ADDRESS, customerPhone: '' })
+    updateCheckoutState({ shippingAddress: blank, customerPhone: '' })
     setTouched({})
     setPhoneTouched(false)
   }
@@ -466,6 +496,11 @@ export function CheckoutShippingClient({
 
   const AddressLookup = addressLookup
 
+  // Optional, and its own thing: it starts as the organisation from the contact
+  // step but editing or clearing it never changes that one. Drawn whichever
+  // address is picked, since a saved address does not carry one.
+  const companyField = field('company', 'Organisation name (optional)', 'organization', false)
+
   // An address out of the book that checkout cannot actually deliver to. The
   // form comes back out for it: the alternative is a shopper being told on the
   // review step that their postcode is missing, with nowhere on the page to put
@@ -562,6 +597,8 @@ export function CheckoutShippingClient({
         </p>
       )}
 
+      {!showFields && companyField}
+
       {showFields && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
@@ -600,6 +637,7 @@ export function CheckoutShippingClient({
             />
             {phoneError && <span role="alert" style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{phoneError}</span>}
           </label>
+          {companyField}
           {AddressLookup ? (
             <AddressLookup
               value={address.line1}

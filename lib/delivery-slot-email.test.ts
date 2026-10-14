@@ -32,10 +32,26 @@ describe('maybeSendCarrierWindowEmail', () => {
         windowTo: new Date('2026-09-15T11:25:00.000Z'),
       },
       'Europe/London',
+      true,
     )
 
     expect(sent).toBe(true)
     expect(claimSlotNotification).toHaveBeenCalledWith('shp_1', 'ord_1')
+  })
+
+  it('never sends, or takes the stamp, for a courier whose page shows a holding window (AIT)', async () => {
+    const sent = await slotEmail.maybeSendCarrierWindowEmail(
+      parcel,
+      {
+        windowFrom: new Date('2026-10-14T06:48:00.000Z'),
+        windowTo: new Date('2026-10-14T08:48:00.000Z'),
+      },
+      'Europe/London',
+      false,
+    )
+
+    expect(sent).toBe(false)
+    expect(claimSlotNotification).not.toHaveBeenCalled()
   })
 
   it('does nothing when the customer was already told', async () => {
@@ -46,6 +62,7 @@ describe('maybeSendCarrierWindowEmail', () => {
         windowTo: new Date('2026-09-15T11:25:00.000Z'),
       },
       'Europe/London',
+      true,
     )
 
     expect(sent).toBe(false)
@@ -60,6 +77,7 @@ describe('maybeSendCarrierWindowEmail', () => {
         windowTo: new Date('2026-10-12T22:59:59.000Z'),
       },
       'Europe/London',
+      true,
     )
 
     expect(sent).toBe(false)
@@ -79,6 +97,7 @@ describe('maybeSendCarrierWindowEmail', () => {
         windowTo: new Date('2026-09-15T11:25:00.000Z'),
       },
       'Europe/London',
+      true,
     )
 
     expect(sent).toBe(false)

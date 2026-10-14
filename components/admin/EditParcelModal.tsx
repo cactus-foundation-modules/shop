@@ -41,6 +41,10 @@ export type EditableParcel = {
   /** The day and window the customer reads now, typed in or the courier's
    *  own. Optional for the same reason. */
   booking?: { date: string; slotStart: string | null; slotEnd: string | null }
+  /** The booking as an email would word it: no courier times where their
+   *  tracking page shows a holding window (AIT). Optional for the same
+   *  reason; `booking` stands in when it is missing. */
+  emailBooking?: { date: string; slotStart: string | null; slotEnd: string | null }
   /** Set once the customer has been told tracking the parcel went out without.
    *  Optional so a response from an older deployment still renders. */
   trackingNotifiedAt?: string | null
@@ -93,18 +97,21 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   // window the email carried where that is recorded, otherwise against what
   // the customer reads now - so the box never offers an email that will not go.
   // With the time boxes empty, the window saved is the courier's own for the
-  // parcel's day, which may have moved since the email (maybeSendSlotEmail).
+  // parcel's day, which may have moved since the email (maybeSendSlotEmail) -
+  // except on a courier whose page shows a holding window, which is never
+  // emailed, so emailBooking carries no times for it.
+  const booking = parcel.emailBooking ?? parcel.booking
   const courierWindow = !details.deliverySlotStart && !details.deliverySlotEnd
-    && parcel.booking?.slotStart && parcel.booking.slotEnd
-    && details.deliveryDate === parcel.booking.date && details.deliveryDate === (parcel.deliveryDate ?? '')
-    ? `${parcel.booking.date} ${parcel.booking.slotStart}-${parcel.booking.slotEnd}`
+    && booking?.slotStart && booking.slotEnd
+    && details.deliveryDate === booking.date && details.deliveryDate === (parcel.deliveryDate ?? '')
+    ? `${booking.date} ${booking.slotStart}-${booking.slotEnd}`
     : ''
   const formWindow = details.deliveryDate && details.deliverySlotStart && details.deliverySlotEnd
     ? `${details.deliveryDate} ${details.deliverySlotStart}-${details.deliverySlotEnd}`
     : courierWindow
-  const shownWindow = parcel.booking
-    ? (parcel.booking.date && parcel.booking.slotStart && parcel.booking.slotEnd
-      ? `${parcel.booking.date} ${parcel.booking.slotStart}-${parcel.booking.slotEnd}`
+  const shownWindow = booking
+    ? (booking.date && booking.slotStart && booking.slotEnd
+      ? `${booking.date} ${booking.slotStart}-${booking.slotEnd}`
       : '')
     : `${parcel.deliveryDate ?? ''} ${parcel.deliverySlotStart ?? ''}-${parcel.deliverySlotEnd ?? ''}`
   const windowMoved = alreadyTold && Boolean(formWindow)

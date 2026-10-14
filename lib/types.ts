@@ -89,12 +89,11 @@ export type LineMeta = {
 export type ShpAddress = {
   firstName: string
   lastName: string
-  // Legacy, and only ever read. The organisation a shopper buys on behalf of is
-  // a contact detail on the order (customerOrganisation) rather than part of an
-  // address - it says who they are, not where the parcel goes. Orders and saved
-  // addresses written before that moved still carry it, and the screens that
-  // name the customer fall back to it, so it stays on the type. Nothing new
-  // writes one.
+  // The organisation the parcel is addressed to. Written from the checkout's
+  // delivery box only when the shopper filled one in, and absent otherwise.
+  // Separate from the order's customerOrganisation (who is buying), which the
+  // shopper can leave alone while changing this. Orders and saved addresses from
+  // before the delivery box existed may still carry one from an older form.
   company?: string
   line1: string
   line2?: string
