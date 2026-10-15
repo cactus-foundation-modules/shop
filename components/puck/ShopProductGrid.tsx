@@ -1,8 +1,9 @@
 import type { LayoutRef } from '@/lib/puck/LayoutPickerField'
 import { SHOP_SECTION_HEAD_CSS } from '@/modules/shop/components/puck/parts/section-head-css'
 import { ShopLayoutPicker } from '@/modules/shop/components/public/ShopLayoutPicker'
-import { SHOP_CATEGORY_BAR_CSS } from '@/modules/shop/components/puck/parts/category-bar-css'
+import { SHOP_CATEGORY_BAR_CSS, categoryBarDevices, categoryBarVisibilityCss, type CategoryBarSetting } from '@/modules/shop/components/puck/parts/category-bar-css'
 import { SharedStyle } from '@/components/SharedStyle'
+import { ResponsiveSelectField } from '@/lib/puck/fields/registry'
 
 // Grid-level props (data source + layout) stay here; the card-internal design
 // now comes entirely from the Product Card layout, stamped once per product.
@@ -12,6 +13,8 @@ import { SharedStyle } from '@/components/SharedStyle'
 // next/headers-tainted RSC Puck config) lives in ShopProductGrid.rsc.tsx, wired
 // by `rscImport` in the manifest so it never lands in the client editor bundle.
 export type ShopProductGridProps = {
+  /** Puck's own block id, injected on every render - scopes the filter bar's per-device CSS. */
+  id?: string
   categorySlug?: string
   collectionSlug?: string
   tagSlug?: string
@@ -92,7 +95,9 @@ export type ShopProductGridProps = {
   //
   // Works on a grid that is not paging: paging and a per-category swap would be
   // two things fighting over which cards are on screen.
-  categoryBar?: string
+  // Per device (ResponsiveValue); a plain 'yes'/'no' is legacy and means every
+  // device, which is what it did before the field went per-device.
+  categoryBar?: CategoryBarSetting
   // Comma-separated category slugs to show, in that order. Blank shows every
   // top-level category in the shop's own order.
   categoryBarSlugs?: string
@@ -175,14 +180,15 @@ export function ShopProductGrid(props: ShopProductGridProps) {
     <>
       {props.heading && <SharedStyle id="shop-section-head" css={SHOP_SECTION_HEAD_CSS} />}
       <GridSectionHead heading={props.heading} subheading={props.subheading} viewAll={gridViewAll(props)} />
-      {props.categoryBar === 'yes' && (
-        <>
+      {Object.values(categoryBarDevices(props.categoryBar)).some(Boolean) && (
+        <div data-catbar-id={props.id}>
           <SharedStyle id="shop-category-bar" css={SHOP_CATEGORY_BAR_CSS} />
+          <style>{categoryBarVisibilityCss(props.id, categoryBarDevices(props.categoryBar))}</style>
           <div className="shop-catbar" style={{ position: 'static' }}>
             <span className="shop-catbar-pill" aria-pressed="true">{(props.categoryBarAllLabel ?? '').trim() || 'All'}</span>
             <span className="shop-catbar-pill">Categories fill in on the live page</span>
           </div>
-        </>
+        </div>
       )}
       <GridSkeleton columns={props.columns ?? 3} />
     </>
@@ -260,7 +266,7 @@ export const shopProductGridPuckComponent = {
     ] },
     // Sits on top of the grid, so it is only honoured when paging is off - see
     // the prop's note.
-    categoryBar: { type: 'select' as const, label: 'Sticky category filter bar above the grid (needs paging off)', options: [
+    categoryBar: { type: 'custom' as const, label: 'Sticky category filter bar above the grid (needs paging off)', render: ResponsiveSelectField, options: [
       { value: 'no', label: 'No' },
       { value: 'yes', label: 'Yes' },
     ] },

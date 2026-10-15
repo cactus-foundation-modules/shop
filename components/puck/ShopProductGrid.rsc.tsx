@@ -8,7 +8,7 @@ import { listGridProducts, buildGridCardItems } from '@/modules/shop/lib/grid-pa
 import { loadShopGridCards, loadShopGridCategoryCards } from '@/modules/shop/lib/grid-cards-action'
 import { listCategories } from '@/modules/shop/lib/db/catalogue'
 import { ShopGridCategoryBar, type ShopGridCategoryPill } from '@/modules/shop/components/public/ShopGridCategoryBar'
-import { SHOP_CATEGORY_BAR_CSS } from '@/modules/shop/components/puck/parts/category-bar-css'
+import { SHOP_CATEGORY_BAR_CSS, categoryBarDevices, categoryBarVisibilityCss } from '@/modules/shop/components/puck/parts/category-bar-css'
 import type { ShopGridScope } from '@/modules/shop/lib/grid-page-types'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { shopProductGridPuckComponent, GridSectionHead, gridViewAll, type ShopProductGridProps } from './ShopProductGrid'
@@ -72,7 +72,8 @@ async function ShopProductGridRscBody(props: ShopProductGridProps) {
   }
 
   // Paging wins over the bar - see the categoryBar prop's note.
-  const withBar = props.categoryBar === 'yes' && !paginate
+  const barDevices = categoryBarDevices(props.categoryBar)
+  const withBar = Object.values(barDevices).some(Boolean) && !paginate
 
   const [bp, products, template, pills] = await Promise.all([
     getShopBreakpoints(),
@@ -126,8 +127,9 @@ async function ShopProductGridRscBody(props: ShopProductGridProps) {
       <SharedStyle id="shop-cards" css={shopCardCss(bp)} />
       <GridSectionHead heading={props.heading} subheading={props.subheading} viewAll={gridViewAll(props)} />
       {withBar && pills.length > 0 ? (
-        <>
+        <div data-catbar-id={props.id}>
           <SharedStyle id="shop-category-bar" css={SHOP_CATEGORY_BAR_CSS} />
+          <style>{categoryBarVisibilityCss(props.id, barDevices)}</style>
           <ShopGridCategoryBar
             allLabel={(props.categoryBarAllLabel ?? '').trim() || 'All'}
             categories={pills}
@@ -140,7 +142,7 @@ async function ShopProductGridRscBody(props: ShopProductGridProps) {
             emptyText={props.emptyText || 'No products to show yet.'}
             stickyTop={Math.max(0, Math.floor(Number(props.categoryBarTop)) || 0)}
           />
-        </>
+        </div>
       ) : paginate ? (
         <ShopGridPager
           cards={cards}

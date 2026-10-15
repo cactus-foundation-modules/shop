@@ -68,6 +68,14 @@ function VatPill({ including, size }: { including: boolean; size: number }) {
         cx={including ? 36 : 12} cy="12" r="7"
         fill={including ? 'var(--color-bg, var(--color-surface))' : 'currentColor'}
       />
+      {/* The word sits in whichever half the knob has left clear. */}
+      <text
+        x={including ? 15 : 33} y="16" textAnchor="middle"
+        fontSize="11" fontWeight="700" fontFamily="inherit"
+        fill={including ? 'var(--color-bg, var(--color-surface))' : 'currentColor'}
+      >
+        vat
+      </text>
     </svg>
   )
 }

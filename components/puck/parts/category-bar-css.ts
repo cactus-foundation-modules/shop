@@ -1,3 +1,5 @@
+import { normalizeResponsiveValue, pickResponsive, mobileMediaQuery, tabletMediaQuery, type Device, type ResponsiveValue } from '@/lib/puck/responsiveValue'
+
 // The sticky category filter bar above a product grid. Emitted by the storefront
 // grid and the editor canvas, so it lives in a dependency-free file of its own
 // like section-head-css.ts.
@@ -18,3 +20,29 @@ export const SHOP_CATEGORY_BAR_CSS = `
 .shop-catbar-body[aria-busy="true"]{opacity:.55}
 @media (prefers-reduced-motion:reduce){.shop-catbar-pill,.shop-catbar-body{transition:none}}
 `
+
+export type CategoryBarSetting = ResponsiveValue<string> | string | undefined
+
+const DEVICE_LIST: Device[] = ['desktop', 'tablet', 'mobile']
+
+/** Whether the bar is on, per device. Tablet inherits desktop and mobile inherits
+ *  tablet, like every responsive field. A plain 'yes' (what the field held before
+ *  it went per-device) is on everywhere, exactly as it was. */
+export function categoryBarDevices(setting: CategoryBarSetting): Record<Device, boolean> {
+  const rv = normalizeResponsiveValue<string>(setting)
+  const on = (d: Device) => pickResponsive(rv, d) === 'yes'
+  return { desktop: on('desktop'), tablet: on('tablet'), mobile: on('mobile') }
+}
+
+/** CSS that hides the pills on the devices switched off. Scoped to one block by
+ *  its data-catbar-id so two grids can differ. The grid underneath is never
+ *  touched - only the pill row goes. Empty when the bar is on everywhere. */
+export function categoryBarVisibilityCss(id: string | undefined, flags: Record<Device, boolean>): string {
+  if (!id || DEVICE_LIST.every((d) => flags[d])) return ''
+  const sel = `[data-catbar-id="${id.replace(/[^A-Za-z0-9_-]/g, '')}"] .shop-catbar`
+  const rule = (on: boolean) => (on ? 'display:flex' : 'display:none')
+  const out = [`${sel}{${rule(flags.desktop)}}`]
+  if (flags.tablet !== flags.desktop) out.push(`${tabletMediaQuery()}{${sel}{${rule(flags.tablet)}}}`)
+  if (flags.mobile !== flags.desktop) out.push(`${mobileMediaQuery()}{${sel}{${rule(flags.mobile)}}}`)
+  return out.join('\n')
+}
