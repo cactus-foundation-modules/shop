@@ -39,3 +39,18 @@ export async function loadShopGridCards(
   // design and page two on another.
   return template ? await renderCards(template, items) : items.map((item) => <MinimalCard key={item.product.id} {...item} />)
 }
+
+// The category filter bar's server function. Same cards, same helpers, same
+// order as the block's own render - the only thing a pill changes is which
+// category the block's scope is narrowed to, so a "Best sellers" shelf stays in
+// popularity order inside every category. `binding` arrives bound and encrypted;
+// the slug is the one thing the browser supplies, and it is only ever a narrower
+// filter on the public list listGridProducts already authorises.
+export async function loadShopGridCategoryCards(
+  binding: ShopGridBinding,
+  categorySlug: string | null,
+): Promise<React.ReactNode[]> {
+  const slug = typeof categorySlug === 'string' ? categorySlug.trim().slice(0, 200) : ''
+  const scoped: ShopGridBinding = slug ? { ...binding, scope: { ...binding.scope, categorySlug: slug } } : binding
+  return loadShopGridCards(scoped, { offset: 0, count: binding.maxCards })
+}

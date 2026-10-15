@@ -5,7 +5,10 @@ import { ShopGridPager } from '@/modules/shop/components/public/ShopGridPager'
 import { getShopBreakpoints } from '@/modules/shop/lib/breakpoints'
 import { resolveCardTemplate, renderCards, MinimalCard } from '@/modules/shop/lib/card-template'
 import { listGridProducts, buildGridCardItems } from '@/modules/shop/lib/grid-page'
-import { loadShopGridCards } from '@/modules/shop/lib/grid-cards-action'
+import { loadShopGridCards, loadShopGridCategoryCards } from '@/modules/shop/lib/grid-cards-action'
+import { listCategories } from '@/modules/shop/lib/db/catalogue'
+import { ShopGridCategoryBar, type ShopGridCategoryPill } from '@/modules/shop/components/public/ShopGridCategoryBar'
+import { SHOP_CATEGORY_BAR_CSS } from '@/modules/shop/components/puck/parts/category-bar-css'
 import type { ShopGridScope } from '@/modules/shop/lib/grid-page-types'
 import { shopCardCss } from '@/modules/shop/components/puck/parts/card-parts'
 import { shopProductGridPuckComponent, GridSectionHead, gridViewAll, type ShopProductGridProps } from './ShopProductGrid'
@@ -68,10 +71,14 @@ async function ShopProductGridRscBody(props: ShopProductGridProps) {
     excludeFeaturedHidden: props.hiddenProducts !== 'include',
   }
 
-  const [bp, products, template] = await Promise.all([
+  // Paging wins over the bar - see the categoryBar prop's note.
+  const withBar = props.categoryBar === 'yes' && !paginate
+
+  const [bp, products, template, pills] = await Promise.all([
     getShopBreakpoints(),
     listGridProducts(scope),
     resolveCardTemplate(props.layoutRef),
+    withBar ? barCategories(props.categoryBarSlugs) : Promise.resolve<ShopGridCategoryPill[]>([]),
   ])
 
   if (products.length === 0) {
@@ -118,7 +125,23 @@ async function ShopProductGridRscBody(props: ShopProductGridProps) {
     <>
       <SharedStyle id="shop-cards" css={shopCardCss(bp)} />
       <GridSectionHead heading={props.heading} subheading={props.subheading} viewAll={gridViewAll(props)} />
-      {paginate ? (
+      {withBar && pills.length > 0 ? (
+        <>
+          <SharedStyle id="shop-category-bar" css={SHOP_CATEGORY_BAR_CSS} />
+          <ShopGridCategoryBar
+            allLabel={(props.categoryBarAllLabel ?? '').trim() || 'All'}
+            categories={pills}
+            allCards={cards}
+            // Bound like the pager's loader: which shelf, which card design and
+            // how many cards are decided here and encrypted on the way out.
+            loadCategory={loadShopGridCategoryCards.bind(null, { scope, layoutRef: props.layoutRef, maxCards: limit })}
+            gridClassName="shop-grid"
+            gridStyle={gridStyle}
+            emptyText={props.emptyText || 'No products to show yet.'}
+            stickyTop={Math.max(0, Math.floor(Number(props.categoryBarTop)) || 0)}
+          />
+        </>
+      ) : paginate ? (
         <ShopGridPager
           cards={cards}
           perPage={pageSize}
@@ -142,6 +165,22 @@ async function ShopProductGridRscBody(props: ShopProductGridProps) {
       )}
     </>
   )
+}
+
+// The pills: the named categories in the order given, else every top-level one in
+// the shop's own order. A slug that names nothing is dropped rather than shown as
+// a pill that can only ever be empty.
+async function barCategories(slugs: string | undefined): Promise<ShopGridCategoryPill[]> {
+  const all = await listCategories()
+  const named = (slugs ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+  if (named.length > 0) {
+    const bySlug = new Map(all.map((c) => [c.slug, c]))
+    return named.flatMap((slug) => {
+      const c = bySlug.get(slug)
+      return c ? [{ slug: c.slug, name: c.name }] : []
+    })
+  }
+  return all.filter((c) => !c.parentId).map((c) => ({ slug: c.slug, name: c.name }))
 }
 
 export const shopProductGridPuckRscComponent = {

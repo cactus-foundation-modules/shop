@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.495",
+  "version": "0.1.496",
   "tablePrefix": "shp_",
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1763",
@@ -214,6 +214,16 @@
       "component": "shopCartSummaryPuckComponent",
       "rscComponent": "shopCartSummaryPuckRscComponent",
       "rscImport": "./components/puck/ShopCartSummary.rsc",
+      "layoutTypes": [
+        "header"
+      ]
+    },
+    {
+      "type": "ShopVatSwitch",
+      "import": "./components/puck/ShopVatSwitch",
+      "component": "shopVatSwitchPuckComponent",
+      "rscComponent": "shopVatSwitchPuckRscComponent",
+      "rscImport": "./components/puck/ShopVatSwitch.rsc",
       "layoutTypes": [
         "header"
       ]

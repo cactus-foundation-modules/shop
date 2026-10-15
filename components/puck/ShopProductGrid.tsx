@@ -1,6 +1,7 @@
 import type { LayoutRef } from '@/lib/puck/LayoutPickerField'
 import { SHOP_SECTION_HEAD_CSS } from '@/modules/shop/components/puck/parts/section-head-css'
 import { ShopLayoutPicker } from '@/modules/shop/components/public/ShopLayoutPicker'
+import { SHOP_CATEGORY_BAR_CSS } from '@/modules/shop/components/puck/parts/category-bar-css'
 import { SharedStyle } from '@/components/SharedStyle'
 
 // Grid-level props (data source + layout) stay here; the card-internal design
@@ -84,6 +85,20 @@ export type ShopProductGridProps = {
   // blocks give ("Load immediately (above the fold)"). Only 'eager' changes
   // anything.
   imageLoading?: string
+  // A row of category pills above the grid that stays stuck to the top of the
+  // screen while the shopper browses the shelf. Pills swap the shelf to that
+  // category, keeping its order (so "Best sellers" stay in popularity order).
+  // Off unless asked for, which is every grid saved before this existed.
+  //
+  // Works on a grid that is not paging: paging and a per-category swap would be
+  // two things fighting over which cards are on screen.
+  categoryBar?: string
+  // Comma-separated category slugs to show, in that order. Blank shows every
+  // top-level category in the shop's own order.
+  categoryBarSlugs?: string
+  categoryBarAllLabel?: string
+  // Gap, in px, left above the stuck bar for a fixed site header.
+  categoryBarTop?: number
 }
 
 // Where the "View all" link points. Typed address wins; otherwise the grid's own
@@ -160,6 +175,15 @@ export function ShopProductGrid(props: ShopProductGridProps) {
     <>
       {props.heading && <SharedStyle id="shop-section-head" css={SHOP_SECTION_HEAD_CSS} />}
       <GridSectionHead heading={props.heading} subheading={props.subheading} viewAll={gridViewAll(props)} />
+      {props.categoryBar === 'yes' && (
+        <>
+          <SharedStyle id="shop-category-bar" css={SHOP_CATEGORY_BAR_CSS} />
+          <div className="shop-catbar" style={{ position: 'static' }}>
+            <span className="shop-catbar-pill" aria-pressed="true">{(props.categoryBarAllLabel ?? '').trim() || 'All'}</span>
+            <span className="shop-catbar-pill">Categories fill in on the live page</span>
+          </div>
+        </>
+      )}
       <GridSkeleton columns={props.columns ?? 3} />
     </>
   )
@@ -234,6 +258,15 @@ export const shopProductGridPuckComponent = {
       { value: 'auto', label: 'Load as the shopper scrolls to them' },
       { value: 'eager', label: 'Load immediately (this grid is at the top of the page)' },
     ] },
+    // Sits on top of the grid, so it is only honoured when paging is off - see
+    // the prop's note.
+    categoryBar: { type: 'select' as const, label: 'Sticky category filter bar above the grid (needs paging off)', options: [
+      { value: 'no', label: 'No' },
+      { value: 'yes', label: 'Yes' },
+    ] },
+    categoryBarSlugs: { type: 'text' as const, label: 'Filter bar categories (slugs, comma separated; blank shows every top-level category)' },
+    categoryBarAllLabel: { type: 'text' as const, label: 'Filter bar "everything" button wording' },
+    categoryBarTop: { type: 'number' as const, label: 'Filter bar: gap under a fixed site header, in px', min: 0, max: 400 },
     emptyText: { type: 'text' as const, label: 'Wording when there are no products' },
     layoutRef: layoutField,
   },
@@ -242,6 +275,6 @@ export const shopProductGridPuckComponent = {
   // anybody having to find the setting. `limit: 12` is the opening screenful for
   // the same reason. Neither touches a layout already saved - defaults apply to
   // a block being added, not to one already on a page.
-  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', supplierSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, pageLoad: 'ondemand', moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', hiddenProducts: 'exclude', showViewAll: 'no', viewAllLabel: 'View all', viewAllHref: '', imageLoading: 'auto', emptyText: 'No products to show yet.', layoutRef: null },
+  defaultProps: { heading: '', subheading: '', categorySlug: '', collectionSlug: '', tagSlug: '', supplierSlug: '', limit: 12, columns: 3, sort: 'newest', showFilters: 'no', paginate: 'none', pageSize: undefined, pageLoad: 'ondemand', moreLabel: 'Show more', countTemplate: 'Showing {shown} of {total}', hiddenProducts: 'exclude', showViewAll: 'no', viewAllLabel: 'View all', viewAllHref: '', imageLoading: 'auto', categoryBar: 'no', categoryBarSlugs: '', categoryBarAllLabel: 'All', categoryBarTop: 0, emptyText: 'No products to show yet.', layoutRef: null },
   render: ShopProductGrid,
 }

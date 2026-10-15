@@ -53,6 +53,18 @@ function resolveTaxSwitch(config: ShpConfig, display: PriceDisplay): TaxViewSwit
   }
 }
 
+/** Just the shopper's switch, from the cached config alone. For a header block
+ *  that appears on every page and has no use for the zone and rate queries
+ *  resolveTaxDisplay makes. Null where the shop has the switch off. */
+export async function resolveTaxViewSwitch(): Promise<TaxViewSwitch | null> {
+  const config = await getShopConfigCached()
+  return resolveTaxSwitch(config, {
+    mode: config.priceDisplayTax,
+    storedIncludesTax: config.taxMode === 'INCLUSIVE',
+    suffix: config.priceDisplayTaxSuffix.trim(),
+  })
+}
+
 export async function resolveTaxDisplay(): Promise<TaxDisplay> {
   const config = await getShopConfigCached()
   const display: PriceDisplay = {
