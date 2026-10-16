@@ -1,7 +1,12 @@
 {
   "name": "shop",
-  "version": "0.1.499",
+  "version": "0.1.500",
   "tablePrefix": "shp_",
+  "notificationKinds": [
+    {"id": "new-order", "label": "New orders", "description": "An order has been placed or is awaiting payment.", "dedupePrefix": "shop:order:"},
+    {"id": "product-questions", "label": "Product questions", "description": "Shoppers have asked a question about a product.", "dedupePrefix": "shop:product-questions"},
+    {"id": "stale-refunds", "label": "Refunds stuck pending", "description": "Refunds that have not settled with the payment provider.", "dedupePrefix": "shop:stale-refunds"}
+  ],
   "description": "Full ecommerce foundation: catalogue, checkout, payments, orders, refunds, customers, discounts, tax/shipping.",
   "requiresCoreVersion": "0.5.1821",
   "migrationCatchups": {
