@@ -7,6 +7,7 @@ import {
   createShipment,
   deleteShipment,
   recordConsignment,
+  reopenShipmentDelivery,
   getOrderDispatchSummary,
   getShipmentsForOrder,
   updateShipmentDetails,
@@ -21,6 +22,7 @@ import { getSiteTimezone } from '@/lib/config/timezone.server'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { resolveDpdConsignmentLinks } from '@/modules/shop/lib/tracking/dpd-consignment'
+import { dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
 import { sendCourierContactEmail } from '@/modules/shop/lib/courier-contact-email'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import { isLinkOnlySource } from '@/modules/shop/lib/tracking/link-only'
@@ -442,9 +444,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const nextTrackingUrl = tracking?.ok ? tracking.link.trackingUrl : existing.trackingUrl
   const restart = nextShortCode !== existing.trackingShortCode || nextTrackingUrl !== existing.trackingUrl
   let consignment: { number: string; parcels: NonNullable<ShpShipmentWithItems['consignmentParcels']> } | null | undefined
-  if (nextCourier?.trackingSource === 'dpd' && (restart || parcelLinks.length > 0)) {
+  // A DPD parcel whose boxes were never counted - recorded before they were,
+  // or never read since - is counted on this save too: it is how a parcel
+  // already called delivered on the strength of one box finds out it is not.
+  const neverCounted = existing.consignmentParcels === null && Boolean(nextShortCode || nextTrackingUrl)
+  if (nextCourier?.trackingSource === 'dpd' && (restart || parcelLinks.length > 0 || neverCounted)) {
     const resolved = await resolveDpdConsignmentLinks({
-      mainCode: nextShortCode,
+      // A follow-my-parcel link on a courier known only by its typed name is
+      // kept as a link with no code beside it; it opens a box all the same.
+      mainCode: nextShortCode ?? dpdFollowLinkCode(nextTrackingUrl),
       trackingUrl: nextTrackingUrl,
       existing: { number: existing.consignmentNumber, parcels: existing.consignmentParcels },
       restart,
@@ -467,6 +475,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     await recordConsignment(shipmentId, consignment, id)
     shipment.consignmentNumber = consignment?.number ?? null
     shipment.consignmentParcels = consignment?.parcels ?? null
+    // Called delivered, but DPD say a box is still to come: it is not, and
+    // until that is undone the hourly tidy-up completes the order again
+    // however often it is moved back. Staff saving the parcel is the say-so.
+    if (shipment.deliveredAt && consignment?.parcels.some((box) => !box.delivered)) {
+      if (await reopenShipmentDelivery(shipmentId, id)) {
+        shipment.deliveredAt = null
+        shipment.carrierOutForDelivery = null
+      }
+    }
   }
 
   // Flagging a parcel as "the customer must contact the courier" tells them, the

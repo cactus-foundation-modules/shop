@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.502",
+  "version": "0.1.503",
   "tablePrefix": "shp_",
   "notificationKinds": [
     {"id": "new-order", "label": "New orders", "description": "An order has been placed or is awaiting payment.", "dedupePrefix": "shop:order:"},

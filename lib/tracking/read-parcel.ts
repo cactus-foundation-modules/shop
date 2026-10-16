@@ -29,6 +29,7 @@ import {
 } from '@/modules/shop/lib/tracking/dpd'
 import { fetchDpdParcel, fetchDpdRoute, mintDpdSession } from '@/modules/shop/lib/tracking/dpd-session'
 import { findDpdConsignment, mergeConsignmentBoxes } from '@/modules/shop/lib/tracking/dpd-consignment'
+import { dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
 import { isSplitConsignment, type ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 import { aitImageHeaders, readAit } from '@/modules/shop/lib/tracking/ait'
 import { aitLinkParts } from '@/modules/shop/lib/tracking/ait-link'
@@ -266,7 +267,10 @@ async function readDpdParcelOnce(parcel: ShpShipment, timezone: string): Promise
   // the short link points. A parcel recorded with only the follow-my-parcel
   // link - in both boxes, as it arrives in DPD's email - has no parcel number
   // anywhere else, and went unread every hour until the order was closed.
-  const session = parcel.trackingShortCode ? await mintDpdSession(parcel.trackingShortCode) : null
+  // The code beside the link, or in it: a follow-my-parcel link recorded on a
+  // courier known only by its typed name is kept with no code beside it.
+  const shortCode = parcel.trackingShortCode ?? dpdFollowLinkCode(parcel.trackingUrl)
+  const session = shortCode ? await mintDpdSession(shortCode) : null
   const cookie = session?.cookie ?? null
   const parcelCode = dpdParcelCodeFromUrl(parcel.trackingUrl) ?? session?.parcelCode ?? null
   if (!parcelCode) return null
@@ -283,7 +287,7 @@ async function readDpdParcelOnce(parcel: ShpShipment, timezone: string): Promise
     const found = await findDpdConsignment(parcelCode, payloads.parcel)
     if (found) {
       const boxes = mergeConsignmentBoxes(found.boxes, null).map((box) => (
-        box.code === parcelCode ? { ...box, shortCode: parcel.trackingShortCode } : box
+        box.code === parcelCode ? { ...box, shortCode } : box
       ))
       if (isSplitConsignment(boxes)) return readDpdConsignment(found.consignmentNumber, boxes, timezone)
       consignment = { number: found.consignmentNumber, parcels: boxes, photos: [] }
@@ -296,7 +300,7 @@ async function readDpdParcelOnce(parcel: ShpShipment, timezone: string): Promise
   const reading = readDpd({ parcel: payloads.parcel, events: payloads.events, route, timezone })
   if (!reading.stage) return null
 
-  const proof = dpdProof(parcelCode, payloads.parcel, cookie, parcel.trackingShortCode)
+  const proof = dpdProof(parcelCode, payloads.parcel, cookie, shortCode)
   return {
     ...EMPTY_PARCEL_READING,
     ...reading,

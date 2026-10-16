@@ -118,4 +118,15 @@ suite('a parcel in several boxes, against a real database', () => {
     expect(parcel?.consignmentNumber).toBeNull()
     expect(parcel?.consignmentParcels).toBeNull()
   })
+
+  it('reopens a parcel called delivered, only on its own order, and only once', async () => {
+    await client.query(`UPDATE "shp_shipments" SET "delivered_at" = CURRENT_TIMESTAMP, "carrier_out_for_delivery" = true WHERE "id" = 'shp-1'`)
+    expect(await shipments.reopenShipmentDelivery('shp-1', 'ord-other')).toBe(false)
+    expect(await shipments.reopenShipmentDelivery('shp-1', 'ord-1')).toBe(true)
+    const parcel = (await shipments.getShipmentsForOrder('ord-1'))[0]
+    expect(parcel?.deliveredAt).toBeNull()
+    expect(parcel?.carrierOutForDelivery).toBeNull()
+    expect(await shipments.reopenShipmentDelivery('shp-1', 'ord-1')).toBe(false)
+    expect(await shipments.listOrdersAwaitingCompletion(10)).not.toContain('ord-1')
+  })
 })

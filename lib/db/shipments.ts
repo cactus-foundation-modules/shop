@@ -1112,6 +1112,30 @@ export async function recordConsignment(
 }
 
 /**
+ * A parcel called delivered that is not: the courier has since said one of
+ * its boxes is still to come (migration 074).
+ *
+ * The one place `delivered_at` is ever cleared, and only ever on staff's say -
+ * a save on the order screen that found the boxes - never from the tracking
+ * check, which still never reopens anything behind the owner's back. While it
+ * stays set, the hourly tidy-up finishes the order off again however often
+ * staff move it back (order DW000231). The proof already kept stays: it is
+ * real proof of the boxes that did arrive, and the box list shows it as such.
+ *
+ * Returns whether a delivered parcel was reopened.
+ */
+export async function reopenShipmentDelivery(shipmentId: string, orderId: string): Promise<boolean> {
+  const changed = await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "delivered_at" = NULL,
+        "carrier_out_for_delivery" = NULL,
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId} AND "order_id" = ${orderId} AND "delivered_at" IS NOT NULL
+  `
+  return changed > 0
+}
+
+/**
  * Where the van was, and when it said so.
  *
  * Two timestamps because they answer different questions: `vehicle_fixed_at` is
