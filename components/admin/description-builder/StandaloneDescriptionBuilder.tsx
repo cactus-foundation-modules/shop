@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Puck } from '@puckeditor/core'
 import type { Data } from '@puckeditor/core'
 import '@puckeditor/core/no-external.css'
+import { tabbedFieldsOverride } from '@/lib/puck/tabs/TabbedFieldsOverride'
 import { getModuleLayoutPuckConfig } from '@/lib/puck/config'
 import { withImagePickerFields } from '@/lib/puck/MediaPickerField'
 import { registerEditorFields } from '@/lib/puck/fields/editor'
@@ -33,7 +34,7 @@ registerEditorFields()
 // sense for a description, so it is suppressed entirely and this editor supplies
 // its own bar (Back, Save, status). Returning an empty fragment is the override
 // contract's way of rendering nothing.
-const HIDE_PUCK_HEADER = { header: () => <></> }
+const HIDE_PUCK_HEADER = { header: () => <></>, fields: tabbedFieldsOverride }
 
 /**
  * The Puck config a description surface renders through: core's shared content
