@@ -17,11 +17,11 @@ describe('describeIntentFailure', () => {
 
   it('never shows a provider\'s raw error text', () => {
     const err = new Error('WorldFirst could not start the payment: key not found (KEY_NOT_FOUND)')
-    expect(describeIntentFailure(err)).toEqual({ status: 502, message: INTENT_FAILURE_MESSAGE })
+    expect(describeIntentFailure(err)).toEqual({ status: 503, message: INTENT_FAILURE_MESSAGE })
   })
 
   it('treats a thrown non-Error as a plain failure', () => {
-    expect(describeIntentFailure('boom').status).toBe(502)
+    expect(describeIntentFailure('boom').status).toBe(503)
     expect(describeIntentFailure(undefined).message).toBe(INTENT_FAILURE_MESSAGE)
   })
 
@@ -37,7 +37,7 @@ describe('intentFailureResponse', () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {})
     const err = new Error('secret upstream detail')
     const res = intentFailureResponse('WORLDFIRST', err)
-    expect(res.status).toBe(502)
+    expect(res.status).toBe(503)
     const body = await res.json()
     expect(body).toEqual({ error: INTENT_FAILURE_MESSAGE })
     expect(JSON.stringify(body)).not.toContain('secret')

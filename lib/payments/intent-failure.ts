@@ -37,7 +37,12 @@ export function isShopperSafeError(err: unknown): err is ShopperSafeError {
 
 export function describeIntentFailure(err: unknown): { status: number; message: string } {
   if (isShopperSafeError(err)) return { status: 400, message: err.message }
-  return { status: 502, message: INTENT_FAILURE_MESSAGE }
+  // 503, never 502 or 504: a CDN in front of the site (Cloudflare on any plan
+  // short of Enterprise) swaps an origin's 502/504 body for its own HTML error
+  // page, and the shopper was back to Safari's "The string did not match the
+  // expected pattern." with the sentence below thrown away. A 503 passes
+  // through as written.
+  return { status: 503, message: INTENT_FAILURE_MESSAGE }
 }
 
 /** The JSON answer for a provider that could not start a payment. Logs the real

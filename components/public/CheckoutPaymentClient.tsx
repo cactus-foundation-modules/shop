@@ -299,7 +299,10 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: request.body,
       })
-      const data = await res.json()
+      // Tolerant of a reply that is not JSON: an error page from a CDN or the
+      // host would otherwise surface as the browser's own parse error ("The
+      // string did not match the expected pattern." in Safari).
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error ?? 'Could not start checkout')
 
       const prepared: PreparedPayment = {
@@ -732,7 +735,7 @@ export function CheckoutPaymentClient({ preview = false, paymentFields, heading 
         // over and the next press may start afresh. A timeout or a server that
         // fell over says nothing about the money, so the confirm stands.
         if (!res.ok && res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) submittedRef.current = null
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(data.error ?? 'Payment could not be confirmed')
 
         const customerEmail = getCheckoutState().customerEmail
