@@ -1119,18 +1119,30 @@ export async function recordConsignment(
  * a save on the order screen that found the boxes - never from the tracking
  * check, which still never reopens anything behind the owner's back. While it
  * stays set, the hourly tidy-up finishes the order off again however often
- * staff move it back (order DW000231). The proof already kept stays: it is
- * real proof of the boxes that did arrive, and the box list shows it as such.
+ * staff move it back (order DW000231).
  *
- * Returns whether a delivered parcel was reopened.
+ * The parcel's own "received by" goes too. Every page reads a name or a
+ * signing time on the parcel as "it has arrived", so leaving the first drop's
+ * on it kept the customer's page saying delivered with a box still out. That
+ * proof is not lost: each box keeps its own photograph and name in the box
+ * list, and the parcel takes the last drop's once every box is in. The media
+ * item itself stays in the library.
+ *
+ * Returns whether anything was reopened.
  */
 export async function reopenShipmentDelivery(shipmentId: string, orderId: string): Promise<boolean> {
   const changed = await prisma.$executeRaw`
     UPDATE "shp_shipments"
     SET "delivered_at" = NULL,
         "carrier_out_for_delivery" = NULL,
+        "signed_by" = NULL,
+        "signed_at" = NULL,
+        "signature_url" = NULL,
+        "signature_key" = NULL,
         "updated_at" = CURRENT_TIMESTAMP
-    WHERE "id" = ${shipmentId} AND "order_id" = ${orderId} AND "delivered_at" IS NOT NULL
+    WHERE "id" = ${shipmentId} AND "order_id" = ${orderId}
+      AND ("delivered_at" IS NOT NULL OR "signed_at" IS NOT NULL
+        OR "signed_by" IS NOT NULL OR "signature_url" IS NOT NULL)
   `
   return changed > 0
 }

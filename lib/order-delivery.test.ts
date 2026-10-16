@@ -1,3 +1,4 @@
+import { newConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 import { describe, it, expect } from 'vitest'
 import { parcelDelivery, railDelivery, type ParcelDelivery } from '@/modules/shop/lib/order-delivery'
 import { orderProgressSteps } from '@/modules/shop/lib/order-progress'
@@ -99,6 +100,24 @@ describe('parcelDelivery', () => {
     expect(delivery.progress).toEqual({ progress: 0, phase: 'upcoming' })
     expect(delivery.showTracking).toBe(false)
     expect(delivery.faqs).toHaveLength(1)
+  })
+
+  it('has not arrived while a box is still to come, whatever name the first drop left (DW000231)', () => {
+    const box = (code: string, delivered: boolean) => ({ ...newConsignmentParcel(code, code), delivered })
+    const delivery = parcelDelivery(
+      config,
+      shipment({
+        deliveryDate: '2026-10-17',
+        signedBy: 'Lee',
+        signedAt: new Date('2026-10-16T11:06:00Z'),
+        consignmentNumber: '5217099684',
+        consignmentParcels: [box('a', true), box('b', true), box('c', true), box('d', false)],
+      }),
+      new Date('2026-10-16T19:00:00Z'),
+      'Europe/London',
+    )
+    expect(delivery.arrived).toBe(false)
+    expect(delivery.day).toBe('tomorrow')
   })
 
   it('says nothing about a day nobody has booked', () => {

@@ -106,3 +106,11 @@ export function parcelCountVars(
     hasSeveralParcels: split ? 'true' : 'false',
   }
 }
+
+/** Several boxes, and at least one still to come. Whatever else the parcel
+ *  carries - a delivered time, a name, a photograph from an earlier drop - it
+ *  has not arrived while this is true. */
+export function boxesStillToCome(parcels: readonly ConsignmentParcel[] | null | undefined): boolean {
+  return isSplitConsignment(parcels as ConsignmentParcel[] | null | undefined)
+    && (parcels as ConsignmentParcel[]).some((p) => !p.delivered)
+}

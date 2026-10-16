@@ -11,13 +11,23 @@ import { formatOrderDateTime } from '@/modules/shop/lib/order-display'
 //
 // Server-rendered, as the rest of the tracking card is.
 
+/** "1", "1 and 2", "1, 2 and 3". */
+function listNumbers(numbers: number[]): string {
+  if (numbers.length < 2) return numbers.join('')
+  return `${numbers.slice(0, -1).join(', ')} and ${numbers[numbers.length - 1]}`
+}
+
 export function ConsignmentParcels({ parcels, timezone }: { parcels: ConsignmentParcel[]; timezone: string }) {
-  // Boxes left together share one photograph; it is shown once, under the
-  // last of them.
-  const photoShownBy = new Map<string, string>()
-  for (const box of parcels) {
-    if (box.photoUrl) photoShownBy.set(box.photoUrl, box.code)
-  }
+  // Boxes left together share one photograph - the courier takes one per
+  // drop, not per box. So each photograph is shown once, under the list, and
+  // says which parcels are in it; hung off one box it read as that box's alone.
+  const drops: Array<{ url: string; numbers: number[] }> = []
+  parcels.forEach((box, index) => {
+    if (!box.photoUrl) return
+    const drop = drops.find((d) => d.url === box.photoUrl)
+    if (drop) drop.numbers.push(index + 1)
+    else drops.push({ url: box.photoUrl, numbers: [index + 1] })
+  })
 
   return (
     <div className="sod-boxes">
@@ -34,19 +44,26 @@ export function ConsignmentParcels({ parcels, timezone }: { parcels: Consignment
                   ? `Delivered${when}${box.receivedBy ? `, received by ${box.receivedBy}` : ''}`
                   : box.stage ?? 'On its way'}
               </span>
-              {box.photoUrl && photoShownBy.get(box.photoUrl) === box.code && (
-                // eslint-disable-next-line @next/next/no-img-element -- proof of delivery is an arbitrary third-party image of unknown dimensions.
-                <img
-                  className="sod-signed-img"
-                  src={box.photoUrl}
-                  alt={`Where parcel ${index + 1} was left`}
-                  loading="lazy"
-                />
-              )}
             </li>
           )
         })}
       </ol>
+      {drops.map((drop) => (
+        <figure key={drop.url} className="sod-boxes-photo">
+          {/* eslint-disable-next-line @next/next/no-img-element -- proof of delivery is an arbitrary third-party image of unknown dimensions. */}
+          <img
+            className="sod-signed-img"
+            src={drop.url}
+            alt={`Where ${drop.numbers.length > 1 ? 'parcels' : 'parcel'} ${listNumbers(drop.numbers)} ${drop.numbers.length > 1 ? 'were' : 'was'} left`}
+            loading="lazy"
+          />
+          <figcaption className="sod-boxes-state">
+            {drop.numbers.length > 1
+              ? `Parcels ${listNumbers(drop.numbers)} were delivered together - this photo covers all ${drop.numbers.length}.`
+              : `Parcel ${drop.numbers[0]}.`}
+          </figcaption>
+        </figure>
+      ))}
     </div>
   )
 }

@@ -6,6 +6,7 @@ import {
   nowInTimezone,
   type DeliveryProgress,
 } from '@/modules/shop/lib/delivery-slot'
+import { boxesStillToCome } from '@/modules/shop/lib/consignment-parcels'
 import { courierContactFor, type CourierContact } from '@/modules/shop/lib/courier-contact'
 import { courierForShipment, courierWillRebook, customerMaySeeTracking, faqsForShipment, type ShpCourier } from '@/modules/shop/lib/courier-faqs'
 import { courierAloneSaysArrived, failedReason, stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
@@ -153,7 +154,9 @@ export function parcelDelivery(
     && !shipment.signedAt
     && !shipment.signedBy?.trim()
 
-  const arrived = !failed && (meaning === 'delivered'
+  // A box still to come outranks everything below: the first drop's name and
+  // photograph are real, but they are not this parcel having arrived.
+  const arrived = !failed && !boxesStillToCome(shipment.consignmentParcels) && (meaning === 'delivered'
     || Boolean(shipment.deliveredAt)
     || Boolean(shipment.signedAt)
     || Boolean(shipment.signedBy?.trim())

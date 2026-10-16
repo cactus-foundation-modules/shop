@@ -23,6 +23,7 @@ import type { ShpConfig } from '@/modules/shop/lib/config'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { resolveDpdConsignmentLinks } from '@/modules/shop/lib/tracking/dpd-consignment'
 import { dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
+import { isSplitConsignment } from '@/modules/shop/lib/consignment-parcels'
 import { sendCourierContactEmail } from '@/modules/shop/lib/courier-contact-email'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import { isLinkOnlySource } from '@/modules/shop/lib/tracking/link-only'
@@ -475,14 +476,22 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     await recordConsignment(shipmentId, consignment, id)
     shipment.consignmentNumber = consignment?.number ?? null
     shipment.consignmentParcels = consignment?.parcels ?? null
-    // Called delivered, but DPD say a box is still to come: it is not, and
-    // until that is undone the hourly tidy-up completes the order again
-    // however often it is moved back. Staff saving the parcel is the say-so.
-    if (shipment.deliveredAt && consignment?.parcels.some((box) => !box.delivered)) {
-      if (await reopenShipmentDelivery(shipmentId, id)) {
-        shipment.deliveredAt = null
-        shipment.carrierOutForDelivery = null
-      }
+  }
+  // Called delivered - or carrying a "received by", which every page reads
+  // the same way - while the boxes say one is still to come: it is not, and
+  // until that is undone the hourly tidy-up completes the order again however
+  // often it is moved back. Staff saving the parcel is the say-so, so a plain
+  // save puts right a parcel whose boxes were found earlier.
+  const boxes = shipment.consignmentParcels
+  const calledArrived = Boolean(shipment.deliveredAt || shipment.signedAt || shipment.signedBy?.trim() || shipment.signatureUrl)
+  if (calledArrived && isSplitConsignment(boxes) && boxes.some((box) => !box.delivered)) {
+    if (await reopenShipmentDelivery(shipmentId, id)) {
+      shipment.deliveredAt = null
+      shipment.carrierOutForDelivery = null
+      shipment.signedBy = null
+      shipment.signedAt = null
+      shipment.signatureUrl = null
+      shipment.signatureKey = null
     }
   }
 

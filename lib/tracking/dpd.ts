@@ -89,6 +89,9 @@ export const dpdParcelSchema = z.object({
     trackingStatusCurrent: z.string().nullish(),
     parcelStatusHtml: z.string().nullish(),
     deliveredToConsumer: z.boolean().nullish(),
+    // 'YYYY-MM-DD' - the day DPD are now aiming for, which they move when a
+    // parcel is held up ("due for delivery Saturday"). Session reads only.
+    estimatedDeliveryDate: z.string().nullish(),
     outForDeliveryDetails: z.object({
       outForDelivery: z.boolean().nullish(),
     }).nullish(),
@@ -241,11 +244,23 @@ export function readDpd(input: {
   const stop = data?.deliveryDepot?.route?.stop ?? null
   const routeData = route?.success ? route.data.data : null
 
+  // The van's hour where DPD have given one; otherwise the day they are
+  // aiming for, passed on as the whole day - which reads everywhere as "the
+  // day, no time" (isWholeDayWindow) and is never emailed as a window. So a
+  // parcel DPD have rebooked shows its new day without anybody typing it in.
+  const delivered = dpdFeedSaysDelivered(data, events)
+  const estimated = delivered ? null : data?.estimatedDeliveryDate?.trim() ?? null
+  const day = estimated && /^\d{4}-\d{2}-\d{2}$/.test(estimated) ? estimated : null
+  const windowFrom = asDate(stop?.deliveryWindowFrom, input.timezone)
+    ?? (day ? asDate(`${day} 00:00:00`, input.timezone) : null)
+  const windowTo = asDate(stop?.deliveryWindowTo, input.timezone)
+    ?? (day ? asDate(`${day} 23:59:00`, input.timezone) : null)
+
   return {
     stage: events[0]?.text ?? null,
     events,
-    windowFrom: asDate(stop?.deliveryWindowFrom, input.timezone),
-    windowTo: asDate(stop?.deliveryWindowTo, input.timezone),
+    windowFrom,
+    windowTo,
     stopNumber: stop?.stopNumber ?? null,
     stopsCompleted: routeData?.completedDeliveryStops ?? null,
     stopsTotal: routeData?.totalDeliveryStops ?? null,
@@ -256,7 +271,7 @@ export function readDpd(input: {
     driverName: dpdDriverName(data?.parcelStatusHtml) ?? routeData?.driverDisplayName?.trim() ?? null,
     // Session boolean when they give one; otherwise the events and status
     // sentence, which the anonymous feed carries too once a parcel has landed.
-    delivered: dpdFeedSaysDelivered(data, events),
+    delivered,
     // Their flag, and the reason this reader does not try to match their
     // status sentence: "Your parcel will be with you today between 11:41 and
     // 12:41" is a different string on every parcel and on every delivery, so

@@ -38,7 +38,7 @@ import {
 import { orderProgressSteps, orderStopped } from '@/modules/shop/lib/order-progress'
 import { ParcelTracking } from '@/modules/shop/components/public/ParcelTracking'
 import { ConsignmentParcels } from '@/modules/shop/components/public/ConsignmentParcels'
-import { isSplitConsignment } from '@/modules/shop/lib/consignment-parcels'
+import { boxesStillToCome, isSplitConsignment } from '@/modules/shop/lib/consignment-parcels'
 import { FailedDeliveryNote } from '@/modules/shop/components/public/FailedDeliveryNote'
 import { CourierContactNote } from '@/modules/shop/components/public/CourierContactNote'
 import type { CourierContact } from '@/modules/shop/lib/courier-contact'
@@ -365,6 +365,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   // same answer.
   const deliveredOn = new Map<string, Date>(
     shipments
+      .filter((s) => !boxesStillToCome(s.consignmentParcels))
       .map((s) => [s.id, s.signedAt ?? s.deliveredAt] as const)
       .filter((entry): entry is readonly [string, Date] => entry[1] instanceof Date),
   )
@@ -372,6 +373,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   const deliveredItemIds = new Set<string>()
   for (const shipment of shipments) {
     if (!shipment.deliveredAt && !shipment.signedAt && !shipment.signedBy?.trim()) continue
+    if (boxesStillToCome(shipment.consignmentParcels)) continue
     for (const item of shipment.items) deliveredItemIds.add(item.orderItemId)
   }
 

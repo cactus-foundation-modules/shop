@@ -144,8 +144,11 @@ export function failedReason(
  *
  *  True for AIT, whose status code says delivered, out, failed, cancelled, on
  *  hold or part-delivered outright, and for Fieldly, whose feed carries its
- *  own "delivered" status. The clock fallback exists for couriers who
- *  report nothing past a stage name; on AIT it would turn a late van, a
+ *  own "delivered" status, and for DPD, whose feed says delivered in so many
+ *  words - and whose day, passed on as the whole day when they move a held
+ *  parcel to another one, would otherwise be "arrived" at midnight with the
+ *  box still at a hub. The clock fallback exists for couriers who report
+ *  nothing past a stage name; on AIT it would turn a late van, a
  *  cancellation or a parcel put on hold into "arrived" at the end of the
  *  window. */
 export function courierAloneSaysArrived(
@@ -155,7 +158,8 @@ export function courierAloneSaysArrived(
    *  went out, has nothing but the clock, and keeps it like any other courier. */
   trackingStage: string | null | undefined,
 ): boolean {
-  return (courier?.trackingSource === 'ait' || courier?.trackingSource === 'fieldly') && Boolean(trackingStage?.trim())
+  const source = courier?.trackingSource
+  return (source === 'ait' || source === 'fieldly' || source === 'dpd') && Boolean(trackingStage?.trim())
 }
 
 /** Whether this courier is one the shop reads on a schedule at all.

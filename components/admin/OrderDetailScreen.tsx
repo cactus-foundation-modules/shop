@@ -1597,7 +1597,11 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                                     {box.photoUrl && (
                                       <>
                                         {' · '}
-                                        <a href={box.photoUrl} target="_blank" rel="noopener noreferrer">photo</a>
+                                        <a href={box.photoUrl} target="_blank" rel="noopener noreferrer">
+                                          {(shipment.consignmentParcels ?? []).filter((b) => b.photoUrl === box.photoUrl).length > 1
+                                            ? 'photo (shared by this drop)'
+                                            : 'photo'}
+                                        </a>
                                       </>
                                     )}
                                   </li>

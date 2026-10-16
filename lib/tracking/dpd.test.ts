@@ -319,3 +319,35 @@ describe('dpdConsignmentFacts', () => {
     })
   })
 })
+
+describe('readDpd and the day DPD are aiming for', () => {
+  const held = (extra: Record<string, unknown>) => readDpd({
+    parcel: { data: { parcelCode: '15505217099687*21473', trackingStatusCurrent: 'Sorry, there\'s a delay', deliveredToConsumer: false, ...extra } },
+    events: { data: [{ eventDate: '2026-10-16 06:01:00', eventLocation: 'Hub 4', eventText: 'There\'s a delay' }] },
+    timezone: 'Europe/London',
+  })
+
+  it('passes a rebooked day on as the whole day when there is no hour yet', () => {
+    const reading = held({ estimatedDeliveryDate: '2026-10-17' })
+    expect(reading.windowFrom?.toISOString()).toBe('2026-10-16T23:00:00.000Z')
+    expect(reading.windowTo?.toISOString()).toBe('2026-10-17T22:59:00.000Z')
+  })
+
+  it('prefers the van\'s own hour, and says nothing once delivered', () => {
+    const withHour = held({
+      estimatedDeliveryDate: '2026-10-17',
+      deliveryDepot: { route: { stop: { deliveryWindowFrom: '2026-10-17 10:56:00', deliveryWindowTo: '2026-10-17 11:56:00' } } },
+    })
+    expect(withHour.windowFrom?.toISOString()).toBe('2026-10-17T09:56:00.000Z')
+    const delivered = held({ estimatedDeliveryDate: '2026-10-17', deliveredToConsumer: true })
+    expect(delivered.windowFrom).toBeNull()
+  })
+})
+
+describe('courierAloneSaysArrived on DPD', () => {
+  it('leaves arrival to DPD once their feed has been read', async () => {
+    const { courierAloneSaysArrived } = await import('@/modules/shop/lib/tracking/stage-meaning')
+    expect(courierAloneSaysArrived({ trackingSource: 'dpd' }, 'There\'s a delay with your parcel')).toBe(true)
+    expect(courierAloneSaysArrived({ trackingSource: 'dpd' }, null)).toBe(false)
+  })
+})

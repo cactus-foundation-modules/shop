@@ -120,13 +120,19 @@ suite('a parcel in several boxes, against a real database', () => {
   })
 
   it('reopens a parcel called delivered, only on its own order, and only once', async () => {
-    await client.query(`UPDATE "shp_shipments" SET "delivered_at" = CURRENT_TIMESTAMP, "carrier_out_for_delivery" = true WHERE "id" = 'shp-1'`)
+    // Also: a parcel with only a name on it (DW000231 after its first reopen).
+    await client.query(`UPDATE "shp_shipments" SET "delivered_at" = CURRENT_TIMESTAMP, "carrier_out_for_delivery" = true,
+      "signed_by" = 'Lee', "signed_at" = CURRENT_TIMESTAMP, "signature_url" = 'https://media/x.jpg', "signature_key" = 'x' WHERE "id" = 'shp-1'`)
     expect(await shipments.reopenShipmentDelivery('shp-1', 'ord-other')).toBe(false)
     expect(await shipments.reopenShipmentDelivery('shp-1', 'ord-1')).toBe(true)
     const parcel = (await shipments.getShipmentsForOrder('ord-1'))[0]
     expect(parcel?.deliveredAt).toBeNull()
     expect(parcel?.carrierOutForDelivery).toBeNull()
+    expect(parcel).toMatchObject({ signedBy: null, signedAt: null, signatureUrl: null, signatureKey: null })
     expect(await shipments.reopenShipmentDelivery('shp-1', 'ord-1')).toBe(false)
     expect(await shipments.listOrdersAwaitingCompletion(10)).not.toContain('ord-1')
+    await client.query(`UPDATE "shp_shipments" SET "signed_by" = 'Lee' WHERE "id" = 'shp-1'`)
+    expect(await shipments.reopenShipmentDelivery('shp-1', 'ord-1')).toBe(true)
+    expect((await shipments.getShipmentsForOrder('ord-1'))[0]?.signedBy).toBeNull()
   })
 })
