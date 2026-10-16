@@ -37,6 +37,8 @@ import {
 } from '@/modules/shop/lib/order-display'
 import { orderProgressSteps, orderStopped } from '@/modules/shop/lib/order-progress'
 import { ParcelTracking } from '@/modules/shop/components/public/ParcelTracking'
+import { ConsignmentParcels } from '@/modules/shop/components/public/ConsignmentParcels'
+import { isSplitConsignment } from '@/modules/shop/lib/consignment-parcels'
 import { FailedDeliveryNote } from '@/modules/shop/components/public/FailedDeliveryNote'
 import { CourierContactNote } from '@/modules/shop/components/public/CourierContactNote'
 import type { CourierContact } from '@/modules/shop/lib/courier-contact'
@@ -996,6 +998,12 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                     {deliveryById.get(shipment.id) && (
                       <ParcelTracking delivery={deliveryById.get(shipment.id) as ParcelDelivery} />
                     )}
+                    {/* The courier is bringing this as several boxes, maybe
+                        on different days: which have come, and which are
+                        still to come. */}
+                    {isSplitConsignment(shipment.consignmentParcels) && (
+                      <ConsignmentParcels parcels={shipment.consignmentParcels} timezone={timezone} />
+                    )}
                     {/* And only while it is still coming. Everything that
                         button offers - a safe place, a neighbour, a different
                         day - is a change to a delivery that has already
@@ -1043,7 +1051,9 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                         The name and time show even where no picture came with
                         them - a courier who names who took it in has given the
                         useful half of a proof of delivery. */}
-                    {(shipment.signatureUrl || shipment.signedBy) && (
+                    {/* A delivery in several boxes shows each drop's own
+                        proof in its list above instead. */}
+                    {(shipment.signatureUrl || shipment.signedBy) && !isSplitConsignment(shipment.consignmentParcels) && (
                       <div className="sod-signed">
                         <p className="sod-signed-by">
                           {shipment.signedBy ? `Received by ${shipment.signedBy}` : 'Delivered'}

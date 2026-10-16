@@ -293,6 +293,16 @@ export const ORDER_DETAIL_CSS = `
 .sod-signed-img{max-width:14rem;width:100%;height:auto;background:var(--color-surface);
   border:1px solid var(--color-border);border-radius:0.375rem;padding:0.25rem}
 
+/* --- One delivery in several boxes --------------------------------------- */
+.sod-boxes{display:grid;gap:0.375rem;margin-top:0.625rem}
+.sod-boxes-head{margin:0;font-weight:600;color:var(--color-text)}
+.sod-boxes-list{list-style:none;margin:0;padding:0;display:grid;gap:0.5rem}
+.sod-boxes-list>li{display:grid;gap:0.25rem;padding-left:0.75rem;
+  border-left:2px solid var(--color-border)}
+.sod-boxes-list>li.is-delivered{border-left-color:var(--color-success)}
+.sod-boxes-name{font-weight:600;color:var(--color-text);font-size:0.875rem}
+.sod-boxes-state{color:var(--color-text-secondary);font-size:0.8125rem}
+
 /* --- Delivery questions ------------------------------------------------- */
 .sod-faq-open{justify-self:start;margin-top:0.375rem}
 .sod-faq-plain{margin-top:0.75rem}

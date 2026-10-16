@@ -917,6 +917,14 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     -- Also shipped as migrations/049_carrier_scan_tracking.sql.
     "tracking_short_code" TEXT,
     "tracking_events" JSONB,
+    -- One delivery the courier splits into several boxes, each with its own
+    -- parcel number and its own day. The courier's reference for the whole
+    -- delivery, and every parcel in it with what its own tracking last said -
+    -- see lib/consignment-parcels.ts. NULL until the courier has been asked;
+    -- a one-box delivery holds a list of one. Also shipped as
+    -- migrations/074_consignment_parcels.sql.
+    "consignment_number" TEXT,
+    "consignment_parcels" JSONB,
     "delivery_window_from" TIMESTAMP(3),
     "delivery_window_to" TIMESTAMP(3),
     "stop_number" INTEGER,

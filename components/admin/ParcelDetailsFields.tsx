@@ -3,6 +3,8 @@
 import type { CSSProperties } from 'react'
 import { DPD_FOLLOW_LINK_EXAMPLE, dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
 import { LINK_ONLY, type LinkOnlySource } from '@/modules/shop/lib/tracking/link-only'
+import { ConsignmentLinksField } from '@/modules/shop/components/admin/ConsignmentLinksField'
+import type { ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 
 // The details that hang off a parcel rather than off its contents: who is
 // carrying it, when it is booked to arrive, and how to follow it.
@@ -44,6 +46,9 @@ export type ParcelDetails = {
   deliverySlotStart: string
   deliverySlotEnd: string
   notes: string
+  /** Follow-my-parcel links for the other boxes of a DPD delivery that
+   *  travels as several, in whatever order they were pasted. */
+  parcelLinks: string[]
 }
 
 export const EMPTY_PARCEL_DETAILS: ParcelDetails = {
@@ -55,12 +60,13 @@ export const EMPTY_PARCEL_DETAILS: ParcelDetails = {
   deliverySlotStart: '',
   deliverySlotEnd: '',
   notes: '',
+  parcelLinks: [],
 }
 
 /** What the two routes accept, with blanks sent as null rather than as empty
  *  strings - clearing a field and never having filled one in are the same thing
  *  to a customer, and the column is nullable for exactly that reason. */
-export function parcelDetailsPayload(details: ParcelDetails): Record<string, string | null> {
+export function parcelDetailsPayload(details: ParcelDetails): Record<string, string | string[] | null> {
   const picked = details.courierId.trim()
   return {
     courierId: picked || null,
@@ -73,13 +79,18 @@ export function parcelDetailsPayload(details: ParcelDetails): Record<string, str
     deliverySlotStart: details.deliverySlotStart.trim() || null,
     deliverySlotEnd: details.deliverySlotEnd.trim() || null,
     notes: details.notes.trim() || null,
+    parcelLinks: details.parcelLinks.map((l) => l.trim()).filter(Boolean),
   }
 }
 
-export function ParcelDetailsFields({ couriers, value, onChange }: {
+export function ParcelDetailsFields({ couriers, value, onChange, consignment, consignmentLink }: {
   couriers: CourierOption[]
   value: ParcelDetails
   onChange: (next: ParcelDetails) => void
+  /** The boxes the parcel already travels as, on the edit form. */
+  consignment?: { number: string | null; parcels: ConsignmentParcel[] | null } | null
+  /** The tracking link those boxes were found from. */
+  consignmentLink?: string
 }) {
   const set = <K extends keyof ParcelDetails>(key: K, next: ParcelDetails[K]) =>
     onChange({ ...value, [key]: next })
@@ -94,6 +105,14 @@ export function ParcelDetailsFields({ couriers, value, onChange }: {
   const fieldly = linkOnly === 'fieldly'
   const wrongLinkOnly = linkOnly !== null && typedLink.length > 0 && !LINK_ONLY[linkOnly].canonical(typedLink)
   const wrongLink = wrongDpdLink || wrongLinkOnly
+  // A parcel recorded from a supplier's announcement can carry the courier as
+  // a typed name rather than a pick from the list - and the tracking check
+  // still reads it from DPD by that name (courierForShipment). Its boxes are
+  // offered the same way; its one link is not held to the follow-my-parcel
+  // rule, which only ever applied to a courier picked from the list.
+  const typedName = value.carrier.trim().toLowerCase()
+  const dpdByName = value.courierId === '' && typedName.length > 0
+    && couriers.some((c) => c.dpdFollowLink === true && c.name.trim().toLowerCase() === typedName)
 
   // Picking AIT or Fieldly takes away the tracking number box, so a number
   // typed for the courier picked before goes with it rather than being saved
@@ -232,6 +251,15 @@ export function ParcelDetailsFields({ couriers, value, onChange }: {
           </span>
         )}
       </label>
+
+      <ConsignmentLinksField
+        link={value.trackingUrl}
+        active={dpd || dpdByName}
+        known={consignment}
+        knownForLink={consignmentLink}
+        links={value.parcelLinks}
+        onLinks={(next) => set('parcelLinks', next)}
+      />
 
       <label>Notes (optional)
         <textarea value={value.notes} onChange={(e) => set('notes', e.target.value)} style={fieldStyle} />

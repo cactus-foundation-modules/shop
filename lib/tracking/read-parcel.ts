@@ -28,6 +28,8 @@ import {
   readDpd,
 } from '@/modules/shop/lib/tracking/dpd'
 import { fetchDpdParcel, fetchDpdRoute, mintDpdSession } from '@/modules/shop/lib/tracking/dpd-session'
+import { findDpdConsignment, mergeConsignmentBoxes } from '@/modules/shop/lib/tracking/dpd-consignment'
+import { isSplitConsignment, type ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 import { aitImageHeaders, readAit } from '@/modules/shop/lib/tracking/ait'
 import { aitLinkParts } from '@/modules/shop/lib/tracking/ait-link'
 import { readFieldly } from '@/modules/shop/lib/tracking/fieldly'
@@ -61,6 +63,17 @@ export type ParcelReading = TrackingReading & {
   dropsAway: number | null
   destinationLat: string | null
   destinationLng: string | null
+  /** The boxes this parcel is travelling as, where the courier splits a
+   *  delivery (DPD), to be written back whole - and each box's photograph to
+   *  fetch and keep, which only the reader holding the sessions can hand over.
+   *  Null from every other courier, and on a read that learned nothing new. */
+  consignment: ConsignmentReading | null
+}
+
+export type ConsignmentReading = {
+  number: string
+  parcels: ConsignmentParcel[]
+  photos: Array<{ code: string; ref: string; url: string; headers: Record<string, string> }>
 }
 
 const EMPTY_PARCEL_READING: ParcelReading = {
@@ -74,6 +87,7 @@ const EMPTY_PARCEL_READING: ParcelReading = {
   dropsAway: null,
   destinationLat: null,
   destinationLng: null,
+  consignment: null,
 }
 
 async function fetchText(url: string): Promise<string | null> {
@@ -130,20 +144,17 @@ async function readGfs(parcel: ShpShipment, carrier: string, timezone: string): 
   return reading.stage ? { ...EMPTY_PARCEL_READING, ...reading } : null
 }
 
-async function readDpdParcelOnce(parcel: ShpShipment, timezone: string): Promise<ParcelReading | null> {
-  // One session for the whole parcel, or none at all. Without a follow-my-parcel
-  // code this still reads - it just gets the fifteen public fields rather than
-  // the ninety, which is a timeline and a status and no stop number.
-  const session = parcel.trackingShortCode ? await mintDpdSession(parcel.trackingShortCode) : null
+/** One DPD box, read on its own session where it has a code of its own. */
+async function readDpdBox(
+  parcelCode: string,
+  shortCode: string | null,
+  timezone: string,
+): Promise<{ reading: TrackingReading; payload: unknown; cookie: string | null; routeCode: string | null } | null> {
+  // One session for the box, or none at all. Without a follow-my-parcel code
+  // this still reads - it just gets the fifteen public fields rather than the
+  // ninety, which is a timeline and a status and no stop number.
+  const session = shortCode ? await mintDpdSession(shortCode) : null
   const cookie = session?.cookie ?? null
-
-  // The parcel number from the tracking link where it is one, else from where
-  // the short link points. A parcel recorded with only the follow-my-parcel
-  // link - in both boxes, as it arrives in DPD's email - has no parcel number
-  // anywhere else, and went unread every hour until the order was closed.
-  const parcelCode = dpdParcelCodeFromUrl(parcel.trackingUrl) ?? session?.parcelCode ?? null
-  if (!parcelCode) return null
-
   const payloads = await fetchDpdParcel(parcelCode, cookie)
   if (!payloads.parcel && !payloads.events) return null
 
@@ -154,27 +165,147 @@ async function readDpdParcelOnce(parcel: ShpShipment, timezone: string): Promise
 
   const reading = readDpd({ parcel: payloads.parcel, events: payloads.events, route, timezone })
   if (!reading.stage) return null
+  return { reading, payload: payloads.parcel, cookie, routeCode }
+}
 
-  // Their photograph of the delivered parcel, which replaced the signature they
-  // used to take. Only on a delivered parcel, and only with the session - see
-  // dpdImageHeaders for the Referer that decides between a picture and a 403.
-  const image = dpdPodImage(payloads.parcel)
-  const proofImage = image && cookie
-    ? {
-        url: dpdImageUrl(parcelCode, image),
-        headers: dpdImageHeaders(cookie, parcel.trackingShortCode),
-        label: 'delivery-photo',
-      }
+/** Their photograph of the delivered box, which replaced the signature they
+ *  used to take. Only on a delivered box, and only with the session that
+ *  box's own code opened - see dpdImageHeaders. */
+function dpdProof(parcelCode: string, payload: unknown, cookie: string | null, shortCode: string | null) {
+  const image = dpdPodImage(payload)
+  return image && cookie
+    ? { ref: image.key, url: dpdImageUrl(parcelCode, image), headers: dpdImageHeaders(cookie, shortCode) }
     : null
+}
+
+/**
+ * A parcel the courier is carrying as several boxes, read box by box.
+ *
+ * Each box is asked about on its own session, one after another - the codes
+ * are separate sessions, and DPD spoil a session asked two things at once. A
+ * box already delivered with its photograph kept, or delivered with no code
+ * to fetch one with, has nothing left to say and is not asked.
+ *
+ * The parcel has arrived when every box has, and not before. Until then the
+ * reading the parcel shows is the first box still to come - its stage, its
+ * window, its driver - because that is the delivery the customer is waiting
+ * on. Null when the boxes still to come could not be read: a parcel cannot be
+ * called anything on the strength of the boxes that already landed.
+ */
+async function readDpdConsignment(
+  number: string,
+  boxes: ConsignmentParcel[],
+  timezone: string,
+): Promise<ParcelReading | null> {
+  const now = new Date().toISOString()
+  const parcels: ConsignmentParcel[] = []
+  const photos: ConsignmentReading['photos'] = []
+  const fresh = new Map<string, NonNullable<Awaited<ReturnType<typeof readDpdBox>>>>()
+
+  for (const box of boxes) {
+    if (box.delivered && (box.photoUrl || !box.shortCode)) {
+      parcels.push(box)
+      continue
+    }
+    const read = await readDpdBox(box.code, box.shortCode, timezone)
+    if (!read) {
+      parcels.push(box)
+      continue
+    }
+    fresh.set(box.code, read)
+    // Never taken back, as the parcel's own delivered_at is not.
+    const delivered = box.delivered || read.reading.delivered === true
+    parcels.push({
+      ...box,
+      stage: read.reading.stage ?? box.stage,
+      delivered,
+      deliveredAt: box.deliveredAt ?? (delivered ? (read.reading.receivedAt ?? new Date()).toISOString() : null),
+      receivedBy: read.reading.receivedBy ?? box.receivedBy,
+      checkedAt: now,
+    })
+    const proof = delivered && !box.photoUrl ? dpdProof(box.code, read.payload, read.cookie, box.shortCode) : null
+    if (proof) photos.push({ code: box.code, ...proof })
+  }
+
+  const allDelivered = parcels.every((p) => p.delivered)
+  const waitingOn = parcels.find((p) => !p.delivered && fresh.has(p.code))
+  const latest = [...parcels]
+    .filter((p) => p.delivered && fresh.has(p.code))
+    .sort((a, b) => (a.deliveredAt ?? '').localeCompare(b.deliveredAt ?? ''))
+    .at(-1)
+  const primary = allDelivered ? latest : waitingOn
+  // The box still to come could not be read, or nothing was asked at all.
+  // What the boxes that landed said is not lost: they are asked again next
+  // time, and they will say the same.
+  if (!primary) return null
+  const read = fresh.get(primary.code)
+  if (!read) return null
 
   return {
     ...EMPTY_PARCEL_READING,
+    ...read.reading,
+    // Explicitly false until the last box is in: the stage settings must not
+    // get a vote on a parcel the courier has told us is only part-delivered.
+    delivered: allDelivered,
+    outForDelivery: allDelivered ? false : read.reading.outForDelivery,
+    receivedBy: allDelivered ? read.reading.receivedBy : null,
+    receivedAt: allDelivered ? read.reading.receivedAt : null,
+    routeId: read.routeCode,
+    clientId: dpdDepotCode(read.payload),
+    consignment: { number, parcels, photos },
+  }
+}
+
+async function readDpdParcelOnce(parcel: ShpShipment, timezone: string): Promise<ParcelReading | null> {
+  // Already known to be several boxes: each is read in its own right.
+  if (isSplitConsignment(parcel.consignmentParcels) && parcel.consignmentNumber) {
+    return readDpdConsignment(parcel.consignmentNumber, parcel.consignmentParcels, timezone)
+  }
+
+  // The parcel number from the tracking link where it is one, else from where
+  // the short link points. A parcel recorded with only the follow-my-parcel
+  // link - in both boxes, as it arrives in DPD's email - has no parcel number
+  // anywhere else, and went unread every hour until the order was closed.
+  const session = parcel.trackingShortCode ? await mintDpdSession(parcel.trackingShortCode) : null
+  const cookie = session?.cookie ?? null
+  const parcelCode = dpdParcelCodeFromUrl(parcel.trackingUrl) ?? session?.parcelCode ?? null
+  if (!parcelCode) return null
+
+  const payloads = await fetchDpdParcel(parcelCode, cookie)
+  if (!payloads.parcel && !payloads.events) return null
+
+  // Never asked how many boxes this is. Asked once, anonymously; a delivery
+  // that turns out to be several is read box by box from here on - this
+  // reading included, so the first look at a split delivery cannot call it
+  // delivered on the strength of the one box in hand.
+  let consignment: ConsignmentReading | null = null
+  if (parcel.consignmentParcels === null) {
+    const found = await findDpdConsignment(parcelCode, payloads.parcel)
+    if (found) {
+      const boxes = mergeConsignmentBoxes(found.boxes, null).map((box) => (
+        box.code === parcelCode ? { ...box, shortCode: parcel.trackingShortCode } : box
+      ))
+      if (isSplitConsignment(boxes)) return readDpdConsignment(found.consignmentNumber, boxes, timezone)
+      consignment = { number: found.consignmentNumber, parcels: boxes, photos: [] }
+    }
+  }
+
+  const routeCode = dpdRouteCode(payloads.parcel)
+  const route = routeCode && cookie ? await fetchDpdRoute(routeCode, cookie) : null
+
+  const reading = readDpd({ parcel: payloads.parcel, events: payloads.events, route, timezone })
+  if (!reading.stage) return null
+
+  const proof = dpdProof(parcelCode, payloads.parcel, cookie, parcel.trackingShortCode)
+  return {
+    ...EMPTY_PARCEL_READING,
     ...reading,
-    proofImage,
+    proofImage: proof ? { url: proof.url, headers: proof.headers, label: 'delivery-photo' } : null,
     // Their route id, kept for the same reason Multidrop's is: it says which
     // round the parcel was on, and it changes daily.
     routeId: routeCode,
     clientId: dpdDepotCode(payloads.parcel),
+    consignment,
   }
 }
 

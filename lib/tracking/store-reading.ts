@@ -1,5 +1,6 @@
 import {
   recordCarrierReading,
+  recordConsignment,
   recordReceipt,
   recordSignature,
   recordTrackingPageDetails,
@@ -14,7 +15,8 @@ import { parseSignature } from '@/modules/shop/lib/tracking/multidrop-page'
 import { captureSignature } from '@/modules/shop/lib/tracking/signature-capture'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import { courierTimesEmailable } from '@/modules/shop/lib/tracking/provisional-window'
-import type { ParcelReading } from '@/modules/shop/lib/tracking/read-parcel'
+import type { ConsignmentReading, ParcelReading } from '@/modules/shop/lib/tracking/read-parcel'
+import type { ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 import type { ShpCourier } from '@/modules/shop/lib/courier-faqs'
 import type { ShpShipment } from '@/modules/shop/lib/types'
 
@@ -92,8 +94,22 @@ export async function storeParcelReading(
     await recordReceipt(parcel.id, { receivedBy: reading.receivedBy, receivedAt: reading.receivedAt })
   }
 
+  // A parcel travelling as several boxes: each box's own stage and proof,
+  // written back whole. Before the parcel's own proof below, which on a split
+  // delivery is the last box's photograph rather than a fetch of its own.
+  const boxes = reading.consignment ? await storeConsignment(parcel, reading.consignment) : null
+
   let signatureStored = false
-  if (delivered && !parcel.signatureUrl) {
+  const lastBox = boxes && delivered ? lastDeliveredBoxWithPhoto(boxes) : null
+  if (lastBox && !parcel.signatureUrl && lastBox.photoUrl && lastBox.photoKey) {
+    await recordSignature(parcel.id, {
+      signedBy: lastBox.receivedBy,
+      signedAt: lastBox.deliveredAt ? new Date(lastBox.deliveredAt) : null,
+      url: lastBox.photoUrl,
+      key: lastBox.photoKey,
+    })
+    signatureStored = true
+  } else if (delivered && !parcel.signatureUrl) {
     const order = await getOrderById(parcel.orderId)
     const reference = order?.orderNumber ?? parcel.id
     const signature = reading.multidropHtml ? parseSignature(reading.multidropHtml, timezone) : null
@@ -120,4 +136,59 @@ export async function storeParcelReading(
   }
 
   return { delivered, moved, signatureStored }
+}
+
+/** The box that landed last and came with a photograph - the parcel's proof
+ *  of delivery as a whole, once every box is in. */
+function lastDeliveredBoxWithPhoto(boxes: ConsignmentParcel[]): ConsignmentParcel | null {
+  return [...boxes]
+    .filter((b) => b.delivered && b.photoUrl)
+    .sort((a, b) => (a.deliveredAt ?? '').localeCompare(b.deliveredAt ?? ''))
+    .at(-1) ?? null
+}
+
+/**
+ * Each box's photograph kept as the site's own, then the list written back.
+ *
+ * Boxes left together share one photograph - DPD take a picture per drop - so
+ * a photograph is fetched once and every box carrying the same courier key
+ * points at the one copy. A fetch that fails leaves the box without, and the
+ * next check tries again: the box is not "done" until it has one.
+ */
+async function storeConsignment(parcel: ShpShipment, consignment: ConsignmentReading): Promise<ConsignmentParcel[]> {
+  const boxes = consignment.parcels.map((b) => ({ ...b }))
+  const pending = consignment.photos.filter((photo) => boxes.some((b) => b.code === photo.code && !b.photoUrl))
+
+  if (pending.length > 0) {
+    const order = await getOrderById(parcel.orderId)
+    const reference = order?.orderNumber ?? parcel.id
+    const kept = new Map<string, { url: string; key: string }>()
+    for (const b of boxes) {
+      if (b.photoRef && b.photoUrl && b.photoKey) kept.set(b.photoRef, { url: b.photoUrl, key: b.photoKey })
+    }
+
+    for (const photo of pending) {
+      const box = boxes.find((b) => b.code === photo.code)
+      if (!box) continue
+      let stored = kept.get(photo.ref) ?? null
+      if (!stored) {
+        // Numbered by the drop, so a second delivery day's photograph does not
+        // land on top of the first one's name.
+        stored = await captureSignature(photo.url, `${reference}-drop-${kept.size + 1}`, {
+          headers: photo.headers,
+          label: 'delivery-photo',
+          orderNumber: order?.orderNumber,
+        })
+        if (stored) kept.set(photo.ref, stored)
+      }
+      if (stored) {
+        box.photoUrl = stored.url
+        box.photoKey = stored.key
+        box.photoRef = photo.ref
+      }
+    }
+  }
+
+  await recordConsignment(parcel.id, { number: consignment.number, parcels: boxes })
+  return boxes
 }

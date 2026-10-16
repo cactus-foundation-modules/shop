@@ -1,16 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { EMPTY_READING } from '@/modules/shop/lib/tracking/reading'
 import type { ParcelReading } from '@/modules/shop/lib/tracking/read-parcel'
+import { newConsignmentParcel, type ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 import type { ShpShipment } from '@/modules/shop/lib/types'
 
 // Writing one reading to the parcel row. The database, the emails and the
 // media library are stood in for: what is under test is which writes happen.
 
 const recordVehiclePosition = vi.hoisted(() => vi.fn())
+const recordConsignment = vi.hoisted(() => vi.fn())
+const recordSignature = vi.hoisted(() => vi.fn())
+const captureSignature = vi.hoisted(() => vi.fn(async (): Promise<{ url: string; key: string } | null> => null))
 vi.mock('@/modules/shop/lib/db/shipments', () => ({
+  recordConsignment,
   recordCarrierReading: vi.fn(),
   recordReceipt: vi.fn(),
-  recordSignature: vi.fn(),
+  recordSignature,
   recordTrackingPageDetails: vi.fn(),
   recordTrackingStage: vi.fn(),
   recordVehiclePosition,
@@ -18,7 +23,7 @@ vi.mock('@/modules/shop/lib/db/shipments', () => ({
 vi.mock('@/modules/shop/lib/db/orders', () => ({ getOrderById: vi.fn(async () => ({ orderNumber: 'DW000001' })) }))
 vi.mock('@/modules/shop/lib/delivery-slot-email', () => ({ maybeSendCarrierWindowEmail: vi.fn() }))
 vi.mock('@/modules/shop/lib/failed-delivery-email', () => ({ maybeSendFailedDeliveryEmail: vi.fn() }))
-vi.mock('@/modules/shop/lib/tracking/signature-capture', () => ({ captureSignature: vi.fn(async () => null) }))
+vi.mock('@/modules/shop/lib/tracking/signature-capture', () => ({ captureSignature }))
 
 const { storeParcelReading } = await import('@/modules/shop/lib/tracking/store-reading')
 
@@ -37,6 +42,7 @@ function reading(patch: Partial<ParcelReading>): ParcelReading {
     dropsAway: null,
     destinationLat: null,
     destinationLng: null,
+    consignment: null,
     ...patch,
   }
 }
@@ -56,5 +62,47 @@ describe('storeParcelReading with a van in the reading', () => {
       stage: 'Delivered', delivered: true, vehicle: { lat: '51.5', lng: '-0.08' },
     }), 'Europe/London')
     expect(recordVehiclePosition).not.toHaveBeenCalled()
+  })
+})
+
+describe('storeParcelReading with several boxes', () => {
+  const dpd = { trackingSource: 'dpd' as const, outForDeliveryStages: [], deliveredStages: [], failedStages: [] }
+  const box = (n: number, patch: Partial<ConsignmentParcel> = {}): ConsignmentParcel => ({
+    ...newConsignmentParcel(`code-${n}`, `number-${n}`), delivered: true, deliveredAt: `2026-10-16T11:0${n}:00.000Z`, ...patch,
+  })
+
+  beforeEach(() => {
+    recordConsignment.mockClear()
+    recordSignature.mockClear()
+    captureSignature.mockClear()
+    captureSignature.mockImplementation(async () => ({ url: 'https://media/photo.jpg', key: 'media/photo.jpg' }))
+  })
+
+  it('keeps a photograph two boxes share once, and gives it to both', async () => {
+    const photo = (code: string) => ({ code, ref: 'drop-1', url: `https://dpd/${code}`, headers: {} })
+    await storeParcelReading(dpd, parcel, reading({
+      stage: 'Your parcel will be with you today', delivered: false,
+      consignment: { number: 'C1', parcels: [box(1), box(2), box(3, { delivered: false, deliveredAt: null })], photos: [photo('code-1'), photo('code-2')] },
+    }), 'Europe/London')
+    expect(captureSignature).toHaveBeenCalledTimes(1)
+    const written = recordConsignment.mock.calls[0]?.[1] as { parcels: ConsignmentParcel[] }
+    expect(written.parcels.map((p) => p.photoUrl)).toEqual(['https://media/photo.jpg', 'https://media/photo.jpg', null])
+    expect(recordSignature).not.toHaveBeenCalled()
+  })
+
+  it('takes the last drop\'s photograph as the parcel\'s proof once every box is in', async () => {
+    await storeParcelReading(dpd, parcel, reading({
+      stage: 'Your parcel has been delivered', delivered: true,
+      consignment: {
+        number: 'C1',
+        parcels: [
+          box(1, { photoUrl: 'https://media/first.jpg', photoKey: 'first', photoRef: 'a', receivedBy: 'Lee' }),
+          box(2, { photoUrl: 'https://media/second.jpg', photoKey: 'second', photoRef: 'b', receivedBy: 'Sam' }),
+        ],
+        photos: [],
+      },
+    }), 'Europe/London')
+    expect(captureSignature).not.toHaveBeenCalled()
+    expect(recordSignature).toHaveBeenCalledWith('shp_1', expect.objectContaining({ url: 'https://media/second.jpg', signedBy: 'Sam' }))
   })
 })

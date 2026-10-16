@@ -1,5 +1,7 @@
 import { getShopConfigCached, type ShpConfig } from '@/modules/shop/lib/config'
-import { claimSlotNotification, claimTrackingNotification, getOrderDispatchSummary, setSlotNotification } from '@/modules/shop/lib/db/shipments'
+import { claimSlotNotification, claimTrackingNotification, getOrderDispatchSummary, recordConsignment, setSlotNotification } from '@/modules/shop/lib/db/shipments'
+import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
+import { resolveDpdConsignmentLinks } from '@/modules/shop/lib/tracking/dpd-consignment'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 import { hasFollowableTracking, sendTrackingAddedEmail } from '@/modules/shop/lib/tracking-added-email'
 import { sendDeliveryDayEmail, sendDeliverySlotEmail } from '@/modules/shop/lib/delivery-slot-email'
@@ -10,7 +12,7 @@ import { getSiteTimezone } from '@/lib/config/timezone.server'
 import { DPD_FOLLOW_LINK_EXAMPLE, dpdFollowLink, dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
 import { LINK_ONLY, isLinkOnlySource, type LinkOnlySource } from '@/modules/shop/lib/tracking/link-only'
 import { parcelCourierTimesEmailable } from '@/modules/shop/lib/tracking/provisional-window'
-import type { ShpOrderStatus, ShpShipmentWithItems } from '@/modules/shop/lib/types'
+import type { ShpOrderStatus, ShpShipment, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
 // What happens around recording a parcel, shared by the two things that record
 // one: the order screen's dispatch route, and a despatch announced by another
@@ -337,5 +339,45 @@ export async function followDispatchWithStatus(
     if (!result.ok) console.warn(`[shop] dispatch could not move order ${orderId} to ${wanted.to}: ${result.error}`)
   } catch (error) {
     console.error('[shop] dispatch status follow-up failed', orderId, error)
+  }
+}
+
+/** How long a supplier's announcement waits on DPD to count the boxes before
+ *  the dispatch note goes without the count. It runs inside the inbox's few
+ *  seconds for the email, and the tracking check counts them later anyway. */
+const COUNT_BOXES_BUDGET_MS = 2500
+
+/**
+ * Count the boxes of a DPD parcel just recorded from a supplier's announcement,
+ * so the dispatch note can say "it is coming in 4 parcels" (migration 074).
+ *
+ * The order screen's dispatch does this itself, before saving. Here the parcel
+ * is already saved and the clock is somebody else's, so it is given a couple of
+ * seconds and no more; a miss costs the count in this one email, and the
+ * tracking check finds the boxes on its first look.
+ */
+export async function countDpdBoxes(orderId: string, shipment: ShpShipment): Promise<void> {
+  if (shipment.consignmentParcels !== null) return
+  if (!shipment.trackingShortCode && !shipment.trackingUrl) return
+  const config = await getShopConfigCached()
+  if (courierForShipment(config, shipment)?.trackingSource !== 'dpd') return
+
+  const counted = resolveDpdConsignmentLinks({
+    mainCode: shipment.trackingShortCode,
+    trackingUrl: shipment.trackingUrl,
+    existing: { number: null, parcels: null },
+    restart: true,
+    extraLinks: [],
+  }).then(async (resolved) => {
+    if (resolved.ok && resolved.consignment) await recordConsignment(shipment.id, resolved.consignment, orderId)
+  })
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const outOfTime = new Promise<void>((resolve) => { timer = setTimeout(resolve, COUNT_BOXES_BUDGET_MS) })
+  try {
+    await Promise.race([counted, outOfTime])
+  } catch (error) {
+    console.error('[shop] counting DPD parcels failed', orderId, error)
+  } finally {
+    clearTimeout(timer)
   }
 }

@@ -19,6 +19,7 @@
 
 import { calendarDateIn } from '@/lib/config/timezone'
 import { isStaleCarrierWindow, type DelayedParcel } from '@/modules/shop/lib/delivery-delay'
+import { parcelCountVars, type ConsignmentParcel, type ParcelCountVars } from '@/modules/shop/lib/consignment-parcels'
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -210,7 +211,7 @@ export type DispatchDeliveryVars = {
   deliveryWhen: string
   hasDeliveryDay: 'true' | 'false'
   hasDeliveryWindow: 'true' | 'false'
-}
+} & ParcelCountVars
 
 /**
  * The delivery day, and the window on it where there is one, for the dispatch
@@ -225,7 +226,15 @@ export type DispatchDeliveryVars = {
  * window follows the same rule, and is blank unless the day is filled.
  */
 export function dispatchDeliveryVars(
-  shipments: Array<{ deliveryDate: string | null; deliverySlotStart: string | null; deliverySlotEnd: string | null }>,
+  shipments: Array<{
+    deliveryDate: string | null
+    deliverySlotStart: string | null
+    deliverySlotEnd: string | null
+    /** The boxes the courier carries each parcel as - see
+     *  lib/consignment-parcels.ts. Rides along here so every email that names
+     *  the day also says how many boxes to expect. */
+    consignmentParcels?: ConsignmentParcel[] | null
+  }>,
 ): DispatchDeliveryVars {
   const dated = shipments.filter((s) => isDeliveryDate(s.deliveryDate))
   const days = new Set(dated.map((s) => s.deliveryDate))
@@ -238,6 +247,7 @@ export function dispatchDeliveryVars(
     deliveryWhen: deliveryWindow ? `${deliveryDay}, ${deliveryWindow}` : deliveryDay,
     hasDeliveryDay: deliveryDay ? 'true' : 'false',
     hasDeliveryWindow: deliveryWindow ? 'true' : 'false',
+    ...parcelCountVars(shipments),
   }
 }
 

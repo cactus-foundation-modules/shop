@@ -148,3 +148,26 @@ export async function fetchDpdRoute(routeCode: string, cookie: string | null): P
   if (!cookie) return null
   return json(`/routes/${encodeURI(routeCode)}`, cookie)
 }
+
+/**
+ * One anonymous look at a parcel that may not exist, telling "no such parcel"
+ * apart from "could not ask".
+ *
+ * The box search (dpd-consignment.ts) stops at the first number that is not
+ * part of the delivery, and it must not stop at a timeout: a list cut short by
+ * a network blip would read as a delivery with fewer boxes, all of them
+ * delivered. So: a parcel's payload, `'missing'` for an answer that is not a
+ * parcel, and null for no answer at all. No cookie, ever - these are other
+ * boxes, and a session is only good for the box it was minted for.
+ */
+export async function lookUpDpdParcel(parcelCode: string): Promise<unknown | 'missing' | null> {
+  const res = await request(`${API}/parcels/${encodeURI(parcelCode)}`, null, 'follow')
+  if (!res) return null
+  if (res.status === 404 || res.status === 400) return 'missing'
+  if (!res.ok) return null
+  try {
+    return await res.json()
+  } catch {
+    return null
+  }
+}

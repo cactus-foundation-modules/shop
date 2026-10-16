@@ -15,6 +15,7 @@ import {
   maybeSendSlotEmail,
   maybeSendTrackingEmail,
   newDayAfterDelay,
+  countDpdBoxes,
 } from '@/modules/shop/lib/dispatch-follow-up'
 import { sendShipmentDispatchedEmail } from '@/modules/shop/lib/shipment-email'
 import { hasFollowableTracking } from '@/modules/shop/lib/tracking-added-email'
@@ -417,6 +418,8 @@ async function recordParcel(
   // retry cannot tell it has already sent, and the status is the one thing a
   // retry puts right (completeAfterEarlierRun).
   if (tell) {
+    // So the note can say how many boxes DPD are bringing.
+    await countDpdBoxes(orderId, created.shipment)
     try {
       await sendShipmentDispatchedEmail({ orderId, shipmentId: created.shipment.id })
     } catch (error) {

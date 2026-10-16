@@ -14,6 +14,7 @@ import { OrderChargesPanel } from '@/modules/shop/components/admin/OrderChargesP
 import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
 import { DispatchModal } from '@/modules/shop/components/admin/DispatchModal'
 import { EditParcelModal } from '@/modules/shop/components/admin/EditParcelModal'
+import { consignmentProgressLine, isSplitConsignment, type ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 import { DeliveryDelayModal } from '@/modules/shop/components/admin/DeliveryDelayModal'
 import { EmailCustomerModal } from '@/modules/shop/components/admin/EmailCustomerModal'
 import { ReplacementModal } from '@/modules/shop/components/admin/ReplacementModal'
@@ -202,6 +203,11 @@ type ShipmentDetail = {
   deliveryDelayNote?: string | null
   quietCustomerEmails?: boolean
   signedBy: string | null; signedAt: string | null; signatureUrl: string | null
+  /** The boxes a DPD delivery travels as, each with its own tracking
+   *  (migration 074). Optional so a response from an older deployment still
+   *  renders. */
+  consignmentNumber?: string | null
+  consignmentParcels?: ConsignmentParcel[] | null
   items: Array<{ id: string; orderItemId: string; quantity: number }>
 }
 type DispatchDetail = {
@@ -1567,6 +1573,37 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                               Courier says: {shipment.trackingStage}
                               {shipment.deliveredAt ? ` · delivered ${formatDate(shipment.deliveredAt)}` : ''}
                             </p>
+                          )}
+                          {/* One delivery the courier carries as several
+                              boxes. The parcel is only delivered once every
+                              box is, so this is where staff see which one is
+                              still out, and which have no follow-my-parcel
+                              link yet (edit the parcel to add them). */}
+                          {isSplitConsignment(shipment.consignmentParcels) && (
+                            <div className="sox-list-sub">
+                              <span>
+                                {consignmentProgressLine(shipment.consignmentParcels)}
+                                {shipment.consignmentNumber ? ` · ref ${shipment.consignmentNumber}` : ''}
+                              </span>
+                              <ol style={{ margin: '0.25rem 0 0', paddingLeft: '1.25rem', display: 'grid', gap: '0.125rem' }}>
+                                {shipment.consignmentParcels.map((box) => (
+                                  <li key={box.code}>
+                                    {box.number}
+                                    {' · '}
+                                    {box.delivered
+                                      ? `Delivered${box.deliveredAt ? ` ${formatDateTime(box.deliveredAt)}` : ''}${box.receivedBy ? ` to ${box.receivedBy}` : ''}`
+                                      : box.stage ?? 'No news yet'}
+                                    {box.shortCode ? '' : ' · no follow link yet'}
+                                    {box.photoUrl && (
+                                      <>
+                                        {' · '}
+                                        <a href={box.photoUrl} target="_blank" rel="noopener noreferrer">photo</a>
+                                      </>
+                                    )}
+                                  </li>
+                                ))}
+                              </ol>
+                            </div>
                           )}
                           {/* A failed attempt, and what the customer is being
                               told to do about it. The courier sometimes rings

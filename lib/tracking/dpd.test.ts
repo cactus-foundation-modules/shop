@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  dpdConsignmentFacts,
   dpdDepotCode,
   dpdFeedSaysDelivered,
+  dpdSiblingCode,
   dpdImageHeaders,
   dpdImageUrl,
   dpdPodImage,
@@ -279,6 +281,41 @@ describe('proof of delivery', () => {
     expect(dpdImageHeaders('sessionId=abc')).toEqual({
       cookie: 'sessionId=abc',
       Referer: 'https://track.dpd.co.uk/',
+    })
+  })
+})
+
+describe('dpdSiblingCode', () => {
+  it('numbers a delivery\'s boxes on from its reference, behind the same leading digits', () => {
+    expect(dpdSiblingCode('15505217099687*21473', '5217099684', 0)).toBe('15505217099684*21473')
+    expect(dpdSiblingCode('15505217099687*21473', '5217099684', 3)).toBe('15505217099687*21473')
+  })
+
+  it('refuses a code that is not numbered that way', () => {
+    expect(dpdSiblingCode('5217099684*21473', '5217099684', 1)).toBeNull()
+    expect(dpdSiblingCode('ABC*1', '5217099684', 1)).toBeNull()
+    expect(dpdSiblingCode('15509999999999*1', '9999999999', 1)).toBeNull()
+  })
+})
+
+describe('dpdConsignmentFacts', () => {
+  it('reads the reference and, on a session read, the count of boxes', () => {
+    expect(dpdConsignmentFacts({
+      data: {
+        parcelCode: '15505217099687*21473',
+        parcelNumber: '1550 5217 099 687 E',
+        consignmentNumber: '5217099684',
+        trackingStatusCurrent: 'Sorry, there\'s a delay with your parcel',
+        deliveredToConsumer: false,
+        deliveryDetails: { numberOfParcels: 4 },
+      },
+    })).toEqual({
+      code: '15505217099687*21473',
+      number: '1550 5217 099 687 E',
+      consignmentNumber: '5217099684',
+      numberOfParcels: 4,
+      stage: 'Sorry, there\'s a delay with your parcel',
+      delivered: false,
     })
   })
 })

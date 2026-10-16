@@ -8,6 +8,7 @@ import {
   type ParcelDetails,
 } from '@/modules/shop/components/admin/ParcelDetailsFields'
 import { dpdFollowLink } from '@/modules/shop/lib/tracking/dpd-follow-link'
+import type { ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 
 // Filling in a parcel after it has gone.
 //
@@ -57,6 +58,10 @@ export type EditableParcel = {
    *  'new date' email rather than the ordinary ones. Optional for the same
    *  reason as above. */
   delayOpen?: 'today' | 'rebooking' | null
+  /** The boxes a DPD delivery travels as (migration 074). Optional so a
+   *  response from an older deployment still renders. */
+  consignmentNumber?: string | null
+  consignmentParcels?: ConsignmentParcel[] | null
 }
 
 export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: {
@@ -66,6 +71,11 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   onClose: () => void
   onDone: () => void
 }) {
+  // The link as the form opens with it, which is the link the parcel's boxes
+  // were found from. Changed in the form, it is another delivery.
+  const openingLink = parcel.trackingShortCode?.trim()
+    ? dpdFollowLink(parcel.trackingShortCode.trim())
+    : parcel.trackingUrl ?? ''
   const [details, setDetails] = useState<ParcelDetails>({
     courierId: parcel.courierId ?? '',
     carrier: parcel.carrier ?? '',
@@ -73,13 +83,12 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
     // A parcel recorded before the follow-my-parcel link had a box of its own
     // to leave - its code saved separately, beside a long tracking address -
     // shows the link the code stands for, since that is now the one to keep.
-    trackingUrl: parcel.trackingShortCode?.trim()
-      ? dpdFollowLink(parcel.trackingShortCode.trim())
-      : parcel.trackingUrl ?? '',
+    trackingUrl: openingLink,
     deliveryDate: parcel.deliveryDate ?? '',
     deliverySlotStart: parcel.deliverySlotStart ?? '',
     deliverySlotEnd: parcel.deliverySlotEnd ?? '',
     notes: parcel.notes ?? '',
+    parcelLinks: [],
   })
   const [emailCustomer, setEmailCustomer] = useState(true)
   const [emailTracking, setEmailTracking] = useState(true)
@@ -217,7 +226,13 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
             </div>
           )}
 
-          <ParcelDetailsFields couriers={couriers} value={details} onChange={setDetails} />
+          <ParcelDetailsFields
+            couriers={couriers}
+            value={details}
+            onChange={setDetails}
+            consignment={{ number: parcel.consignmentNumber ?? null, parcels: parcel.consignmentParcels ?? null }}
+            consignmentLink={openingLink}
+          />
 
           {offerTrackingEmail && !quiet && (
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

@@ -4,6 +4,7 @@
 
 import type { TrackingEvent } from '@/modules/shop/lib/tracking/reading'
 import type { ShpFaqSet } from '@/modules/shop/lib/faq'
+import type { ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 
 export type PuckData = { root: { props?: Record<string, unknown> }; content: unknown[]; zones?: Record<string, unknown> }
 
@@ -833,6 +834,13 @@ export type ShpShipment = {
   trackingShortCode: string | null
   /** The courier's scan history in their own words, newest first. */
   trackingEvents: TrackingEvent[]
+  /** The courier's reference for the whole delivery, where it has been asked
+   *  (migration 074). */
+  consignmentNumber: string | null
+  /** Every box this parcel is travelling as, with what each one's own tracking
+   *  says. Null until the courier has been asked; a list of one is the ordinary
+   *  case. See lib/consignment-parcels.ts. */
+  consignmentParcels: ConsignmentParcel[] | null
   /** The window the van is working to TODAY, as against the slot the shop was
    *  promised at booking. The two disagree often enough to keep both. */
   deliveryWindowFrom: Date | null

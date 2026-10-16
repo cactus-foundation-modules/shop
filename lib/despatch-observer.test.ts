@@ -37,6 +37,7 @@ vi.mock('@/modules/shop/lib/dispatch-follow-up', () => ({
   maybeSendDayEmail: dayEmail,
   maybeSendTrackingEmail: trackingEmail,
   newDayAfterDelay: newDay,
+  countDpdBoxes: vi.fn(async () => undefined),
 }))
 vi.mock('@/modules/shop/lib/shipment-email', () => ({ sendShipmentDispatchedEmail: dispatchEmail }))
 vi.mock('@/modules/shop/lib/tracking-added-email', () => ({

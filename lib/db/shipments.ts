@@ -1,4 +1,6 @@
 import { trackingEventsSchema, type TrackingEvent } from '@/modules/shop/lib/tracking/reading'
+import type { ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
+import { parseConsignmentParcels } from '@/modules/shop/lib/consignment-parcels-schema'
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
 import { outstandingUnits, unrefundedCancelledUnits } from '@/modules/shop/lib/order-requests'
@@ -70,6 +72,9 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     // does not look like a history reads as no history, which is what the page
     // renders for every parcel that has never had one.
     trackingEvents: trackingEventsSchema.safeParse(r.tracking_events).data ?? [],
+    // Migration 074. Checked on the way out like the history above.
+    consignmentNumber: (r.consignment_number as string | null) ?? null,
+    consignmentParcels: parseConsignmentParcels(r.consignment_parcels),
     deliveryWindowFrom: (r.delivery_window_from as Date | null) ?? null,
     deliveryWindowTo: (r.delivery_window_to as Date | null) ?? null,
     stopNumber: (r.stop_number as number | null) ?? null,
@@ -1063,6 +1068,44 @@ export async function recordCarrierReading(shipmentId: string, input: {
         "minutes_to_stop" = ${input.minutesToStop}::int,
         "driver_name" = COALESCE(${input.driverName}::text, "driver_name"),
         "carrier_out_for_delivery" = ${input.outForDelivery}::boolean,
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId}
+  `
+}
+
+/**
+ * The boxes a parcel is travelling as (migration 074), written whole.
+ *
+ * Whole rather than per box because the list is read and judged as one - "has
+ * every box arrived" - and two writers racing on it are the hourly job and a
+ * customer's page open, both of which write what the courier said a moment
+ * ago. Null clears it, so the next tracking check asks the courier again: what
+ * a changed tracking link does.
+ *
+ * Scoped to the order where the caller has one, as every staff-facing write
+ * here is.
+ */
+export async function recordConsignment(
+  shipmentId: string,
+  consignment: { number: string; parcels: ConsignmentParcel[] } | null,
+  orderId?: string,
+): Promise<void> {
+  const parcels = consignment ? JSON.stringify(consignment.parcels) : null
+  const number = consignment?.number ?? null
+  if (orderId) {
+    await prisma.$executeRaw`
+      UPDATE "shp_shipments"
+      SET "consignment_number" = ${number}::text,
+          "consignment_parcels" = ${parcels}::jsonb,
+          "updated_at" = CURRENT_TIMESTAMP
+      WHERE "id" = ${shipmentId} AND "order_id" = ${orderId}
+    `
+    return
+  }
+  await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "consignment_number" = ${number}::text,
+        "consignment_parcels" = ${parcels}::jsonb,
         "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${shipmentId}
   `

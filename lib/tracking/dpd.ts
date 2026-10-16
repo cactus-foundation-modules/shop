@@ -102,6 +102,9 @@ export const dpdParcelSchema = z.object({
         podName: z.string().nullish(),
         podDate: z.string().nullish(),
       }).nullish(),
+      // How many boxes the whole delivery is. Session reads only - the
+      // anonymous feed leaves deliveryDetails out altogether.
+      numberOfParcels: z.number().int().nullish(),
     }).nullish(),
     deliveryDepot: z.object({
       depotCode: z.string().nullish(),
@@ -318,4 +321,63 @@ export function dpdImageHeaders(cookie: string, shortCode?: string | null): Reco
   const code = shortCode?.trim()
   const Referer = code ? `https://www.dpd.co.uk/d/${code}` : 'https://track.dpd.co.uk/'
   return { cookie, Referer }
+}
+
+/**
+ * What one read of a parcel says about the delivery it belongs to.
+ *
+ * Every box in a DPD delivery is a parcel in its own right, and every one of
+ * them names the delivery's reference - `consignmentNumber` - even on the
+ * anonymous feed. The count of boxes only comes with a session.
+ */
+export function dpdConsignmentFacts(payload: unknown): {
+  code: string
+  number: string
+  consignmentNumber: string | null
+  numberOfParcels: number | null
+  stage: string | null
+  delivered: boolean | null
+} | null {
+  const parsed = dpdParcelSchema.safeParse(payload)
+  if (!parsed.success) return null
+  const data = parsed.data.data
+  const code = data.parcelCode?.trim()
+  if (!code) return null
+  return {
+    code,
+    number: data.parcelNumber?.trim() || code.split('*')[0] || code,
+    consignmentNumber: data.consignmentNumber?.trim() || null,
+    numberOfParcels: data.deliveryDetails?.numberOfParcels ?? null,
+    stage: (data.trackingStatusCurrent ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() || null,
+    delivered: dpdFeedSaysDelivered(data, []),
+  }
+}
+
+/**
+ * The parcel code of the `index`th box in a delivery, counting from nought.
+ *
+ * DPD number a delivery's boxes on from its reference: delivery 5217099684
+ * went out as parcels 1550 5217099684, …685, …686 and …687, every one with
+ * the same '*21473' tail. So the boxes are the reference plus nought, one, two
+ * and three, behind the same leading digits as the parcel in hand. This is a
+ * guess at a NUMBER only - every code it makes is read back and kept only if
+ * DPD say it belongs to the same delivery, because the next number along is
+ * somebody else's parcel (DW000231's …688 was a stranger's delivery).
+ *
+ * Null when the code does not have that shape, which ends the search rather
+ * than inventing one.
+ */
+export function dpdSiblingCode(parcelCode: string, consignmentNumber: string, index: number): string | null {
+  const [digits, suffix] = parcelCode.split('*')
+  const reference = consignmentNumber.trim()
+  if (!digits || !/^\d+$/.test(digits) || !/^\d+$/.test(reference)) return null
+  if (digits.length <= reference.length || !Number.isInteger(index) || index < 0) return null
+  const next = Number(reference) + index
+  if (!Number.isSafeInteger(next)) return null
+  const body = String(next).padStart(reference.length, '0')
+  // A carry that grows the number past the reference's width belongs to a
+  // different run of numbers altogether.
+  if (body.length !== reference.length) return null
+  const prefix = digits.slice(0, digits.length - reference.length)
+  return suffix ? `${prefix}${body}*${suffix}` : `${prefix}${body}`
 }

@@ -6,6 +6,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import {
   createShipment,
   deleteShipment,
+  recordConsignment,
   getOrderDispatchSummary,
   getShipmentsForOrder,
   updateShipmentDetails,
@@ -19,6 +20,7 @@ import { currentDelay, delayIsNewerThanStage } from '@/modules/shop/lib/delivery
 import { getSiteTimezone } from '@/lib/config/timezone.server'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
+import { resolveDpdConsignmentLinks } from '@/modules/shop/lib/tracking/dpd-consignment'
 import { sendCourierContactEmail } from '@/modules/shop/lib/courier-contact-email'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import { isLinkOnlySource } from '@/modules/shop/lib/tracking/link-only'
@@ -76,6 +78,11 @@ const TrackingUrl = z
 const DeliveryDate = z.string().trim().refine(isDeliveryDate, 'That is not a real date.')
 const SlotTime = z.string().trim().refine(isSlotTime, 'A delivery time looks like 10:00.')
 
+/** The follow-my-parcel links for the OTHER boxes of a DPD delivery that
+ *  travels as several (migration 074). Any order: DPD say which box each one
+ *  opens, and the route puts it there. Capped well above any real delivery. */
+const ParcelLinks = z.array(z.string().trim().max(TRACKING_URL_MAX_LENGTH)).max(30, 'That is more parcel links than any one delivery has.')
+
 const DeliveryFields = {
   /** The courier picked from the shop's own list. Its name is read from
    *  settings server-side rather than taken from the browser, so a renamed
@@ -103,6 +110,7 @@ const Body = z.object({
   // coerced here rather than being rejected as "not an ISO timestamp".
   shippedAt: z.coerce.date().nullable().optional(),
   emailCustomer: z.boolean().optional(),
+  parcelLinks: ParcelLinks.optional(),
 })
 
 type CourierChoice = { courierId: string | null; carrier: string | null }
@@ -274,6 +282,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const tracking = trackingLinkFor(config, courier.choice.courierId, parsed.data.trackingUrl ?? null)
   if (!tracking.ok) return NextResponse.json({ error: tracking.error }, { status: 400 })
 
+  // A DPD delivery of several boxes, found before the parcel is recorded so
+  // the dispatch note can say how many are coming, and so a link for a box of
+  // somebody else's delivery is refused before anything is saved.
+  const parcelLinks = (parsed.data.parcelLinks ?? []).filter(Boolean)
+  const dpd = courierForShipment(config, courier.choice)?.trackingSource === 'dpd'
+  const consignment = dpd && (tracking.link.trackingShortCode || tracking.link.trackingUrl || parcelLinks.length > 0)
+    ? await resolveDpdConsignmentLinks({
+        mainCode: tracking.link.trackingShortCode,
+        trackingUrl: tracking.link.trackingUrl,
+        existing: { number: null, parcels: null },
+        restart: true,
+        extraLinks: parcelLinks,
+      })
+    : null
+  if (consignment && !consignment.ok) return NextResponse.json({ error: consignment.error }, { status: 400 })
+
   const outcome = await createShipment({
     orderId: id,
     shippedAt: parsed.data.shippedAt ?? null,
@@ -289,6 +313,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   })
 
   if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
+
+  if (consignment?.ok && consignment.consignment) {
+    await recordConsignment(outcome.shipment.id, consignment.consignment, id)
+  }
 
   await followDispatchWithStatus(id, order.status, 'recorded')
 
@@ -342,6 +370,7 @@ const PatchBody = z.object({
    *  false takes the instruction back and says nothing. */
   courierContact: z.boolean().optional(),
   emailCourierContact: z.boolean().optional(),
+  parcelLinks: ParcelLinks.optional(),
 })
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -357,7 +386,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid parcel details' }, { status: 400 })
   }
 
-  const { shipmentId, emailCustomer, emailTracking, emailCourierContact, courierId, carrier, ...rest } = parsed.data
+  const { shipmentId, emailCustomer, emailTracking, emailCourierContact, courierId, carrier, parcelLinks: links, ...rest } = parsed.data
+  const parcelLinks = (links ?? []).filter(Boolean)
 
   // Read the window as it will be AFTER the save, not as it was sent: an edit
   // that only clears the end time would otherwise pass a check that never saw
@@ -403,12 +433,41 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const tracking = linkTouched ? trackingLinkFor(config, nextCourierId, nextUrl) : null
   if (tracking && !tracking.ok) return NextResponse.json({ error: tracking.error }, { status: 400 })
 
+  // The boxes of a DPD delivery (migration 074). A changed tracking link means
+  // a different delivery, so the boxes are found again from it; links for
+  // other boxes are each checked with DPD and put on the box they open. A save
+  // that touches neither leaves the boxes alone and costs DPD nothing.
+  const nextCourier = courierForShipment(config, courier?.ok ? courier.choice : existing)
+  const nextShortCode = tracking?.ok ? tracking.link.trackingShortCode : existing.trackingShortCode
+  const nextTrackingUrl = tracking?.ok ? tracking.link.trackingUrl : existing.trackingUrl
+  const restart = nextShortCode !== existing.trackingShortCode || nextTrackingUrl !== existing.trackingUrl
+  let consignment: { number: string; parcels: NonNullable<ShpShipmentWithItems['consignmentParcels']> } | null | undefined
+  if (nextCourier?.trackingSource === 'dpd' && (restart || parcelLinks.length > 0)) {
+    const resolved = await resolveDpdConsignmentLinks({
+      mainCode: nextShortCode,
+      trackingUrl: nextTrackingUrl,
+      existing: { number: existing.consignmentNumber, parcels: existing.consignmentParcels },
+      restart,
+      extraLinks: parcelLinks,
+    })
+    if (!resolved.ok) return NextResponse.json({ error: resolved.error }, { status: 400 })
+    consignment = resolved.consignment
+  } else if (restart && existing.consignmentParcels) {
+    // No longer a DPD parcel, or no longer this one: its boxes go with it.
+    consignment = null
+  }
+
   const shipment = await updateShipmentDetails(shipmentId, id, {
     ...rest,
     ...(tracking?.ok ? tracking.link : {}),
     ...(courier?.ok ? { courierId: courier.choice.courierId, carrier: courier.choice.carrier } : {}),
   })
   if (!shipment) return NextResponse.json({ error: 'That parcel is no longer on this order.' }, { status: 404 })
+  if (consignment !== undefined) {
+    await recordConsignment(shipmentId, consignment, id)
+    shipment.consignmentNumber = consignment?.number ?? null
+    shipment.consignmentParcels = consignment?.parcels ?? null
+  }
 
   // Flagging a parcel as "the customer must contact the courier" tells them, the
   // first time. Flagging it again, or taking it back, says nothing: the flag is

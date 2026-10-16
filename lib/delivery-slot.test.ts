@@ -325,6 +325,8 @@ describe('dispatchDeliveryVars', () => {
       deliveryWhen: 'Tuesday 29th of September',
       hasDeliveryDay: 'true',
       hasDeliveryWindow: 'false',
+      parcelCount: '1',
+      hasSeveralParcels: 'false',
     })
   })
 

@@ -2,6 +2,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { claimSlotNotification, getOrderDispatchSummary, getShipmentsForOrder, recordToldWindow } from '@/modules/shop/lib/db/shipments'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
+import { parcelCountVars } from '@/modules/shop/lib/consignment-parcels'
 import { orderTrackingUrl } from '@/modules/shop/lib/order-tracking'
 import { renderOrderItemsTable, type OrderEmailLine } from '@/modules/shop/lib/order-items-email'
 import { orderItemEmailMedia } from '@/modules/shop/lib/order-item-email-media'
@@ -93,6 +94,8 @@ export async function parcelEmailVars(
     faqUrl,
     hasFaq: faqUrl ? 'true' : 'false',
     shopName: config.shopTitle || 'Shop',
+    // "It is coming in 4 parcels", where the courier has told us so.
+    ...parcelCountVars([shipment]),
   }
 }
 
