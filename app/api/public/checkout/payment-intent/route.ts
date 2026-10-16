@@ -16,6 +16,8 @@ import { CheckoutLinesSchema, checkoutLinesRefusal } from '@/modules/shop/lib/ch
 import { checkoutClosedResponse } from '@/modules/shop/lib/access'
 import { shopOrderValueRefusal } from '@/modules/shop/lib/order-value-gate'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
+import { intentFailureResponse } from '@/modules/shop/lib/payments/intent-failure'
+import type { ShpPaymentIntent } from '@/modules/shop/lib/payments/provider'
 import { applyOrderPaymentState, previewOrderPaymentNotes } from '@/modules/shop/lib/order-payment-state'
 import { signOrderReceiptToken } from '@/modules/shop/lib/order-receipt-token'
 import { grantReceiptAccess } from '@/modules/shop/lib/receipt-access-cookie'
@@ -377,10 +379,18 @@ export async function POST(request: NextRequest) {
     // when the order is created, on settlement.
     const notes = await previewOrderPaymentNotes(data.paymentMethod, resolvedLines)
 
-    const draftIntent = await provider.createIntent({
-      orderId: draft.id, orderNumber, amount: totals.total, currency: config.currency,
-      customerEmail: data.customerEmail, customerName: data.customerName,
-    })
+    // A provider that cannot start the payment must say so in JSON. The draft is
+    // left to expire on its own (createCheckoutDraft sweeps them), and nothing
+    // was written that a retry could collide with.
+    let draftIntent: ShpPaymentIntent
+    try {
+      draftIntent = await provider.createIntent({
+        orderId: draft.id, orderNumber, amount: totals.total, currency: config.currency,
+        customerEmail: data.customerEmail, customerName: data.customerName,
+      })
+    } catch (err) {
+      return intentFailureResponse(provider.id, err)
+    }
 
     return withReceiptAccess(request, orderNumber, NextResponse.json({
       orderId: draft.id, orderNumber, receiptToken: signOrderReceiptToken(orderNumber), ...draftIntent, notes,
@@ -404,10 +414,18 @@ export async function POST(request: NextRequest) {
   // sentence for the checkout explaining why. See lib/order-payment-state.ts.
   const notes = await applyOrderPaymentState(orderId)
 
-  const intent = await provider.createIntent({
-    orderId, orderNumber, amount: totals.total, currency: config.currency,
-    customerEmail: data.customerEmail, customerName: data.customerName,
-  })
+  // The order already exists by here, so a failure leaves it PENDING. That is
+  // what happened before this was caught, and it blocks nothing: a retry gets a
+  // fresh order number of its own.
+  let intent: ShpPaymentIntent
+  try {
+    intent = await provider.createIntent({
+      orderId, orderNumber, amount: totals.total, currency: config.currency,
+      customerEmail: data.customerEmail, customerName: data.customerName,
+    })
+  } catch (err) {
+    return intentFailureResponse(provider.id, err)
+  }
 
   // The confirmation link's proof, issued here so the browser never has to put
   // the customer's email in a URL to get back to their own receipt. See
