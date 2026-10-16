@@ -275,6 +275,21 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     transactional: false,
   },
   {
+    // Some couriers do not book a day with the customer from the shop's end:
+    // the customer has to ring or chat and agree one. Sent when staff flag a
+    // parcel as needing that, from the order screen - see
+    // lib/courier-contact-email.ts. The contact details are the courier's own
+    // settings; the chat and phone lines drop out where the courier has none.
+    key: 'shop.courier-contact',
+    label: 'Contact the courier to arrange delivery',
+    subject: 'Please contact {{carrier}} to arrange delivery of order {{orderNumber}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>Your order <strong>{{orderNumber}}</strong> is on its way with {{carrier}}, and they need you to get in touch to arrange a delivery day. They will not book one for you, so it is worth doing soon.</p>{{#if hasParcelItems}}<p><strong>In this delivery:</strong></p>{{parcelItems}}{{/if}}{{#if hasContactChat}}<p><a href="{{contactChatUrl}}">Chat to {{carrier}} online</a></p>{{/if}}{{#if hasContactPhone}}<p>Call {{carrier}} on <a href="tel:{{contactPhoneDial}}">{{contactPhone}}</a></p>{{/if}}{{#if hasTrackingNumber}}<p>Your tracking number is <strong>{{trackingNumber}}</strong>. Have it to hand, as {{carrier}} will ask for it.</p>{{/if}}<p>Any trouble, just reply to this email - {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'carrier', 'parcelItems', 'hasParcelItems', 'contactChatUrl', 'hasContactChat', 'contactPhone', 'contactPhoneDial', 'hasContactPhone', 'trackingNumber', 'hasTrackingNumber', 'shopName', 'orderUrl', 'hasOrderUrl'],
+    rawTags: ['parcelItems'],
+    transactional: false,
+  },
+  {
     // A redelivery fee raised on an order after a failed delivery, and the two
     // ways out of it: pay it, or cancel and be refunded less the fee (owed
     // either way - the attempt has happened) and any cancellation charge. See
@@ -633,6 +648,7 @@ export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   DELIVERY_RUNNING_LATE: 'shop.delivery-running-late',
   DELIVERY_DELAYED: 'shop.delivery-delayed',
   DELIVERY_NEW_DATE: 'shop.delivery-new-date',
+  COURIER_CONTACT: 'shop.courier-contact',
   CHARGE_RAISED: 'shop.charge-raised',
   CHARGE_PAID: 'shop.charge-paid',
   CHARGE_ORDER_CANCELLED: 'shop.charge-order-cancelled',

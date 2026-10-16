@@ -6,6 +6,7 @@ import {
   nowInTimezone,
   type DeliveryProgress,
 } from '@/modules/shop/lib/delivery-slot'
+import { courierContactFor, type CourierContact } from '@/modules/shop/lib/courier-contact'
 import { courierForShipment, courierWillRebook, customerMaySeeTracking, faqsForShipment, type ShpCourier } from '@/modules/shop/lib/courier-faqs'
 import { courierAloneSaysArrived, failedReason, stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import { safeTrackingUrl } from '@/modules/shop/lib/tracking-url'
@@ -58,6 +59,12 @@ export type ParcelDelivery = {
   /** How to get a failed delivery booked in again, where that is the courier's
    *  job rather than the shop's. Null unless `failed`. */
   rearrange: DeliveryRearrange | null
+  /** The customer has to contact the courier to arrange this delivery - staff
+   *  said so on the parcel (migration 073). Null once it has arrived, while a
+   *  failed attempt is being dealt with (which has its own note), and once a day
+   *  is booked - the customer getting in touch is what produces one, so a day on
+   *  the parcel is the instruction having been followed. */
+  contact: CourierContact | null
   /** A delay the shop has reported and not yet closed with a new day. Null
    *  when there is none. While it is 'rebooking' the booking is blank - the
    *  day it names is the one that is not happening. See lib/delivery-delay.ts. */
@@ -183,6 +190,7 @@ export function parcelDelivery(
           reason: courier?.showFailedReason ? failedReason(courier, shipment.trackingStage) : '',
         }
       : null,
+    contact: failed || arrived || date ? null : courierContactFor(config, shipment),
     delay: delayKind && !failed && !arrived
       ? { kind: delayKind, note: delayNoteForCustomer(shipment.deliveryDelayNote) }
       : null,

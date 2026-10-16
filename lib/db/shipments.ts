@@ -49,6 +49,8 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     // message for good.
     trackingNotifiedAt: (r.tracking_notified_at as Date | null) ?? null,
     courierRearrangingAt: (r.courier_rearranging_at as Date | null) ?? null,
+    // Migration 073.
+    courierContactAt: (r.courier_contact_at as Date | null) ?? null,
     failedNotifiedAt: (r.failed_notified_at as Date | null) ?? null,
     // Migration 070. Anything but the two known words reads as no delay.
     deliveryDelay: r.delivery_delay === 'today' || r.delivery_delay === 'rebooking' ? r.delivery_delay : null,
@@ -545,6 +547,9 @@ export type UpdateShipmentDetailsInput = {
   /** The courier has said they will contact the customer about a failed
    *  delivery. True stamps it now, false clears it. */
   courierRearranging?: boolean
+  /** The customer has to contact the courier to arrange this delivery
+   *  (migration 073). True stamps it now, false clears it. */
+  courierContact?: boolean
 }
 
 export async function updateShipmentDetails(
@@ -589,6 +594,12 @@ export async function updateShipmentDetails(
     // A literal NULL, not a bound one: a parameter with no type of its own can
     // arrive as text, and Postgres will not put text in a timestamp column.
     assignments.push(Prisma.sql`"courier_rearranging_at" = NULL`)
+  }
+  // Same two moves for "the customer must contact the courier" (073).
+  if (patch.courierContact === true) {
+    assignments.push(Prisma.sql`"courier_contact_at" = COALESCE("courier_contact_at", CURRENT_TIMESTAMP)`)
+  } else if (patch.courierContact === false) {
+    assignments.push(Prisma.sql`"courier_contact_at" = NULL`)
   }
 
   // Nothing to change still has to answer "does this parcel exist", because the

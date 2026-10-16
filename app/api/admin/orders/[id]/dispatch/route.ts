@@ -19,6 +19,7 @@ import { currentDelay, delayIsNewerThanStage } from '@/modules/shop/lib/delivery
 import { getSiteTimezone } from '@/lib/config/timezone.server'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
+import { sendCourierContactEmail } from '@/modules/shop/lib/courier-contact-email'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import { isLinkOnlySource } from '@/modules/shop/lib/tracking/link-only'
 import {
@@ -336,6 +337,11 @@ const PatchBody = z.object({
    *  delivery, so the customer's page tells them to wait rather than to chase.
    *  False takes it back. */
   courierRearranging: z.boolean().optional(),
+  /** The customer has to contact the courier to arrange this delivery. True
+   *  flags the parcel and emails them (unless emailCourierContact is false);
+   *  false takes the instruction back and says nothing. */
+  courierContact: z.boolean().optional(),
+  emailCourierContact: z.boolean().optional(),
 })
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -351,7 +357,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid parcel details' }, { status: 400 })
   }
 
-  const { shipmentId, emailCustomer, emailTracking, courierId, carrier, ...rest } = parsed.data
+  const { shipmentId, emailCustomer, emailTracking, emailCourierContact, courierId, carrier, ...rest } = parsed.data
 
   // Read the window as it will be AFTER the save, not as it was sent: an edit
   // that only clears the end time would otherwise pass a check that never saw
@@ -404,6 +410,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   })
   if (!shipment) return NextResponse.json({ error: 'That parcel is no longer on this order.' }, { status: 404 })
 
+  // Flagging a parcel as "the customer must contact the courier" tells them, the
+  // first time. Flagging it again, or taking it back, says nothing: the flag is
+  // saved either way, so an email that fails is logged and not returned.
+  const contactTold = rest.courierContact === true && !existing.courierContactAt && emailCourierContact !== false
+    ? await sendCourierContactEmail({ orderId: id, shipmentId }).catch((error) => {
+        console.error('[shop] courier contact email failed', id, error)
+        return false
+      })
+    : false
+
   // A new day on a parcel with a delay open is the day that delay promised,
   // and gets its own email in place of the plain day and window ones - which
   // would read as though nothing had ever gone wrong. See lib/delivery-delay.ts.
@@ -412,7 +428,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const told = newDayTold
     const trackingTold = await maybeSendTrackingEmail(id, existing, shipment, emailTracking !== false)
     await noteParcelEdit(id, existing, shipment, gate.user.id, { wanted: emailCustomer !== false, deliveryEmailed: told, trackingEmailed: trackingTold })
-    return NextResponse.json({ shipment, slotEmailSent: false, dayEmailSent: told, trackingEmailSent: trackingTold })
+    return NextResponse.json({ shipment, slotEmailSent: false, dayEmailSent: told, trackingEmailSent: trackingTold, courierContactEmailSent: contactTold })
   }
 
   const notified = await maybeSendSlotEmail(id, shipment, emailCustomer !== false, existing)
@@ -422,7 +438,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   // "tracking has been here since it went out".
   const trackingTold = await maybeSendTrackingEmail(id, existing, shipment, emailTracking !== false)
   await noteParcelEdit(id, existing, shipment, gate.user.id, { wanted: emailCustomer !== false, deliveryEmailed: notified || dayTold, trackingEmailed: trackingTold })
-  return NextResponse.json({ shipment, slotEmailSent: notified, dayEmailSent: dayTold, trackingEmailSent: trackingTold })
+  return NextResponse.json({ shipment, slotEmailSent: notified, dayEmailSent: dayTold, trackingEmailSent: trackingTold, courierContactEmailSent: contactTold })
 }
 
 /** The edit's line in the order's activity (lib/parcel-edit-note.ts). The

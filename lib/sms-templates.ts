@@ -142,6 +142,14 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     transactional: false,
   },
   {
+    key: 'shop.courier-contact',
+    label: 'Contact the courier to arrange delivery',
+    body: '{{shopName}}: please contact {{carrier}} to arrange delivery of order {{orderNumber}}.{{#if hasContactPhone}} Call {{contactPhone}}.{{/if}}{{#if hasTrackingNumber}} Quote tracking number {{trackingNumber}}.{{/if}}',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'carrier', 'contactPhone', 'hasContactPhone', 'trackingNumber', 'hasTrackingNumber', 'orderUrl', 'hasOrderUrl'],
+    requiredTags: ['orderNumber'],
+    transactional: false,
+  },
+  {
     key: 'shop.request-received',
     label: 'Cancel or return request received',
     body: '{{shopName}}: we have your {{requestType}} request for order {{orderNumber}} and will be in touch shortly.',
@@ -254,6 +262,7 @@ export const SHOP_TRIGGER_TO_SMS_KEY: Record<string, string> = {
   DELIVERY_RUNNING_LATE: 'shop.delivery-running-late',
   DELIVERY_DELAYED: 'shop.delivery-delayed',
   DELIVERY_NEW_DATE: 'shop.delivery-new-date',
+  COURIER_CONTACT: 'shop.courier-contact',
   REQUEST_RECEIVED: 'shop.request-received',
   REQUEST_APPROVED: 'shop.request-approved',
   REQUEST_DECLINED: 'shop.request-declined',

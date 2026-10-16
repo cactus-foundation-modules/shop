@@ -38,6 +38,8 @@ import {
 import { orderProgressSteps, orderStopped } from '@/modules/shop/lib/order-progress'
 import { ParcelTracking } from '@/modules/shop/components/public/ParcelTracking'
 import { FailedDeliveryNote } from '@/modules/shop/components/public/FailedDeliveryNote'
+import { CourierContactNote } from '@/modules/shop/components/public/CourierContactNote'
+import type { CourierContact } from '@/modules/shop/lib/courier-contact'
 import { DelayedDeliveryNote } from '@/modules/shop/components/public/DelayedDeliveryNote'
 import { DEFAULT_TRACKING_LABEL, parcelDelivery, railDelivery, type DeliveryDelayNote, type DeliveryRearrange, type ParcelDelivery } from '@/modules/shop/lib/order-delivery'
 import { formatDeliveredDayRelative, nowInTimezone } from '@/modules/shop/lib/delivery-slot'
@@ -942,6 +944,11 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                         rearrange={deliveryById.get(shipment.id)?.rearrange as DeliveryRearrange}
                         trackingNumber={shipment.trackingNumber}
                       />
+                    ) : deliveryById.get(shipment.id)?.contact ? (
+                      /* Staff have said this courier does not book the day for
+                         the customer: they have to get in touch. Replaces the
+                         booked day, which there is not one of yet. */
+                      <CourierContactNote contact={deliveryById.get(shipment.id)?.contact as CourierContact} />
                     ) : deliveryById.get(shipment.id)?.delay ? (
                       /* The shop has said it is late. Running late keeps the
                          day it is still aiming for; a new day to follow drops
@@ -962,7 +969,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                           : ''}
                       </span>
                     ) : null}
-                    {shipment.trackingNumber && !deliveryById.get(shipment.id)?.rearrange && (
+                    {shipment.trackingNumber && !deliveryById.get(shipment.id)?.rearrange && !deliveryById.get(shipment.id)?.contact && (
                       <span className="sod-dim">Tracking number: {shipment.trackingNumber}</span>
                     )}
                     <ul className="sod-parcel-items">

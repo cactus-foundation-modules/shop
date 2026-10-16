@@ -41,6 +41,7 @@ function shipment(patch: Partial<ShpShipmentWithItems>): ShpShipmentWithItems {
     slotNotifiedWindow: null,
     trackingNotifiedAt: null,
     courierRearrangingAt: null,
+    courierContactAt: null,
     failedNotifiedAt: null,
     trackingStage: null,
     trackingStageAt: null,
@@ -279,6 +280,41 @@ describe('what the courier says beats what the stage words say', () => {
   })
 })
 
+describe('parcelDelivery: customer contacts the courier', () => {
+  const flagged = { courierContactAt: new Date('2026-09-08T09:00:00Z'), trackingNumber: 'F123' }
+  const now = new Date('2026-09-09T09:00:00Z')
+
+  it('gives the courier\'s contact details and the tracking number once staff have flagged the parcel', () => {
+    const delivery = parcelDelivery(config, shipment(flagged), now, 'Europe/London')
+    expect(delivery.contact).toEqual({
+      courierName: 'Furdeco',
+      chatUrl: 'https://chat.example/rebook',
+      phone: '0121 000 0000',
+      trackingNumber: 'F123',
+    })
+  })
+
+  it('says nothing on a parcel nobody flagged', () => {
+    expect(parcelDelivery(config, shipment({}), now, 'Europe/London').contact).toBeNull()
+  })
+
+  it('stops once a day is booked, because that is the instruction followed', () => {
+    const delivery = parcelDelivery(config, shipment({ ...flagged, deliveryDate: '2026-09-15' }), now, 'Europe/London')
+    expect(delivery.contact).toBeNull()
+  })
+
+  it('stops once the parcel has arrived', () => {
+    const delivery = parcelDelivery(config, shipment({ ...flagged, deliveredAt: new Date('2026-09-09T08:00:00Z') }), now, 'Europe/London')
+    expect(delivery.contact).toBeNull()
+  })
+
+  it('leaves a failed attempt to its own note', () => {
+    const delivery = parcelDelivery(config, shipment({ ...flagged, trackingStage: 'Failed Attempt' }), now, 'Europe/London')
+    expect(delivery.failed).toBe(true)
+    expect(delivery.contact).toBeNull()
+  })
+})
+
 const booked = (id: string, date: string, phase: 'upcoming' | 'passed'): ParcelDelivery => ({
   shipmentId: id,
   date,
@@ -291,6 +327,7 @@ const booked = (id: string, date: string, phase: 'upcoming' | 'passed'): ParcelD
   arrived: phase === 'passed',
   failed: false,
   rearrange: null,
+  contact: null,
   delay: null,
   showTracking: true,
   trackingLabel: 'Track your parcel',

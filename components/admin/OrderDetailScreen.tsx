@@ -185,6 +185,9 @@ type ShipmentDetail = {
   /** Set when staff have recorded that the courier will contact the customer
    *  to rebook. */
   courierRearrangingAt?: string | null
+  /** Set when staff have told the customer to contact the courier themselves to
+   *  arrange the delivery (migration 073). */
+  courierContactAt?: string | null
   /** The courier's settings say they always rebook a failed delivery
    *  themselves. Optional so a response from an older deployment still renders. */
   courierRebooks?: boolean
@@ -703,6 +706,31 @@ export function OrderDetailScreen({ orderId, children, panels }: {
     const res = await fetch(`/api/m/shop/admin/orders/${orderId}/dispatch`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ shipmentId: shipment.id, courierRearranging: on, emailCustomer: false, emailTracking: false }),
+    })
+    setBusy(false)
+    if (!res.ok) {
+      await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That parcel could not be updated.')
+      return
+    }
+    refresh()
+  }
+
+  // Tell the customer to contact the courier themselves to arrange the
+  // delivery. Turning it on emails them (the courier's phone, live chat and the
+  // tracking number); taking it back says nothing.
+  async function setCourierContact(shipment: ShipmentDetail, on: boolean) {
+    const courier = shipment.carrier || 'the courier'
+    if (on && !(await confirm({
+      title: `Ask the customer to contact ${courier}?`,
+      message: shipment.quietCustomerEmails
+        ? `Their order page will tell them to contact ${courier} to arrange delivery. This parcel is set to send no customer emails, so none will be sent.`
+        : `Their order page will tell them to contact ${courier} to arrange delivery, and they will be emailed ${courier}'s phone number and live chat link (set under Couriers in the shop settings) with the tracking number.`,
+      confirmLabel: 'Tell the customer',
+    }))) return
+    setBusy(true)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/dispatch`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shipmentId: shipment.id, courierContact: on, emailCustomer: false, emailTracking: false }),
     })
     setBusy(false)
     if (!res.ok) {
@@ -1565,6 +1593,30 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                                     : `${shipment.carrier || 'Courier'} will contact the customer`}
                                 </button>
                               )}
+                            </div>
+                          )}
+                          {/* The customer has been told to arrange this
+                              delivery with the courier themselves, or can be.
+                              Not offered once it has arrived, or while a
+                              failed attempt has its own instructions. */}
+                          {!shipment.deliveredAt && !shipment.deliveryFailed && (
+                            <div className="sox-list-sub" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem' }}>
+                              {shipment.courierContactAt && (
+                                <span>
+                                  Customer told to contact {shipment.carrier || 'the courier'} to arrange delivery
+                                  {` · since ${formatDateTime(shipment.courierContactAt)}`}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm sox-noprint"
+                                disabled={busy}
+                                onClick={() => setCourierContact(shipment, !shipment.courierContactAt)}
+                              >
+                                {shipment.courierContactAt
+                                  ? 'Take back'
+                                  : `Ask customer to contact ${shipment.carrier || 'the courier'}`}
+                              </button>
                             </div>
                           )}
                           {/* A delay staff have reported, and what the

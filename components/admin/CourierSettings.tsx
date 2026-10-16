@@ -147,6 +147,34 @@ export function CourierSettings({ value, onChange }: {
             </div>
           )}
 
+          <div style={{ display: 'grid', gap: '0.75rem', marginTop: '0.75rem' }}>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>Live chat link for contacting this courier</label>
+              <input
+                type="url"
+                value={courier.rearrangeChatUrl}
+                placeholder="https://"
+                onChange={(e) => patchCourier(courier.id, { rearrangeChatUrl: e.target.value.trim() })}
+              />
+              <span className="field-hint">
+                The courier&rsquo;s own chat page, offered to the customer as a link when they need to rearrange a failed delivery, or have been asked to contact the courier to arrange one. Optional.
+              </span>
+            </div>
+
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>Phone number for contacting this courier</label>
+              <input
+                type="tel"
+                value={courier.rearrangePhone}
+                placeholder="Optional"
+                onChange={(e) => patchCourier(courier.id, { rearrangePhone: e.target.value })}
+              />
+              <span className="field-hint">
+                Shown to the customer with their tracking number, which the courier will ask for - after a failed delivery, and when you use &ldquo;Ask customer to contact&hellip;&rdquo; on an order.
+              </span>
+            </div>
+          </div>
+
           <div className="field" style={{ marginTop: '0.75rem' }}>
             <label>Follow this courier&rsquo;s tracking automatically</label>
             <select
@@ -223,32 +251,6 @@ export function CourierSettings({ value, onChange }: {
                 onChange={(next) => patchCourier(courier.id, { failedStages: next })}
                 hint="Nobody in, no access, refused. Reaching one takes the order off “Out for delivery”, says the delivery was not possible, and tells the customer - on their order page and in one email - how to get a new day booked. The start of the courier's wording is enough - “Failed Attempt” matches “Failed Attempt - Recipient Not Home”."
               />
-
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label>Live chat link for rebooking a failed delivery</label>
-                <input
-                  type="url"
-                  value={courier.rearrangeChatUrl}
-                  placeholder="https://"
-                  onChange={(e) => patchCourier(courier.id, { rearrangeChatUrl: e.target.value.trim() })}
-                />
-                <span className="field-hint">
-                  The courier&rsquo;s own chat page, offered to the customer as a link. Optional.
-                </span>
-              </div>
-
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label>Phone number for rebooking a failed delivery</label>
-                <input
-                  type="tel"
-                  value={courier.rearrangePhone}
-                  placeholder="Optional"
-                  onChange={(e) => patchCourier(courier.id, { rearrangePhone: e.target.value })}
-                />
-                <span className="field-hint">
-                  Shown to the customer with their tracking number, which the courier will ask for.
-                </span>
-              </div>
 
               <div className="field" style={{ marginBottom: 0 }}>
                 <label>Who books the new day after a failed delivery</label>

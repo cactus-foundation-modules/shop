@@ -794,6 +794,9 @@ export type ShpShipment = {
    *  rebook a failed delivery, so the customer is told to wait rather than to
    *  chase. Cleared when the courier's stage moves on. */
   courierRearrangingAt: Date | null
+  /** Set by staff when the customer has to contact the courier themselves to
+   *  arrange the delivery (migration 073). Cleared by staff taking it back. */
+  courierContactAt: Date | null
   /** When the customer was emailed about the current failed attempt. Cleared
    *  when the courier's stage moves on. */
   failedNotifiedAt: Date | null
@@ -1324,6 +1327,10 @@ export type ShpEmailTemplateTrigger =
   // trying, a new day to follow if not); delayed, with the new day or with one
   // to follow; and that new day once it is known. See lib/delivery-delay-email.ts.
   | 'DELIVERY_RUNNING_LATE' | 'DELIVERY_DELAYED' | 'DELIVERY_NEW_DATE'
+  // Sent from the order screen when a parcel's courier needs the customer to
+  // get in touch to arrange the delivery: their phone number, live chat and the
+  // tracking number to quote. See lib/courier-contact-email.ts.
+  | 'COURIER_CONTACT'
   // An extra charge on an order (a redelivery fee, say): raised - pay it or
   // cancel instead; paid; and the order cancelled with it kept back out of the
   // refund. ADMIN_CHARGE_UPDATE tells the owner which way the customer went.

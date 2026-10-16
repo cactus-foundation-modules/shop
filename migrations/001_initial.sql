@@ -864,6 +864,9 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     -- rebook a failed delivery (063_courier_rearranging.sql). Cleared when the
     -- courier's stage moves on.
     "courier_rearranging_at" TIMESTAMP(3),
+    -- Set by staff when the customer must contact the courier themselves to
+    -- arrange the delivery (073_courier_contact.sql).
+    "courier_contact_at" TIMESTAMP(3),
     -- Set once the customer is emailed about a failed attempt (063); cleared
     -- when the courier's stage moves on, so a second failure is a second email.
     "failed_notified_at" TIMESTAMP(3),
