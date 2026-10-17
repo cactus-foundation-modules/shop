@@ -45,7 +45,12 @@ export const addressFields = {
 
 /** A full postal address with a name on it - the delivery address at checkout
  *  and on a manual order, and a saved address in the member address book. */
-export const BoundedAddressSchema = z.object(addressFields)
+export const BoundedAddressSchema = z.object({
+  ...addressFields,
+  // The organisation the parcel is addressed to. Optional, and kept with the
+  // address so the account page and the next checkout offer it back.
+  company: z.string().max(ADDRESS_COMPANY_MAX_LENGTH, tooLong('Organisation name', ADDRESS_COMPANY_MAX_LENGTH)).optional(),
+})
 
 /** A customer's own name, as the checkout and a manual order take it. */
 export const customerNameField = z.string().min(1).max(CUSTOMER_NAME_MAX_LENGTH, tooLong('Name', CUSTOMER_NAME_MAX_LENGTH))

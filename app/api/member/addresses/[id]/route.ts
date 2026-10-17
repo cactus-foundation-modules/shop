@@ -5,11 +5,7 @@ import { getMemberFromCookie } from '@/lib/members/session'
 import { updateSavedAddress, deleteSavedAddress, getSavedAddressById } from '@/modules/shop/lib/db/addresses'
 import { BoundedAddressSchema } from '@/modules/shop/lib/address-limits'
 
-// No company field: the organisation a shopper buys on behalf of is a contact
-// detail kept on their account, not something repeated on every door they have
-// ever ordered to. Rows written before that moved keep theirs in the stored
-// JSON; nothing reads it back, and a company that belongs on the delivery label
-// goes in line 1.
+// The address may carry its organisation - see the create route.
 //
 // Bounded by the same shared shape as the create route (lib/address-limits.ts).
 const Body = z.object({ label: z.string().max(60).nullable().optional(), address: BoundedAddressSchema.optional(), isDefault: z.boolean().optional() })

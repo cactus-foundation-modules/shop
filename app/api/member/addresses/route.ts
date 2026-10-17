@@ -5,11 +5,9 @@ import { getMemberFromCookie } from '@/lib/members/session'
 import { listSavedAddresses, createSavedAddress } from '@/modules/shop/lib/db/addresses'
 import { BoundedAddressSchema } from '@/modules/shop/lib/address-limits'
 
-// No company field: the organisation a shopper buys on behalf of is a contact
-// detail kept on their account, not something repeated on every door they have
-// ever ordered to. Rows written before that moved keep theirs in the stored
-// JSON; nothing reads it back, and a company that belongs on the delivery label
-// goes in line 1.
+// The address may carry the organisation it is addressed to (the delivery
+// organisation box at checkout, and the same box on the account form), so it is
+// kept and offered back rather than retyped each order.
 //
 // The address is the shared bounded shape (lib/address-limits.ts) the checkout
 // writes, so a saved address is never one the checkout would then refuse, and

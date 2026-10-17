@@ -101,8 +101,9 @@ type SavedAddress = { id: string; label: string | null; isDefault: boolean; addr
 function toAddressForm(a: Partial<ShpAddressForm>): ShpAddressForm {
   return {
     firstName: a.firstName ?? '', lastName: a.lastName ?? '',
-    // Never kept on a saved address - callers put the delivery's own back.
-    company: '',
+    // Kept when the address was saved with one; callers decide whether it or
+    // the delivery's own organisation wins.
+    company: a.company ?? '',
     line1: a.line1 ?? '', line2: a.line2 ?? '', city: a.city ?? '', county: a.county ?? '',
     postcode: a.postcode ?? '', country: a.country || 'GB', phone: a.phone ?? '',
   }
@@ -132,8 +133,8 @@ type AddressChoice = { kind: 'saved'; id: string } | { kind: 'new' }
 // steps ago comes back looking like something they typed themselves.
 function sameAddress(a: ShpAddressForm, b: ShpAddressForm): boolean {
   const tidy = (v: string) => v.trim().replace(/\s+/g, ' ').toLowerCase()
-  // Not `company`: it belongs to the delivery, so a saved address never carries
-  // one and would otherwise stop matching the moment a shopper named theirs.
+  // Not `company`: the organisation is typed per delivery and does not pick out
+  // a door, so naming one must not stop a saved address matching.
   return (Object.keys(EMPTY_ADDRESS) as Array<keyof ShpAddressForm>)
     .filter((k) => k !== 'company')
     .every((k) => tidy(a[k]) === tidy(b[k]))
@@ -269,10 +270,15 @@ export function CheckoutShippingClient({
         }
         const preferred = list.find((a) => a.isDefault) ?? list[0]
         if (!preferred) return
-        const form = { ...toAddressForm(preferred.address), company: getCheckoutState().shippingAddress.company ?? '' }
+        const savedCompany = preferred.address.company?.trim() ?? ''
+        const form = { ...toAddressForm(preferred.address), company: savedCompany || (getCheckoutState().shippingAddress.company ?? '') }
         setAddress(form)
         setChoice({ kind: 'saved', id: preferred.id })
-        updateCheckoutState({ shippingAddress: form, customerPhone: form.phone })
+        updateCheckoutState({
+          shippingAddress: form,
+          customerPhone: form.phone,
+          ...(savedCompany ? { shippingCompanyEdited: true } : {}),
+        })
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -347,8 +353,10 @@ export function CheckoutShippingClient({
   }
 
   function chooseSaved(saved: SavedAddress) {
-    // The delivery organisation stays: it is about this delivery, not the door.
-    const form = { ...toAddressForm(saved.address), company: address.company }
+    // The address's own organisation wins when it has one; otherwise the one
+    // already on this delivery stays.
+    const savedCompany = saved.address.company?.trim() ?? ''
+    const form = { ...toAddressForm(saved.address), company: savedCompany || address.company }
     // A whole-form replacement, never a merge: anything the shopper typed before
     // changing their mind is gone rather than left hiding behind a collapsed
     // form, waiting to go on the order in a field this saved address left blank.
@@ -356,7 +364,11 @@ export function CheckoutShippingClient({
     setChoice({ kind: 'saved', id: saved.id })
     // The saved address brings its phone number with it - that is the point of
     // keeping one per address - so the order's number changes with the door.
-    updateCheckoutState({ shippingAddress: form, customerPhone: form.phone })
+    updateCheckoutState({
+      shippingAddress: form,
+      customerPhone: form.phone,
+      ...(savedCompany ? { shippingCompanyEdited: true } : {}),
+    })
     // Errors raised against the address being replaced are not errors in this
     // one, so the blur-time messages start again from clean.
     setTouched({})
@@ -498,7 +510,7 @@ export function CheckoutShippingClient({
 
   // Optional, and its own thing: it starts as the organisation from the contact
   // step but editing or clearing it never changes that one. Drawn whichever
-  // address is picked, since a saved address does not carry one.
+  // address is picked.
   const companyField = field('company', 'Organisation name (optional)', 'organization', false)
 
   // An address out of the book that checkout cannot actually deliver to. The

@@ -13,7 +13,7 @@ type SavedAddress = { id: string; label: string | null; isDefault: boolean; addr
 
 function toAddressForm(a: Partial<ShpAddressForm>): ShpAddressForm {
   return {
-    firstName: a.firstName ?? '', lastName: a.lastName ?? '', company: '',
+    firstName: a.firstName ?? '', lastName: a.lastName ?? '', company: a.company ?? '',
     line1: a.line1 ?? '', line2: a.line2 ?? '', city: a.city ?? '', county: a.county ?? '',
     postcode: a.postcode ?? '', country: a.country || 'GB', phone: a.phone ?? '',
   }
@@ -125,6 +125,7 @@ export function AddressesClient({ addressLookup = null }: {
             ) : (
               <>
                 <div style={{ fontWeight: 600 }}>{addressTitle(a)}{a.isDefault && ' (default)'}</div>
+                {a.address.company?.trim() && <div>{a.address.company.trim()}</div>}
                 <div style={{ color: 'var(--color-text-muted)', fontSize: '0.9375rem' }}>
                   {[a.address.line1, a.address.line2, a.address.city, a.address.county, a.address.postcode]
                     .filter((part) => (part ?? '').trim().length > 0)
@@ -311,6 +312,7 @@ function AddressForm({
           Only ever used about a delivery to this address - a slot, or a question on the day.
         </span>
       </label>
+      {field('company', 'Organisation name (optional)', 'organization', false)}
       {AddressLookup ? (
         <AddressLookup
           value={form.line1}
