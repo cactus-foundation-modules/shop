@@ -17,6 +17,7 @@ import {
   recordProductSlugRedirectTarget,
 } from '@/modules/shop/lib/db/slug-redirects'
 import { getProductBySlug } from '@/modules/shop/lib/db/products'
+import { kitsUsingProducts } from '@/modules/shop/lib/db/product-components'
 import { PRODUCT_MAX_MEDIA, PRODUCT_MAX_TAXONOMY_IDS, formatLimit } from '@/modules/shop/lib/admin-input-limits'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -238,6 +239,14 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   }
 
   const slugsToForward = redirectTarget ? await collectProductRedirectSlugs(id) : []
+
+  // A part of a kit cannot be deleted from under it: the kit would go on looking
+  // available with nothing to build it from.
+  const usedBy = (await kitsUsingProducts([id])).get(id)
+  if (usedBy && usedBy.length > 0) {
+    const names = usedBy.slice(0, 3).map((n) => `"${n}"`).join(', ')
+    return NextResponse.json({ error: `This is a part of ${names}${usedBy.length > 3 ? ' and others' : ''}. Take it out of ${usedBy.length === 1 ? 'that' : 'those'} first.` }, { status: 409 })
+  }
 
   try {
     if (redirectTarget && slugsToForward.length > 0) {

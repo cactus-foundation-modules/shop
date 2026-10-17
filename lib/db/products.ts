@@ -996,6 +996,12 @@ export async function duplicateProduct(sourceId: string, next: { name: string; s
       INSERT INTO "shp_auto_exclude_products" ("product_id", "excluded_id")
       SELECT ${newId}, "excluded_id" FROM "shp_auto_exclude_products" WHERE "product_id" = ${sourceId}
     `,
+    // A copy of a kit is made of the same parts; the database then works out its
+    // stock from them (migration 075), replacing the count copied above.
+    prisma.$executeRaw`
+      INSERT INTO "shp_product_components" ("product_id", "component_product_id", "quantity", "position")
+      SELECT ${newId}, "component_product_id", "quantity", "position" FROM "shp_product_components" WHERE "product_id" = ${sourceId}
+    `,
   ])
   return { id: newId }
 }

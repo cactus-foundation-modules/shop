@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.508",
+  "version": "0.1.509",
   "tablePrefix": "shp_",
   "notificationKinds": [
     {"id": "new-order", "label": "New orders", "description": "An order has been placed or is awaiting payment.", "dedupePrefix": "shop:order:"},
@@ -62,6 +62,7 @@
     "cactus_shop_order_access"
   ],
   "teardown": [
+    "shp_product_components",
     "shp_stock_movements",
     "shp_products",
     "shp_product_slug_redirects",

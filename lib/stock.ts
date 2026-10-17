@@ -8,6 +8,7 @@ import { getProductById } from './db/products'
 import { recordStockMovement } from './db/stock-movements'
 import { notifyProductSaved } from './product-saved'
 import { maybeTriggerBackInStock } from './back-in-stock-trigger'
+import { getKitParts, kitIdsUsingProducts } from './db/product-components'
 
 // The shop's answer to core's "core.inventory-adjuster" capability: the one way
 // for anything OUTSIDE the shop to change a stock count.
@@ -63,8 +64,26 @@ export async function adjustStockBatch(
   // waiting was told about.
   const moved = new Map<string, number>()
 
+  // The kits these products are parts of, and how many each could make before
+  // anything moved: a delivery of the one missing part is exactly the moment a
+  // kit comes back, and somebody waiting for it should hear.
+  const kitsBefore = await kitCountsUsing(adjustments.map((a) => a.productId))
+
   await prisma.$transaction(async (tx) => {
+    const ownKits = await getKitParts(adjustments.map((a) => a.productId), tx)
     for (const adjustment of adjustments) {
+      // A kit's count is worked out from its parts, so there is nothing here to
+      // move - and writing "it moved" into the history would be a lie.
+      if (ownKits.has(adjustment.productId)) {
+        outcomes.push({
+          productId: adjustment.productId,
+          ok: false,
+          before: null,
+          after: null,
+          message: 'This is made up of other products, so its stock follows its parts. Adjust the parts instead.',
+        })
+        continue
+      }
       const delta = Math.trunc(adjustment.delta)
       if (!Number.isFinite(delta) || delta === 0) {
         outcomes.push({ productId: adjustment.productId, ok: true, before: null, after: null, message: 'Nothing to move.' })
@@ -160,7 +179,29 @@ export async function adjustStockBatch(
     }
   }
 
+  for (const [kitId, before] of kitsBefore) {
+    try {
+      await notifyProductSaved(kitId, ['stockCount'])
+      const kit = await getProductById(kitId)
+      if (kit) await maybeTriggerBackInStock(kit, { stockCount: before, outOfStockBehaviour: kit.outOfStockBehaviour })
+    } catch (error) {
+      console.error('[shop] a part moved but the follow-up for its kit failed', { kitId, error })
+    }
+  }
+
   return outcomes
+}
+
+/** Kit id -> what it could make right now, for every kit that uses any of these products. */
+async function kitCountsUsing(productIds: string[]): Promise<Map<string, number>> {
+  const kitIds = await kitIdsUsingProducts(productIds)
+  const counts = new Map<string, number>()
+  if (kitIds.length === 0) return counts
+  const rows = await prisma.$queryRaw<{ id: string; stock_count: number | null }[]>`
+    SELECT "id", "stock_count" FROM "shp_products" WHERE "id" = ANY(${kitIds}::text[])
+  `
+  for (const row of rows) counts.set(row.id, row.stock_count === null ? 0 : Number(row.stock_count))
+  return counts
 }
 
 /** The module a reason came from: "purchase-order.receipt" -> "purchase-order". */

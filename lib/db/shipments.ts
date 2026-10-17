@@ -3,6 +3,7 @@ import type { ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 import { parseConsignmentParcels } from '@/modules/shop/lib/consignment-parcels-schema'
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
+import { expandLinesToParts } from '@/modules/shop/lib/db/product-components'
 import { outstandingUnits, unrefundedCancelledUnits } from '@/modules/shop/lib/order-requests'
 import type {
   ShpOrderDispatchSummary,
@@ -404,14 +405,19 @@ export async function createShipment(input: CreateShipmentInput): Promise<Create
     //
     // Inside the same transaction and the same advisory lock as the validation
     // above, so it cannot interleave with a concurrent refund or dispatch.
+    // A pre-order kit comes off as its parts, like any kit (migration 075).
+    const dispatching: Array<{ productId: string; quantity: number }> = []
     for (const [orderItemId, quantity] of merged) {
       const row = byId.get(orderItemId)
       if (!row?.is_pre_order || !row.product_id) continue
+      dispatching.push({ productId: row.product_id, quantity })
+    }
+    for (const [productId, quantity] of await expandLinesToParts(dispatching, tx)) {
       await tx.$executeRaw`
         UPDATE "shp_products"
         SET "stock_count" = GREATEST(COALESCE("stock_count", 0) - ${quantity}, 0),
             "updated_at" = CURRENT_TIMESTAMP
-        WHERE "id" = ${row.product_id} AND "track_inventory" = true
+        WHERE "id" = ${productId} AND "track_inventory" = true
       `
     }
 
@@ -507,13 +513,15 @@ export async function deleteShipment(shipmentId: string, orderId: string): Promi
     `
     if (deleted === 0) return false
 
-    for (const line of covered) {
-      if (!line.is_pre_order || !line.product_id) continue
+    const returning = covered.flatMap((line) =>
+      line.is_pre_order && line.product_id ? [{ productId: line.product_id, quantity: line.quantity }] : [],
+    )
+    for (const [productId, quantity] of await expandLinesToParts(returning, tx)) {
       await tx.$executeRaw`
         UPDATE "shp_products"
-        SET "stock_count" = COALESCE("stock_count", 0) + ${line.quantity},
+        SET "stock_count" = COALESCE("stock_count", 0) + ${quantity},
             "updated_at" = CURRENT_TIMESTAMP
-        WHERE "id" = ${line.product_id} AND "track_inventory" = true
+        WHERE "id" = ${productId} AND "track_inventory" = true
       `
     }
     return true

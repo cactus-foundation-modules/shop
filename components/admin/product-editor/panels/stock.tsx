@@ -1,13 +1,44 @@
 'use client'
 
+import { useState } from 'react'
+import { ProductPartsEditor, type PartsSummary } from '@/modules/shop/components/admin/ProductPartsEditor'
 import { Control, Field, Grid, Reveal, Section, Select, Switch, TextArea } from '@/modules/shop/components/admin/product-editor/fields'
 import type { PanelProps } from '@/modules/shop/components/admin/product-editor/model'
 
-export function StockPanel({ state, setField, errors, weightBasedShippingEnabled }: PanelProps) {
+export function StockPanel({ state, setField, errors, weightBasedShippingEnabled, productId }: PanelProps & { productId: string }) {
   const f = state.form
+  // Set by the parts editor once it has read this product's parts. A kit has no
+  // count of its own to type: the database works it out from the parts.
+  const [kit, setKit] = useState<PartsSummary>({ isKit: false, stock: null })
 
   return (
     <div className="spe-panel">
+      <Section title="Made up of other products" blurb="For something sold as a set of other products, with no stock or SKU of its own. It counts as out of stock the moment any one part is, and when it sells, it is the parts that get ordered from your supplier.">
+        <ProductPartsEditor key={productId} productId={productId} onChange={setKit} />
+      </Section>
+
+      {kit.isKit ? (
+        <Section title="Stock" blurb="Worked out from the parts above, so there is nothing to type here. Change the stock on the parts themselves.">
+          <p style={{ margin: 0, fontSize: '0.875rem' }}>
+            {kit.stock?.tracked ? `Can make ${kit.stock.count ?? 0} right now.` : 'None of the parts are counted, so this never runs out.'}
+          </p>
+          <div style={{ marginTop: '1rem' }}>
+            <Grid cols={3}>
+              <Field label="Warn me at" optional error={errors.lowStockThreshold} hint="You get an email when the number it can make drops to this. Leave empty for no warning.">
+                {(p) => <Control {...p} inputMode="numeric" value={f.lowStockThreshold} onChange={(e) => setField('lowStockThreshold', e.target.value)} placeholder="e.g. 5" />}
+              </Field>
+              <Field label="When it runs out" hint={f.outOfStockBehaviour === 'BACKORDER' ? 'Shoppers can still buy, and you owe them the item.' : 'The buy button is disabled until you restock a part.'}>
+                {(p) => (
+                  <Select {...p} value={f.outOfStockBehaviour} onChange={(e) => setField('outOfStockBehaviour', e.target.value as typeof f.outOfStockBehaviour)}>
+                    <option value="BLOCK">Stop selling it</option>
+                    <option value="BACKORDER">Keep selling on backorder</option>
+                  </Select>
+                )}
+              </Field>
+            </Grid>
+          </div>
+        </Section>
+      ) : (
       <Section title="Stock" blurb="Leave stock tracking off for anything you will never run out of, like a made-to-order item.">
         <Switch
           checked={f.trackInventory}
@@ -36,6 +67,7 @@ export function StockPanel({ state, setField, errors, weightBasedShippingEnabled
           </Reveal>
         )}
       </Section>
+      )}
 
       <Section title="How many at a time" blurb="For anything you will not sell one of - a box of fifty castor cups, or a chair you will not send fewer than four of. It is a floor, not a batch size: someone can still order five. On a product with options the count is across the whole product, so four of one colour and four in a mix both count as four.">
         <Grid cols={3}>

@@ -5,6 +5,7 @@ import { ORDER_LOCK_NAMESPACE } from '@/modules/shop/lib/db/shipments'
 import { restockByProduct, type RefundedLine, type StockLedger } from '@/modules/shop/lib/refund-stock'
 import type { StockShortfall } from '@/modules/shop/lib/order-attention'
 import { notifyProductsSaved } from '@/modules/shop/lib/product-saved'
+import { expandLinesToParts, getKitParts, kitIdsUsingProducts } from '@/modules/shop/lib/db/product-components'
 
 // The two stock moves an ORDER makes on a normal line, and the ledger that
 // keeps them honest with each other.
@@ -63,15 +64,22 @@ export async function takeStockForPaidOrder(orderNumber: string, orderItemIds: s
       `
       if (wanted.length === 0) return []
 
+      // A kit has no count to take down: it is sold by taking its PARTS off the
+      // shelf, and the database carries the new figure up to the kit itself
+      // (migration 075). A part also sold on its own on this order is summed in.
+      const orderedById = await expandLinesToParts(
+        wanted.map((w) => ({ productId: w.product_id, quantity: Number(w.ordered_qty) })),
+        tx,
+      )
+
       const products = await tx.$queryRaw<{ id: string; name: string; stock_count: number | null; out_of_stock_behaviour: string }[]>`
         SELECT "id", "name", "stock_count", "out_of_stock_behaviour"
         FROM "shp_products"
-        WHERE "id" IN (${Prisma.join(wanted.map((w) => w.product_id))}) AND "track_inventory" = true
+        WHERE "id" IN (${Prisma.join([...orderedById.keys()])}) AND "track_inventory" = true
         ORDER BY "id"
         FOR UPDATE
       `
 
-      const orderedById = new Map(wanted.map((w) => [w.product_id, Number(w.ordered_qty)]))
       const shortfalls: StockShortfall[] = []
       for (const product of products) {
         const ordered = orderedById.get(product.id) ?? 0
@@ -112,7 +120,7 @@ export async function takeStockForPaidOrder(orderNumber: string, orderItemIds: s
   // take the stock move down with it either - the units are off the shelf and
   // the order is paid whatever a listener makes of it (notifyProductsSaved
   // swallows its own failures).
-  await notifyProductsSaved(moved, ['stockCount'])
+  await notifyProductsSaved([...moved, ...(await kitIdsUsingProducts(moved))], ['stockCount'])
   return shortfalls
 }
 
@@ -174,10 +182,13 @@ export async function restockRefundedUnits(
           WHERE oi."order_id" = ${orderId} AND oi."id" IN (${Prisma.join([...refunding.keys()])})
         `
 
-        const lines: RefundedLine[] = rows.map((r) => {
+        // A kit line is restocked as its parts: every figure on the line is
+        // scaled by how many of the part go into one kit, and the ledger below
+        // is read per PART, which is where the paid move was written.
+        const kits = await getKitParts(rows.flatMap((r) => (r.product_id ? [r.product_id] : [])), tx)
+        const lines: RefundedLine[] = rows.flatMap((r) => {
           const refundingQty = refunding.get(r.order_item_id) ?? 0
-          return {
-            productId: r.product_id,
+          const base = {
             isPreOrder: r.is_pre_order,
             quantity: Number(r.quantity),
             // Read after this refund was recorded, so its own units come off to
@@ -186,6 +197,16 @@ export async function restockRefundedUnits(
             dispatchedQty: Number(r.dispatched_qty),
             refundingQty,
           }
+          const parts = r.product_id ? kits.get(r.product_id) : undefined
+          if (!parts || parts.length === 0) return [{ productId: r.product_id, ...base }]
+          return parts.map((part) => ({
+            productId: part.componentProductId,
+            isPreOrder: base.isPreOrder,
+            quantity: base.quantity * part.quantity,
+            refundedBefore: base.refundedBefore * part.quantity,
+            dispatchedQty: base.dispatchedQty * part.quantity,
+            refundingQty: base.refundingQty * part.quantity,
+          }))
         })
         const productIds = [...new Set(lines.flatMap((l) => (l.productId && !l.isPreOrder ? [l.productId] : [])))]
         if (productIds.length === 0) return
@@ -252,5 +273,5 @@ export async function restockRefundedUnits(
 
   // Reached only when the transaction genuinely committed, so every id in
   // `restored` really did go back on the shelf.
-  await notifyProductsSaved(restored, ['stockCount'])
+  await notifyProductsSaved([...restored, ...(await kitIdsUsingProducts(restored))], ['stockCount'])
 }
