@@ -9,6 +9,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { effectivePrice } from '@/modules/shop/lib/pricing'
 import { getCartLineResolvers, getCartLineResolverPrefetchers, resolveLineMeta, type CartLineCharge, type CartLineControl, type CartLineGroup, type CartLineTitle } from '@/modules/shop/lib/line-meta'
 import { minOrderQuantity, minOrderShortfallReason } from '@/modules/shop/lib/min-order'
+import { applyCartRequirements } from '@/modules/shop/lib/cart-requirements'
 import { isReturnable } from '@/modules/shop/lib/returnable'
 import { getDeductionRules } from '@/modules/shop/lib/db/suppliers'
 import {
@@ -36,6 +37,10 @@ export type ResolvedCartLine = {
   lineSubtotal: number
   available: boolean
   availabilityReason?: string
+  // Where the shopper can go to put the reason right (the product they are
+  // missing). Only ever set alongside an availabilityReason, by the
+  // shop.cart-requirements seam - see lib/cart-requirements.ts.
+  availabilityLink?: { href: string; label: string }
   isPreOrder: boolean
   // The fewest the shop will sell in one go, for the POOL this line belongs to -
   // 1 on all but a handful of products. Carried out to the basket so it can say
@@ -314,7 +319,10 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[], opts?: Res
     }
   }))
   const pooled = applyMinimumOrderQuantities(resolved.filter((line): line is PoolingLine => line !== null))
-  const deducted = await applyOrderSizeDeductions(pooled)
+  // After the minimum, before the deduction: a line the basket cannot be checked
+  // out with must not count towards a supplier's order-size threshold.
+  const required = await applyCartRequirements(pooled)
+  const deducted = await applyOrderSizeDeductions(required)
   return { lines: deducted.lines, orderSizeDeduction: deducted.states }
 }
 

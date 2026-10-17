@@ -109,10 +109,10 @@ export function ProductPartsEditor({
     if (!q.trim()) { setResults([]); setSearching(false); return }
     setSearching(true)
     try {
-      const res = await fetch(`${API}?search=${encodeURIComponent(q)}`)
+      const res = await fetch(`${API}?search=${encodeURIComponent(q)}&includeVariants=true&perPage=30`)
       if (!res.ok || seq !== searchSeq.current) return
       const data = (await res.json()) as { products: Found[] }
-      setResults(data.products.filter((p) => p.id !== productId && !draft.some((d) => d.id === p.id)).slice(0, 12))
+      setResults(data.products.filter((p) => p.id !== productId && !draft.some((d) => d.id === p.id)).slice(0, 20))
     } finally {
       if (seq === searchSeq.current) setSearching(false)
     }

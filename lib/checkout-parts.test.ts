@@ -16,6 +16,7 @@ vi.mock('@/modules/shop/lib/line-meta', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/modules/shop/lib/line-meta')>()),
   getCartLineResolvers: async () => [],
   getCartLineResolverPrefetchers: async () => [],
+  gatherCartExtensionPoint: async () => [],
 }))
 
 const { resolveCartLines } = await import('@/modules/shop/lib/checkout')

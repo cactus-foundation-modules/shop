@@ -21,6 +21,7 @@ type ValidatedLine = {
   lineSubtotal: number
   available: boolean
   availabilityReason: string | null
+  availabilityLink?: { href: string; label: string } | null
   imageUrl: string | null
   lineMeta: LineMeta | null
   displayTitle: { name: string; secondary?: string } | null
@@ -349,7 +350,7 @@ export function CheckoutItemsClient({ preview = false, sticky = 'off', stickyOff
                         </span>
                       ))}
                       {!line.available && (
-                        <span style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{line.availabilityReason ?? 'No longer available'}</span>
+                        <span style={{ color: 'var(--color-danger)', fontSize: '0.8125rem' }}>{line.availabilityReason ?? 'No longer available'}{line.availabilityLink && <>{' '}<a href={line.availabilityLink.href} style={{ color: 'inherit', textDecoration: 'underline' }}>{line.availabilityLink.label}</a></>}</span>
                       )}
                     </div>
                     <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{money(goodsPrice)}</span>

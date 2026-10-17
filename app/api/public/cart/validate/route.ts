@@ -106,6 +106,7 @@ export async function POST(request: NextRequest) {
       unitPriceBeforeDeduction: line.orderSizeDeduction != null ? shown(line.unitPrice + line.orderSizeDeduction) : null,
       available: line.available,
       availabilityReason: line.availabilityReason ?? null,
+      availabilityLink: line.availabilityLink ?? null,
       isPreOrder: line.isPreOrder,
       // The minimum this line answers to, and whether it is counted across the
       // whole listing rather than against this line alone. A pooled line's

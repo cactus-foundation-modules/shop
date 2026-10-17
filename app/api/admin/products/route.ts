@@ -26,7 +26,9 @@ export async function GET(request: NextRequest) {
     page: params.get('page') ? Number(params.get('page')) : undefined,
     perPage: params.get('perPage') ? Number(params.get('perPage')) : undefined,
     // Variant child products are managed under Product options, not here.
-    excludeHidden: true,
+    // ?includeVariants=true is the parts picker, which has to be able to choose
+    // one variation (its own name and SKU) rather than the listing it hangs under.
+    excludeHidden: params.get('includeVariants') !== 'true',
     // Three-valued on purpose (see ProductListFilter). Absent is the admin
     // product list, which shows the catalogue as it really is, spare parts
     // included - a part whose stock and cost nobody can open is no use.

@@ -57,7 +57,7 @@ import { computeBasketTotals } from '@/modules/shop/lib/cart-basket-totals'
 // field added there is added here only if this panel means to show it.
 type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
-  lineSubtotal: number; available: boolean; availabilityReason: string | null
+  lineSubtotal: number; available: boolean; availabilityReason: string | null; availabilityLink?: { href: string; label: string } | null
   isPreOrder: boolean; imageUrl: string | null
   // The minimum this line answers to, and whether it is pooled across the whole
   // listing. Absent on a response from a shop that predates them, which reads as
@@ -390,7 +390,12 @@ export function CartDrawerClient({
                 )}
                 <a className="scd-name" href={productHref(line.slug, urlStyle)}>{title}</a>
                 {secondary && <p className="scd-sec">{secondary}</p>}
-                {!line.available && <p className="scd-warn">{line.availabilityReason || 'Unavailable'}</p>}
+                {!line.available && (
+                  <p className="scd-warn">
+                    {line.availabilityReason || 'Unavailable'}
+                    {line.availabilityLink && <>{' '}<a href={line.availabilityLink.href} style={{ color: 'inherit', textDecoration: 'underline' }}>{line.availabilityLink.label}</a></>}
+                  </p>
+                )}
                 {line.isPreOrder && <p className="scd-note">Pre-order</p>}
                 <LineMetaList fields={productMetaFields(line.lineMeta?.fields ?? [], line.control)} />
               </div>

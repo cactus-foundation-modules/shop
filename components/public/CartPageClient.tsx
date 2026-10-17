@@ -23,7 +23,7 @@ import { fetchShopPublicConfig } from '@/modules/shop/lib/public-config-client'
 
 type ValidatedLine = {
   productId: string; name: string; slug: string; quantity: number; unitPrice: number
-  lineSubtotal: number; available: boolean; availabilityReason: string | null
+  lineSubtotal: number; available: boolean; availabilityReason: string | null; availabilityLink?: { href: string; label: string } | null
   isPreOrder: boolean; imageUrl: string | null
   // The minimum this line answers to, and whether it is pooled across the whole
   // listing. Absent on a response from a shop that predates them, which reads as
@@ -194,7 +194,7 @@ export function CartPageClient() {
             <div className="scl-main" style={{ flex: 1, minWidth: 0 }}>
               <a href={productHref(line.slug, urlStyle)} style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>{line.displayTitle?.name || line.name}</a>
               {line.displayTitle?.secondary && <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>{line.displayTitle.secondary}</p>}
-              {!line.available && <p style={{ color: 'var(--color-danger)', fontSize: '0.8125rem', margin: '0.25rem 0 0' }}>{line.availabilityReason}</p>}
+              {!line.available && <p style={{ color: 'var(--color-danger)', fontSize: '0.8125rem', margin: '0.25rem 0 0' }}>{line.availabilityReason}{line.availabilityLink && <>{' '}<a href={line.availabilityLink.href} style={{ color: 'inherit', textDecoration: 'underline' }}>{line.availabilityLink.label}</a></>}</p>}
               {line.isPreOrder && <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>Pre-order</p>}
               {line.lineMeta?.fields?.length ? (
                 <ul style={{ listStyle: 'none', margin: '0.25rem 0 0', padding: 0, display: 'grid', gap: '0.125rem' }}>
