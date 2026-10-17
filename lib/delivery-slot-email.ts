@@ -1,5 +1,5 @@
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { claimSlotNotification, getOrderDispatchSummary, getShipmentsForOrder, recordToldWindow } from '@/modules/shop/lib/db/shipments'
+import { claimMovedWindowNotification, claimSlotNotification, getOrderDispatchSummary, getShipmentsForOrder, recordToldWindow } from '@/modules/shop/lib/db/shipments'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { parcelCountVars } from '@/modules/shop/lib/consignment-parcels'
@@ -176,6 +176,7 @@ export async function maybeSendCarrierWindowEmail(
     | 'deliveryWindowFrom'
     | 'deliveryWindowTo'
     | 'slotNotifiedAt'
+    | 'slotNotifiedWindow'
     | 'quietCustomerEmails'
     | 'deliveryDelay'
     | 'deliveryDelayedFrom'
@@ -185,9 +186,10 @@ export async function maybeSendCarrierWindowEmail(
   courierTimes: boolean,
 ): Promise<boolean> {
   if (!courierTimes) return false
-  if (parcel.slotNotifiedAt || parcel.quietCustomerEmails) return false
+  if (parcel.quietCustomerEmails) return false
   if (hasCompleteBookedSlot(parcel)) return false
   if (!reading.windowFrom || !reading.windowTo) return false
+  if (parcel.slotNotifiedAt) return maybeSendMovedDayEmail(parcel, reading, timezone)
   // The window for the day a reported delay missed is the booking that fell
   // through, still in the courier's feed - not news, and not worth the stamp.
   if (isStaleCarrierWindow(parcel, calendarDateIn(reading.windowFrom, timezone))) return false
@@ -200,6 +202,41 @@ export async function maybeSendCarrierWindowEmail(
     await sendDeliverySlotEmail({ orderId: parcel.orderId, shipmentId: parcel.id, timezone })
   } catch (error) {
     console.error('[shop] carrier window email failed', error)
+  }
+  return true
+}
+
+/**
+ * A customer already told a window, whose courier has since booked a
+ * DIFFERENT day: the old email is now wrong, and nobody else will correct it.
+ * (Order DW000231: told Friday 11:56 to 12:56, rebooked for Saturday by hand
+ * with no times, and DPD's Saturday window arrived overnight to a stamp that
+ * said "already told".)
+ *
+ * Only a change of day. The courier's window drifts by the hour as the round
+ * progresses, and an email for each drift would be a nuisance, not a service.
+ * The window must also be for the day on the parcel, so a feed still holding
+ * the day that fell through is not mistaken for the new booking.
+ */
+async function maybeSendMovedDayEmail(
+  parcel: Parameters<typeof maybeSendCarrierWindowEmail>[0],
+  reading: { windowFrom: Date | null; windowTo: Date | null },
+  timezone: string,
+): Promise<boolean> {
+  if (!parcel.slotNotifiedWindow || !reading.windowFrom || !reading.windowTo) return false
+  const date = calendarDateIn(reading.windowFrom, timezone)
+  const start = slotTimeFromInstant(reading.windowFrom, timezone)
+  const end = slotTimeFromInstant(reading.windowTo, timezone)
+  if (isWholeDayWindow(start, end)) return false
+  if (date !== parcel.deliveryDate) return false
+  if (isStaleCarrierWindow(parcel, date)) return false
+  if (parcel.slotNotifiedWindow.slice(0, 10) === date) return false
+  if (!(await claimMovedWindowNotification(parcel.id, parcel.orderId, parcel.slotNotifiedWindow, `${date} ${start}-${end}`))) return false
+
+  try {
+    await sendDeliverySlotEmail({ orderId: parcel.orderId, shipmentId: parcel.id, timezone })
+  } catch (error) {
+    console.error('[shop] moved-day window email failed', error)
   }
   return true
 }

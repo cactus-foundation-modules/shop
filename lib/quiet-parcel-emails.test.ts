@@ -36,7 +36,7 @@ const quiet = {
   id: 's1', orderId: 'ord-1', items: [{ id: 'i', shipmentId: 's1', orderItemId: 'item-1', quantity: 1 }],
   trackingNumber: '12345678901234', trackingUrl: null, trackingShortCode: null, carrier: 'DPD', courierId: null,
   deliveryDate: '2026-10-06', deliverySlotStart: '10:00', deliverySlotEnd: '13:00', deliveryWindowFrom: null,
-  deliveryWindowTo: null, slotNotifiedAt: null, trackingNotifiedAt: null, quietCustomerEmails: true,
+  deliveryWindowTo: null, slotNotifiedAt: null, slotNotifiedWindow: null, trackingNotifiedAt: null, quietCustomerEmails: true,
 }
 
 beforeEach(() => {

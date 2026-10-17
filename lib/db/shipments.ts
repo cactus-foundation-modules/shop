@@ -817,6 +817,32 @@ export async function claimSlotNotification(shipmentId: string, orderId: string)
   return claimed > 0
 }
 
+/**
+ * Claim the right to tell a customer who was already told a window that the
+ * courier has moved them to a different DAY. True exactly once per move: the
+ * statement only matches while the record still holds the window they were
+ * last emailed, and rewrites it to the new one, so the hourly job and a
+ * watched page reading the same rebooking cannot both send.
+ */
+export async function claimMovedWindowNotification(
+  shipmentId: string,
+  orderId: string,
+  previousWindow: string,
+  newWindow: string,
+): Promise<boolean> {
+  const claimed = await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "slot_notified_at" = CURRENT_TIMESTAMP,
+        "slot_notified_window" = ${newWindow}::text,
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId} AND "order_id" = ${orderId}
+      AND "slot_notified_at" IS NOT NULL
+      AND "slot_notified_window" = ${previousWindow}::text
+      AND "delivered_at" IS NULL
+  `
+  return claimed > 0
+}
+
 /** Record which window the customer has just been emailed (migration 072),
  *  as 'YYYY-MM-DD HH:MM-HH:MM' - see toldWindowKey in lib/delivery-slot.ts. */
 export async function recordToldWindow(shipmentId: string, orderId: string, window: string): Promise<void> {
