@@ -156,21 +156,32 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
 
   const quiet = Boolean(parcel.quietCustomerEmails)
   const [sendingNote, setSendingNote] = useState(false)
+  // Saving a day on a quiet parcel tells nobody, which left no way to say
+  // "and email them" at the point of saving. Ticked, the save is followed by
+  // the dispatch note, which carries the delivery day and takes the parcel off
+  // quiet. Unticked by default: quiet was a choice, so telling is too.
+  const [sendNoteWithSave, setSendNoteWithSave] = useState(false)
 
   // A quiet parcel's customer has been told nothing. This tells them - the
   // dispatch note a parcel recorded by hand would have sent - and from then on
   // the parcel behaves like any other.
-  async function sendDispatchNote() {
-    setSendingNote(true)
-    setError(null)
+  async function postDispatchNote(): Promise<string | null> {
     const res = await fetch(`/api/m/shop/admin/orders/${orderId}/dispatch/send-note`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ shipmentId: parcel.id }),
     })
+    if (res.ok) return null
+    return (await res.json().catch(() => ({}))).error ?? 'Could not send the dispatch note'
+  }
+
+  async function sendDispatchNote() {
+    setSendingNote(true)
+    setError(null)
+    const failure = await postDispatchNote()
     setSendingNote(false)
-    if (!res.ok) {
-      setError((await res.json().catch(() => ({}))).error ?? 'Could not send the dispatch note')
+    if (failure) {
+      setError(failure)
       return
     }
     onDone()
@@ -184,11 +195,20 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ shipmentId: parcel.id, ...parcelDetailsPayload(details), emailCustomer, emailTracking }),
     })
-    setSaving(false)
     if (!res.ok) {
+      setSaving(false)
       setError((await res.json().catch(() => ({}))).error ?? 'Could not save this parcel')
       return
     }
+    if (quiet && sendNoteWithSave) {
+      const failure = await postDispatchNote()
+      if (failure) {
+        setSaving(false)
+        setError(`Parcel saved, but the customer was not emailed: ${failure}`)
+        return
+      }
+    }
+    setSaving(false)
     onDone()
   }
 
@@ -255,7 +275,14 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
             </p>
           )}
 
-          {quiet ? null : answersDelay ? (
+          {quiet ? (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input type="checkbox" checked={sendNoteWithSave} onChange={(e) => setSendNoteWithSave(e.target.checked)} />
+              {details.deliveryDate
+                ? 'Email the customer after saving - the dispatch note, with this delivery day'
+                : 'Email the customer after saving - the dispatch note'}
+            </label>
+          ) : answersDelay ? (
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input type="checkbox" checked={emailCustomer} onChange={(e) => setEmailCustomer(e.target.checked)} />
               Email the customer their new delivery date
