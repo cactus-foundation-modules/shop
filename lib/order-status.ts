@@ -9,6 +9,7 @@ import {
 import { createShipment, getOrderDispatchSummary, getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
 import { getShopConfigCached, type ShpConfig } from '@/modules/shop/lib/config'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
+import { notifyOrderCompleted } from '@/modules/shop/lib/order-completed-hooks'
 import { parentOrderVars, replacementDeliveryVars } from '@/modules/shop/lib/replacement-emails'
 import { issueInvoiceForOrder, shouldIssueOn, type InvoiceTrigger } from '@/modules/shop/lib/invoices'
 import { invoiceEmailAttachment } from '@/modules/shop/lib/invoice-attachment'
@@ -350,6 +351,14 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail, email
         invoice ? { attachments: [invoice] } : undefined,
       )
     }
+  }
+
+  // Told last, after the invoice and the customer's email, and only for the move
+  // that actually happened: another module's follow-up (purchasing closing off a
+  // supplier's bill, say) must never be able to cost the customer either. The
+  // hook catches everything itself.
+  if (changed && status === 'COMPLETED') {
+    await notifyOrderCompleted({ orderId, orderNumber: order.orderNumber })
   }
 
   return { ok: true, changed }
