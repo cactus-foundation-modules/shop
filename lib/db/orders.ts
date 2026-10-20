@@ -192,7 +192,9 @@ export type CreateOrderInput = {
    * rather than derived from `kind` here, because this function's whole job is
    * to write down what it is told.
    */
-  status?: ShpOrderStatus
+  // 'UNCOMPLETE' is not a stored status: every order that is not finished
+  // with (not completed, cancelled or fully refunded).
+  status?: ShpOrderStatus | 'UNCOMPLETE'
   paymentStatus?: ShpPaymentStatus
   paidAt?: Date | null
   memberId?: string | null
@@ -810,7 +812,9 @@ const SORT_CLAUSE: Record<OrderSort, Prisma.Sql> = {
 export type ListOrdersFilter = {
   page?: number
   perPage?: number
-  status?: ShpOrderStatus
+  // 'UNCOMPLETE' is not a stored status: it is every order not yet finished with,
+  // so not completed, cancelled or refunded.
+  status?: ShpOrderStatus | 'UNCOMPLETE'
   // 'UNPAID' is the useful reading of "money still owed" - an order sitting on
   // PENDING and one parked on AWAITING_CONFIRMATION are the same job from the
   // owner's side, and having to check both separately is how one gets forgotten.
@@ -829,6 +833,7 @@ export type ListOrdersFilter = {
 }
 
 const OPEN_ONLY_SQL = Prisma.sql`o."status" <> 'CANCELLED'`
+const UNCOMPLETE_SQL = Prisma.sql`o."status" NOT IN ('COMPLETED', 'CANCELLED', 'REFUNDED')`
 const UNPAID_SQL = Prisma.sql`o."payment_status" IN ('PENDING', 'AWAITING_CONFIRMATION')`
 
 // The payment filters that a refund bears on, read as the money stands.
@@ -857,7 +862,8 @@ export async function listOrders(filter: ListOrdersFilter): Promise<{ orders: Sh
   const offset = (page - 1) * perPage
 
   const conditions: Prisma.Sql[] = []
-  if (filter.status) conditions.push(Prisma.sql`o."status" = ${filter.status}`)
+  if (filter.status === 'UNCOMPLETE') conditions.push(UNCOMPLETE_SQL)
+  else if (filter.status) conditions.push(Prisma.sql`o."status" = ${filter.status}`)
   if (filter.paymentStatus === 'UNPAID') conditions.push(UNPAID_SQL)
   else if (filter.paymentStatus) {
     conditions.push(PAYMENT_FILTER_SQL[filter.paymentStatus] ?? Prisma.sql`o."payment_status" = ${filter.paymentStatus}`)

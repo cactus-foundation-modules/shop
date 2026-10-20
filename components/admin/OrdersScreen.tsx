@@ -128,6 +128,7 @@ const STATUS_TABS: Array<{ value: string; label: string }> = [
   { value: 'SHIPPED', label: 'Dispatched' },
   { value: 'COMPLETED', label: 'Completed' },
   { value: 'ON_HOLD', label: 'On hold' },
+  { value: 'UNCOMPLETE', label: 'Uncomplete' },
   { value: 'CANCELLED', label: 'Cancelled' },
 ]
 

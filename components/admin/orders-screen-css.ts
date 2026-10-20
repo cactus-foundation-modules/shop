@@ -33,7 +33,7 @@ export const ordersScreenCss = `
 
 /* --- Toolbar ------------------------------------------------------------ */
 .sox-toolbar{display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-bottom:0.75rem}
-.sox-search{flex:1 1 220px;min-width:180px;height:36px;padding:0 0.75rem;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text);font-size:0.875rem}
+.sox-search{flex:1 1 160px;min-width:140px;max-width:320px;height:36px;padding:0 0.75rem;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text);font-size:0.875rem}
 .sox-search:focus-visible{outline:2px solid var(--color-border-focus);outline-offset:1px}
 .sox-select{height:36px;padding:0 1.75rem 0 0.5rem;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text);font-size:0.8125rem;cursor:pointer}
 .sox-select:focus-visible{outline:2px solid var(--color-border-focus);outline-offset:1px}
