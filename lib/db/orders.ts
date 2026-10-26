@@ -1284,6 +1284,14 @@ export type FailedOrderEmail = {
   html: string
   text: string
   attachments?: SerialisedEmailAttachment[]
+  /** The parcel the email is about, where it is about one (migration 076): a
+   *  parcel whose email has not gone does not show its customer as told. */
+  shipmentId?: string
+  /** The delivery window the email carries, as toldWindowKey writes it -
+   *  recorded on the parcel once it actually goes (migration 072). */
+  toldWindow?: string
+  /** What the email service said the last time it was tried. */
+  lastError?: string
 }
 
 export async function addOrderNote(orderId: string, content: string, isInternal: boolean, createdBy: string | null, failedEmail?: FailedOrderEmail): Promise<void> {
@@ -1297,17 +1305,36 @@ export async function addOrderNote(orderId: string, content: string, isInternal:
 // raw rows, so `isInternal` and `createdAt` were simply undefined on the admin
 // screen while `content` happened to work - the kind of quiet mismatch that only
 // shows up as a blank timestamp.
-export type OrderNoteRow = { id: string; content: string; isInternal: boolean; createdBy: string | null; createdAt: Date; failedEmail: FailedOrderEmail | null }
+export type OrderNoteRow = {
+  id: string
+  orderId: string
+  content: string
+  isInternal: boolean
+  createdBy: string | null
+  createdAt: Date
+  failedEmail: FailedOrderEmail | null
+  /** A failed email's retry state (migration 076). All null, and tries 0, on
+   *  every other note. */
+  emailRetryUntil: Date | null
+  emailNextTryAt: Date | null
+  emailSettledAt: Date | null
+  emailTries: number
+}
 
-function mapOrderNote(r: Record<string, unknown>): OrderNoteRow {
+export function mapOrderNote(r: Record<string, unknown>): OrderNoteRow {
   return {
     id: r.id as string,
+    orderId: r.order_id as string,
     content: r.content as string,
     isInternal: r.is_internal as boolean,
     createdBy: (r.created_by as string | null) ?? null,
     createdAt: r.created_at as Date,
     // jsonb comes back already parsed; NULL on every note except a failed send.
     failedEmail: (r.failed_email as FailedOrderEmail | null) ?? null,
+    emailRetryUntil: (r.email_retry_until as Date | null) ?? null,
+    emailNextTryAt: (r.email_next_try_at as Date | null) ?? null,
+    emailSettledAt: (r.email_settled_at as Date | null) ?? null,
+    emailTries: Number(r.email_tries ?? 0),
   }
 }
 

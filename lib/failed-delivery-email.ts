@@ -87,5 +87,5 @@ export async function sendFailedDeliveryEmail(params: { orderId: string; shipmen
     hasContactCourier: courierWillContact ? 'false' : 'true',
     hasCourierWillContact: courierWillContact ? 'true' : 'false',
     shopName: config.shopTitle || 'Shop',
-  })
+  }, { shipmentId: shipment.id })
 }

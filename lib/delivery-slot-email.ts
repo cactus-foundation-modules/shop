@@ -123,9 +123,10 @@ export async function sendDeliverySlotEmail(params: {
     deliveryWindow: parts.window,
     deliverySlotStart: parts.slotStart,
     deliverySlotEnd: parts.slotEnd,
-  })
+  }, { shipmentId: shipment.id, toldWindow: parts.told })
   // Which window went, so a later save is judged against what the customer
-  // read (see maybeSendSlotEmail).
+  // read (see maybeSendSlotEmail). Not reached when the send failed: the
+  // retry records it if and when the email does go (lib/order-email-retry.ts).
   await recordToldWindow(shipment.id, params.orderId, parts.told)
 }
 
@@ -155,7 +156,7 @@ export async function sendDeliveryDayEmail(params: { orderId: string; shipmentId
   await notifyOrderCustomer('DELIVERY_DAY_BOOKED', order, {
     ...await parcelEmailVars(order, shipment),
     deliveryDay,
-  })
+  }, { shipmentId: shipment.id })
 }
 
 /** Tell the customer their delivery window, when the courier's own tracking

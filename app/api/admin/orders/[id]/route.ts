@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db/prisma'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { DELIVERY_INSTRUCTIONS_MAX_LENGTH, deliveryInstructionsLabel } from '@/modules/shop/lib/delivery-instructions'
-import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, listReplacementOrdersForParent, setOrderAskForReview, setOrderCustomerReference, setOrderDeliveryInstructions, setOrderShippingAddress } from '@/modules/shop/lib/db/orders'
+import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, type OrderNoteRow, listReplacementOrdersForParent, setOrderAskForReview, setOrderCustomerReference, setOrderDeliveryInstructions, setOrderShippingAddress } from '@/modules/shop/lib/db/orders'
 import { sendAddressUpdatedEmail, type DeliveryDetailsChange } from '@/modules/shop/lib/address-updated-email'
 import { listRefundsForOrder, listRefundItemsForOrder } from '@/modules/shop/lib/db/refunds'
 import { listDownloadsForOrder } from '@/modules/shop/lib/db/digital'
@@ -132,10 +132,24 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     isInternal: n.isInternal,
     createdBy: n.createdBy,
     createdAt: n.createdAt,
-    resendableTrigger: n.failedEmail?.trigger ?? null,
+    // A settled note - sent after all, or replaced by a newer email - has
+    // nothing left to resend (migration 076).
+    resendableTrigger: n.failedEmail && !n.emailSettledAt ? n.failedEmail.trigger : null,
+    emailShipmentId: n.failedEmail?.shipmentId ?? null,
+    emailTrigger: n.failedEmail?.trigger ?? null,
+    emailState: emailNoteState(n),
   }))
 
   return NextResponse.json({ order, items, storefrontHrefs, notes: noteSummaries, emails, refunds, refundItems, downloads, customer, authors, customerReferenceLabel, deliveryInstructionsLabel: deliveryInstructionsLabelText, refundNotice, refundableDelivery, replacements, replacementLines, parentOrder, requests })
+}
+
+/** Where a failed email stands (migration 076). Only 'retrying' while its five
+ *  minutes are actually running: a request that died before it could start
+ *  the retry leaves a next try booked that nothing will make, and the order
+ *  screen must not promise one. */
+function emailNoteState(n: OrderNoteRow): 'retrying' | 'failed' | null {
+  if (!n.failedEmail || n.emailSettledAt) return null
+  return n.emailNextTryAt && n.emailRetryUntil && n.emailRetryUntil.getTime() > Date.now() ? 'retrying' : 'failed'
 }
 
 /** Two addresses compared the way a person would: same words, same order, case and stray spaces aside. */

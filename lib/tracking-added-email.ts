@@ -104,6 +104,7 @@ export async function sendTrackingAddedEmail(params: { orderId: string; shipment
       shopName: config.shopTitle || 'Shop',
       ...await parentOrderVars(order),
     },
+    { shipmentId: shipment.id },
   )
 }
 

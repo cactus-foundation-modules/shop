@@ -94,7 +94,7 @@ export async function sendDeliveryDelayEmail(params: {
   }
 
   if (params.kind === 'today') {
-    await notifyOrderCustomer('DELIVERY_RUNNING_LATE', order, base)
+    await notifyOrderCustomer('DELIVERY_RUNNING_LATE', order, base, { shipmentId: shipment.id })
     return true
   }
 
@@ -102,7 +102,7 @@ export async function sendDeliveryDelayEmail(params: {
   const vars: Record<string, string> = { ...base, ...await newDayVars(shipment) }
   if (params.kind === 'new-date' && vars.hasNewDay !== 'true') return false
   await stampWhenItCarriesTheWindow(shipment, vars)
-  await notifyOrderCustomer('DELIVERY_DELAYED', order, vars)
+  await notifyOrderCustomer('DELIVERY_DELAYED', order, vars, { shipmentId: shipment.id })
   return true
 }
 
@@ -115,7 +115,7 @@ export async function sendDeliveryNewDateEmail(params: { orderId: string; shipme
   const day = await newDayVars(shipment)
   if (day.hasNewDay !== 'true') return false
   await stampWhenItCarriesTheWindow(shipment, day)
-  await notifyOrderCustomer('DELIVERY_NEW_DATE', order, { ...await parcelEmailVars(order, shipment), ...day })
+  await notifyOrderCustomer('DELIVERY_NEW_DATE', order, { ...await parcelEmailVars(order, shipment), ...day }, { shipmentId: shipment.id })
   return true
 }
 

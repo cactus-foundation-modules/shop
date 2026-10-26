@@ -6,6 +6,7 @@ import { addOrderNote } from '@/modules/shop/lib/db/orders'
 import { getShipmentsForOrder, openAitParcels, updateShipmentDetails } from '@/modules/shop/lib/db/shipments'
 import { deliveryBookingForShipment, formatDeliveryDay, formatDeliveryWindow, slotTimeFromInstant } from '@/modules/shop/lib/delivery-slot'
 import { maybeSendSlotEmail, newDayAfterDelay } from '@/modules/shop/lib/dispatch-follow-up'
+import { EMAIL_NOT_GONE } from '@/modules/shop/lib/parcel-edit-note'
 import { addressEndsWithPostcode, isAitSender, readAitWindowEmail, type AitWindowEmail } from '@/modules/shop/lib/tracking/ait-window-email'
 import type { ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
@@ -139,18 +140,20 @@ export async function handleAitWindowEmail(
   const answered = await newDayAfterDelay(orderId, before, after, true)
   const emailed = answered ?? await maybeSendSlotEmail(orderId, after, true, before)
 
-  const told = emailed
-    ? 'customer emailed'
-    : after.quietCustomerEmails
-      ? 'customer not emailed - this parcel is recorded without telling them'
-      : 'customer not emailed - they had already been told this day and window'
+  const told = emailed === 'failed'
+    ? EMAIL_NOT_GONE
+    : emailed
+      ? 'customer emailed'
+      : after.quietCustomerEmails
+        ? 'customer not emailed - this parcel is recorded without telling them'
+        : 'customer not emailed - they had already been told this day and window'
   await addOrderNote(orderId, `AIT emailed the delivery window: ${when}; ${told}.`, true, null).catch((error) => {
     console.error('[shop] AIT window note failed', orderId, error)
   })
 
   return {
     links: [link],
-    note: `Delivery window for ${orderNumber} set from this email (${when})${emailed ? ', customer emailed' : ''}`,
+    note: `Delivery window for ${orderNumber} set from this email (${when})${emailed === true ? ', customer emailed' : emailed === 'failed' ? `, ${EMAIL_NOT_GONE}` : ''}`,
   }
 }
 

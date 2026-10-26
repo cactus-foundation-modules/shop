@@ -32,6 +32,15 @@ describe('parcelEditNote', () => {
     expect(note).toContain('Tracking changed to https://example.com/x; customer emailed.')
   })
 
+  it('never says emailed when the email was refused (DW000245)', () => {
+    const after = { ...parcel, deliverySlotStart: '13:45', deliverySlotEnd: '15:45' }
+    const note = parcelEditNote(parcel, { ...after, trackingUrl: 'https://example.com/y' },
+      { wanted: true, deliveryEmailed: 'failed', trackingEmailed: 'failed' })
+    expect(note).not.toContain('customer emailed')
+    expect(note).toContain('(was Monday 12th of October); email to the customer did not go first time')
+    expect(note).toContain('Tracking changed to https://example.com/y; email to the customer did not go first time')
+  })
+
   it('writes nothing for a save that changed nothing', () => {
     expect(parcelEditNote(parcel, { ...parcel }, { wanted: true, deliveryEmailed: false, trackingEmailed: false })).toBeNull()
   })

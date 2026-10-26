@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.513",
+  "version": "0.1.514",
   "tablePrefix": "shp_",
   "notificationKinds": [
     {"id": "new-order", "label": "New orders", "description": "An order has been placed or is awaiting payment.", "dedupePrefix": "shop:order:"},
@@ -125,6 +125,10 @@
     {
       "path": "/api/m/shop/cron/delivery-tracking",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/m/shop/cron/email-retry",
+      "schedule": "*/30 * * * *"
     }
   ],
   "puckBlocks": [

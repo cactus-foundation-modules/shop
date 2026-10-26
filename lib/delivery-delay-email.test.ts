@@ -48,7 +48,7 @@ describe('maybeAnswerDelayFromCourier', () => {
     expect(claim).toHaveBeenCalledWith('s1', '2026-10-15', true)
     expect(notify).toHaveBeenCalledWith('DELIVERY_NEW_DATE', expect.anything(), expect.objectContaining({
       hasNewDayWindow: 'true', deliveryWindow: expect.stringContaining('10'),
-    }))
+    }), { shipmentId: 's1' })
   })
 
   it('leaves the missed day\'s window, and a parcel with no delay, to the ordinary email', async () => {
@@ -67,7 +67,7 @@ describe('maybeAnswerDelayFromCourier', () => {
     expect(claim).toHaveBeenCalledWith('s1', '2026-10-15', false)
     expect(notify).toHaveBeenCalledWith('DELIVERY_NEW_DATE', expect.anything(), expect.objectContaining({
       hasNewDayOnly: 'true', hasNewDayWindow: 'false', deliveryWindow: '',
-    }))
+    }), { shipmentId: 's1' })
   })
 
   it('tells an AIT parcel its new day without the holding window, and leaves the stamp free', async () => {
@@ -81,7 +81,7 @@ describe('maybeAnswerDelayFromCourier', () => {
     expect(stamp).not.toHaveBeenCalled()
     expect(notify).toHaveBeenCalledWith('DELIVERY_NEW_DATE', expect.anything(), expect.objectContaining({
       hasNewDayOnly: 'true', hasNewDayWindow: 'false', deliveryWindow: '',
-    }))
+    }), { shipmentId: 's1' })
   })
 
   it('sends nothing when another reader won the claim', async () => {
@@ -111,7 +111,7 @@ describe('one email per piece of news', () => {
     }])
     await sendDeliveryDelayEmail({ orderId: 'ord-1', shipmentId: 's1', kind: 'new-date' })
     expect(stamp).toHaveBeenCalledWith('s1', 'ord-1', true)
-    expect(notify).toHaveBeenCalledWith('DELIVERY_DELAYED', expect.anything(), expect.objectContaining({ hasNewDayWindow: 'true' }))
+    expect(notify).toHaveBeenCalledWith('DELIVERY_DELAYED', expect.anything(), expect.objectContaining({ hasNewDayWindow: 'true' }), { shipmentId: 's1' })
   })
 
   it('one with the day alone - the DW000219 case, a whole-day reading - leaves the window untold', async () => {
@@ -121,6 +121,6 @@ describe('one email per piece of news', () => {
     }])
     await sendDeliveryDelayEmail({ orderId: 'ord-1', shipmentId: 's1', kind: 'new-date' })
     expect(stamp).not.toHaveBeenCalled()
-    expect(notify).toHaveBeenCalledWith('DELIVERY_DELAYED', expect.anything(), expect.objectContaining({ hasNewDayOnly: 'true', deliveryWindow: '' }))
+    expect(notify).toHaveBeenCalledWith('DELIVERY_DELAYED', expect.anything(), expect.objectContaining({ hasNewDayOnly: 'true', deliveryWindow: '' }), { shipmentId: 's1' })
   })
 })

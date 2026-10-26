@@ -20,10 +20,15 @@ type Parcel = Pick<
 export type ParcelEditOutcome = {
   /** The customer was asked to be emailed (the box was left ticked). */
   wanted: boolean
-  /** A window, day or new-date email went for the delivery. */
-  deliveryEmailed: boolean
-  trackingEmailed: boolean
+  /** A window, day or new-date email went for the delivery - or 'failed',
+   *  tried and refused, and still trying on its own (lib/order-email-retry.ts). */
+  deliveryEmailed: boolean | 'failed'
+  trackingEmailed: boolean | 'failed'
 }
+
+/** The words for an email that was tried and did not go. The failed email's
+ *  own note says where it has got to since. */
+export const EMAIL_NOT_GONE = 'email to the customer did not go first time - see the email note for where it stands'
 
 function deliveryText(p: Parcel): string {
   const day = formatDeliveryDay(p.deliveryDate ?? '')
@@ -43,15 +48,17 @@ export function parcelEditNote(before: Parcel, after: Parcel, outcome: ParcelEdi
     || !same(before.deliverySlotStart, after.deliverySlotStart)
     || !same(before.deliverySlotEnd, after.deliverySlotEnd)
   if (deliveryChanged) {
-    const told = outcome.deliveryEmailed
-      ? 'customer emailed'
-      : after.quietCustomerEmails
-        ? 'customer not emailed - this parcel is recorded without telling them'
-        : !outcome.wanted
-          ? 'customer not emailed - the email box was unticked'
-          : after.deliveryDate && after.deliverySlotStart && after.deliverySlotEnd
-            ? 'customer not emailed - they had already been told this day and window'
-            : 'customer not emailed - nothing new to tell them until there is a day and both times'
+    const told = outcome.deliveryEmailed === 'failed'
+      ? EMAIL_NOT_GONE
+      : outcome.deliveryEmailed
+        ? 'customer emailed'
+        : after.quietCustomerEmails
+          ? 'customer not emailed - this parcel is recorded without telling them'
+          : !outcome.wanted
+            ? 'customer not emailed - the email box was unticked'
+            : after.deliveryDate && after.deliverySlotStart && after.deliverySlotEnd
+              ? 'customer not emailed - they had already been told this day and window'
+              : 'customer not emailed - nothing new to tell them until there is a day and both times'
     lines.push(`Delivery changed to ${deliveryText(after)} (was ${deliveryText(before)}); ${told}.`)
   }
 
@@ -61,7 +68,7 @@ export function parcelEditNote(before: Parcel, after: Parcel, outcome: ParcelEdi
   const trackingChanged = !same(before.trackingNumber, after.trackingNumber) || !same(before.trackingUrl, after.trackingUrl)
   if (trackingChanged) {
     const tracking = [after.trackingNumber?.trim(), after.trackingUrl?.trim()].filter(Boolean).join(' · ') || 'none'
-    lines.push(`Tracking changed to ${tracking}${outcome.trackingEmailed ? '; customer emailed' : ''}.`)
+    lines.push(`Tracking changed to ${tracking}${outcome.trackingEmailed === 'failed' ? `; ${EMAIL_NOT_GONE}` : outcome.trackingEmailed ? '; customer emailed' : ''}.`)
   }
   if (!same(before.notes, after.notes)) lines.push('Parcel notes changed.')
 

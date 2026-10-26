@@ -93,6 +93,12 @@ export function trackingLinkFor(
   return { ok: true, link: { trackingUrl: dpdFollowLink(code), trackingShortCode: code } }
 }
 
+/** What a follow-up email came to: true it went, false there was nothing to
+ *  send, 'failed' it was tried and the email service refused it - the order's
+ *  activity then carries the failed email, still trying on its own
+ *  (lib/order-email-retry.ts). Never reported as told. */
+export type FollowUpEmail = boolean | 'failed'
+
 /**
  * Tell the customer their delivery window, if this save is the moment it became
  * knowable and nobody has been told yet - or if it CHANGED the window they
@@ -121,7 +127,7 @@ export async function maybeSendSlotEmail(
   shipment: ShpShipmentWithItems,
   wanted: boolean,
   before?: ShpShipmentWithItems,
-): Promise<boolean> {
+): Promise<FollowUpEmail> {
   if (!wanted || shipment.quietCustomerEmails) return false
   if (!shipment.deliveryDate) return false
   const timezone = await getSiteTimezone()
@@ -148,6 +154,7 @@ export async function maybeSendSlotEmail(
     await sendDeliverySlotEmail({ orderId, shipmentId: shipment.id, timezone })
   } catch (error) {
     console.error('[shop] delivery slot email failed', error)
+    return 'failed'
   }
   return true
 }
@@ -203,7 +210,7 @@ export async function maybeSendDayEmail(
   before: ShpShipmentWithItems,
   after: ShpShipmentWithItems,
   wanted: boolean,
-): Promise<boolean> {
+): Promise<FollowUpEmail> {
   if (!wanted || after.quietCustomerEmails) return false
   if (!isDeliveryDate(after.deliveryDate)) return false
   if (after.deliveryDate === before.deliveryDate) return false
@@ -214,6 +221,7 @@ export async function maybeSendDayEmail(
     await sendDeliveryDayEmail({ orderId, shipmentId: after.id })
   } catch (error) {
     console.error('[shop] delivery day email failed', error)
+    return 'failed'
   }
   return true
 }
@@ -283,7 +291,7 @@ export async function maybeSendTrackingEmail(
   before: ShpShipmentWithItems,
   after: ShpShipmentWithItems,
   wanted: boolean,
-): Promise<boolean> {
+): Promise<FollowUpEmail> {
   if (!wanted || after.quietCustomerEmails) return false
   if (hasFollowableTracking(before)) return false
   if (!hasFollowableTracking(after)) return false
@@ -294,6 +302,7 @@ export async function maybeSendTrackingEmail(
     await sendTrackingAddedEmail({ orderId, shipmentId: after.id })
   } catch (error) {
     console.error('[shop] tracking email failed', error)
+    return 'failed'
   }
   return true
 }

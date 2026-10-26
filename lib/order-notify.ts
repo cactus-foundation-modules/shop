@@ -111,7 +111,11 @@ export async function notifyOrderCustomer(
   // nowhere to put a PDF. A customer who asked for texts and not emails gets
   // neither the email nor its attachment, which is what they asked for; the
   // document is still on their own order page either way.
-  opts?: { attachments?: EmailAttachment[] },
+  //
+  // `shipmentId` names the parcel the email is about, and `toldWindow` the
+  // delivery window it carries: an email that has not gone does not show the
+  // parcel's customer as told, and a newer one drops it (lib/order-email-retry.ts).
+  opts?: { attachments?: EmailAttachment[]; shipmentId?: string; toldWindow?: string },
 ): Promise<void> {
   const [channels, config] = await Promise.all([getOrderNotifyChannels(order), getShopConfigCached()])
 
@@ -138,7 +142,12 @@ export async function notifyOrderCustomer(
   let emailFailure: { error: unknown } | null = null
   if (channels.email) {
     try {
-      await sendShopEmail(trigger, order.customerEmail, withTracking, { orderId: order.id, attachments: opts?.attachments })
+      await sendShopEmail(trigger, order.customerEmail, withTracking, {
+        orderId: order.id,
+        attachments: opts?.attachments,
+        shipmentId: opts?.shipmentId,
+        toldWindow: opts?.toldWindow,
+      })
     } catch (error) {
       emailFailure = { error }
     }

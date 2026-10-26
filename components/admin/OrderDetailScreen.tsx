@@ -101,6 +101,12 @@ type OrderDetail = {
      *  send, so a Resend button can appear. Optional so a response from an
      *  older deployment still renders. */
     resendableTrigger?: string | null
+    /** On a failed send about one parcel (migration 076): which parcel, which
+     *  email, and whether it is still trying on its own or waiting for Resend.
+     *  Optional so a response from an older deployment still renders. */
+    emailShipmentId?: string | null
+    emailTrigger?: string | null
+    emailState?: 'retrying' | 'failed' | null
   }>
   emails: Array<{ id: string; subject: string; to: string; sentAt: string; trigger: string }>
   refunds: Array<{ id: string; amount: string; reason: string | null; status: string; createdBy: string; createdAt: string }>
@@ -223,6 +229,21 @@ type DispatchDetail = {
 /** A follow-my-parcel link the staff can open. Same rules as on the customer
  *  order page, but staff see whatever was saved even when it would not be
  *  offered to a shopper. */
+/** The emails behind each "customer told" on a parcel. A stamp says an email
+ *  was tried; only these say whether it went. */
+const SLOT_EMAILS = ['DELIVERY_SLOT_CONFIRMED', 'DELIVERY_NEW_DATE', 'DELIVERY_DELAYED'] as const
+const TRACKING_EMAILS = ['TRACKING_ADDED', 'REPLACEMENT_TRACKING_ADDED'] as const
+const FAILED_DELIVERY_EMAILS = ['DELIVERY_FAILED'] as const
+
+/** What to say after a parcel's stamp: `told` when the email went, otherwise
+ *  where the one that did not go stands. The newest such email decides. */
+function toldText(notes: OrderDetail['notes'], shipmentId: string, triggers: readonly string[], told: string): string {
+  const unsent = notes.filter((n) => n.emailShipmentId === shipmentId && n.emailState && triggers.includes(n.emailTrigger ?? '')).at(-1)
+  if (unsent?.emailState === 'retrying') return ' · email to the customer has not gone yet - trying again on its own'
+  if (unsent?.emailState === 'failed') return ' · email to the customer did not go - Resend it from Activity'
+  return told
+}
+
 function followParcelHref(value: string | null | undefined): string {
   const trimmed = value?.trim() ?? ''
   if (!trimmed) return ''
@@ -820,6 +841,9 @@ export function OrderDetailScreen({ orderId, children, panels }: {
     })
     setBusy(false)
     if (!res.ok) {
+      // The note itself has moved on - a fresh five minutes of trying, or
+      // already sent by the retry - so it is reloaded either way.
+      refresh()
       await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That email could not be sent.')
       return
     }
@@ -1551,7 +1575,7 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                                 nothing to follow and was given something later,
                                 so it says what happened rather than restating
                                 what the dispatch note already carried. */}
-                            {shipment.trackingNotifiedAt ? ' · tracking sent to the customer' : ''}
+                            {shipment.trackingNotifiedAt ? toldText(data.notes, shipment.id, TRACKING_EMAILS, ' · tracking sent to the customer') : ''}
                           </p>
                           <AdminShipmentTracking shipment={shipment} />
                           <p className="sox-list-sub">
@@ -1565,7 +1589,7 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                                 && (shipment.booking?.slotEnd ?? shipment.deliverySlotEnd)
                                 ? `, ${shipment.booking?.slotStart ?? shipment.deliverySlotStart} to ${shipment.booking?.slotEnd ?? shipment.deliverySlotEnd}`
                                 : ' - no time window yet'}
-                              {shipment.slotNotifiedAt ? ' · customer told' : ''}
+                              {shipment.slotNotifiedAt ? toldText(data.notes, shipment.id, SLOT_EMAILS, ' · customer told') : ''}
                             </p>
                           )}
                           {shipment.trackingStage && (
@@ -1620,7 +1644,7 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                                 {shipment.courierRebooks || shipment.courierRearrangingAt
                                   ? `Delivery failed · customer told ${shipment.carrier || 'the courier'} will be in touch to rebook`
                                   : `Delivery failed · customer told to contact ${shipment.carrier || 'the courier'} to rebook`}
-                                {shipment.failedNotifiedAt ? ' · customer emailed' : ''}
+                                {shipment.failedNotifiedAt ? toldText(data.notes, shipment.id, FAILED_DELIVERY_EMAILS, ' · customer emailed') : ''}
                               </span>
                               {!shipment.courierRebooks && (
                                 <button
