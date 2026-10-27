@@ -1,7 +1,7 @@
 // Asking one parcel's courier where it has got to, whoever the courier is.
 //
 // The poller does not know that Multidrop is HTML and DPD, AIT and Fieldly are JSON, that GFS
-// wants a carrier name in the query string, or that DPD's useful feed needs a
+// wants a carrier name in the query string, that Palletways give a day and no time, or that DPD's useful feed needs a
 // session minted first. It hands a parcel over and gets a reading back, and
 // every reader answers in the same terms - see reading.ts.
 //
@@ -34,6 +34,8 @@ import { isSplitConsignment, type ConsignmentParcel } from '@/modules/shop/lib/c
 import { aitImageHeaders, readAit } from '@/modules/shop/lib/tracking/ait'
 import { aitLinkParts } from '@/modules/shop/lib/tracking/ait-link'
 import { readFieldly } from '@/modules/shop/lib/tracking/fieldly'
+import { palletwaysStatusUrl, readPalletwaysStatus } from '@/modules/shop/lib/tracking/palletways'
+import { palletwaysTrackingId } from '@/modules/shop/lib/tracking/palletways-link'
 import { EMPTY_READING, type TrackingReading } from '@/modules/shop/lib/tracking/reading'
 import type { ShpCourier } from '@/modules/shop/lib/courier-faqs'
 import type { ShpShipment } from '@/modules/shop/lib/types'
@@ -359,6 +361,16 @@ async function readFieldlyParcel(parcel: ShpShipment, timezone: string): Promise
   }
 }
 
+async function readPalletways(parcel: ShpShipment, dueBy: string, timezone: string): Promise<ParcelReading | null> {
+  // The ID from the link where there is one, or typed in as the number.
+  const id = palletwaysTrackingId(parcel.trackingUrl) ?? palletwaysTrackingId(parcel.trackingNumber)
+  if (!id) return null
+  const html = await fetchText(palletwaysStatusUrl(id))
+  if (!html) return null
+  const reading = readPalletwaysStatus(html, timezone, dueBy)
+  return reading.stage ? { ...EMPTY_PARCEL_READING, ...reading } : null
+}
+
 /**
  * One look at one parcel.
  *
@@ -368,7 +380,7 @@ async function readFieldlyParcel(parcel: ShpShipment, timezone: string): Promise
  * standing still.
  */
 export async function readParcelTracking(
-  courier: Pick<ShpCourier, 'trackingSource' | 'gfsCarrier'>,
+  courier: Pick<ShpCourier, 'trackingSource' | 'gfsCarrier'> & Partial<Pick<ShpCourier, 'palletwaysDueBy'>>,
   parcel: ShpShipment,
   /** The site's timezone. Couriers print wall-clock times with no offset, and
    *  an instant built without this is an hour out for most of the year. */
@@ -385,6 +397,8 @@ export async function readParcelTracking(
       return readAitParcel(parcel)
     case 'fieldly':
       return readFieldlyParcel(parcel, timezone)
+    case 'palletways':
+      return readPalletways(parcel, courier.palletwaysDueBy ?? '17:00', timezone)
     default:
       return null
   }

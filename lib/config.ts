@@ -577,11 +577,20 @@ export const ShpConfigSchema = z.object({
         // not need a release. Match is case-insensitive and trimmed; a stage
         // named in neither list is progress the shop notes and says nothing
         // about.
-        trackingSource: z.enum(['none', 'multidrop', 'gfs', 'dpd', 'ait', 'fieldly']).default('none'),
+        trackingSource: z.enum(['none', 'multidrop', 'gfs', 'dpd', 'ait', 'fieldly', 'palletways']).default('none'),
         // Which carrier to ask GFS about. GFS are a broker - they hand the
         // parcel to somebody, and their page wants to be told who. Only read
         // when trackingSource is 'gfs'.
         gfsCarrier: z.string().min(1).max(40).default('DPD'),
+        // The time a Palletways consignment is due by on its day, 'HH:MM'.
+        // Their open status gives the day only; the time is fixed by the
+        // service booked (a standard next-day pallet is "BY 1700"), so it is
+        // set once here. Empty means the day alone. Only read when
+        // trackingSource is 'palletways'.
+        palletwaysDueBy: z
+          .string()
+          .refine((v) => v === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(v), 'A time like 17:00, or empty')
+          .default('17:00'),
         outForDeliveryStages: z.array(z.string().min(1).max(120)).default([]),
         deliveredStages: z.array(z.string().min(1).max(120)).default([]),
         // Stages that mean the courier tried and could not deliver - nobody

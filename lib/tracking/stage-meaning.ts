@@ -147,7 +147,8 @@ export function failedReason(
  *  own "delivered" status, and for DPD, whose feed says delivered in so many
  *  words - and whose day, passed on as the whole day when they move a held
  *  parcel to another one, would otherwise be "arrived" at midnight with the
- *  box still at a hub. The clock fallback exists for couriers who report
+ *  box still at a hub. And for Palletways, whose "due by 17:00" is a
+ *  deadline pallets miss often enough that 17:01 is no evidence of anything. The clock fallback exists for couriers who report
  *  nothing past a stage name; on AIT it would turn a late van, a
  *  cancellation or a parcel put on hold into "arrived" at the end of the
  *  window. */
@@ -159,7 +160,7 @@ export function courierAloneSaysArrived(
   trackingStage: string | null | undefined,
 ): boolean {
   const source = courier?.trackingSource
-  return (source === 'ait' || source === 'fieldly' || source === 'dpd') && Boolean(trackingStage?.trim())
+  return (source === 'ait' || source === 'fieldly' || source === 'dpd' || source === 'palletways') && Boolean(trackingStage?.trim())
 }
 
 /** Whether this courier is one the shop reads on a schedule at all.

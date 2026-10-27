@@ -1587,7 +1587,9 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                               Delivery booked for {shipment.booking?.date || shipment.deliveryDate}
                               {(shipment.booking?.slotStart ?? shipment.deliverySlotStart)
                                 && (shipment.booking?.slotEnd ?? shipment.deliverySlotEnd)
-                                ? `, ${shipment.booking?.slotStart ?? shipment.deliverySlotStart} to ${shipment.booking?.slotEnd ?? shipment.deliverySlotEnd}`
+                                ? (shipment.booking?.slotStart ?? shipment.deliverySlotStart) === '00:00'
+                                  ? `, by ${shipment.booking?.slotEnd ?? shipment.deliverySlotEnd}`
+                                  : `, ${shipment.booking?.slotStart ?? shipment.deliverySlotStart} to ${shipment.booking?.slotEnd ?? shipment.deliverySlotEnd}`
                                 : ' - no time window yet'}
                               {shipment.slotNotifiedAt ? toldText(data.notes, shipment.id, SLOT_EMAILS, ' · customer told') : ''}
                             </p>

@@ -195,10 +195,20 @@ export function formatDeliveryDayShort(date: string): string {
   return `${weekday.slice(0, 3)} ${day} ${(MONTHS[month - 1] ?? '').slice(0, 3)}`
 }
 
-/** "between 10:00 and 13:00", or '' unless both ends are real times. The exact
- *  form, for anywhere the 24-hour clock is what is wanted. */
+/**
+ * A window that opens at midnight is a deadline, not a window: Palletways'
+ * "due by 17:00" is carried as 00:00 to 17:00, because no courier delivers
+ * from midnight and the slot has no other way to say "by". Worded "by 17:00".
+ */
+export function isDueByWindow(start: string | null, end: string | null): boolean {
+  return start === '00:00' && isSlotTime(end) && !isWholeDayWindow(start, end) && end !== '00:00'
+}
+
+/** "between 10:00 and 13:00", "by 17:00", or '' unless both ends are real
+ *  times. The exact form, for anywhere the 24-hour clock is what is wanted. */
 export function formatDeliveryWindow(start: string | null, end: string | null): string {
   if (!isSlotTime(start) || !isSlotTime(end) || isWholeDayWindow(start, end)) return ''
+  if (isDueByWindow(start, end)) return `by ${end}`
   return `between ${start} and ${end}`
 }
 
@@ -272,9 +282,10 @@ export function formatClockTime(time: string): string {
   return minute === 0 ? `${hour12}${suffix}` : `${hour12}.${String(minute).padStart(2, '0')}${suffix}`
 }
 
-/** "between 10am and 1pm" - the window for a customer to read. */
+/** "between 10am and 1pm", or "by 5pm" - the window for a customer to read. */
 export function formatDeliveryWindowSpoken(start: string | null, end: string | null): string {
   if (!isSlotTime(start) || !isSlotTime(end) || isWholeDayWindow(start, end)) return ''
+  if (isDueByWindow(start, end)) return `by ${formatClockTime(end)}`
   return `between ${formatClockTime(start)} and ${formatClockTime(end)}`
 }
 
@@ -401,6 +412,9 @@ export function deliveryProgress(input: {
   // Treated as no window rather than as a negative one, which would put the van
   // through the back of the rail.
   if (start === null || end === null || end <= start) return { progress: 0, phase: 'today' }
+  // A deadline ("by 17:00") says nothing about when the van sets off, so the
+  // van waits at the start until the deadline passes, as a day with no window does.
+  if (isDueByWindow(input.slotStart, input.slotEnd) && local.minutes < end) return { progress: 0, phase: 'today' }
 
   if (local.minutes <= start) return { progress: 0, phase: 'today' }
   if (local.minutes >= end) return { progress: 1, phase: 'passed' }

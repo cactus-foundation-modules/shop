@@ -12,6 +12,7 @@ const config = {
       showTrackingLink: false,
       trackingSource: 'multidrop' as const,
       gfsCarrier: 'DPD',
+      palletwaysDueBy: '17:00',
       trackingLinkLabel: '',
       trackingLinkHint: '',
       outForDeliveryStages: ['Assigned to Crew'],

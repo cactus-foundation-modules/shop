@@ -187,13 +187,15 @@ export function CourierSettings({ value, onChange }: {
               <option value="dpd">Yes - DPD</option>
               <option value="ait">Yes - AIT Home Delivery</option>
               <option value="fieldly">Yes - Fieldly (Jewell Enterprises and others)</option>
+              <option value="palletways">Yes - Palletways</option>
             </select>
             <span className="field-hint">
               Checks each parcel once an hour - every minute once it is out on a van - and keeps the
               answer on your own site, so the customer never has to visit theirs. Pick the one that
               matches your tracking links: Multidrop for multidrop.link, GFS for parcels booked
               through Global Freight Solutions, DPD for track.dpd.co.uk, AIT for aithd.com links, Fieldly
-              for fieldly.lt-innovations.co.uk links.
+              for fieldly.lt-innovations.co.uk links, Palletways for track2.palletways.com links or their
+              11-digit tracking ID.
             </span>
           </div>
 
@@ -209,6 +211,24 @@ export function CourierSettings({ value, onChange }: {
               <span className="field-hint">
                 GFS are the booking company rather than the van. Their page needs telling who is
                 actually carrying it - usually DPD.
+              </span>
+            </div>
+          )}
+
+          {courier.trackingSource === 'palletways' && (
+            <div className="field" style={{ marginTop: '0.5rem' }}>
+              <label>Delivery due by</label>
+              <input
+                type="time"
+                value={courier.palletwaysDueBy ?? '17:00'}
+                onChange={(e) => patchCourier(courier.id, { palletwaysDueBy: e.target.value })}
+              />
+              <span className="field-hint">
+                Palletways give the day a pallet is due and not the time; the time comes with the
+                service booked - 17:00 on their standard next-day pallets. The customer is told
+                &ldquo;by&rdquo; this time on the due day. Clear it to show the day alone. Their
+                status words are in capitals (&ldquo;AT DELIVERY DEPOT&rdquo;) - list them below as
+                they appear.
               </span>
             </div>
           )}
@@ -358,6 +378,7 @@ export function CourierSettings({ value, onChange }: {
           showTrackingLink: true,
           trackingSource: 'none',
           gfsCarrier: 'DPD',
+          palletwaysDueBy: '17:00',
           outForDeliveryStages: [],
           deliveredStages: [],
           failedStages: [],

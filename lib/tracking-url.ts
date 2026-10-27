@@ -12,13 +12,17 @@
 // "the writer validated it" is not something a rendering surface should have
 // to take on trust.
 
-/** The url if it is safe to hand somebody, '' if it is not. */
+import { openablePalletwaysLink } from '@/modules/shop/lib/tracking/palletways-link'
+
+/** The url if it is safe to hand somebody, '' if it is not. A Palletways
+ *  full-details link comes back as their public page, the only one of the two
+ *  a customer can open - see palletways-link.ts. */
 export function safeTrackingUrl(value: string | null | undefined): string {
   const url = value?.trim() ?? ''
   if (!url) return ''
   try {
     const parsed = new URL(url)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? url : ''
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? openablePalletwaysLink(url) : ''
   } catch {
     // Not a whole address. A tracking link has to be one - there is no origin
     // to resolve a relative one against in an inbox, and no sensible guess.

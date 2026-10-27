@@ -125,6 +125,10 @@ describe('formatDeliveryWindow', () => {
     expect(formatDeliveryWindow(null, '13:00')).toBe('')
     expect(formatDeliveryWindow('10:00', 'lunchtime')).toBe('')
   })
+
+  it('words a window from midnight as the deadline it is', () => {
+    expect(formatDeliveryWindow('00:00', '17:00')).toBe('by 17:00')
+  })
 })
 
 describe('nowInTimezone', () => {
@@ -143,6 +147,13 @@ describe('nowInTimezone', () => {
 
 describe('deliveryProgress', () => {
   const slot = { slotStart: '10:00', slotEnd: '13:00', timezone: 'Europe/London' }
+
+  it('keeps the van parked all day under a deadline, until it passes', () => {
+    const dueBy = { slotStart: '00:00', slotEnd: '17:00', timezone: 'Europe/London', date: '2026-10-28' }
+    // 11:00 and 17:30 London (GMT).
+    expect(deliveryProgress({ ...dueBy, now: new Date('2026-10-28T11:00:00Z') })).toEqual({ progress: 0, phase: 'today' })
+    expect(deliveryProgress({ ...dueBy, now: new Date('2026-10-28T17:30:00Z') })).toEqual({ progress: 1, phase: 'passed' })
+  })
 
   it('parks the van before the day arrives', () => {
     expect(deliveryProgress({ ...slot, date: '2026-09-08', now: new Date('2026-09-07T15:00:00Z') }))
@@ -217,6 +228,11 @@ describe('formatDeliveryWindowSpoken', () => {
 
   it('needs both ends, same as the exact form', () => {
     expect(formatDeliveryWindowSpoken('10:00', null)).toBe('')
+  })
+
+  it('says "by" for a deadline, and nothing for the whole day', () => {
+    expect(formatDeliveryWindowSpoken('00:00', '17:00')).toBe('by 5pm')
+    expect(formatDeliveryWindowSpoken('00:00', '23:59')).toBe('')
   })
 })
 
