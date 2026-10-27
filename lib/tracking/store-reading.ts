@@ -15,6 +15,7 @@ import { parseSignature } from '@/modules/shop/lib/tracking/multidrop-page'
 import { captureSignature } from '@/modules/shop/lib/tracking/signature-capture'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import { courierTimesEmailable } from '@/modules/shop/lib/tracking/provisional-window'
+import { windowForParcelOutToday } from '@/modules/shop/lib/tracking/out-for-delivery-window'
 import type { ConsignmentReading, ParcelReading } from '@/modules/shop/lib/tracking/read-parcel'
 import type { ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 import type { ShpCourier } from '@/modules/shop/lib/courier-faqs'
@@ -33,6 +34,12 @@ export async function storeParcelReading(
   const meaning = stageMeaning(courier, stage)
   const delivered = reading.delivered ?? meaning === 'delivered'
   const moved = stage !== parcel.trackingStage
+  // On the van means today, whatever later day the courier's page still has
+  // (Palletways keep "due tomorrow" beside OUT FOR DELIVERY). Everything below
+  // - the row, the delay answer, the window email - works off the same day.
+  const outToday = !delivered && (reading.outForDelivery ?? meaning === 'out-for-delivery')
+  const window = windowForParcelOutToday(reading, outToday, new Date(), timezone)
+  const current: ParcelReading = { ...reading, windowFrom: window.windowFrom, windowTo: window.windowTo }
 
   await recordTrackingStage(parcel.id, { stage, delivered })
 
@@ -48,8 +55,8 @@ export async function storeParcelReading(
   // arrived, stop treating it as on a van.
   await recordCarrierReading(parcel.id, {
     events: reading.events,
-    windowFrom: reading.windowFrom,
-    windowTo: reading.windowTo,
+    windowFrom: current.windowFrom,
+    windowTo: current.windowTo,
     // Once it has landed, the round position is yesterday's news. DPD keep
     // stale counts on the row and they read as "on their way to you now".
     stopNumber: delivered ? null : reading.stopNumber,
@@ -65,8 +72,8 @@ export async function storeParcelReading(
   // whose page shows a holding window (AIT) has its day told and its times
   // kept off every email (lib/tracking/provisional-window.ts).
   const courierTimes = courierTimesEmailable(courier.trackingSource)
-  const answeredDelay = !delivered && await maybeAnswerDelayFromCourier(parcel, reading, timezone, courierTimes)
-  if (!answeredDelay) await maybeSendCarrierWindowEmail(parcel, reading, timezone, courierTimes)
+  const answeredDelay = !delivered && await maybeAnswerDelayFromCourier(parcel, current, timezone, courierTimes)
+  if (!answeredDelay) await maybeSendCarrierWindowEmail(parcel, current, timezone, courierTimes)
 
   await recordTrackingPageDetails(parcel.id, {
     clientId: reading.clientId,

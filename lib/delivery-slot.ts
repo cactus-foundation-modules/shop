@@ -76,8 +76,23 @@ export function toldWindowKey(booking: DeliveryBooking): string {
   return `${booking.date} ${booking.slotStart}-${booking.slotEnd}`
 }
 
-/** The day and window to show - the slot the shop booked, or the one the
- *  courier reported on their own tracking page when no slot was typed in.
+/**
+ * Whether the day on the parcel row - typed by staff, or announced by the
+ * supplier or the courier's own email - is the one to show, with or without
+ * times. It outranks the day the courier's tracking page reports: couriers
+ * leave a day standing long after it stopped being true (Palletways keep
+ * "due tomorrow" beside OUT FOR DELIVERY), and staff who typed a day have
+ * usually just been told it on the phone. The one exception is the day a
+ * reported delay missed, which is the booking that fell through.
+ */
+export function bookedDayStands(shipment: { deliveryDate: string | null } & DelayedParcel): boolean {
+  const date = shipment.deliveryDate ?? ''
+  return isDeliveryDate(date) && !isStaleCarrierWindow(shipment, date)
+}
+
+/** The day and window to show - the slot the shop booked; the day the shop
+ *  booked, with the courier's times when they are for that day; or the
+ *  courier's own day and window when no day stands on the parcel.
  *
  *  `courierTimes: false` keeps the courier's DAY but not their times: what an
  *  email may say about a courier whose tracking page shows a holding window
@@ -103,14 +118,19 @@ export function deliveryBookingForShipment(
     }
   }
 
+  const bookedDay = bookedDayStands(shipment) ? shipment.deliveryDate as string : ''
+
   if (shipment.deliveryWindowFrom && shipment.deliveryWindowTo) {
     const date = calendarDateIn(shipment.deliveryWindowFrom, timezone)
     const slotStart = slotTimeFromInstant(shipment.deliveryWindowFrom, timezone)
     const slotEnd = slotTimeFromInstant(shipment.deliveryWindowTo, timezone)
     // A window on the day a reported delay missed is the booking that fell
     // through, still sitting in the courier's feed. See lib/delivery-delay.ts.
+    // A window for any day but the one booked on the parcel is not shown at
+    // all: the booked day outranks it (bookedDayStands).
     if (isDeliveryDate(date) && isSlotTime(slotStart) && isSlotTime(slotEnd)
-      && !isStaleCarrierWindow(shipment, date)) {
+      && !isStaleCarrierWindow(shipment, date)
+      && (!bookedDay || date === bookedDay)) {
       // The courier has booked the day and not the time - or the time they
       // gave is not one to repeat.
       if (isWholeDayWindow(slotStart, slotEnd) || options.courierTimes === false) {

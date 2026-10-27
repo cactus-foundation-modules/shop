@@ -43,6 +43,21 @@ describe('maybeSendCarrierWindowEmail', () => {
     expect(claimSlotNotification).toHaveBeenCalledWith('shp_1', 'ord_1')
   })
 
+  it('keeps the stamp when the courier\'s window is for another day than the one typed in', async () => {
+    const sent = await slotEmail.maybeSendCarrierWindowEmail(
+      { ...parcel, deliveryDate: '2026-10-27' },
+      {
+        windowFrom: new Date('2026-10-28T09:00:00.000Z'),
+        windowTo: new Date('2026-10-28T10:00:00.000Z'),
+      },
+      'Europe/London',
+      true,
+    )
+
+    expect(sent).toBe(false)
+    expect(claimSlotNotification).not.toHaveBeenCalled()
+  })
+
   it('never sends, or takes the stamp, for a courier whose page shows a holding window (AIT)', async () => {
     const sent = await slotEmail.maybeSendCarrierWindowEmail(
       parcel,

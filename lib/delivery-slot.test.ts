@@ -328,6 +328,38 @@ describe('deliveryBookingForShipment', () => {
       slotEnd: '12:25',
     })
   })
+  // Order bc6bb523: today typed in, Palletways still "due tomorrow, by 17:00".
+  const typedToday = {
+    deliveryDate: '2026-10-27',
+    deliverySlotStart: null,
+    deliverySlotEnd: null,
+  }
+
+  it('keeps a typed day over the courier\'s different day', () => {
+    expect(deliveryBookingForShipment({
+      ...typedToday,
+      deliveryWindowFrom: new Date('2026-10-28T00:00:00.000Z'),
+      deliveryWindowTo: new Date('2026-10-28T17:00:00.000Z'),
+    }, 'Europe/London')).toEqual({ date: '2026-10-27', slotStart: null, slotEnd: null })
+  })
+
+  it('takes the courier\'s times when they are for the typed day', () => {
+    expect(deliveryBookingForShipment({
+      ...typedToday,
+      deliveryWindowFrom: new Date('2026-10-27T10:00:00.000Z'),
+      deliveryWindowTo: new Date('2026-10-27T11:00:00.000Z'),
+    }, 'Europe/London')).toEqual({ date: '2026-10-27', slotStart: '10:00', slotEnd: '11:00' })
+  })
+
+  it('lets the courier\'s new day stand over a typed day a delay missed', () => {
+    expect(deliveryBookingForShipment({
+      ...typedToday,
+      deliveryDelay: 'rebooking',
+      deliveryDelayedFrom: '2026-10-27',
+      deliveryWindowFrom: new Date('2026-10-29T10:00:00.000Z'),
+      deliveryWindowTo: new Date('2026-10-29T11:00:00.000Z'),
+    }, 'Europe/London')).toEqual({ date: '2026-10-29', slotStart: '10:00', slotEnd: '11:00' })
+  })
 })
 
 describe('dispatchDeliveryVars', () => {

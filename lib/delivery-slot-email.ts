@@ -7,6 +7,7 @@ import { orderTrackingUrl } from '@/modules/shop/lib/order-tracking'
 import { renderOrderItemsTable, type OrderEmailLine } from '@/modules/shop/lib/order-items-email'
 import { orderItemEmailMedia } from '@/modules/shop/lib/order-item-email-media'
 import {
+  bookedDayStands,
   deliveryBookingForShipment,
   formatDeliveryDay,
   formatDeliveryWindow,
@@ -194,6 +195,10 @@ export async function maybeSendCarrierWindowEmail(
   // The window for the day a reported delay missed is the booking that fell
   // through, still in the courier's feed - not news, and not worth the stamp.
   if (isStaleCarrierWindow(parcel, calendarDateIn(reading.windowFrom, timezone))) return false
+  // A window for another day than the one booked on the parcel is not the
+  // booking (bookedDayStands): the email would name the booked day with no
+  // times, so it is not sent and the stamp is kept for a window that matches.
+  if (bookedDayStands(parcel) && calendarDateIn(reading.windowFrom, timezone) !== parcel.deliveryDate) return false
   // The whole day is the day booked, not a time: there is no window to tell,
   // and the stamp is kept for the real one when it comes.
   if (isWholeDayWindow(slotTimeFromInstant(reading.windowFrom, timezone), slotTimeFromInstant(reading.windowTo, timezone))) return false

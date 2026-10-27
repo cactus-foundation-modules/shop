@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EMPTY_READING } from '@/modules/shop/lib/tracking/reading'
 import type { ParcelReading } from '@/modules/shop/lib/tracking/read-parcel'
 import { newConsignmentParcel, type ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
@@ -10,10 +10,11 @@ import type { ShpShipment } from '@/modules/shop/lib/types'
 const recordVehiclePosition = vi.hoisted(() => vi.fn())
 const recordConsignment = vi.hoisted(() => vi.fn())
 const recordSignature = vi.hoisted(() => vi.fn())
+const recordCarrierReading = vi.hoisted(() => vi.fn())
 const captureSignature = vi.hoisted(() => vi.fn(async (): Promise<{ url: string; key: string } | null> => null))
 vi.mock('@/modules/shop/lib/db/shipments', () => ({
   recordConsignment,
-  recordCarrierReading: vi.fn(),
+  recordCarrierReading,
   recordReceipt: vi.fn(),
   recordSignature,
   recordTrackingPageDetails: vi.fn(),
@@ -62,6 +63,36 @@ describe('storeParcelReading with a van in the reading', () => {
       stage: 'Delivered', delivered: true, vehicle: { lat: '51.5', lng: '-0.08' },
     }), 'Europe/London')
     expect(recordVehiclePosition).not.toHaveBeenCalled()
+  })
+})
+
+describe('storeParcelReading with a parcel out for delivery on a later due day', () => {
+  const palletways = {
+    trackingSource: 'palletways' as const,
+    outForDeliveryStages: ['OUT FOR DELIVERY'],
+    deliveredStages: ['DELIVERED'],
+    failedStages: [],
+  }
+  // Their row: OUT FOR DELIVERY, currently due tomorrow, by 17:00.
+  const dueTomorrow = { windowFrom: new Date('2026-10-28T00:00:00Z'), windowTo: new Date('2026-10-28T17:00:00Z') }
+
+  beforeEach(() => {
+    recordCarrierReading.mockClear()
+    vi.useFakeTimers({ now: new Date('2026-10-27T13:00:00Z'), toFake: ['Date'] })
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('stores the window as today, at the same times', async () => {
+    await storeParcelReading(palletways, parcel, reading({ stage: 'OUT FOR DELIVERY', ...dueTomorrow }), 'Europe/London')
+    expect(recordCarrierReading).toHaveBeenCalledWith('shp_1', expect.objectContaining({
+      windowFrom: new Date('2026-10-27T00:00:00Z'),
+      windowTo: new Date('2026-10-27T17:00:00Z'),
+    }))
+  })
+
+  it('keeps the due day while the pallet is still at the depot', async () => {
+    await storeParcelReading(palletways, parcel, reading({ stage: 'AT DELIVERY DEPOT', ...dueTomorrow }), 'Europe/London')
+    expect(recordCarrierReading).toHaveBeenCalledWith('shp_1', expect.objectContaining(dueTomorrow))
   })
 })
 
