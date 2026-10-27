@@ -19,6 +19,28 @@
 // the site's configurable mobile breakpoint: the paired cards need roughly
 // 620px before two columns beat one, and the item row's thumbnail and price
 // columns stop fitting beside a wrapped product name at 480.
+/** The van map on its own, because the shop's order screen draws the same
+ *  map (components/admin/AdminLiveDelivery.tsx) and must not grow a second
+ *  copy of these rules. */
+export const DELIVERY_LIVE_MAP_CSS = `
+/* --- Where the van is ---------------------------------------------------- */
+.sod-live{display:grid;gap:0.5rem;margin-top:0.75rem}
+.sod-live-line{margin:0;font-weight:600;color:var(--color-text)}
+.sod-live-map{height:15rem;width:100%;border-radius:0.5rem;overflow:hidden;
+  border:1px solid var(--color-border);background:var(--color-bg-subtle)}
+.sod-live-age{margin:0;font-size:0.8125rem;color:var(--color-text-muted)}
+/* Old enough to distrust. Toned, not hidden: a stale position with an honest
+   label still tells somebody where the crew was ten minutes ago. */
+.sod-live-age-stale{color:var(--color-warning)}
+.sod-live-note{margin:0;font-size:0.75rem;color:var(--color-text-muted)}
+.sod-van-pin,.sod-home-pin{display:flex;align-items:center;justify-content:center;
+  width:2.25rem;height:2.25rem;border-radius:50%;border:2px solid var(--color-surface);
+  box-shadow:0 1px 4px var(--color-overlay)}
+.sod-van-pin{background:var(--color-primary);color:var(--color-on-primary)}
+.sod-home-pin{background:var(--color-surface);color:var(--color-text)}
+@media (max-width:30rem){.sod-live-map{height:11rem}}
+`
+
 export const ORDER_DETAIL_CSS = `
 .sod{display:grid;gap:1.25rem;color:var(--color-text)}
 
@@ -270,23 +292,7 @@ export const ORDER_DETAIL_CSS = `
 .sod-history-what{color:var(--color-text)}
 .sod-history-where{color:var(--color-text-muted);font-size:0.8125rem}
 
-/* --- Where the van is ---------------------------------------------------- */
-.sod-live{display:grid;gap:0.5rem;margin-top:0.75rem}
-.sod-live-line{margin:0;font-weight:600;color:var(--color-text)}
-.sod-live-map{height:15rem;width:100%;border-radius:0.5rem;overflow:hidden;
-  border:1px solid var(--color-border);background:var(--color-bg-subtle)}
-.sod-live-age{margin:0;font-size:0.8125rem;color:var(--color-text-muted)}
-/* Old enough to distrust. Toned, not hidden: a stale position with an honest
-   label still tells somebody where the crew was ten minutes ago. */
-.sod-live-age-stale{color:var(--color-warning)}
-.sod-live-note{margin:0;font-size:0.75rem;color:var(--color-text-muted)}
-.sod-van-pin,.sod-home-pin{display:flex;align-items:center;justify-content:center;
-  width:2.25rem;height:2.25rem;border-radius:50%;border:2px solid var(--color-surface);
-  box-shadow:0 1px 4px var(--color-overlay)}
-.sod-van-pin{background:var(--color-primary);color:var(--color-on-primary)}
-.sod-home-pin{background:var(--color-surface);color:var(--color-text)}
-@media (max-width:30rem){.sod-live-map{height:11rem}}
-
+${DELIVERY_LIVE_MAP_CSS}
 /* --- Proof of delivery --------------------------------------------------- */
 .sod-signed{display:grid;gap:0.375rem;margin-top:0.625rem}
 .sod-signed-by{margin:0;font-weight:600;color:var(--color-text)}

@@ -94,6 +94,8 @@ export const dpdParcelSchema = z.object({
     estimatedDeliveryDate: z.string().nullish(),
     outForDeliveryDetails: z.object({
       outForDelivery: z.boolean().nullish(),
+      // Their own "the van map is up" - see dpdMapAvailable. Session reads only.
+      mapAvailable: z.boolean().nullish(),
     }).nullish(),
     image: z.array(z.object({
       key: z.string().nullish(),
@@ -108,6 +110,13 @@ export const dpdParcelSchema = z.object({
       // How many boxes the whole delivery is. Session reads only - the
       // anonymous feed leaves deliveryDetails out altogether.
       numberOfParcels: z.number().int().nullish(),
+      // Where DPD will drop it, geocoded by them. The home pin on the map.
+      address: z.object({
+        addressPoint: z.object({
+          latitude: z.union([z.number(), z.string()]).nullish(),
+          longitude: z.union([z.number(), z.string()]).nullish(),
+        }).nullish(),
+      }).nullish(),
     }).nullish(),
     deliveryDepot: z.object({
       depotCode: z.string().nullish(),
@@ -395,4 +404,90 @@ export function dpdSiblingCode(parcelCode: string, consignmentNumber: string, in
   if (body.length !== reference.length) return null
   const prefix = digits.slice(0, digits.length - reference.length)
   return suffix ? `${prefix}${body}*${suffix}` : `${prefix}${body}`
+}
+
+// WHERE THE VAN IS
+//
+// DPD's own page shows the van on a map, and that map is the only place they
+// say where it is. Their tracking app asks
+//
+//   GET /v1/map/route?parcelCode=<code>&size=<w>*<h>&themeEvent=none
+//
+// and is answered - on a session, never anonymously (403) - with a 302 to a
+// Mapbox static image whose overlays ARE the two points:
+//
+//   .../static/url-<…markers/home…>(-0.239019,51.49321),
+//              url-<…markers/driver…>(-0.220614,51.490575)/auto/1200x363@2x?…
+//
+// So the redirect is read and never followed. Following it would draw a
+// picture on DPD's Mapbox account, which is their bill and not ours to spend;
+// the coordinates in the address are all the shop's own map needs.
+
+/** A latitude or longitude, as text, and nothing else. This ends up in a
+ *  database column, on a public route and finally in a map script's flyTo, so
+ *  anything that is not plainly a number in range is no position at all. */
+const COORDINATE = /^-?\d{1,3}(\.\d{1,10})?$/
+
+function dpdCoordinate(value: string | number | null | undefined, limit: number): string | null {
+  if (value === null || value === undefined) return null
+  const text = String(value).trim()
+  if (!COORDINATE.test(text)) return null
+  return Math.abs(Number(text)) <= limit ? text : null
+}
+
+export type DpdPoint = { lat: string; lng: string }
+
+function dpdPoint(lat: string | number | null | undefined, lng: string | number | null | undefined): DpdPoint | null {
+  const la = dpdCoordinate(lat, 90)
+  const ln = dpdCoordinate(lng, 180)
+  // Both or neither. Half a position is not a place.
+  return la && ln ? { lat: la, lng: ln } : null
+}
+
+/** Whether DPD say the van map is up for this parcel. Only then is the map
+ *  call worth making: before the round starts it is a 404 at their expense. */
+export function dpdMapAvailable(parcel: unknown): boolean {
+  const parsed = dpdParcelSchema.safeParse(parcel)
+  return parsed.success && parsed.data.data.outForDeliveryDetails?.mapAvailable === true
+}
+
+/** The delivery address as DPD geocoded it. Session reads only. */
+export function dpdAddressPoint(parcel: unknown): DpdPoint | null {
+  const parsed = dpdParcelSchema.safeParse(parcel)
+  if (!parsed.success) return null
+  const point = parsed.data.data.deliveryDetails?.address?.addressPoint
+  return dpdPoint(point?.latitude, point?.longitude)
+}
+
+/** The map call their app makes. The size is theirs to want and ours to
+ *  ignore - the image is never fetched - but they refuse the call without it. */
+export function dpdMapRoutePath(parcelCode: string): string {
+  return `/map/route?parcelCode=${encodeURI(parcelCode)}&size=1200*600&themeEvent=none`
+}
+
+/**
+ * The van and the delivery address out of the address DPD redirect the map
+ * call to.
+ *
+ * Each overlay is `url-<encoded marker image>(lng,lat)`, and the marker image's
+ * own path says which pin it is - `markers/driver` or `markers/home`. Read by
+ * that rather than by position in the list, because the order is theirs and
+ * a map before the van sets off carries the home pin alone.
+ */
+export function dpdMapPoints(location: string | null | undefined): { vehicle: DpdPoint | null; home: DpdPoint | null } {
+  const found = { vehicle: null as DpdPoint | null, home: null as DpdPoint | null }
+  if (!location) return found
+  for (const m of location.matchAll(/url-([^(),/]+)\((-?[\d.]+),(-?[\d.]+)\)/g)) {
+    let marker: string
+    try {
+      marker = decodeURIComponent(m[1] as string)
+    } catch {
+      continue
+    }
+    const point = dpdPoint(m[3], m[2])
+    if (!point) continue
+    if (/\/markers\/driver\b/.test(marker)) found.vehicle ??= point
+    else if (/\/markers\/home\b/.test(marker)) found.home ??= point
+  }
+  return found
 }

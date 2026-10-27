@@ -17,7 +17,7 @@
 // Everything here fails to null rather than throwing. A courier having an
 // afternoon must cost this parcel one poll, not the whole run.
 
-import { dpdParcelCodeFromUrl } from '@/modules/shop/lib/tracking/dpd'
+import { dpdMapRoutePath, dpdParcelCodeFromUrl } from '@/modules/shop/lib/tracking/dpd'
 
 const API = 'https://apis.track.dpd.co.uk/v1'
 const TIMEOUT_MS = 8000
@@ -147,6 +147,20 @@ export async function fetchDpdParcel(parcelCode: string, cookie: string | null):
 export async function fetchDpdRoute(routeCode: string, cookie: string | null): Promise<unknown | null> {
   if (!cookie) return null
   return json(`/routes/${encodeURI(routeCode)}`, cookie)
+}
+
+/**
+ * Where DPD's van map points, without looking at the map.
+ *
+ * `redirect: 'manual'` for the same reason as the session call: the answer is
+ * the Location header, and following it would draw an image on DPD's Mapbox
+ * account for nothing - see dpdMapPoints. Session only; anonymously it is 403.
+ */
+export async function fetchDpdMapLocation(parcelCode: string, cookie: string | null): Promise<string | null> {
+  if (!cookie) return null
+  const res = await request(`${API}${dpdMapRoutePath(parcelCode)}`, cookie, 'manual')
+  if (!res || res.status < 300 || res.status >= 400) return null
+  return res.headers.get('location')
 }
 
 /**

@@ -13,6 +13,7 @@ import { RefundModal } from '@/modules/shop/components/admin/RefundModal'
 import { OrderChargesPanel } from '@/modules/shop/components/admin/OrderChargesPanel'
 import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
 import { DispatchModal } from '@/modules/shop/components/admin/DispatchModal'
+import { AdminLiveDelivery } from '@/modules/shop/components/admin/AdminLiveDelivery'
 import { EditParcelModal } from '@/modules/shop/components/admin/EditParcelModal'
 import { consignmentProgressLine, isSplitConsignment, type ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 import { DeliveryDelayModal } from '@/modules/shop/components/admin/DeliveryDelayModal'
@@ -1599,6 +1600,14 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                               Courier says: {shipment.trackingStage}
                               {shipment.deliveredAt ? ` · delivered ${formatDate(shipment.deliveredAt)}` : ''}
                             </p>
+                          )}
+                          {/* The van, while it is out with this parcel - the
+                              same map the customer is watching. Asked about
+                              only for a parcel still on its way; the route
+                              decides whether there is a van to show. */}
+                          {!shipment.deliveredAt && !shipment.deliveryFailed
+                            && (shipment.trackingUrl || shipment.trackingShortCode) && (
+                            <AdminLiveDelivery orderId={order.id} shipmentId={shipment.id} />
                           )}
                           {/* One delivery the courier carries as several
                               boxes. The parcel is only delivered once every

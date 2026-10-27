@@ -54,6 +54,10 @@ type Props = {
   orderId: string
   shipmentId: string
   initial: LiveDeliveryState
+  /** Where to ask. The customer's public route unless said otherwise; the
+   *  shop's order screen asks its own staff-only twin. Either is given
+   *  `?shipment=` and answers in LiveDeliveryState. */
+  endpoint?: string
 }
 
 /** Free vector tiles, no key, commercial use allowed. Deliberately not the
@@ -99,7 +103,7 @@ function framing(
   ]
 }
 
-export default function DeliveryLiveMap({ orderId, shipmentId, initial }: Props) {
+export default function DeliveryLiveMap({ orderId, shipmentId, initial, endpoint }: Props) {
   const [state, setState] = useState<LiveDeliveryState>(initial)
   const [expired, setExpired] = useState(false)
   const [mapFailed, setMapFailed] = useState(false)
@@ -135,10 +139,8 @@ export default function DeliveryLiveMap({ orderId, shipmentId, initial }: Props)
 
   const refresh = useCallback(async (): Promise<number> => {
     try {
-      const res = await fetch(
-        `/api/m/shop/public/orders/${encodeURIComponent(orderId)}/live-delivery?shipment=${encodeURIComponent(shipmentId)}`,
-        { cache: 'no-store' },
-      )
+      const base = endpoint ?? `/api/m/shop/public/orders/${encodeURIComponent(orderId)}/live-delivery`
+      const res = await fetch(`${base}?shipment=${encodeURIComponent(shipmentId)}`, { cache: 'no-store' })
       // A refusal is not evidence the van has stopped. The last answer stays on
       // screen with its own honest age against it, and we simply ask again later.
       if (!res.ok) return SLOW_POLL_MS
@@ -152,7 +154,7 @@ export default function DeliveryLiveMap({ orderId, shipmentId, initial }: Props)
     } catch {
       return SLOW_POLL_MS
     }
-  }, [orderId, shipmentId])
+  }, [orderId, shipmentId, endpoint])
 
   // The polling loop. A chain of timeouts rather than an interval, because the
   // gap is decided by each answer - and because an interval keeps firing into a

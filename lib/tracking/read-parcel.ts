@@ -19,15 +19,18 @@ import {
 } from '@/modules/shop/lib/tracking/multidrop-page'
 import { gfsParcelNumberFromUrl, gfsScanUrl, readGfsPage } from '@/modules/shop/lib/tracking/gfs'
 import {
+  dpdAddressPoint,
   dpdDepotCode,
   dpdImageHeaders,
   dpdImageUrl,
+  dpdMapAvailable,
+  dpdMapPoints,
   dpdParcelCodeFromUrl,
   dpdPodImage,
   dpdRouteCode,
   readDpd,
 } from '@/modules/shop/lib/tracking/dpd'
-import { fetchDpdParcel, fetchDpdRoute, mintDpdSession } from '@/modules/shop/lib/tracking/dpd-session'
+import { fetchDpdMapLocation, fetchDpdParcel, fetchDpdRoute, mintDpdSession } from '@/modules/shop/lib/tracking/dpd-session'
 import { findDpdConsignment, mergeConsignmentBoxes } from '@/modules/shop/lib/tracking/dpd-consignment'
 import { dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
 import { isSplitConsignment, type ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
@@ -53,13 +56,14 @@ export type ParcelReading = TrackingReading & {
    *  from a session rather than a public bucket, and the reader is the only
    *  thing here holding that session. */
   proofImage: { url: string; headers: Record<string, string>; label: string } | null
-  /** Where the crew is, where the courier hands that over in the same answer
-   *  as everything else (AIT). Carries no time of its own: the caller records
-   *  when it asked. Multidrop's van comes from a separate endpoint instead -
-   *  see multidrop-position.ts - and leaves this null. */
+  /** Where the crew is, where the courier hands that over as part of the
+   *  read (AIT in the same answer, DPD off their van map's address - see
+   *  dpdMapPoints). Carries no time of its own: the caller records when it
+   *  asked. Multidrop's van comes from a separate endpoint instead - see
+   *  multidrop-position.ts - and leaves this null. */
   vehicle: { lat: string; lng: string } | null
-  /** Ids the live map asks with. Multidrop only - DPD do not give a guest the
-   *  round's map, and their driver endpoint has no position on it either. */
+  /** Ids the live map asks with. Multidrop only - DPD's van comes in with
+   *  the read itself, as `vehicle`, and these hold their depot and round. */
   clientId: string | null
   routeId: string | null
   crewLine: string | null
@@ -147,12 +151,45 @@ async function readGfs(parcel: ShpShipment, carrier: string, timezone: string): 
   return reading.stage ? { ...EMPTY_PARCEL_READING, ...reading } : null
 }
 
+/**
+ * The van and the drop, for a parcel DPD have a van map up for.
+ *
+ * Asked last, after the parcel and the round, and never alongside them: the
+ * session is spoiled by two calls at once (see fetchDpdParcel). The drop comes
+ * from the parcel's own geocoded address where the session gave one, and off
+ * the map's home pin otherwise. Nothing at all once it has arrived - a van
+ * drawn after the delivery is a van at somebody else's door.
+ */
+async function dpdVan(
+  parcelCode: string,
+  payload: unknown,
+  cookie: string | null,
+  delivered: boolean | null,
+): Promise<Pick<ParcelReading, 'vehicle' | 'destinationLat' | 'destinationLng'>> {
+  const address = dpdAddressPoint(payload)
+  const points = cookie && delivered !== true && dpdMapAvailable(payload)
+    ? dpdMapPoints(await fetchDpdMapLocation(parcelCode, cookie))
+    : { vehicle: null, home: null }
+  const drop = address ?? points.home
+  return {
+    vehicle: points.vehicle,
+    destinationLat: drop?.lat ?? null,
+    destinationLng: drop?.lng ?? null,
+  }
+}
+
 /** One DPD box, read on its own session where it has a code of its own. */
 async function readDpdBox(
   parcelCode: string,
   shortCode: string | null,
   timezone: string,
-): Promise<{ reading: TrackingReading; payload: unknown; cookie: string | null; routeCode: string | null } | null> {
+): Promise<{
+  reading: TrackingReading
+  payload: unknown
+  cookie: string | null
+  routeCode: string | null
+  van: Awaited<ReturnType<typeof dpdVan>>
+} | null> {
   // One session for the box, or none at all. Without a follow-my-parcel code
   // this still reads - it just gets the fifteen public fields rather than the
   // ninety, which is a timeline and a status and no stop number.
@@ -168,7 +205,8 @@ async function readDpdBox(
 
   const reading = readDpd({ parcel: payloads.parcel, events: payloads.events, route, timezone })
   if (!reading.stage) return null
-  return { reading, payload: payloads.parcel, cookie, routeCode }
+  const van = await dpdVan(parcelCode, payloads.parcel, cookie, reading.delivered)
+  return { reading, payload: payloads.parcel, cookie, routeCode, van }
 }
 
 /** Their photograph of the delivered box, which replaced the signature they
@@ -247,6 +285,8 @@ async function readDpdConsignment(
   return {
     ...EMPTY_PARCEL_READING,
     ...read.reading,
+    // The box still to come is the one whose van the customer is waiting on.
+    ...(allDelivered ? {} : read.van),
     // Explicitly false until the last box is in: the stage settings must not
     // get a vote on a parcel the courier has told us is only part-delivered.
     delivered: allDelivered,
@@ -303,9 +343,11 @@ async function readDpdParcelOnce(parcel: ShpShipment, timezone: string): Promise
   if (!reading.stage) return null
 
   const proof = dpdProof(parcelCode, payloads.parcel, cookie, shortCode)
+  const van = await dpdVan(parcelCode, payloads.parcel, cookie, reading.delivered)
   return {
     ...EMPTY_PARCEL_READING,
     ...reading,
+    ...van,
     proofImage: proof ? { url: proof.url, headers: proof.headers, label: 'delivery-photo' } : null,
     // Their route id, kept for the same reason Multidrop's is: it says which
     // round the parcel was on, and it changes daily.
