@@ -60,6 +60,12 @@ export interface ShpPaymentProvider {
   // A provider that ships none simply gets a name, which is what every method
   // had before this existed.
   logo?: ShpPaymentLogo
+  // Optional: the card brands and wallets this method takes, for anything that
+  // has to tell a customer in words rather than show them a checkout - a phone
+  // assistant, say. Resolved per request, because wallets usually hang off the
+  // provider's own settings and can be switched on and off. A method that takes
+  // no cards simply leaves it out, and nothing guesses on its behalf.
+  getAcceptedBrands?(): Promise<ShpAcceptedBrands>
   // Where the order row comes from for this method.
   //
   //  'immediate' (the default, and what every method did before this existed) -
@@ -164,6 +170,15 @@ export type ShpPaymentLogo = {
   alt?: string
   width: number
   height: number
+}
+
+// What a card-taking method accepts, as names a customer would recognise
+// ("Visa", "Apple Pay"). Wallets are kept apart from cards because they are
+// offered (or not) separately, and "we take Apple Pay" is a different answer
+// from "we take Visa".
+export type ShpAcceptedBrands = {
+  cards: string[]
+  wallets: string[]
 }
 
 // Deliberately three-valued. 'unknown' is not a failure - it means do not touch
