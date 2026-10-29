@@ -52,6 +52,18 @@ export type ShopGalleryExtraThumbsProps = {
   // Optional: a gallery written before this existed passes nothing, which reads
   // as "no others", exactly what it meant.
   featuredProductIds?: string[]
+  // While the shopper is part-way through the options - something picked, no
+  // whole combination yet - the variant children that still answer to every
+  // pick so far, in the owner's matrix order. A provider leads with the media of
+  // the FIRST one that has any, so picking "Walnut" puts a walnut model on the
+  // stage straight away rather than waiting on the size. Empty with nothing
+  // picked (the opening view stands) and once a combination resolves
+  // (`activeProductId` governs). Where none of them carries media of the
+  // provider's kind, the provider carries on as though the list were empty.
+  //
+  // Optional, like the one above: a gallery written before this existed passes
+  // nothing, and a provider then behaves exactly as it always has.
+  previewProductIds?: string[]
   // Which contributed item the host currently has on the stage, by the provider's
   // own key, or null when a plain image is showing.
   activeKey: string | null

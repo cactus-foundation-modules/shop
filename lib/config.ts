@@ -107,6 +107,11 @@ export const ShpConfigSchema = z.object({
   // Checkout configuration
   guestCheckoutEnabled: z.boolean().default(true),
   postPurchaseAccountPrompt: z.boolean().default(true),
+  // Whether a member's account page asks for their full name (and, where the
+  // members settings collect one, their organisation) so the checkout can fill
+  // those in. Read by core through `members.contact-details`. Defaults on: the
+  // card was there unconditionally before this switch existed.
+  accountContactDetailsEnabled: z.boolean().default(true),
   minimumOrderValue: z.number().nullable().default(null),
   maximumOrderValue: z.number().nullable().default(null),
 

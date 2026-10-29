@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.519",
+  "version": "0.1.520",
   "tablePrefix": "shp_",
   "notificationKinds": [
     {"id": "new-order", "label": "New orders", "description": "An order has been placed or is awaiting payment.", "dedupePrefix": "shop:order:"},
@@ -965,6 +965,12 @@
       "id": "shop-account",
       "import": "./lib/member-account-nav",
       "component": "shopMemberAccountNav"
+    },
+    {
+      "point": "members.contact-details",
+      "id": "shop-contact-details",
+      "import": "./lib/member-contact-details",
+      "component": "shopMemberContactDetails"
     },
     {
       "point": "core.media-usage-providers",

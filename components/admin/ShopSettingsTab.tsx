@@ -505,6 +505,11 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
             </p>
           )}
           <label className="settings-check">
+            <input type="checkbox" checked={config.accountContactDetailsEnabled} onChange={(e) => set('accountContactDetailsEnabled', e.target.checked)} />
+            Ask members for their name on their account page
+            <InfoTip>Shows a &quot;Your details&quot; box on the member&apos;s account page, so their name (and organisation, if your user settings collect one) is filled in at the checkout for them. Switch off and the box goes; the checkout simply asks for a name on each order instead.</InfoTip>
+          </label>
+          <label className="settings-check">
             <input type="checkbox" checked={config.requirePhone} onChange={(e) => set('requirePhone', e.target.checked)} />
             Require a phone number at checkout
           </label>
