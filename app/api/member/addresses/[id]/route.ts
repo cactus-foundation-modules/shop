@@ -4,6 +4,7 @@ import { errorResponse } from '@/lib/utils'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { updateSavedAddress, deleteSavedAddress, getSavedAddressById } from '@/modules/shop/lib/db/addresses'
 import { BoundedAddressSchema } from '@/modules/shop/lib/address-limits'
+import { formatAddress } from '@/modules/shop/lib/address-format'
 
 // The address may carry its organisation - see the create route.
 //
@@ -21,7 +22,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const parsed = Body.safeParse(await request.json())
   if (!parsed.success) return errorResponse(parsed.error.issues[0]?.message ?? 'Invalid address')
 
-  await updateSavedAddress(id, member.id, parsed.data)
+  const { address, ...rest } = parsed.data
+  await updateSavedAddress(id, member.id, address ? { ...rest, address: formatAddress(address) } : rest)
   return NextResponse.json({ success: true })
 }
 

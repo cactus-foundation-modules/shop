@@ -1,5 +1,6 @@
 import { MAX_DIRECT_UPLOAD_MB, tooLargeReason, uploadErrorMessage } from '@/lib/media/limits'
 import { WORKER_OUTDATED_MESSAGE, directUnavailableMessage } from '@/modules/shop/lib/direct-upload'
+import { directUploadHeaders } from '@/lib/media/direct-upload-headers'
 
 // The browser's half of a shop upload that goes straight to storage (see
 // lib/direct-upload.ts). Asks the shop route for a signed place to put the file,
@@ -13,7 +14,7 @@ import { WORKER_OUTDATED_MESSAGE, directUnavailableMessage } from '@/modules/sho
 /** Where the file went: hand both back to the route so it can check the landing. */
 export type SentToStorage = { ok: true; key: string; token: string } | { ok: false; error: string }
 
-type Ticket = { available: true; uploadUrl: string; key: string; token: string; contentType: string } | { available: false }
+type Ticket = { available: true; uploadUrl: string; key: string; token: string; contentType: string; presigned?: boolean } | { available: false }
 
 function isTicket(value: unknown): value is Ticket {
   if (typeof value !== 'object' || value === null || !('available' in value)) return false
@@ -82,12 +83,19 @@ export async function sendToStorage(
     // not take a body it cannot size before reading.
     put = await fetch(ticket.uploadUrl, {
       method: 'PUT',
-      headers: { authorization: `Bearer ${ticket.token}`, 'content-type': ticket.contentType },
+      headers: directUploadHeaders(ticket, ticket.contentType),
       body: file,
     })
   } catch {
+    // Sent straight to the bucket, a refusal before anything moves is nearly
+    // always the bucket's CORS rules - the browser reports it as a dropped
+    // connection and will not say more.
+    if (ticket.presigned) {
+      return { ok: false, error: `"${file.name}" could not be sent to your storage bucket. If it keeps happening, check the bucket's CORS rules with the Test CORS button in Settings → Media.` }
+    }
     return { ok: false, error: `The connection dropped while "${file.name}" was being sent to storage. Check your connection and try again.` }
   }
+  if (!put.ok && ticket.presigned) return { ok: false, error: await uploadErrorMessage(put, file) }
   if (!put.ok) {
     // 415 is a Worker that predates opaque files; 503 is one deployed without
     // uploads switched on at all. Redeploying cures both.

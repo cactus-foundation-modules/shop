@@ -16,6 +16,8 @@ vi.mock('@/lib/media/upload', () => ({
   deleteMedia: (...a: unknown[]) => deleteMedia(...(a as [])),
   isS3Provider: (p: string) => ['B2', 'R2', 'S3', 'SPACES', 'WASABI', 'MINIO'].includes(p),
   mediaKeyPrefix: (p: string) => (p === 'B2' ? 'media/' : `media/${p}/`),
+  // The real one picks the Worker or /api/media by serving mode; here, the Worker.
+  requireMediaUrl: (_p: string, k: string) => `${worker}/${k}`,
 }))
 
 vi.mock('@/lib/media/worker-url', () => ({
@@ -52,26 +54,52 @@ beforeEach(() => {
 })
 
 describe('issueShopUploadTicket', () => {
-  it('signs a key in the shop’s own folder for this purpose', () => {
-    const ticket = issueShopUploadTicket('R2', 'imports', 'stock.csv')
+  it('signs a key in the shop’s own folder for this purpose', async () => {
+    const ticket = await issueShopUploadTicket('R2', 'imports', 'stock.csv', 2048)
     expect(ticket.available).toBe(true)
     if (!ticket.available) return
     expect(ticket.key).toMatch(/^media\/R2\/shop-files\/imports\/[0-9a-f-]{36}-stock\.csv\.bin$/)
     expect(ticket.uploadUrl).toBe(`https://media.example.test/${ticket.key}`)
     expect(ticket.token).toBe(`signed:${ticket.key}`)
     expect(ticket.contentType).toBe('application/octet-stream')
+    // A Worker ticket is exactly what it always was: no presigned flag at all.
+    expect('presigned' in ticket).toBe(false)
   })
 
-  it('never hands out the same key twice', () => {
-    const a = issueShopUploadTicket('R2', 'downloads', 'manual.pdf')
-    const b = issueShopUploadTicket('R2', 'downloads', 'manual.pdf')
+  it('never hands out the same key twice', async () => {
+    const a = await issueShopUploadTicket('R2', 'downloads', 'manual.pdf', 10)
+    const b = await issueShopUploadTicket('R2', 'downloads', 'manual.pdf', 10)
     expect(a.available && b.available && a.key !== b.key).toBe(true)
   })
 
-  it('says the direct path is unavailable for storage the Worker cannot write to', () => {
-    expect(issueShopUploadTicket('CLOUDINARY', 'downloads', 'manual.pdf')).toEqual({ available: false })
+  it('says the direct path is unavailable for storage the Worker cannot write to', async () => {
+    expect(await issueShopUploadTicket('CLOUDINARY', 'downloads', 'manual.pdf', 10)).toEqual({ available: false })
     worker = ''
-    expect(issueShopUploadTicket('R2', 'downloads', 'manual.pdf')).toEqual({ available: false })
+    expect(await issueShopUploadTicket('R2', 'downloads', 'manual.pdf', 10)).toEqual({ available: false })
+  })
+
+  it('hands out a presigned bucket url, length signed in, when the owner serves straight from the bucket', async () => {
+    worker = ''
+    const env = { MEDIA_SERVING_MODE: 'direct', R2_ACCOUNT_ID: 'acct', R2_ACCESS_KEY_ID: 'id', R2_SECRET_ACCESS_KEY: 'secret', R2_BUCKET_NAME: 'pics' }
+    const before = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]))
+    Object.assign(process.env, env)
+    try {
+      const ticket = await issueShopUploadTicket('R2', 'downloads', 'manual.pdf', 4321)
+      expect(ticket.available).toBe(true)
+      if (!ticket.available) return
+      expect(ticket.presigned).toBe(true)
+      const url = new URL(ticket.uploadUrl)
+      expect(url.host).toBe('pics.acct.r2.cloudflarestorage.com')
+      expect(url.pathname).toBe(`/${ticket.key}`)
+      expect(url.searchParams.get('X-Amz-SignedHeaders')).toBe('content-length;content-type;host')
+      // No checksum of an empty body baked in for the browser to fail against.
+      expect([...url.searchParams.keys()].some((k) => k.toLowerCase().includes('checksum'))).toBe(false)
+    } finally {
+      for (const [k, v] of Object.entries(before)) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
   })
 })
 

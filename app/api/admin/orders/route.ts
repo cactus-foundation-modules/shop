@@ -11,6 +11,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
 import { listStrandedPayments } from '@/modules/shop/lib/stranded-payments'
 import { BoundedAddressSchema, customerNameField, phoneField } from '@/modules/shop/lib/address-limits'
+import { formatAddress } from '@/modules/shop/lib/address-format'
 import { MEMBER_CART_MAX_LINES } from '@/modules/shop/lib/db/member-cart'
 import { BILLING_COMPANY_MAX_LENGTH } from '@/modules/shop/lib/customer-billing'
 import { CUSTOMER_REFERENCE_MAX_LENGTH } from '@/modules/shop/lib/customer-reference'
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
     // over the telephone.
     customerReference: data.customerReference?.trim() || null,
     customerPhone: data.customerPhone ?? null,
-    shippingAddress: data.shippingAddress,
+    shippingAddress: formatAddress(data.shippingAddress),
     subtotal: totals.subtotal,
     discountAmount: totals.discountAmount,
     shippingAmount: totals.shippingAmount,

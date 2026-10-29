@@ -1,5 +1,6 @@
 'use client'
 
+import { formatAddressField } from '@/modules/shop/lib/address-format'
 import { useEffect, useState, type ComponentType, type CSSProperties, type InputHTMLAttributes } from 'react'
 import { EMPTY_ADDRESS, type ShpAddressForm } from '@/modules/shop/components/public/checkout-state'
 import type { ShopCheckoutAddressLookupProps, ShpLookupAddress } from '@/modules/shop/components/public/checkout-address-lookup'
@@ -202,6 +203,13 @@ function AddressForm({
     setForm((f) => ({ ...f, line1: picked.line1, line2: picked.line2, city: picked.city, county: picked.county, postcode: picked.postcode }))
   }
 
+  // Title Case and an upper-case postcode as the shopper leaves a box, so they
+  // see what will be saved. The server tidies it again regardless.
+  function tidy(key: keyof ShpAddressForm) {
+    const tidied = formatAddressField(key, form[key], form.country)
+    if (tidied !== form[key]) set(key, tidied)
+  }
+
   function fieldError(key: keyof ShpAddressForm): string | null {
     const message = REQUIRED_MESSAGES[key]
     if (!message || !touched[key]) return null
@@ -229,7 +237,7 @@ function AddressForm({
           autoComplete={extra?.autoComplete ?? autoComplete}
           value={form[key]}
           onChange={(e) => { set(key, e.target.value); extra?.onChange?.(e) }}
-          onBlur={(e) => { setTouched((t) => ({ ...t, [key]: true })); extra?.onBlur?.(e) }}
+          onBlur={(e) => { setTouched((t) => ({ ...t, [key]: true })); tidy(key); extra?.onBlur?.(e) }}
           aria-invalid={err ? true : undefined}
           style={{ ...INPUT_STYLE, borderColor: err ? 'var(--color-danger)' : 'var(--color-border)', ...extra?.style }}
         />

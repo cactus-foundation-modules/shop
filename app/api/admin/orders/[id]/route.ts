@@ -5,6 +5,7 @@ import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { DELIVERY_INSTRUCTIONS_MAX_LENGTH, deliveryInstructionsLabel } from '@/modules/shop/lib/delivery-instructions'
 import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, type OrderNoteRow, listReplacementOrdersForParent, setOrderAskForReview, setOrderCustomerReference, setOrderDeliveryInstructions, setOrderShippingAddress } from '@/modules/shop/lib/db/orders'
+import { formatAddress } from '@/modules/shop/lib/address-format'
 import { sendAddressUpdatedEmail, type DeliveryDetailsChange } from '@/modules/shop/lib/address-updated-email'
 import { listRefundsForOrder, listRefundItemsForOrder } from '@/modules/shop/lib/db/refunds'
 import { listDownloadsForOrder } from '@/modules/shop/lib/db/digital'
@@ -224,7 +225,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const change: DeliveryDetailsChange = {}
 
   if (shippingAddress !== undefined && before) {
-    const next = { ...shippingAddress, country: shippingAddress.country.toUpperCase() }
+    const next = formatAddress({ ...shippingAddress, country: shippingAddress.country.toUpperCase() })
     if (!(await setOrderShippingAddress(id, next))) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }

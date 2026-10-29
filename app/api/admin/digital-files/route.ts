@@ -107,7 +107,7 @@ async function handleDirectUpload(request: NextRequest, provider: MediaProviderT
     }
     const validation = await validateNonImageUpload(mimeType, body.sizeBytes, DIRECT_MODE)
     if (!validation.valid) return errorResponse(validation.reason)
-    return NextResponse.json(issueShopUploadTicket(provider, 'downloads', body.filename))
+    return NextResponse.json(await issueShopUploadTicket(provider, 'downloads', body.filename, body.sizeBytes))
   }
 
   const landed = await checkLandedUpload({

@@ -1,5 +1,6 @@
 'use client'
 
+import { formatAddressField } from '@/modules/shop/lib/address-format'
 import { useEffect, useState, type ComponentType, type CSSProperties, type InputHTMLAttributes } from 'react'
 import { getCart } from '@/modules/shop/components/public/cart'
 import { EMPTY_ADDRESS, getCheckoutState, subscribeCheckoutState, updateCheckoutState, type ShpAddressForm } from '@/modules/shop/components/public/checkout-state'
@@ -486,7 +487,11 @@ export function CheckoutShippingClient({
       value: address[key],
       error: fieldError(key),
       onChange: (value) => set(key, value),
-      onBlur: () => setTouched((t) => ({ ...t, [key]: true })),
+      onBlur: () => {
+        setTouched((t) => ({ ...t, [key]: true }))
+        const tidied = formatAddressField(key, address[key], address.country)
+        if (tidied !== address[key]) set(key, tidied)
+      },
     })
   }
 
@@ -502,7 +507,11 @@ export function CheckoutShippingClient({
       value: billing[key],
       error,
       onChange: (value) => setBillingField(key, value),
-      onBlur: () => setBillingTouched((t) => ({ ...t, [key]: true })),
+      onBlur: () => {
+        setBillingTouched((t) => ({ ...t, [key]: true }))
+        const tidied = formatAddressField(key, billing[key], billing.country)
+        if (tidied !== billing[key]) setBillingField(key, tidied)
+      },
     })
   }
 

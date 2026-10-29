@@ -14,6 +14,7 @@ import {
 } from '@/modules/shop/lib/customer-billing'
 import { changeOrderBillingIdentity } from '@/modules/shop/lib/invoice-reissue'
 import { addressFields } from '@/modules/shop/lib/address-limits'
+import { formatAddress } from '@/modules/shop/lib/address-format'
 import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
 import { getClientIp } from '@/lib/auth/rate-limit'
 
@@ -97,8 +98,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       ? {
           firstName: base.firstName,
           lastName: base.lastName,
-          ...parsed.data.billingAddress,
-          country: base.country || 'GB',
+          ...formatAddress({ ...parsed.data.billingAddress, country: base.country || 'GB' }),
           ...(base.phone ? { phone: base.phone } : {}),
         }
       : null,

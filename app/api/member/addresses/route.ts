@@ -4,6 +4,7 @@ import { errorResponse } from '@/lib/utils'
 import { getMemberFromCookie } from '@/lib/members/session'
 import { listSavedAddresses, createSavedAddress } from '@/modules/shop/lib/db/addresses'
 import { BoundedAddressSchema } from '@/modules/shop/lib/address-limits'
+import { formatAddress } from '@/modules/shop/lib/address-format'
 
 // The address may carry the organisation it is addressed to (the delivery
 // organisation box at checkout, and the same box on the account form), so it is
@@ -34,6 +35,6 @@ export async function POST(request: NextRequest) {
   const parsed = Body.safeParse(await request.json())
   if (!parsed.success) return errorResponse(parsed.error.issues[0]?.message ?? 'Invalid address')
 
-  const { id } = await createSavedAddress(member.id, parsed.data.label ?? null, parsed.data.address, parsed.data.isDefault ?? false)
+  const { id } = await createSavedAddress(member.id, parsed.data.label ?? null, formatAddress(parsed.data.address), parsed.data.isDefault ?? false)
   return NextResponse.json({ id }, { status: 201 })
 }

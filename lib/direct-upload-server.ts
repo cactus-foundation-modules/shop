@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { MediaProviderType } from '@prisma/client'
-import { deleteMedia, headMediaSize, isS3Provider, mediaKeyPrefix } from '@/lib/media/upload'
-import { workerUrl } from '@/lib/media/worker-url'
+import { deleteMedia, headMediaSize, mediaKeyPrefix, requireMediaUrl } from '@/lib/media/upload'
+import { canTakeDirectUpload, directUploadTarget } from '@/lib/media/direct-upload-target'
 import { signUploadToken, verifyUploadToken } from '@/lib/media/upload-token'
 import { tooLargeReason } from '@/lib/media/limits'
 import {
@@ -23,20 +23,35 @@ import {
 
 export type ShopUploadTicket =
   | { available: false }
-  | { available: true; uploadUrl: string; key: string; token: string; contentType: string }
+  | { available: true; uploadUrl: string; key: string; token: string; contentType: string; presigned?: boolean }
 
 /**
  * A signed place in storage for one file, or `{ available: false }` when this
  * site's storage cannot take a file from the browser: only the S3-style
- * providers accept a Worker write, and only when there is a Worker to write to.
- * The same contract core's own /api/admin/media/upload-url keeps.
+ * providers take one, and only through a Worker or - when the owner serves
+ * straight from the bucket - a presigned bucket url. Core's
+ * lib/media/direct-upload-target.ts decides which; `presigned` tells the browser
+ * to send no Authorization header. The same contract core's own
+ * /api/admin/media/upload-url keeps.
  */
-export function issueShopUploadTicket(provider: MediaProviderType, purpose: ShopUploadPurpose, filename: string): ShopUploadTicket {
-  const base = workerUrl()
-  if (!base || !isS3Provider(provider)) return { available: false }
+export async function issueShopUploadTicket(
+  provider: MediaProviderType,
+  purpose: ShopUploadPurpose,
+  filename: string,
+  sizeBytes: number,
+): Promise<ShopUploadTicket> {
   const key = buildShopUploadKey(mediaKeyPrefix(provider), purpose, randomUUID(), filename)
+  const target = await directUploadTarget(provider, key, DIRECT_UPLOAD_CONTENT_TYPE, sizeBytes)
+  if (!target) return { available: false }
   const { token } = signUploadToken(key)
-  return { available: true, uploadUrl: `${base}/${key}`, key, token, contentType: DIRECT_UPLOAD_CONTENT_TYPE }
+  return {
+    available: true,
+    uploadUrl: target.uploadUrl,
+    key,
+    token,
+    contentType: DIRECT_UPLOAD_CONTENT_TYPE,
+    ...(target.presigned ? { presigned: true } : {}),
+  }
 }
 
 export type LandedUpload =
@@ -69,8 +84,7 @@ export async function checkLandedUpload(input: {
   tooLargeAdvice?: string
 }): Promise<LandedUpload> {
   const { provider, purpose, filename, key, token, maxBytes } = input
-  const base = workerUrl()
-  if (!base || !isS3Provider(provider) || !isShopUploadKey(key, mediaKeyPrefix(provider), purpose, filename)) {
+  if (!canTakeDirectUpload(provider) || !isShopUploadKey(key, mediaKeyPrefix(provider), purpose, filename)) {
     return { ok: false, status: 400, error: 'That upload does not belong here. Try uploading the file again.' }
   }
   if (!verifyUploadToken(key, token)) {
@@ -93,7 +107,7 @@ export async function checkLandedUpload(input: {
     return { ok: false, status: 413, error: `"${filename}": ${tooLargeReason(sizeBytes, maxBytes / 1024 / 1024)}${advice}` }
   }
 
-  return { ok: true, key, url: `${base}/${key}`, sizeBytes }
+  return { ok: true, key, url: requireMediaUrl(provider, key), sizeBytes }
 }
 
 /**

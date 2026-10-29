@@ -163,7 +163,7 @@ function describeMb(sizeBytes: number): string {
  * the number, because the number is not the owner's problem to solve.
  */
 export function directUnavailableMessage(file: { name: string; size: number }): string {
-  return `"${file.name}" is ${describeMb(file.size)}. This site's file storage can only take files up to ${MAX_UPLOAD_MB} MB here - bigger ones need Cloudflare R2, Backblaze B2 or S3 storage with the media service deployed (see Settings → Media).`
+  return `"${file.name}" is ${describeMb(file.size)}. This site's file storage can only take files up to ${MAX_UPLOAD_MB} MB here - bigger ones need Cloudflare R2, Backblaze B2 or S3 storage, served through the media Worker or straight from the bucket (see Settings → Media).`
 }
 
 /**

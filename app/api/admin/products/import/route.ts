@@ -149,7 +149,7 @@ async function handleDirectImport(request: NextRequest, user: SessionUser, start
     if (body.sizeBytes > IMPORT_CSV_MAX_BYTES) {
       return NextResponse.json({ error: `${tooLargeReason(body.sizeBytes, IMPORT_CSV_MAX_MB)} ${SPLIT_THE_SHEET}` }, { status: 413 })
     }
-    return NextResponse.json(issueShopUploadTicket(provider, 'imports', body.filename))
+    return NextResponse.json(await issueShopUploadTicket(provider, 'imports', body.filename, body.sizeBytes))
   }
 
   const landed = await checkLandedUpload({

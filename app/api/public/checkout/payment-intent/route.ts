@@ -29,6 +29,7 @@ import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
 import { getClientIp } from '@/lib/auth/rate-limit'
 import { isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
 import type { ShpAddress } from '@/modules/shop/lib/types'
+import { formatAddress } from '@/modules/shop/lib/address-format'
 
 // No company field: the organisation is a contact detail on the order now, not
 // part of an address. Older clients that still send one are simply ignored - zod
@@ -307,7 +308,7 @@ export async function POST(request: NextRequest) {
     customerPhone: typedPhone || null,
     // `company` only when something was typed: a blank or spaces-only box must
     // not leave an empty key on the order for the purchase order to trip over.
-    shippingAddress: withoutBlankCompany(data.shippingAddress) as ShpAddress,
+    shippingAddress: formatAddress(withoutBlankCompany(data.shippingAddress)) as ShpAddress,
     // Same rule as the fields above: only kept while the shop is actually
     // asking, so switching the box off stops orders carrying whatever a stale
     // page still had in it. This one leaves the building - where the shop
@@ -319,7 +320,7 @@ export async function POST(request: NextRequest) {
     // whatever a stale page still had in it. An order without one bills to the
     // delivery address, which is what every screen that prints a billing
     // address already falls back to.
-    billingAddress: config.billingAddressEnabled ? ((data.billingAddress as ShpAddress | null) ?? null) : null,
+    billingAddress: config.billingAddressEnabled ? (data.billingAddress ? formatAddress(data.billingAddress as ShpAddress) : null) : null,
     subtotal: totals.subtotal,
     discountAmount: totals.discountAmount,
     shippingAmount: totals.shippingAmount,
