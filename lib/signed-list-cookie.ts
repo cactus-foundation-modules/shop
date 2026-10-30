@@ -15,31 +15,25 @@
 // A signed cookie rather than a row in a table, for the same reason the receipt
 // token beside it is an HMAC rather than a row: nothing to sweep, no session
 // table growing a line per parcel, and nothing personal written down anywhere.
-import { createHmac, timingSafeEqual } from 'crypto'
+import { createHmac } from 'crypto'
+import { signingKey, verifyWithAnyKey } from '@/lib/crypto/keyring'
 
 type ListPayload = { o: string[]; e: number }
 
+// Signed with the site's active key; checked against every key it has had, so a
+// cookie set before a key rotation still works (core's lib/crypto/keyring.ts).
 function getKey(): string {
-  const key = process.env.ENCRYPTION_KEY
-  if (!key) throw new Error('ENCRYPTION_KEY is not set - required for order access cookies.')
-  return key
+  return signingKey('order access cookies')
 }
 
-function sign(purpose: string, payload: string): string {
-  return createHmac('sha256', getKey()).update(`${purpose}:${payload}`).digest('base64url')
+function sign(purpose: string, payload: string, key: string = getKey()): string {
+  return createHmac('sha256', key).update(`${purpose}:${payload}`).digest('base64url')
 }
 
 /** Constant-time, and false for anything malformed rather than throwing - a
  *  mangled cookie is a visitor who has to prove themselves again, not a 500. */
 function signatureValid(purpose: string, payload: string, signature: string): boolean {
-  try {
-    const a = Buffer.from(sign(purpose, payload))
-    const b = Buffer.from(signature)
-    if (a.length !== b.length) return false
-    return timingSafeEqual(a, b)
-  } catch {
-    return false
-  }
+  return verifyWithAnyKey(signature, (key) => sign(purpose, payload, key))
 }
 
 /** The values in a cookie, or none at all if it is unsigned, expired, tampered

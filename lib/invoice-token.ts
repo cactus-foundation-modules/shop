@@ -10,32 +10,25 @@
 // Not time-limited, for the same reason a receipt is not: an invoice is a thing
 // people file and come back to years later, usually the week their accountant
 // asks for it.
-import { createHmac, timingSafeEqual } from 'crypto'
+import { createHmac } from 'crypto'
+import { signingKey, verifyWithAnyKey } from '@/lib/crypto/keyring'
 
+// Signed with the site's active key; checked against every key it has had, so a
+// link emailed before a key rotation still opens (core's lib/crypto/keyring.ts).
 function getKey(): string {
-  const key = process.env.ENCRYPTION_KEY
-  if (!key) throw new Error('ENCRYPTION_KEY is not set - required for invoice links.')
-  return key
+  return signingKey('invoice links')
 }
 
 /** The token for one invoice's own link. */
-export function signInvoiceToken(invoiceNumber: string): string {
-  return createHmac('sha256', getKey()).update(`invoice:${invoiceNumber}`).digest('base64url')
+export function signInvoiceToken(invoiceNumber: string, key: string = getKey()): string {
+  return createHmac('sha256', key).update(`invoice:${invoiceNumber}`).digest('base64url')
 }
 
 /** Whether this token was issued for this invoice. Constant-time, and false for
  *  anything malformed rather than throwing - a bad link is a 404, not a 500. */
 export function verifyInvoiceToken(invoiceNumber: string, token: string | null | undefined): boolean {
   if (!invoiceNumber || !token) return false
-  try {
-    const expected = signInvoiceToken(invoiceNumber)
-    const a = Buffer.from(token)
-    const b = Buffer.from(expected)
-    if (a.length !== b.length) return false
-    return timingSafeEqual(a, b)
-  } catch {
-    return false
-  }
+  return verifyWithAnyKey(token, (key) => signInvoiceToken(invoiceNumber, key))
 }
 
 /** The site-relative address of one invoice, token and all. */
@@ -46,21 +39,13 @@ export function invoicePath(invoiceNumber: string): string {
 /** The same, for a credit note. Its own namespace in the HMAC, so a token minted
  *  for invoice INV-000087 cannot open credit note INV-000087 on a shop whose two
  *  prefixes happen to collide. */
-export function signCreditNoteToken(creditNoteNumber: string): string {
-  return createHmac('sha256', getKey()).update(`credit-note:${creditNoteNumber}`).digest('base64url')
+export function signCreditNoteToken(creditNoteNumber: string, key: string = getKey()): string {
+  return createHmac('sha256', key).update(`credit-note:${creditNoteNumber}`).digest('base64url')
 }
 
 export function verifyCreditNoteToken(creditNoteNumber: string, token: string | null | undefined): boolean {
   if (!creditNoteNumber || !token) return false
-  try {
-    const expected = signCreditNoteToken(creditNoteNumber)
-    const a = Buffer.from(token)
-    const b = Buffer.from(expected)
-    if (a.length !== b.length) return false
-    return timingSafeEqual(a, b)
-  } catch {
-    return false
-  }
+  return verifyWithAnyKey(token, (key) => signCreditNoteToken(creditNoteNumber, key))
 }
 
 /** The site-relative address of one credit note, token and all. */
@@ -89,21 +74,13 @@ export function creditNotePdfPath(creditNoteNumber: string): string {
 // number is no lock whatsoever. Its own namespace in the HMAC, so a token minted
 // for one document can never open another that happens to share a number - which
 // on a shop numbering orders "INV-000123" would otherwise be every one of them.
-export function signProformaToken(orderNumber: string): string {
-  return createHmac('sha256', getKey()).update(`proforma:${orderNumber}`).digest('base64url')
+export function signProformaToken(orderNumber: string, key: string = getKey()): string {
+  return createHmac('sha256', key).update(`proforma:${orderNumber}`).digest('base64url')
 }
 
 export function verifyProformaToken(orderNumber: string, token: string | null | undefined): boolean {
   if (!orderNumber || !token) return false
-  try {
-    const expected = signProformaToken(orderNumber)
-    const a = Buffer.from(token)
-    const b = Buffer.from(expected)
-    if (a.length !== b.length) return false
-    return timingSafeEqual(a, b)
-  } catch {
-    return false
-  }
+  return verifyWithAnyKey(token, (key) => signProformaToken(orderNumber, key))
 }
 
 /** The site-relative address of one order's proforma, token and all. */

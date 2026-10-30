@@ -13,7 +13,8 @@
 // and which claims their old orders automatically - would spend the rest of the
 // order's life clicking a link that asked them to prove something they are
 // already signed in as.
-import { createHmac, timingSafeEqual } from 'crypto'
+import { createHmac } from 'crypto'
+import { signingKey, verifyWithAnyKey } from '@/lib/crypto/keyring'
 import { getSiteUrl } from '@/lib/config/env'
 import type { ShpConfig } from '@/modules/shop/lib/config'
 
@@ -21,10 +22,10 @@ import type { ShpConfig } from '@/modules/shop/lib/config'
  *  root slug. Everything else here is a nicer way of reaching this. */
 export const TRACK_ORDER_PATH = '/shop/track-order'
 
+// Signed with the site's active key; checked against every key it has had, so a
+// link emailed before a key rotation still opens (core's lib/crypto/keyring.ts).
 function getKey(): string {
-  const key = process.env.ENCRYPTION_KEY
-  if (!key) throw new Error('ENCRYPTION_KEY is not set - required for order tracking links.')
-  return key
+  return signingKey('order tracking links')
 }
 
 /**
@@ -41,21 +42,14 @@ function getKey(): string {
  * let the holder straight in would hand every one of them the delivery address
  * and the run of the invoice.
  */
-export function signOrderTrackingToken(orderNumber: string): string {
-  return createHmac('sha256', getKey()).update(`track:${orderNumber}`).digest('base64url')
+export function signOrderTrackingToken(orderNumber: string, key: string = getKey()): string {
+  return createHmac('sha256', key).update(`track:${orderNumber}`).digest('base64url')
 }
 
 /** Constant-time, and false for anything malformed rather than throwing. */
 export function verifyOrderTrackingToken(orderNumber: string, token: string | null | undefined): boolean {
   if (!orderNumber || !token) return false
-  try {
-    const a = Buffer.from(signOrderTrackingToken(orderNumber))
-    const b = Buffer.from(token)
-    if (a.length !== b.length) return false
-    return timingSafeEqual(a, b)
-  } catch {
-    return false
-  }
+  return verifyWithAnyKey(token, (key) => signOrderTrackingToken(orderNumber, key))
 }
 
 /**

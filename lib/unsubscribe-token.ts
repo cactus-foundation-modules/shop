@@ -1,10 +1,11 @@
 // PROTECTED - signed token, no DB lookup needed to validate (addendum A.5).
-import { createHmac, timingSafeEqual } from 'crypto'
+import { createHmac } from 'crypto'
+import { signingKey, verifyWithAnyKey } from '@/lib/crypto/keyring'
 
+// Signed with the site's active key; checked against every key it has had, so a
+// link emailed before a key rotation still opens (core's lib/crypto/keyring.ts).
 function getKey(): string {
-  const key = process.env.ENCRYPTION_KEY
-  if (!key) throw new Error('ENCRYPTION_KEY is not set - required for back-in-stock unsubscribe links.')
-  return key
+  return signingKey('back-in-stock unsubscribe links')
 }
 
 export function signUnsubscribeToken(productId: string, email: string): string {
@@ -26,11 +27,10 @@ export function verifyUnsubscribeToken(token: string): { productId: string; emai
     const email = decoded.slice(firstColon + 1, lastColon)
     const signature = decoded.slice(lastColon + 1)
     if (!productId || !email || !signature) return null
-    const expected = createHmac('sha256', getKey()).update(`${productId}:${email}`).digest('hex')
-    const a = Buffer.from(signature)
-    const b = Buffer.from(expected)
-    if (a.length !== b.length || !timingSafeEqual(a, b)) return null
-    return { productId, email }
+    const valid = verifyWithAnyKey(signature, (key) =>
+      createHmac('sha256', key).update(`${productId}:${email}`).digest('hex'),
+    )
+    return valid ? { productId, email } : null
   } catch {
     return null
   }

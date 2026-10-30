@@ -17,7 +17,8 @@
 // The kind is inside the HMAC as well as the number, so a token minted to print
 // a credit note cannot open the invoice it credits on a shop whose two
 // numbering prefixes happen to collide.
-import { createHmac, timingSafeEqual } from 'crypto'
+import { createHmac } from 'crypto'
+import { signingKey, verifyWithAnyKey } from '@/lib/crypto/keyring'
 
 export type ShopDocumentKind = 'invoice' | 'credit-note' | 'proforma'
 
@@ -35,14 +36,14 @@ export function documentPagePath(kind: ShopDocumentKind, number: string): string
  *  The same half hour purchase-orders settled on for the same job. */
 export const PRINT_TOKEN_TTL_MINUTES = 30
 
+// Signed with the site's active key; checked against every key it has had, so a
+// link emailed before a key rotation still opens (core's lib/crypto/keyring.ts).
 function getKey(): string {
-  const key = process.env.ENCRYPTION_KEY
-  if (!key) throw new Error('ENCRYPTION_KEY is not set - required for shop document printing.')
-  return key
+  return signingKey('shop document printing')
 }
 
-function digest(kind: ShopDocumentKind, number: string, expiresAtMinute: number): string {
-  return createHmac('sha256', getKey())
+function digest(kind: ShopDocumentKind, number: string, expiresAtMinute: number, key: string = getKey()): string {
+  return createHmac('sha256', key)
     .update(`doc-print:${kind}:${number}:${expiresAtMinute}`)
     .digest('base64url')
 }
@@ -77,12 +78,5 @@ export function verifyDocumentPrintToken(
   if (!Number.isSafeInteger(expiresAtMinute)) return false
   // Checked BEFORE the comparison, so an expired token costs no HMAC at all.
   if (expiresAtMinute < Math.floor(Date.now() / 60_000)) return false
-  try {
-    const a = Buffer.from(digest(kind, number, expiresAtMinute))
-    const b = Buffer.from(token.slice(dot + 1))
-    if (a.length !== b.length) return false
-    return timingSafeEqual(a, b)
-  } catch {
-    return false
-  }
+  return verifyWithAnyKey(token.slice(dot + 1), (key) => digest(kind, number, expiresAtMinute, key))
 }
