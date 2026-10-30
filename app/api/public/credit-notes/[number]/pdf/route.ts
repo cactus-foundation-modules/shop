@@ -9,6 +9,7 @@ import { getClientIp } from '@/lib/auth/rate-limit'
 import { creditNotePath } from '@/modules/shop/lib/invoice-token'
 import { InvoicePdfUnavailableError, invoicePdfFilename, printPath, renderInvoicePdf } from '@/modules/shop/lib/invoice-pdf'
 import { documentPageSetup } from '@/modules/shop/lib/invoice-document'
+import { publicUrl } from '@/lib/security/public-origin'
 
 // GET - the credit note as a PDF. The invoice's PDF route with a different
 // lookup: same headless browser, same throttle, same three ways in.
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ num
   })
   if (!access.allowed) {
     if (access.challenge) {
-      return NextResponse.redirect(new URL(creditNotePath(note.creditNoteNumber), request.nextUrl))
+      return NextResponse.redirect(publicUrl(request, creditNotePath(note.creditNoteNumber)))
     }
     return NextResponse.json({ error: 'We could not find that credit note.' }, { status: 404 })
   }

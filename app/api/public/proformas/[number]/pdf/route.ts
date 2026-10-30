@@ -7,6 +7,7 @@ import { resolveDocumentAccess } from '@/modules/shop/lib/document-access'
 import { InvoicePdfUnavailableError, invoicePdfFilename } from '@/modules/shop/lib/invoice-pdf'
 import { renderProformaPdf } from '@/modules/shop/lib/proforma-pdf'
 import { loadProforma } from '@/modules/shop/lib/proforma'
+import { publicUrl } from '@/lib/security/public-origin'
 
 // GET - the proforma as a PDF. What the button under the document points at, and
 // what the "how to pay" email attaches.
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ num
   })
   if (!access.allowed) {
     if (access.challenge) {
-      return NextResponse.redirect(new URL(proformaPath(order.orderNumber), request.nextUrl))
+      return NextResponse.redirect(publicUrl(request, proformaPath(order.orderNumber)))
     }
     return NextResponse.json({ error: 'We could not find that proforma.' }, { status: 404 })
   }

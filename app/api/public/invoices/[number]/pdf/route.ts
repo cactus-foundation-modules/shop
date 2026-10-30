@@ -9,6 +9,7 @@ import { getClientIp } from '@/lib/auth/rate-limit'
 import { invoicePath } from '@/modules/shop/lib/invoice-token'
 import { InvoicePdfUnavailableError, invoicePdfFilename, printPath, renderInvoicePdf } from '@/modules/shop/lib/invoice-pdf'
 import { documentPageSetup } from '@/modules/shop/lib/invoice-document'
+import { publicUrl } from '@/lib/security/public-origin'
 
 // GET - the invoice as a PDF. What the button under the document points at.
 //
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ num
     // gives: invoice numbers are sequential, so "wrong token" and "not yours"
     // must look identical from outside.
     if (access.challenge) {
-      return NextResponse.redirect(new URL(invoicePath(invoice.invoiceNumber), request.nextUrl))
+      return NextResponse.redirect(publicUrl(request, invoicePath(invoice.invoiceNumber)))
     }
     return NextResponse.json({ error: 'We could not find that invoice.' }, { status: 404 })
   }
