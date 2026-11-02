@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfig, updateShopConfig, ShpConfigSchema, BUILT_IN_PAYMENT_METHODS, paymentInstructionsTooLong } from '@/modules/shop/lib/config'
+import { stampInvoiceIssueOnChange } from '@/modules/shop/lib/invoice-issue-on'
 import { getAllPaymentProviders, getModuleProviderEntryIds, resolveProviderLabel } from '@/modules/shop/lib/payments/registry'
 import type { ShpAdminPaymentMethod } from '@/modules/shop/lib/payments/admin-methods'
 import { isStripeConfigured, isPayPalConfigured } from '@/modules/shop/lib/env'
@@ -74,9 +75,13 @@ export async function PUT(request: NextRequest) {
 
   // Held to its ceiling here, on the way in, and only where it changed - see
   // paymentInstructionsTooLong for why not on the schema itself.
-  const tooLong = paymentInstructionsTooLong(parsed.data, await getShopConfig())
+  const current = await getShopConfig()
+  const tooLong = paymentInstructionsTooLong(parsed.data, current)
   if (tooLong) return NextResponse.json({ error: tooLong }, { status: 400 })
 
-  const config = await updateShopConfig(parsed.data)
+  // A new "raise the invoice when" applies to orders placed from now on; the
+  // cut-over is stamped here and never taken from the browser. See
+  // lib/invoice-issue-on.ts.
+  const config = await updateShopConfig(stampInvoiceIssueOnChange(parsed.data, current, new Date()))
   return NextResponse.json({ config })
 }

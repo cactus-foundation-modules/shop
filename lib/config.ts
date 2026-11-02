@@ -669,6 +669,12 @@ export const ShpConfigSchema = z.object({
   // that invoices on payment; DISPATCHED suits one that invoices on despatch;
   // MANUAL leaves every invoice to the button on the order screen.
   invoiceIssueOn: z.enum(['MANUAL', 'PAID', 'DISPATCHED', 'COMPLETED']).default('COMPLETED'),
+  // A change to the above applies to orders placed after it was saved; older
+  // orders keep the setting that was in force when they were placed. These two
+  // record that cut-over and are stamped by the settings route, never typed in.
+  // See lib/invoice-issue-on.ts.
+  invoiceIssueOnPrevious: z.enum(['MANUAL', 'PAID', 'DISPATCHED', 'COMPLETED']).nullable().default(null),
+  invoiceIssueOnChangedAt: z.string().nullable().default(null),
   // Numbering, as shop does for orders. The running number itself comes from a
   // database sequence and cannot be edited - that is rather the point of it.
   invoiceNumberPrefix: z.string().default('INV-'),

@@ -41,7 +41,9 @@ import type { ShpInvoice, ShpInvoiceSeller, ShpInvoiceCustomer, ShpInvoiceWordin
 
 /** What caused an invoice to be raised. Recorded on the row, and matched
  *  against the shop's `invoiceIssueOn` setting by the callers. */
-export type InvoiceTrigger = 'PAID' | 'DISPATCHED' | 'COMPLETED' | 'MANUAL' | 'REISSUE'
+import type { InvoiceTrigger } from '@/modules/shop/lib/invoice-issue-on'
+export type { InvoiceTrigger }
+export { shouldIssueOn } from '@/modules/shop/lib/invoice-issue-on'
 
 export type IssueInvoiceResult =
   | { ok: true; invoice: ShpInvoice; created: boolean }
@@ -524,13 +526,4 @@ export async function voidInvoiceAndTellSinks(invoiceId: string, reason: string)
     return { ok: true, invoice: { ...invoice, sinkResults: results }, created: false }
   }
   return { ok: true, invoice, created: false }
-}
-
-/** Whether a status change should raise an invoice, given the shop's setting.
- *  Pure, so the two callers agree by construction rather than by both being
- *  right. */
-export function shouldIssueOn(config: Pick<ShpConfig, 'invoicesEnabled' | 'invoiceIssueOn'>, trigger: InvoiceTrigger): boolean {
-  if (!config.invoicesEnabled) return false
-  if (trigger === 'MANUAL') return true
-  return config.invoiceIssueOn === trigger
 }

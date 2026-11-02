@@ -864,7 +864,7 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                     <option value="PAID">Paid for</option>
                     <option value="MANUAL">Never - I will raise them myself</option>
                   </select>
-                  <span className="field-hint">There is a button on every order either way.</span>
+                  <span className="field-hint">There is a button on every order either way. A change here applies to orders placed from then on - orders already placed keep the moment their customers were told about.</span>
                 </div>
                 <div className="field">
                   <label>Invoice number prefix</label>

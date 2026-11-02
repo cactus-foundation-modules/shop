@@ -10,6 +10,7 @@ import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { proformaAvailable } from '@/modules/shop/lib/proforma'
 import { paymentTaken } from '@/modules/shop/lib/payment-taken'
 import type { ShpInvoice } from '@/modules/shop/lib/types'
+import { invoiceIssueOnForOrder } from '@/modules/shop/lib/invoice-issue-on'
 
 // The order screen's invoice panel: what this order has been invoiced, and the
 // three things staff can do about it.
@@ -84,7 +85,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
   return NextResponse.json({
     enabled: config.invoicesEnabled,
-    issueOn: config.invoiceIssueOn,
+    // This order's own moment: a change to the setting applies to orders
+    // placed after it (lib/invoice-issue-on.ts).
+    issueOn: order ? invoiceIssueOnForOrder(config, order) : config.invoiceIssueOn,
     pdfEnabled: config.invoicePdfEnabled,
     // Whether anything is listening for issued invoices at all, so the screen
     // can offer "send to the books again" only where there are books to send to.

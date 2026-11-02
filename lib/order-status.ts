@@ -302,7 +302,7 @@ export async function applyOrderStatusChange({ orderId, status, sendEmail, email
     // A replacement somebody was CHARGED for is an ordinary sale of a spare and
     // is invoiced like one, which is why this tests the money and not the kind.
     const worthInvoicing = order.kind !== 'REPLACEMENT' || Number(order.total) > 0
-    if (invoiceTrigger && worthInvoicing && shouldIssueOn(config, invoiceTrigger)) {
+    if (invoiceTrigger && worthInvoicing && shouldIssueOn(config, invoiceTrigger, order)) {
       const invoiced = await issueInvoiceForOrder(orderId, { trigger: invoiceTrigger, issuedBy: 'AUTO' })
       if (!invoiced.ok) console.error('[shop] could not invoice order', orderId, invoiced.error)
     }

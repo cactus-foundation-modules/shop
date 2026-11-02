@@ -377,7 +377,7 @@ async function settleReplacement(order: ShpOrder, config: ShpConfig): Promise<vo
   // Tests the money and not the kind, as the dispatch trigger does: a free part
   // raises no invoice, because a £0 invoice for the shop's own mistake reads as
   // a bill.
-  if (Number(order.total) > 0 && shouldIssueOn(config, 'PAID')) {
+  if (Number(order.total) > 0 && shouldIssueOn(config, 'PAID', order)) {
     try {
       const invoiced = await issueInvoiceForOrder(order.id, { trigger: 'PAID', issuedBy: 'AUTO' })
       if (!invoiced.ok) console.error('[shop] could not invoice replacement', order.id, invoiced.error)

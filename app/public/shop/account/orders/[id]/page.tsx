@@ -85,6 +85,7 @@ import { OrderItemList } from '@/modules/shop/components/public/OrderItemList'
 import { splitOrderLine } from '@/modules/shop/lib/order-line-charges'
 import { OrderDocuments, type OrderDocument } from '@/modules/shop/components/public/OrderDocuments'
 import { resolveShopMemberOrderPanels } from '@/modules/shop/lib/member-order-panels'
+import { invoiceIssueOnForOrder } from '@/modules/shop/lib/invoice-issue-on'
 
 export const metadata = { title: 'Order detail' }
 export const dynamic = 'force-dynamic'
@@ -272,7 +273,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   // will be - "where is my invoice?" is the email this line exists to prevent.
   // The moment named is the one the shop actually issues on, and the tax label
   // is the shop's own, so a shop outside the UK is not made to say VAT.
-  const invoicePromise = showPaperwork && !invoice ? INVOICE_WHEN[config.invoiceIssueOn] : null
+  const invoicePromise = showPaperwork && !invoice ? INVOICE_WHEN[invoiceIssueOnForOrder(config, order)] : null
   const status = ORDER_STATUS_DISPLAY[order.status]
   const completedRefunds = refunds.filter((refund) => refund.status === 'COMPLETED')
   const refundedTotal = completedRefunds.reduce((sum, refund) => sum + Number(refund.amount), 0)

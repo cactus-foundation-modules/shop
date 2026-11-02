@@ -177,7 +177,7 @@ export async function fulfillPaidOrder(
   // lib/order-status.ts: the money has landed and the customer has been told, so
   // paperwork that will not raise is a job for the button on the order screen,
   // not a reason to fail a payment webhook.
-  if (shouldIssueOn(config, 'PAID')) {
+  if (shouldIssueOn(config, 'PAID', order)) {
     const invoiced = await issueInvoiceForOrder(order.id, { trigger: 'PAID', issuedBy: 'AUTO' })
     if (!invoiced.ok) console.error('[shop] could not invoice order', order.id, invoiced.error)
   }
