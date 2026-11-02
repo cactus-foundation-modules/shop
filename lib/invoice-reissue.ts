@@ -215,6 +215,10 @@ async function reissue(
       // not worked out again from despatch or payment, which could put the
       // replacement in a different period from the credit that cancels it.
       taxPointDate: correctionDate,
+      // An original raised before paid charges had invoices of their own
+      // carried them as lines with no order line behind them. Its replacement
+      // must too, or it would come out short of the document it replaces.
+      foldUninvoicedCharges: invoice.lines.some((line) => line.orderItemId === null),
     }),
   ])
 

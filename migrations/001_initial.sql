@@ -1361,6 +1361,10 @@ CREATE TABLE IF NOT EXISTS "shp_invoices" (
     "supersede_reason" TEXT,
     "voided_at" TIMESTAMP(3),
     "void_reason" TEXT,
+    -- The paid charge (a redelivery fee) this invoice is for. NULL on an order
+    -- invoice. No foreign key: shp_order_charges is created further down, and
+    -- a charge only ever goes with its order, whose cascade takes this row too.
+    "order_charge_id" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -1379,8 +1383,13 @@ CREATE TABLE IF NOT EXISTS "shp_invoices" (
 
 -- One LIVE invoice per order: a superseded one does not count, or a replacement
 -- could never be inserted at all.
+-- Charge invoices (a paid redelivery fee, migration 077) have their own rule.
 CREATE UNIQUE INDEX IF NOT EXISTS "shp_invoices_order_live_key"
-    ON "shp_invoices" ("order_id") WHERE "status" = 'ISSUED' AND "superseded_at" IS NULL;
+    ON "shp_invoices" ("order_id")
+    WHERE "status" = 'ISSUED' AND "superseded_at" IS NULL AND "order_charge_id" IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "shp_invoices_charge_live_key"
+    ON "shp_invoices" ("order_charge_id")
+    WHERE "status" = 'ISSUED' AND "superseded_at" IS NULL AND "order_charge_id" IS NOT NULL;
 CREATE INDEX IF NOT EXISTS "shp_invoices_superseded_by_idx" ON "shp_invoices" ("superseded_by_invoice_id");
 CREATE INDEX IF NOT EXISTS "shp_invoices_order_id_idx" ON "shp_invoices" ("order_id");
 CREATE INDEX IF NOT EXISTS "shp_invoices_issued_at_idx" ON "shp_invoices" ("issued_at" DESC);

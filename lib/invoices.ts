@@ -3,8 +3,10 @@ import { getSiteUrl } from '@/lib/config/env'
 import { getShopConfigCached, type ShpConfig } from '@/modules/shop/lib/config'
 import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
 import {
+  getInvoiceForCharge,
   getInvoiceForOrder,
   getInvoiceById,
+  listInvoicesForOrder,
   insertInvoice,
   InvoiceAlreadyIssuedError,
   saveSinkResults,
@@ -13,9 +15,10 @@ import {
 } from '@/modules/shop/lib/db/invoices'
 import { clearRefundsNettedOff, listUncreditedRefundDelivery, listUncreditedRefundLines, markRefundsNettedOff } from '@/modules/shop/lib/db/refunds'
 import { getShipmentsForOrder } from '@/modules/shop/lib/db/shipments'
-import { listChargesForOrder } from '@/modules/shop/lib/db/order-charges'
+import { getChargeById, listChargesForOrder } from '@/modules/shop/lib/db/order-charges'
 import { generateInvoiceNumber } from '@/modules/shop/lib/invoice-number'
 import { invoiceTaxPointDay } from '@/modules/shop/lib/invoice-tax-point'
+import { chargeInvoiceMoney, chargeLinesToFold } from '@/modules/shop/lib/charge-invoice'
 import { netOrderOfRefunds } from '@/modules/shop/lib/invoice-net-of-refunds'
 import { buildInvoiceMoney, ledgerItems, type InvoiceExtraLine } from '@/modules/shop/lib/invoice-tax'
 import { invoicePdfFilename, printPath } from '@/modules/shop/lib/invoice-pdf'
@@ -28,7 +31,7 @@ import {
 import { invoicePath, signInvoiceToken } from '@/modules/shop/lib/invoice-token'
 import { documentPagePath, signDocumentPrintToken } from '@/modules/shop/lib/document-print-token'
 import { addressLines, orderCompanyName } from '@/modules/shop/lib/order-display'
-import type { ShpInvoice, ShpInvoiceSeller, ShpInvoiceCustomer, ShpInvoiceWording, ShpOrder } from '@/modules/shop/lib/types'
+import type { ShpInvoice, ShpInvoiceSeller, ShpInvoiceCustomer, ShpInvoiceWording, ShpOrder, ShpOrderCharge } from '@/modules/shop/lib/types'
 
 // Issuing an invoice: the one place it happens, for the same reason
 // lib/order-status.ts exists. Three callers reach it - the status change, the
@@ -74,23 +77,24 @@ export function addDays(isoDate: string, days: number): string {
   return date.toISOString().slice(0, 10)
 }
 
-/** Charges the customer has actually settled before their order's VAT invoice
- * is raised. The original order total does not contain them, so make their
- * recorded figures part of this immutable invoice snapshot explicitly. */
+/** Settled charges an order's invoice still carries as lines: only a PAID
+ * charge with no VAT invoice of its own, which since charge invoices arrived
+ * means one paid before them. See chargeLinesToFold in lib/charge-invoice.ts. */
 export function settledChargeInvoiceLines(
   charges: Awaited<ReturnType<typeof listChargesForOrder>>,
+  chargeIdsWithOwnInvoice: ReadonlySet<string> = new Set(),
 ): InvoiceExtraLine[] {
-  return charges
-    .filter((charge) => charge.status === 'PAID')
-    .map((charge) => ({
-      name: charge.reason,
-      net: Number(charge.netAmount),
-      tax: Number(charge.taxAmount),
-      gross: Number(charge.total),
-      // Order lines keep 20% as 0.2; order charges keep it as 20. Their
-      // invoice representation must use the order-line convention.
-      taxRatePercent: Number(charge.taxRate) / 100,
-    }))
+  return chargeLinesToFold(charges, chargeIdsWithOwnInvoice)
+}
+
+/** The charges on an order that already have a live invoice of their own. */
+async function chargeIdsWithOwnInvoice(orderId: string): Promise<Set<string>> {
+  const invoices = await listInvoicesForOrder(orderId)
+  return new Set(
+    invoices
+      .filter((invoice) => invoice.orderChargeId && invoice.status === 'ISSUED' && !invoice.supersededAt)
+      .map((invoice) => invoice.orderChargeId as string),
+  )
 }
 
 function orderIncludingSettledCharges(order: ShpOrder, charges: InvoiceExtraLine[]): ShpOrder {
@@ -224,7 +228,9 @@ export function invoiceSinkPayload(invoice: ShpInvoice, orderNumber: string, set
     items: ledgerItems(invoice.lines, invoice.taxBreakdown, {
       carriageLabel: Number(invoice.shippingAmount) > 0 ? 'Delivery' : undefined,
     }),
-    description: `Shop order ${orderNumber}, invoice ${invoice.invoiceNumber}`,
+    description: invoice.orderChargeId
+      ? `Shop order ${orderNumber}, ${(invoice.lines[0]?.name || 'charge').toLowerCase()}, invoice ${invoice.invoiceNumber}`
+      : `Shop order ${orderNumber}, invoice ${invoice.invoiceNumber}`,
     documentUrl: siteUrl ? `${siteUrl}${invoicePath(invoice.invoiceNumber)}` : null,
     document: {
       filename: invoicePdfFilename(invoice.seller?.name || 'invoice', invoice.invoiceNumber),
@@ -314,9 +320,14 @@ export async function buildInvoiceInsertInput(
     /** The tax point to carry over rather than work out - the reissue path's,
      *  which is the document it replaces. */
     taxPointDate?: string
+    /** Carry paid charges that have no invoice of their own as lines. Only the
+     *  reissue path sets it, and only for an original that carried such lines
+     *  (raised before charges had invoices of their own), so the replacement
+     *  comes out at the figures the original did. A fresh invoice never does. */
+    foldUninvoicedCharges?: boolean
   },
 ): Promise<BuiltInvoiceInput> {
-  const [rawItems, timezone, refundLines, refundDelivery, shipments, charges] = await Promise.all([
+  const [rawItems, timezone, refundLines, refundDelivery, shipments, charges, ownChargeInvoices] = await Promise.all([
     getOrderItems(order.id),
     opts.timezone ? Promise.resolve(opts.timezone) : siteTimezone(),
     listUncreditedRefundLines(order.id, opts.alsoNettedOffInvoiceId ?? null),
@@ -325,6 +336,7 @@ export async function buildInvoiceInsertInput(
     // order was supplied. Not read at all when the tax point is carried over.
     opts.taxPointDate ? Promise.resolve(null) : getShipmentsForOrder(order.id),
     listChargesForOrder(order.id),
+    chargeIdsWithOwnInvoice(order.id),
   ])
   const issuedDay = dateInZone(new Date(), timezone)
   const paidDay = order.paidAt ? dateInZone(order.paidAt, timezone) : null
@@ -347,7 +359,10 @@ export async function buildInvoiceInsertInput(
     refundDelivery.reduce((sum, row) => sum + Number(row.shippingAmount), 0),
   )
 
-  const extraLines = settledChargeInvoiceLines(charges)
+  // A paid charge has a VAT invoice of its own and is never added to this one.
+  // Only a replacement for an invoice raised before that existed, which carried
+  // its charges as lines, still brings them along - see foldUninvoicedCharges.
+  const extraLines = opts.foldUninvoicedCharges ? settledChargeInvoiceLines(charges, ownChargeInvoices) : []
   const invoiceOrder = orderIncludingSettledCharges(net.order, extraLines)
   const { lines, taxBreakdown } = buildInvoiceMoney(invoiceOrder, net.items, { extraLines })
   const [seller, invoiceNumber] = await Promise.all([buildSeller(config), generateInvoiceNumber()])
@@ -395,6 +410,7 @@ export async function issueInvoiceForOrder(
     return { ok: false, status: 409, error: 'Invoicing is switched off in Shop settings.' }
   }
 
+
   const existing = await getInvoiceForOrder(orderId)
   if (existing) return { ok: true, invoice: existing, created: false }
 
@@ -405,6 +421,15 @@ export async function issueInvoiceForOrder(
   if (order.status === 'CANCELLED') {
     return { ok: false, status: 409, error: 'A cancelled order cannot be invoiced.' }
   }
+
+  // Any paid charge still without its own invoice gets one first - one paid
+  // while invoicing was off or set to manual, or whose own invoice would not
+  // raise at the time. Only here, where the order has no live invoice: an
+  // existing one may already carry an older charge as a line (raised before
+  // charges had invoices of their own), and a second invoice for it would put
+  // the fee in the books twice. raiseMissingChargeInvoices is the careful
+  // version for an order that has one.
+  await raiseMissingChargeInvoices(orderId)
 
   const timezone = await siteTimezone()
   const built = await buildInvoiceInsertInput(order, config, {
@@ -452,6 +477,122 @@ export async function issueInvoiceForOrder(
   }
 
   return { ok: true, invoice, created: true }
+}
+
+/**
+ * The paid charges on an order that have no VAT invoice of their own and are not
+ * already on the order's invoice.
+ *
+ * "Not already on it" is read off the dates: an order invoice only ever carried
+ * charges that were paid by the time it was raised, so a charge paid before the
+ * live order invoice was issued is on it (or, raised since charge invoices
+ * arrived, has its own already), and one paid after it is not.
+ */
+export async function listChargesNeedingInvoice(orderId: string): Promise<ShpOrderCharge[]> {
+  const [charges, invoices] = await Promise.all([listChargesForOrder(orderId), listInvoicesForOrder(orderId)])
+  const live = invoices.filter((invoice) => invoice.status === 'ISSUED' && !invoice.supersededAt)
+  const own = new Set(live.map((invoice) => invoice.orderChargeId).filter((id): id is string => Boolean(id)))
+  const orderInvoice = live.find((invoice) => !invoice.orderChargeId) ?? null
+  return charges.filter((charge) => {
+    if (charge.status !== 'PAID' || own.has(charge.id)) return false
+    if (!orderInvoice) return true
+    return Boolean(charge.paidAt) && new Date(charge.paidAt as Date).getTime() > new Date(orderInvoice.issuedAt).getTime()
+  })
+}
+
+/** Raises an invoice for every charge listChargesNeedingInvoice names. Each one
+ *  is its own document; a refusal is logged and the rest carry on. */
+export async function raiseMissingChargeInvoices(orderId: string): Promise<ShpInvoice[]> {
+  const raised: ShpInvoice[] = []
+  for (const charge of await listChargesNeedingInvoice(orderId)) {
+    const outcome = await issueInvoiceForCharge(charge.id)
+    if (outcome.ok) raised.push(outcome.invoice)
+    else console.error('[shop] could not invoice charge', charge.id, 'for order', orderId, outcome.error)
+  }
+  return raised
+}
+
+/**
+ * Raises the VAT invoice for one paid charge (a redelivery fee), or hands back
+ * the one it already has.
+ *
+ * Its own document, never a line added to the order's invoice: the fee is a
+ * separate supply, paid on a separate day, often weeks after the order's own
+ * invoice went out. Dated the day the fee was paid, which is its tax point, and
+ * handed to the bookkeeping sinks as a sale of its own.
+ *
+ * Never throws, for the same reason issueInvoiceForOrder does not: it runs on
+ * the back of a payment, and the payment has happened whether or not the
+ * paperwork would raise.
+ */
+export async function issueInvoiceForCharge(chargeId: string): Promise<IssueInvoiceResult> {
+  try {
+    const config = await getShopConfigCached()
+    if (!config.invoicesEnabled) {
+      return { ok: false, status: 409, error: 'Invoicing is switched off in Shop settings.' }
+    }
+
+    const existing = await getInvoiceForCharge(chargeId)
+    if (existing) return { ok: true, invoice: existing, created: false }
+
+    const charge = await getChargeById(chargeId)
+    if (!charge) return { ok: false, status: 404, error: 'Charge not found.' }
+    if (charge.status !== 'PAID') return { ok: false, status: 409, error: 'Only a paid charge is invoiced.' }
+    const order = await getOrderById(charge.orderId)
+    if (!order) return { ok: false, status: 404, error: 'Order not found.' }
+
+    const timezone = await siteTimezone()
+    const paidDay = dateInZone(charge.paidAt ?? new Date(), timezone)
+    const money = chargeInvoiceMoney(order, charge)
+    const [seller, invoiceNumber] = await Promise.all([buildSeller(config), generateInvoiceNumber()])
+
+    let invoice: ShpInvoice
+    try {
+      invoice = await insertInvoice({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        invoiceNumber,
+        taxPointDate: paidDay,
+        // Paid before it was invoiced, so nothing is due.
+        dueDate: null,
+        currency: charge.currency,
+        currencySymbol: config.currencySymbol,
+        taxMode: order.taxMode,
+        subtotal: money.subtotal,
+        discountAmount: money.discountAmount,
+        shippingAmount: money.shippingAmount,
+        taxAmount: money.taxAmount,
+        total: money.total,
+        seller,
+        customer: buildCustomer(order),
+        lines: money.lines,
+        taxBreakdown: money.taxBreakdown,
+        wording: buildWording(config),
+        issuedBy: 'AUTO',
+        issueTrigger: 'CHARGE',
+        createdByUserId: null,
+        orderChargeId: charge.id,
+      })
+    } catch (error) {
+      if (error instanceof InvoiceAlreadyIssuedError) {
+        const raced = await getInvoiceForCharge(chargeId)
+        if (raced) return { ok: true, invoice: raced, created: false }
+      }
+      throw error
+    }
+
+    const results = await dispatchInvoiceIssued(invoiceSinkPayload(invoice, order.orderNumber, paidDay))
+    if (results.length > 0) {
+      await saveSinkResults(invoice.id, results).catch((error) => {
+        console.error('[shop] could not record invoice sink results for', invoice.invoiceNumber, error)
+      })
+      invoice = { ...invoice, sinkResults: results }
+    }
+    return { ok: true, invoice, created: true }
+  } catch (error) {
+    console.error('[shop] could not issue an invoice for charge', chargeId, error)
+    return { ok: false, status: 500, error: 'The invoice for the charge could not be raised.' }
+  }
 }
 
 /**

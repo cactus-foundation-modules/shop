@@ -24,8 +24,10 @@
 // A kept fee needs no paperwork of its own. The cancellation refund simply sends
 // back less than the order took, and its credit note says so line by line - so
 // the fee is what is left standing on the invoice, VAT and all, and the books
-// follow without being told. A PAID fee is money outside the order's invoice,
-// and is recorded on the order's timeline for the owner's books.
+// follow without being told. A PAID fee is money outside the order's invoice:
+// it gets a VAT invoice of its own, dated the day it was paid, which goes to the
+// books as a sale of its own and to the customer with the "fee paid" email (see
+// lib/charge-invoice.ts). It is never added to the order's invoice.
 import { getAdminPathCached } from '@/lib/config/site'
 import { getSiteUrlOrNull } from '@/lib/config/env'
 import { getShopConfigCached, getAvailablePaymentMethods, type ShpConfig } from '@/modules/shop/lib/config'
@@ -44,7 +46,10 @@ import { refundRouteForOrder } from '@/modules/shop/lib/payments/order-refund-ro
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { sendShopEmail } from '@/modules/shop/lib/email'
 import { formatMoney } from '@/modules/shop/lib/money'
-import type { ShpOrder, ShpOrderCharge, ShpOrderStatus } from '@/modules/shop/lib/types'
+import { issueInvoiceForCharge } from '@/modules/shop/lib/invoices'
+import { chargeInvoiceEmailAttachment } from '@/modules/shop/lib/invoice-attachment'
+import type { EmailAttachment } from '@/lib/email/index'
+import type { ShpInvoice, ShpOrder, ShpOrderCharge, ShpOrderStatus } from '@/modules/shop/lib/types'
 
 /** Who took the step, for the timeline and the refund row. `customer` is the
  *  customer on their own order page; anything else is a staff user id. */
@@ -440,23 +445,39 @@ async function afterChargePaid(charge: ShpOrderCharge, actor: ChargeActor, email
   const how = actor.kind === 'customer'
     ? `Paid online by the customer${charge.paymentReference ? ` (payment ${charge.paymentReference})` : ''}`
     : `Recorded as paid by staff${charge.paymentReference ? ` (reference ${charge.paymentReference})` : ''}`
+
+  // The fee's own VAT invoice, raised before the email so it can travel with
+  // it. Never added to the order's invoice. Left to the button on a shop that
+  // raises its invoices by hand - pressing it raises this one too.
+  const autoInvoice = config.invoicesEnabled && config.invoiceIssueOn !== 'MANUAL'
+  const invoiced = autoInvoice ? await issueInvoiceForCharge(charge.id) : null
+  if (invoiced && !invoiced.ok) console.error('[shop] could not invoice charge', charge.id, invoiced.error)
+  const chargeInvoice = invoiced?.ok ? invoiced.invoice : null
+  const paperwork = chargeInvoice
+    ? ` Invoiced separately on ${chargeInvoice.invoiceNumber}, not added to the order's invoice.`
+    : config.invoicesEnabled
+      ? ' No invoice has been raised for it yet - the invoice panel on this order has a button to raise it.'
+      : ' This payment is not on the order\'s invoice - record it in your books separately.'
   await addOrderNote(
     order.id,
     `${charge.reason} of ${formatMoney(charge.total, symbol)} paid. ${how}.` +
       `${released ? ' Order taken off hold.' : ''}` +
-      ' This payment is not on the order\'s invoice - record it in your books separately.',
+      paperwork,
     true,
     actorId(actor),
   )
 
   if (emailCustomer) {
+    // Printed before the send rather than inside it. Never throws: no PDF
+    // means the email goes without one, and the invoice is on the order page.
+    const attachments = await chargeAttachments(chargeInvoice, config)
     await quietly('charge paid', () =>
       notifyOrderCustomer('CHARGE_PAID', order, {
         customerName: order.customerName,
         orderNumber: order.orderNumber,
         ...chargeVars(charge, config),
         shopName: config.shopTitle || 'Shop',
-      }),
+      }, attachments),
     )
   }
   // The owner only needs telling when the customer did it. Staff who recorded
@@ -464,6 +485,13 @@ async function afterChargePaid(charge: ShpOrderCharge, actor: ChargeActor, email
   if (actor.kind === 'customer') {
     await sendAdminChargeUpdate(order, charge, config, `paid the ${charge.reason.toLowerCase()} online. The order is back to where it was, so the next step is yours.`)
   }
+}
+
+/** The fee's invoice as an attachment for the "fee paid" email, where there is
+ *  one and the shop attaches invoices to emails. */
+async function chargeAttachments(invoice: ShpInvoice | null, config: ShpConfig): Promise<{ attachments: EmailAttachment[] } | undefined> {
+  const file = await chargeInvoiceEmailAttachment(invoice, config)
+  return file ? { attachments: [file] } : undefined
 }
 
 /** Puts the order back to where it was before the charge held it - only if the

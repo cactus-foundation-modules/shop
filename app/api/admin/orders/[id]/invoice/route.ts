@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getInvoiceById, listInvoicesForOrder } from '@/modules/shop/lib/db/invoices'
-import { issueInvoiceForOrder, resendInvoiceToSinks, voidInvoiceAndTellSinks } from '@/modules/shop/lib/invoices'
+import { issueInvoiceForOrder, resendInvoiceToSinks, voidInvoiceAndTellSinks, listChargesNeedingInvoice, raiseMissingChargeInvoices } from '@/modules/shop/lib/invoices'
 import { hasInvoiceSinks } from '@/modules/shop/lib/invoice-sinks'
 import { proformaPath, proformaPdfPath, signInvoiceToken } from '@/modules/shop/lib/invoice-token'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
@@ -37,6 +37,10 @@ function present(invoice: ShpInvoice) {
     issuedAt: invoice.issuedAt,
     taxPointDate: invoice.taxPointDate,
     dueDate: invoice.dueDate,
+    // Set on a paid charge's own invoice (a redelivery fee), with what it was
+    // for, so the panel can tell it apart from the order's invoice.
+    orderChargeId: invoice.orderChargeId ?? null,
+    chargeReason: invoice.orderChargeId ? (invoice.lines[0]?.name ?? 'Charge') : null,
     total: invoice.total,
     taxAmount: invoice.taxAmount,
     currencySymbol: invoice.currencySymbol,
@@ -57,11 +61,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   if (gate.error) return gate.error
 
   const { id } = await params
-  const [invoices, config, sinks, order] = await Promise.all([
+  const [invoices, config, sinks, order, chargesToInvoice] = await Promise.all([
     listInvoicesForOrder(id),
     getShopConfigCached(),
     hasInvoiceSinks(),
     getOrderById(id),
+    listChargesNeedingInvoice(id),
   ])
 
   // The proforma rides on this route rather than one of its own: it is the same
@@ -92,13 +97,16 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // Whether anything is listening for issued invoices at all, so the screen
     // can offer "send to the books again" only where there are books to send to.
     hasBookkeeping: sinks,
+    // Paid charges (a redelivery fee) with no invoice of their own yet, which
+    // the panel offers to raise - each on its own invoice, never on the order's.
+    chargesToInvoice: chargesToInvoice.map((charge) => ({ id: charge.id, reason: charge.reason, total: charge.total })),
     invoices: invoices.map(present),
     proforma,
   })
 }
 
 const Body = z.object({
-  action: z.enum(['issue', 'resend', 'void']),
+  action: z.enum(['issue', 'issue-charges', 'resend', 'void']),
   invoiceId: z.string().optional(),
   reason: z.string().max(500).optional(),
 })
@@ -128,6 +136,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const outcome = await issueInvoiceForOrder(id, { trigger: 'MANUAL', issuedBy: 'MANUAL', userId: gate.user.id })
     if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
     return NextResponse.json({ invoice: present(outcome.invoice), created: outcome.created })
+  }
+
+  if (action === 'issue-charges') {
+    const config = await getShopConfigCached()
+    if (!config.invoicesEnabled) return NextResponse.json({ error: 'Invoicing is switched off in Shop settings.' }, { status: 409 })
+    const raised = await raiseMissingChargeInvoices(id)
+    if (raised.length === 0) return NextResponse.json({ error: 'There was no fee left to invoice, or its invoice could not be raised.' }, { status: 409 })
+    return NextResponse.json({ invoices: raised.map(present) })
   }
 
   if (action === 'resend') {

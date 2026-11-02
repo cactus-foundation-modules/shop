@@ -948,8 +948,8 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                   onChange={(e) => set('invoiceAttachToEmail', e.target.checked)}
                 />
                 {config.invoiceIssueOn === 'PAID'
-                  ? <>Attach the invoice to the order confirmation email (and to the &ldquo;your order is complete&rdquo; email)</>
-                  : <>Attach the invoice to the &ldquo;your order is complete&rdquo; email</>}
+                  ? <>Attach the invoice to the order confirmation email (and to the &ldquo;your order is complete&rdquo; email). A redelivery fee&rsquo;s own invoice goes with the &ldquo;fee paid&rdquo; email.</>
+                  : <>Attach the invoice to the &ldquo;your order is complete&rdquo; email. A redelivery fee&rsquo;s own invoice goes with the &ldquo;fee paid&rdquo; email.</>}
               </label>
             </div>
           )}

@@ -79,6 +79,7 @@ function mapInvoice(r: Record<string, unknown>): ShpInvoice {
     supersedeReason: (r.supersede_reason as string | null) ?? null,
     voidedAt: (r.voided_at as Date | null) ?? null,
     voidReason: (r.void_reason as string | null) ?? null,
+    orderChargeId: (r.order_charge_id as string | null) ?? null,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
   }
@@ -96,6 +97,18 @@ export async function getInvoiceForOrder(orderId: string): Promise<ShpInvoice | 
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
     SELECT * FROM "shp_invoices"
     WHERE "order_id" = ${orderId} AND "status" = 'ISSUED' AND "superseded_at" IS NULL
+      AND "order_charge_id" IS NULL
+    LIMIT 1
+  `
+  return rows[0] ? mapInvoice(rows[0]) : null
+}
+
+/** The live invoice for one paid charge (a redelivery fee), if it has one.
+ *  Never the order's own invoice: a charge's invoice stands on its own. */
+export async function getInvoiceForCharge(chargeId: string): Promise<ShpInvoice | null> {
+  const rows = await prisma.$queryRaw<Record<string, unknown>[]>`
+    SELECT * FROM "shp_invoices"
+    WHERE "order_charge_id" = ${chargeId} AND "status" = 'ISSUED' AND "superseded_at" IS NULL
     LIMIT 1
   `
   return rows[0] ? mapInvoice(rows[0]) : null
@@ -146,11 +159,14 @@ export type InsertInvoiceInput = {
   issuedBy: 'AUTO' | 'MANUAL'
   issueTrigger: string | null
   createdByUserId: string | null
+  /** Set on a charge's own invoice; absent or null on the order's. */
+  orderChargeId?: string | null
 }
 
 /** Thrown when an order already has a live invoice. Not an error the caller has
  *  to shout about: it is the normal outcome of two things reacting to the same
- *  status change, and the right response is to use the invoice that is there. */
+ *  status change, and the right response is to use the invoice that is there.
+ *  The same goes for a charge that already has its own. */
 export class InvoiceAlreadyIssuedError extends Error {}
 
 export async function insertInvoice(input: InsertInvoiceInput, tx?: PrismaTransactionClient): Promise<ShpInvoice> {
@@ -160,7 +176,7 @@ export async function insertInvoice(input: InsertInvoiceInput, tx?: PrismaTransa
         "order_id", "order_number", "invoice_number", "tax_point_date", "due_date", "currency", "currency_symbol",
         "tax_mode", "subtotal", "discount_amount", "shipping_amount", "tax_amount", "total",
         "seller", "customer", "lines", "tax_breakdown", "wording",
-        "issued_by", "issue_trigger", "created_by_user_id"
+        "issued_by", "issue_trigger", "created_by_user_id", "order_charge_id"
       ) VALUES (
         ${input.orderId}, ${input.orderNumber}, ${input.invoiceNumber}, ${input.taxPointDate}::date, ${input.dueDate}::date,
         ${input.currency}, ${input.currencySymbol}, ${input.taxMode},
@@ -169,7 +185,7 @@ export async function insertInvoice(input: InsertInvoiceInput, tx?: PrismaTransa
         ${JSON.stringify(input.seller)}::jsonb, ${JSON.stringify(input.customer)}::jsonb,
         ${JSON.stringify(input.lines)}::jsonb, ${JSON.stringify(input.taxBreakdown)}::jsonb,
         ${JSON.stringify(input.wording)}::jsonb,
-        ${input.issuedBy}, ${input.issueTrigger}, ${input.createdByUserId}
+        ${input.issuedBy}, ${input.issueTrigger}, ${input.createdByUserId}, ${input.orderChargeId ?? null}
       )
       RETURNING *
     `
@@ -185,7 +201,7 @@ export async function insertInvoice(input: InsertInvoiceInput, tx?: PrismaTransa
     // 036), and an install that has not taken that migration yet still reports
     // the old one.
     const message = String((error as { message?: string }).message ?? '')
-    if (message.includes('shp_invoices_order_live_key') || message.includes('shp_invoices_order_issued_key')) {
+    if (message.includes('shp_invoices_order_live_key') || message.includes('shp_invoices_order_issued_key') || message.includes('shp_invoices_charge_live_key')) {
       throw new InvoiceAlreadyIssuedError('This order already has an invoice.')
     }
     throw error

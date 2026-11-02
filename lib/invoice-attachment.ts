@@ -3,6 +3,7 @@ import { invoicePdfFilename, printPath } from '@/modules/shop/lib/invoice-pdf'
 import { documentPagePath, signDocumentPrintToken } from '@/modules/shop/lib/document-print-token'
 import type { EmailAttachment } from '@/lib/email/index'
 import type { ShpConfig } from '@/modules/shop/lib/config'
+import type { ShpInvoice } from '@/modules/shop/lib/types'
 
 // The shop's documents as files travelling with an email.
 //
@@ -34,34 +35,53 @@ export async function invoiceEmailAttachment(orderId: string, config: ShpConfig)
     // the one document a customer must not be sent a fresh copy of.
     const invoice = await getInvoiceForOrder(orderId)
     if (!invoice) return null
-
-    // The invoice's own page with `print=1`, printed by the same headless
-    // browser the download button uses and on the same sheet, so the file in
-    // the inbox and the file from the site are the same document rather than
-    // two renderings that agree with each other for now. The token is minted
-    // here because the browser doing the printing carries no session.
-    // Both imported here rather than at the top: the document module drags in
-    // Puck's RSC renderer and every block the invoice layout can hold, and a
-    // status change that is not a completion has no business loading any of it.
-    const [{ renderInvoicePdf }, { documentPageSetup }] = await Promise.all([
-      import('@/modules/shop/lib/invoice-pdf'),
-      import('@/modules/shop/lib/invoice-document'),
-    ])
-    const path = printPath(
-      documentPagePath('invoice', invoice.invoiceNumber),
-      signDocumentPrintToken('invoice', invoice.invoiceNumber),
-    )
-    // The same sheet the download button prints on - its own layout type, so a
-    // shop that wants its invoices on A5 gets them on A5 in the inbox too.
-    const bytes = await renderInvoicePdf(path, await documentPageSetup('shopInvoice'))
-    return {
-      filename: invoicePdfFilename(config.invoicePdfFilenamePrefix, invoice.invoiceNumber),
-      content: Buffer.from(bytes),
-      contentType: 'application/pdf',
-    }
+    return await invoiceDocumentAttachment(invoice, config)
   } catch (error) {
     console.error('[shop] could not print the invoice for order', orderId, error)
     return null
+  }
+}
+
+/**
+ * One particular invoice as an email attachment - a paid charge's own invoice
+ * (a redelivery fee), which getInvoiceForOrder deliberately never returns.
+ * Same settings, same printer and same never-throws rule as the order's.
+ */
+export async function chargeInvoiceEmailAttachment(invoice: ShpInvoice | null, config: ShpConfig): Promise<EmailAttachment | null> {
+  if (!invoice || invoice.status !== 'ISSUED') return null
+  if (!config.invoiceAttachToEmail || !config.invoicePdfEnabled) return null
+  try {
+    return await invoiceDocumentAttachment(invoice, config)
+  } catch (error) {
+    console.error('[shop] could not print invoice', invoice.invoiceNumber, error)
+    return null
+  }
+}
+
+async function invoiceDocumentAttachment(invoice: ShpInvoice, config: ShpConfig): Promise<EmailAttachment> {
+  // The invoice's own page with `print=1`, printed by the same headless
+  // browser the download button uses and on the same sheet, so the file in
+  // the inbox and the file from the site are the same document rather than
+  // two renderings that agree with each other for now. The token is minted
+  // here because the browser doing the printing carries no session.
+  // Both imported here rather than at the top: the document module drags in
+  // Puck's RSC renderer and every block the invoice layout can hold, and a
+  // status change that is not a completion has no business loading any of it.
+  const [{ renderInvoicePdf }, { documentPageSetup }] = await Promise.all([
+    import('@/modules/shop/lib/invoice-pdf'),
+    import('@/modules/shop/lib/invoice-document'),
+  ])
+  const path = printPath(
+    documentPagePath('invoice', invoice.invoiceNumber),
+    signDocumentPrintToken('invoice', invoice.invoiceNumber),
+  )
+  // The same sheet the download button prints on - its own layout type, so a
+  // shop that wants its invoices on A5 gets them on A5 in the inbox too.
+  const bytes = await renderInvoicePdf(path, await documentPageSetup('shopInvoice'))
+  return {
+    filename: invoicePdfFilename(config.invoicePdfFilenamePrefix, invoice.invoiceNumber),
+    content: Buffer.from(bytes),
+    contentType: 'application/pdf',
   }
 }
 

@@ -241,7 +241,8 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
     : []
   // The live one: issued, and not since replaced. What "the invoice" means to
   // the reference rules, to the proforma and to the billing panel.
-  const invoiceRecord = invoiceRecords.find((record) => record.status === 'ISSUED' && !record.supersededAt) ?? null
+  // Never a paid charge's own invoice (a redelivery fee), which sits alongside.
+  const invoiceRecord = invoiceRecords.find((record) => record.status === 'ISSUED' && !record.supersededAt && !record.orderChargeId) ?? null
   // The one the paperwork links read. A shop that raises invoices and keeps them
   // to itself still has none to offer here, exactly as before.
   const invoice = showPaperwork ? invoiceRecord : null
@@ -551,7 +552,8 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
       name: `Invoice ${record.invoiceNumber}`,
       // Said plainly rather than left for somebody to work out from two invoice
       // numbers on one order.
-      note: record.supersededAt ? 'Cancelled and replaced' : null,
+      // A fee paid separately has its own invoice, and says what it was for.
+      note: record.supersededAt ? 'Cancelled and replaced' : record.orderChargeId ? (record.lines[0]?.name ?? 'Separate charge') : null,
       href: pdfDownloads ? invoicePdfPath(record.invoiceNumber) : invoicePath(record.invoiceNumber),
       action: pdfDownloads ? 'Download' : 'Open',
       icon: 'doc',

@@ -1127,6 +1127,10 @@ export type ShpInvoice = {
   supersedeReason?: string | null
   voidedAt: Date | null
   voidReason: string | null
+  /** The paid charge (a redelivery fee) this invoice is for, raised on its own
+   *  and never folded into the order's invoice. Null or absent on the order's
+   *  own invoice. See lib/charge-invoice.ts. */
+  orderChargeId?: string | null
   createdAt: Date
   updatedAt: Date
 }

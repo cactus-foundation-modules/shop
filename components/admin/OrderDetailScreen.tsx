@@ -342,6 +342,8 @@ type OrderInvoice = {
   // Still ISSUED - it was issued, and a credit note has undone it - so without
   // this the panel would show two Issued invoices and no word about why.
   supersededAt: string | null; supersedeReason: string | null
+  // A paid charge's own invoice (a redelivery fee), never the order's.
+  orderChargeId?: string | null; chargeReason?: string | null
   viewUrl: string; pdfUrl: string
 }
 // The proforma, which has no row of its own anywhere: it is drawn live from the
@@ -360,6 +362,8 @@ type InvoiceState = {
   pdfEnabled: boolean
   hasBookkeeping: boolean
   invoices: OrderInvoice[]
+  // Paid charges with no invoice of their own yet.
+  chargesToInvoice?: { id: string; reason: string; total: string }[]
   proforma?: OrderProforma | null
 }
 
@@ -809,6 +813,20 @@ export function OrderDetailScreen({ orderId, children, panels }: {
     const res = await fetch(`/api/m/shop/admin/orders/${orderId}/invoice`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'issue' }),
+    })
+    setBusy(false)
+    if (!res.ok) {
+      await alert(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'That invoice could not be raised.')
+      return
+    }
+    refresh()
+  }
+
+  async function issueChargeInvoices() {
+    setBusy(true)
+    const res = await fetch(`/api/m/shop/admin/orders/${orderId}/invoice`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'issue-charges' }),
     })
     setBusy(false)
     if (!res.ok) {
@@ -1836,7 +1854,7 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                   {invoicing.invoices.length === 1 && <div className="sod-actions">{invoiceActions(invoicing.invoices[0]!)}</div>}
                 </div>
                 <div className="sox-card-body" style={{ display: 'grid', gap: '0.75rem' }}>
-                  {invoicing.invoices.length === 0 && (
+                  {invoicing.invoices.every((invoice) => invoice.orderChargeId) && (
                     <>
                       <p className="sox-sub" style={{ margin: 0 }}>
                         {invoicing.issueOn === 'MANUAL'
@@ -1848,10 +1866,26 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                       </button>
                     </>
                   )}
+                  {/* A paid fee with no invoice of its own yet - paid while the
+                      shop raised invoices by hand, or its invoice would not raise
+                      at the time. Each gets its own invoice, never a line on the
+                      order's. */}
+                  {(invoicing.chargesToInvoice ?? []).length > 0 && invoicing.invoices.some((invoice) => !invoice.orderChargeId) && (
+                    <>
+                      <p className="sox-sub" style={{ margin: 0 }}>
+                        {(invoicing.chargesToInvoice ?? []).map((charge) => `${charge.reason} (${formatMoney(charge.total, currencySymbol)})`).join(', ')}
+                        {' '}was paid separately and has no invoice of its own yet.
+                      </p>
+                      <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={issueChargeInvoices}>
+                        Raise its invoice
+                      </button>
+                    </>
+                  )}
                   {invoicing.invoices.map((invoice) => (
                     <div key={invoice.id} style={{ display: 'grid', gap: '0.375rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <strong className="sox-mono">{invoice.invoiceNumber}</strong>
+                        {invoice.chargeReason && <span className="badge badge-default">{invoice.chargeReason}</span>}
                         {invoice.status === 'VOID'
                           ? <span className="badge badge-default">Void</span>
                           : invoice.supersededAt
