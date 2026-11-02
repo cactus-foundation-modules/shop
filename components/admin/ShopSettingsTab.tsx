@@ -947,7 +947,9 @@ export function ShopSettingsTab({ hostedSettingsPanels, hostedSettingsSlots }: M
                   disabled={!config.invoicePdfEnabled}
                   onChange={(e) => set('invoiceAttachToEmail', e.target.checked)}
                 />
-                Attach the invoice to the &ldquo;your order is complete&rdquo; email
+                {config.invoiceIssueOn === 'PAID'
+                  ? <>Attach the invoice to the order confirmation email (and to the &ldquo;your order is complete&rdquo; email)</>
+                  : <>Attach the invoice to the &ldquo;your order is complete&rdquo; email</>}
               </label>
             </div>
           )}

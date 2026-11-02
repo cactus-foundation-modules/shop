@@ -13,6 +13,8 @@ import { customerReferenceVars, sendShopEmail } from '@/modules/shop/lib/email'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { getPaymentProvider, resolveProviderLabel } from '@/modules/shop/lib/payments/registry'
 import { issueInvoiceForOrder, shouldIssueOn } from '@/modules/shop/lib/invoices'
+import { invoiceEmailAttachment } from '@/modules/shop/lib/invoice-attachment'
+import type { EmailAttachment } from '@/lib/email/index'
 import { notifyOrderPaid } from '@/modules/shop/lib/order-paid-hooks'
 import { renderOrderItemsEmailTable } from '@/modules/shop/lib/order-items-email'
 import { formatMoney } from '@/modules/shop/lib/money'
@@ -139,6 +141,28 @@ export async function fulfillPaidOrder(
   const customerNotice = opts.customerNotice
     ?? (order.originalPaymentMethod ? 'PAYMENT_RECEIVED' : 'ORDER_CONFIRMED')
 
+  // The invoice, for a shop that invoices on payment rather than on despatch or
+  // completion. Raised BEFORE the customer's email so it can travel with it: the
+  // confirmation is the email a buyer on a paid-at-checkout order files, and an
+  // invoice that only turned up on completion left them asking for it. Same
+  // swallow-and-log rule as the other trigger in lib/order-status.ts: paperwork
+  // that will not raise is a job for the button on the order screen, not a
+  // reason to fail a payment webhook or hold up the customer's email.
+  //
+  // Only an invoice raised by THIS payment is attached. A shop invoicing on
+  // completion, or an order placed before the shop switched to invoicing on
+  // payment (lib/invoice-issue-on.ts), sends the email exactly as before.
+  let invoiceAttachment: EmailAttachment | null = null
+  if (shouldIssueOn(config, 'PAID', order)) {
+    try {
+      const invoiced = await issueInvoiceForOrder(order.id, { trigger: 'PAID', issuedBy: 'AUTO' })
+      if (invoiced.ok) invoiceAttachment = await invoiceEmailAttachment(order.id, config)
+      else console.error('[shop] could not invoice order', order.id, invoiced.error)
+    } catch (error) {
+      console.error('[shop] could not invoice order', order.id, error)
+    }
+  }
+
   // Neither email below may stop what comes after it. By this point the money
   // has landed and the order is real, and this function runs exactly once - a
   // payment webhook that failed here would be retried against an order already
@@ -166,20 +190,10 @@ export async function fulfillPaidOrder(
         ...customerReferenceVars(order, config),
         shopName: config.shopTitle || 'Shop',
         shopUrl: `${siteUrl}/shop`,
-      })
+      }, invoiceAttachment ? { attachments: [invoiceAttachment] } : undefined)
     } catch (error) {
       console.error('[shop] could not tell the customer their order is paid', order.id, error)
     }
-  }
-
-  // The invoice, for a shop that invoices on payment rather than on despatch or
-  // completion. Same swallow-and-log rule as the other trigger in
-  // lib/order-status.ts: the money has landed and the customer has been told, so
-  // paperwork that will not raise is a job for the button on the order screen,
-  // not a reason to fail a payment webhook.
-  if (shouldIssueOn(config, 'PAID', order)) {
-    const invoiced = await issueInvoiceForOrder(order.id, { trigger: 'PAID', issuedBy: 'AUTO' })
-    if (!invoiced.ok) console.error('[shop] could not invoice order', order.id, invoiced.error)
   }
 
   // The owner's new-order alert - but not on a method they clear by hand. Those
