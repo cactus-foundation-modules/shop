@@ -193,6 +193,9 @@ export function OrdersScreen() {
 
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [metrics, setMetrics] = useState<Record<string, RowMetrics>>({})
+  // Other modules' one-liners per order (shop.order-row-notes): where the
+  // customer came from, say. Printed as text under the date, nothing more.
+  const [rowNotes, setRowNotes] = useState<Record<string, Array<{ text: string; title?: string }>>>({})
   const [overview, setOverview] = useState<Overview | null>(null)
   const [stranded, setStranded] = useState<Stranded[]>([])
   const [total, setTotal] = useState(0)
@@ -245,6 +248,7 @@ export function OrdersScreen() {
         const data = await r.json()
         setOrders(data.orders ?? [])
         setMetrics(data.metrics ?? {})
+        setRowNotes(data.rowNotes ?? {})
         setTotal(data.total ?? 0)
         // Drop the selection whenever the view changes - a bulk action must
         // never touch a row that is no longer on screen.
@@ -642,6 +646,9 @@ export function OrdersScreen() {
                           it for somebody who already knows the convention. */}
                       {o.kind === 'REPLACEMENT' && <span className="badge badge-info">Replacement</span>}
                       <p className="sox-sub">{relativeTime(o.createdAt)}</p>
+                      {rowNotes[o.id]?.map((note, i) => (
+                        <p key={i} className="sox-sub sox-row-note" title={note.title}>{note.text}</p>
+                      ))}
                     </td>
                     <td>
                       <div className="sox-badges">

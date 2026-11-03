@@ -72,6 +72,7 @@ export const ordersScreenCss = `
 .sox-ordno{font-weight:600;color:var(--color-text);text-decoration:none}
 .sox-ordno:hover{text-decoration:underline;color:var(--color-primary)}
 .sox-sub{margin:0.125rem 0 0;font-size:0.75rem;color:var(--color-text-secondary)}
+.sox-row-note{color:var(--color-text);font-weight:500;overflow-wrap:anywhere}
 .sox-badges{display:flex;flex-wrap:wrap;gap:0.25rem;align-items:center}
 .sox-badges .badge{white-space:normal;text-align:center;justify-content:center;max-width:9rem;line-height:1.25}
 

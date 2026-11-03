@@ -9,6 +9,7 @@ import { findShippingZoneForPostcode } from '@/modules/shop/lib/db/tax-shipping'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { applyOrderPaymentState } from '@/modules/shop/lib/order-payment-state'
+import { resolveOrderRowNotes } from '@/modules/shop/lib/order-row-notes'
 import { listStrandedPayments } from '@/modules/shop/lib/stranded-payments'
 import { BoundedAddressSchema, customerNameField, phoneField } from '@/modules/shop/lib/address-limits'
 import { formatAddress } from '@/modules/shop/lib/address-format'
@@ -30,13 +31,16 @@ export async function GET(request: NextRequest) {
   // route: they belong to the same once-per-load request the counters already
   // make, and a shop that has none - which is every shop, almost always - pays
   // one cheap COUNT for the reassurance. See lib/stranded-payments.
-  const [metrics, overview, stranded] = await Promise.all([
+  // Row notes are other modules' one-liners about an order (see
+  // lib/order-row-notes.ts) - one call per provider for the whole page.
+  const [metrics, overview, stranded, rowNotes] = await Promise.all([
     getOrderRowMetrics(orders.map((o) => o.id)),
     params.get('stats') === '1' ? getOrdersOverview() : Promise.resolve(null),
     params.get('stats') === '1' ? listStrandedPayments() : Promise.resolve(null),
+    resolveOrderRowNotes(orders.map((o) => ({ id: o.id, orderNumber: o.orderNumber }))),
   ])
 
-  return NextResponse.json({ orders, total, metrics, overview, stranded })
+  return NextResponse.json({ orders, total, metrics, overview, stranded, rowNotes })
 }
 
 // The delivery address is the shared bounded shape (lib/address-limits.ts) the
