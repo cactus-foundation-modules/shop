@@ -925,6 +925,10 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     -- migrations/074_consignment_parcels.sql.
     "consignment_number" TEXT,
     "consignment_parcels" JSONB,
+    -- Follow-my-parcel links DPD would not check when they were saved, waiting
+    -- for the tracking check to put each on its box. Also shipped as
+    -- migrations/078_pending_parcel_links.sql.
+    "pending_parcel_links" TEXT[],
     "delivery_window_from" TIMESTAMP(3),
     "delivery_window_to" TIMESTAMP(3),
     "stop_number" INTEGER,

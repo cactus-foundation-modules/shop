@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from 'react'
 import { DPD_FOLLOW_LINK_EXAMPLE, dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
+import { dpdTypedParcelNumber } from '@/modules/shop/lib/tracking/dpd'
 import type { ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 
 // "This delivery is four parcels" - and a box for each of the others' links.
@@ -14,7 +15,10 @@ import type { ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 //
 // The links go in any order. Nobody can tell from a link which box it opens,
 // and nobody should have to: DPD say, when the parcel is saved, and each link
-// lands on its own box (lib/tracking/dpd-consignment.ts).
+// lands on its own box (lib/tracking/dpd-consignment.ts). When DPD will not
+// say just then, the parcel saves anyway and the links wait for the tracking
+// check; the parcel number in the tracking number box finds the boxes without
+// DPD's say-so at all.
 
 type Box = { code: string; number: string; stage: string | null; delivered: boolean; hasLink: boolean }
 
@@ -30,13 +34,16 @@ function isDpdLink(value: string): boolean {
   return Boolean(dpdFollowLinkCode(value)) || /track\.dpd\.co\.uk\/parcels\/\d/i.test(value)
 }
 
-export function ConsignmentLinksField({ link, active, known, knownForLink, links, onLinks }: {
+export function ConsignmentLinksField({ link, parcelNumber = '', active, known, knownForLink, links, onLinks }: {
   /** The parcel's own tracking link as it stands in the form. */
   link: string
+  /** The tracking number as it stands in the form - a printed parcel number
+   *  finds the delivery when DPD will not open the link. */
+  parcelNumber?: string
   /** The courier is read from DPD. */
   active: boolean
   /** What the parcel already holds, on the edit form. */
-  known?: { number: string | null; parcels: ConsignmentParcel[] | null } | null
+  known?: { number: string | null; parcels: ConsignmentParcel[] | null; pendingLinks?: number } | null
   /** The link `known` belongs to: a different link in the form is a
    *  different delivery, and is asked about afresh. */
   knownForLink?: string
@@ -44,23 +51,25 @@ export function ConsignmentLinksField({ link, active, known, knownForLink, links
   onLinks: (next: string[]) => void
 }) {
   const typed = link.trim()
+  const number = dpdTypedParcelNumber(parcelNumber) ? parcelNumber.trim() : ''
   const useKnown = Boolean(known?.parcels && known.number) && typed === (knownForLink ?? '').trim()
   // The answer for the link it was asked about. A link with no answer yet is
   // "asking"; one that is not worth asking about is nothing at all - worked
   // out from the link rather than set, so a link changed mid-ask cannot show
   // the previous one's parcels.
-  const [answer, setAnswer] = useState<{ link: string; preview: Preview } | null>(null)
-  const shouldAsk = active && !useKnown && Boolean(typed) && isDpdLink(typed)
+  const asked = `${typed}|${number}`
+  const [answer, setAnswer] = useState<{ asked: string; preview: Preview } | null>(null)
+  const shouldAsk = active && !useKnown && ((Boolean(typed) && isDpdLink(typed)) || (!typed && Boolean(number)))
 
   useEffect(() => {
     if (!shouldAsk) return
     let cancelled = false
-    // Not on every keystroke: each ask can cost one of DPD's few checks a
-    // minute, and a link is pasted, not typed.
+    // Not on every keystroke: each ask can cost one of DPD's few checks an
+    // hour, and a link is pasted, not typed.
     const timer = setTimeout(async () => {
       let preview: Preview
       try {
-        const res = await fetch(`/api/m/shop/admin/dpd-consignment?link=${encodeURIComponent(typed)}`)
+        const res = await fetch(`/api/m/shop/admin/dpd-consignment?link=${encodeURIComponent(typed)}&number=${encodeURIComponent(number)}`)
         const body = await res.json().catch(() => null) as
           | { found: true; consignmentNumber: string; parcelCode: string; parcels: Array<Omit<Box, 'hasLink'>> }
           | { found: false; error: string }
@@ -77,17 +86,17 @@ export function ConsignmentLinksField({ link, active, known, knownForLink, links
       } catch {
         preview = { state: 'error', error: 'DPD could not be asked just now.' }
       }
-      if (!cancelled) setAnswer({ link: typed, preview })
+      if (!cancelled) setAnswer({ asked, preview })
     }, 600)
     return () => {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [shouldAsk, typed])
+  }, [shouldAsk, typed, number, asked])
 
   const preview: Preview = !shouldAsk
     ? { state: 'idle' }
-    : answer?.link === typed ? answer.preview : { state: 'loading' }
+    : answer?.asked === asked ? answer.preview : { state: 'loading' }
 
   if (!active) return null
 
@@ -138,6 +147,12 @@ export function ConsignmentLinksField({ link, active, known, knownForLink, links
           </li>
         ))}
       </ol>
+      {useKnown && (known?.pendingLinks ?? 0) > 0 && (
+        <span style={hintStyle}>
+          {known?.pendingLinks === 1 ? '1 link is' : `${known?.pendingLinks} links are`} waiting for DPD to say which
+          parcel {known?.pendingLinks === 1 ? 'it opens' : 'they open'} - the tracking check sorts that out on its own.
+        </span>
+      )}
       {slots > 0 && (
         <>
           <span style={hintStyle}>

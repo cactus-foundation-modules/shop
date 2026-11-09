@@ -62,6 +62,8 @@ export type EditableParcel = {
    *  response from an older deployment still renders. */
   consignmentNumber?: string | null
   consignmentParcels?: ConsignmentParcel[] | null
+  /** Links saved while DPD would not place them (migration 078). */
+  pendingParcelLinks?: string[]
 }
 
 export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: {
@@ -250,7 +252,7 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
             couriers={couriers}
             value={details}
             onChange={setDetails}
-            consignment={{ number: parcel.consignmentNumber ?? null, parcels: parcel.consignmentParcels ?? null }}
+            consignment={{ number: parcel.consignmentNumber ?? null, parcels: parcel.consignmentParcels ?? null, pendingLinks: parcel.pendingParcelLinks?.length ?? 0 }}
             consignmentLink={openingLink}
           />
 

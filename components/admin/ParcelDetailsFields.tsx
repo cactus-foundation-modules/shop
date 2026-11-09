@@ -88,7 +88,7 @@ export function ParcelDetailsFields({ couriers, value, onChange, consignment, co
   value: ParcelDetails
   onChange: (next: ParcelDetails) => void
   /** The boxes the parcel already travels as, on the edit form. */
-  consignment?: { number: string | null; parcels: ConsignmentParcel[] | null } | null
+  consignment?: { number: string | null; parcels: ConsignmentParcel[] | null; pendingLinks?: number } | null
   /** The tracking link those boxes were found from. */
   consignmentLink?: string
 }) {
@@ -254,6 +254,7 @@ export function ParcelDetailsFields({ couriers, value, onChange, consignment, co
 
       <ConsignmentLinksField
         link={value.trackingUrl}
+        parcelNumber={value.trackingNumber}
         active={dpd || dpdByName}
         known={consignment}
         knownForLink={consignmentLink}

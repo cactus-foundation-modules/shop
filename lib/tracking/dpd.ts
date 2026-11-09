@@ -35,6 +35,37 @@ export function dpdParcelCodeFromUrl(url: string | null | undefined): string | n
   return m?.[1] ?? null
 }
 
+// THE TAIL ON A PARCEL CODE
+//
+// '15505217102490*21498': the digits are the parcel number as printed on the
+// label ('1550 5217 102 490 U', less the check letter), and the tail is the
+// day the label was printed, counted from 31 December 1967 - 21498 is
+// 9 November 2026. Read off every DPD parcel Deskwell had recorded, all
+// eleven label days from 21466 to 21498, each the day of dispatch or the day
+// before. It is what lets a parcel be found from its printed number alone,
+// with no session: DPD's anonymous parcel feed answers to the full code and
+// is not rationed the way their session check is.
+
+const DPD_DAY_ZERO = Date.UTC(1967, 11, 31)
+
+/** DPD's label-day number for the UTC day `date` falls on. */
+export function dpdLabelDay(date: Date): number {
+  return Math.floor((date.getTime() - DPD_DAY_ZERO) / 86_400_000)
+}
+
+/**
+ * A parcel number as staff type it, made ready to look up: the full code where
+ * they pasted one ('15505217102490*21498'), else the fourteen digits of the
+ * printed number with the spaces and the check letter dropped. Null for
+ * anything else - a reference, a stray word - rather than a guess.
+ */
+export function dpdTypedParcelNumber(text: string | null | undefined): { code: string } | { digits: string } | null {
+  const compact = (text ?? '').replace(/\s+/g, '')
+  if (/^\d{14}\*\d{1,10}$/.test(compact)) return { code: compact }
+  const m = /^(\d{14})[A-Z]?$/i.exec(compact)
+  return m?.[1] ? { digits: m[1] } : null
+}
+
 /**
  * The session code out of a follow-my-parcel link.
  *

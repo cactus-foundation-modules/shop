@@ -56,6 +56,7 @@ function shipment(patch: Partial<ShpShipment>): ShpShipment {
     trackingShortCode: null,
     consignmentNumber: null,
     consignmentParcels: null,
+    pendingParcelLinks: [],
     ...patch,
   } as ShpShipment
 }

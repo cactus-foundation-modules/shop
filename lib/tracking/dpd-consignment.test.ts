@@ -28,18 +28,20 @@ function payload(code: string) {
 
 let offline = new Set<string>()
 const lookUpDpdParcel = vi.fn(async (code: string) => (offline.has(code) ? null : payload(code) ?? 'missing'))
-const mintDpdSession = vi.fn(async (code: string) => {
+const openSession = async (code: string) => {
   const parcelCode = SESSIONS[code]
   return parcelCode ? { cookie: `sessionId=${code}`, parcelCode } : null
-})
+}
+const mintDpdSession = vi.fn(openSession)
 vi.mock('@/modules/shop/lib/tracking/dpd-session', () => ({ lookUpDpdParcel, mintDpdSession }))
 
-const { findDpdConsignment, resolveDpdConsignmentLinks } = await import('@/modules/shop/lib/tracking/dpd-consignment')
+const { findDpdConsignment, findDpdParcelByNumber, placePendingDpdLinks, resolveDpdConsignmentLinks } = await import('@/modules/shop/lib/tracking/dpd-consignment')
 
 beforeEach(() => {
   offline = new Set()
   lookUpDpdParcel.mockClear()
   mintDpdSession.mockClear()
+  mintDpdSession.mockImplementation(openSession)
 })
 
 describe('findDpdConsignment', () => {
@@ -141,7 +143,7 @@ describe('resolveDpdConsignmentLinks', () => {
     expect(again.ok && again.consignment?.parcels[0]?.shortCode).toBe('6dPoGbFMMrsp')
   })
 
-  it('says so when another box\'s link cannot be checked, rather than dropping it', async () => {
+  it('keeps a link DPD would not check for later, rather than refusing the save or dropping it', async () => {
     mintDpdSession.mockImplementation(async (code: string) => (code === '6dPoGbFSZFR6'
       ? { cookie: 'sessionId=x', parcelCode: '15505217099687*21473' }
       : null))
@@ -152,6 +154,87 @@ describe('resolveDpdConsignmentLinks', () => {
       restart: true,
       extraLinks: ['https://www.dpd.co.uk/d/6dPoGbFMMrsp'],
     })
-    expect(result.ok).toBe(false)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.consignment?.parcels).toHaveLength(4)
+    expect(result.pending).toEqual(['6dPoGbFMMrsp'])
+  })
+
+  // DW000278, 9 November 2026: DPD answered every session check with a 429
+  // for an hour, and the dispatch could not be saved at all.
+  it('finds the boxes from the typed parcel number when DPD will not open any link', async () => {
+    mintDpdSession.mockImplementation(async () => null)
+    const result = await resolveDpdConsignmentLinks({
+      mainCode: '6dPoGbFSZFR6',
+      trackingUrl: 'https://www.dpd.co.uk/d/6dPoGbFSZFR6',
+      parcelNumber: '1550 5217 099 684 K',
+      labelDate: new Date('2026-10-16T09:00:00Z'),
+      existing: nothing,
+      restart: true,
+      extraLinks: ['https://www.dpd.co.uk/d/6dPoGbFMMrsp', 'https://www.dpd.co.uk/d/6dPoGbF1J8vF'],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.consignment?.number).toBe('5217099684')
+    expect(result.consignment?.parcels.map((p) => p.shortCode)).toEqual([null, null, null, null])
+    // The first refusal ends the asking - the rest wait without spending a check.
+    expect(mintDpdSession).toHaveBeenCalledTimes(1)
+    expect(result.pending).toEqual(['6dPoGbFSZFR6', '6dPoGbFMMrsp', '6dPoGbF1J8vF'])
+  })
+
+  it('still saves with every link waiting when there is nothing to find the boxes from', async () => {
+    mintDpdSession.mockImplementation(async () => null)
+    const result = await resolveDpdConsignmentLinks({
+      mainCode: '6dPoGbFSZFR6',
+      trackingUrl: 'https://www.dpd.co.uk/d/6dPoGbFSZFR6',
+      existing: nothing,
+      restart: true,
+      extraLinks: ['https://www.dpd.co.uk/d/6dPoGbFMMrsp'],
+    })
+    expect(result).toEqual({ ok: true, consignment: null, pending: ['6dPoGbFMMrsp'] })
+  })
+})
+
+describe('findDpdParcelByNumber', () => {
+  it('finds the label day from the dispatch date, counting back', async () => {
+    // 21473 is 15 October 2026; dispatched the day after.
+    const found = await findDpdParcelByNumber('1550 5217 099 685 H', new Date('2026-10-16T12:00:00Z'))
+    expect(found?.code).toBe('15505217099685*21473')
+  })
+
+  it('takes a full code as typed and asks nothing else', async () => {
+    const found = await findDpdParcelByNumber('15505217099686*21473', new Date('2020-01-01'))
+    expect(found?.code).toBe('15505217099686*21473')
+    expect(lookUpDpdParcel).toHaveBeenCalledTimes(1)
+  })
+
+  it('will not guess from something that is not a parcel number', async () => {
+    expect(await findDpdParcelByNumber('5217099684', new Date('2026-10-16'))).toBeNull()
+    expect(lookUpDpdParcel).not.toHaveBeenCalled()
+  })
+})
+
+describe('placePendingDpdLinks', () => {
+  const boxes = ['684', '685', '686', '687'].map((n) => ({
+    code: `15505217099${n}*21473`, number: n, shortCode: null, stage: null, delivered: false,
+    deliveredAt: null, receivedBy: null, photoUrl: null, photoKey: null, photoRef: null, checkedAt: null,
+  }))
+
+  it('puts each waiting link on its box once DPD answer', async () => {
+    const result = await placePendingDpdLinks(boxes, ['6dPoGbFSZFR6', '6dPoGbFMMrsp'])
+    expect(result.pending).toEqual([])
+    expect(result.boxes.map((b) => b.shortCode)).toEqual(['6dPoGbFMMrsp', null, null, '6dPoGbFSZFR6'])
+  })
+
+  it('keeps the rest waiting from the first refusal, and drops a stranger\'s link', async () => {
+    mintDpdSession.mockImplementation(async (code: string) => (code === 'StrangerCode1'
+      ? { cookie: 'x', parcelCode: '15505217099688*21473' }
+      : null))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const result = await placePendingDpdLinks(boxes, ['StrangerCode1', '6dPoGbFMMrsp', '6dPoGbF1J8vF'])
+    expect(result.pending).toEqual(['6dPoGbFMMrsp', '6dPoGbF1J8vF'])
+    expect(result.boxes.every((b) => b.shortCode === null)).toBe(true)
+    expect(mintDpdSession).toHaveBeenCalledTimes(2)
+    warn.mockRestore()
   })
 })

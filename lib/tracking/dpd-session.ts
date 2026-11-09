@@ -84,9 +84,10 @@ export async function mintDpdSession(shortCode: string): Promise<DpdSession | nu
   const url = `${API}/createSession?parcelCode=${encodeURIComponent(shortCode)}&origin=d`
   const res = await request(url, null, 'manual')
   if (!res) return null
-  // Only the redirect is a session. They allow five of these a minute per
-  // address and answer the sixth with a 429 that STILL sets a sessionId - one
-  // that was never granted anything, so the parcel reads anonymously and the
+  // Only the redirect is a session. They allow five of these an hour per
+  // address (x-ratelimit-limit 5, retry-after 3600, seen 9 November 2026 -
+  // it was once thought to be a minute) and answer the sixth with a 429 that
+  // STILL sets a sessionId - one that was never granted anything, so the parcel reads anonymously and the
   // photograph is refused. Better to know there is no session than to carry
   // one that only looks like it.
   if (res.status < 300 || res.status >= 400) return null

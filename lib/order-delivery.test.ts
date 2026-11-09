@@ -53,6 +53,7 @@ function shipment(patch: Partial<ShpShipmentWithItems>): ShpShipmentWithItems {
     trackingEvents: [],
     consignmentNumber: null,
     consignmentParcels: null,
+    pendingParcelLinks: [],
     deliveryWindowFrom: null,
     deliveryWindowTo: null,
     stopNumber: null,

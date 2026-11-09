@@ -1,5 +1,5 @@
 import { getShopConfigCached, type ShpConfig } from '@/modules/shop/lib/config'
-import { claimSlotNotification, claimTrackingNotification, getOrderDispatchSummary, recordConsignment, setSlotNotification } from '@/modules/shop/lib/db/shipments'
+import { claimSlotNotification, claimTrackingNotification, getOrderDispatchSummary, recordConsignment, recordPendingParcelLinks, setSlotNotification } from '@/modules/shop/lib/db/shipments'
 import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
 import { resolveDpdConsignmentLinks } from '@/modules/shop/lib/tracking/dpd-consignment'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
@@ -367,18 +367,21 @@ const COUNT_BOXES_BUDGET_MS = 2500
  */
 export async function countDpdBoxes(orderId: string, shipment: ShpShipment): Promise<void> {
   if (shipment.consignmentParcels !== null) return
-  if (!shipment.trackingShortCode && !shipment.trackingUrl) return
+  if (!shipment.trackingShortCode && !shipment.trackingUrl && !shipment.trackingNumber) return
   const config = await getShopConfigCached()
   if (courierForShipment(config, shipment)?.trackingSource !== 'dpd') return
 
   const counted = resolveDpdConsignmentLinks({
     mainCode: shipment.trackingShortCode,
     trackingUrl: shipment.trackingUrl,
+    parcelNumber: shipment.trackingNumber,
+    labelDate: shipment.shippedAt,
     existing: { number: null, parcels: null },
     restart: true,
     extraLinks: [],
   }).then(async (resolved) => {
     if (resolved.ok && resolved.consignment) await recordConsignment(shipment.id, resolved.consignment, orderId)
+    if (resolved.ok && resolved.pending.length > 0) await recordPendingParcelLinks(shipment.id, resolved.pending)
   })
   let timer: ReturnType<typeof setTimeout> | undefined
   const outOfTime = new Promise<void>((resolve) => { timer = setTimeout(resolve, COUNT_BOXES_BUDGET_MS) })

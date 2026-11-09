@@ -76,6 +76,10 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     // Migration 074. Checked on the way out like the history above.
     consignmentNumber: (r.consignment_number as string | null) ?? null,
     consignmentParcels: parseConsignmentParcels(r.consignment_parcels),
+    // Migration 078. Absent on a row read before it, which is nothing waiting.
+    pendingParcelLinks: Array.isArray(r.pending_parcel_links)
+      ? (r.pending_parcel_links as unknown[]).filter((c): c is string => typeof c === 'string')
+      : [],
     deliveryWindowFrom: (r.delivery_window_from as Date | null) ?? null,
     deliveryWindowTo: (r.delivery_window_to as Date | null) ?? null,
     stopNumber: (r.stop_number as number | null) ?? null,
@@ -1140,6 +1144,18 @@ export async function recordConsignment(
     UPDATE "shp_shipments"
     SET "consignment_number" = ${number}::text,
         "consignment_parcels" = ${parcels}::jsonb,
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId}
+  `
+}
+
+/** The follow-my-parcel links still waiting to be put on a box (migration
+ *  078). An empty list clears the column. */
+export async function recordPendingParcelLinks(shipmentId: string, codes: readonly string[]): Promise<void> {
+  const value = codes.length > 0 ? [...codes] : null
+  await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "pending_parcel_links" = ${value}::text[],
         "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${shipmentId}
   `

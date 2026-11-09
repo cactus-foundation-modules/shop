@@ -7,6 +7,7 @@ import {
   createShipment,
   deleteShipment,
   recordConsignment,
+  recordPendingParcelLinks,
   reopenShipmentDelivery,
   getOrderDispatchSummary,
   getShipmentsForOrder,
@@ -287,13 +288,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   // A DPD delivery of several boxes, found before the parcel is recorded so
   // the dispatch note can say how many are coming, and so a link for a box of
-  // somebody else's delivery is refused before anything is saved.
+  // somebody else's delivery is refused before anything is saved. DPD being
+  // unwilling to check a link does not hold the dispatch up: the links wait
+  // and the tracking check places them.
   const parcelLinks = (parsed.data.parcelLinks ?? []).filter(Boolean)
   const dpd = courierForShipment(config, courier.choice)?.trackingSource === 'dpd'
-  const consignment = dpd && (tracking.link.trackingShortCode || tracking.link.trackingUrl || parcelLinks.length > 0)
+  const consignment = dpd && (tracking.link.trackingShortCode || tracking.link.trackingUrl || parcelLinks.length > 0 || parsed.data.trackingNumber)
     ? await resolveDpdConsignmentLinks({
         mainCode: tracking.link.trackingShortCode,
         trackingUrl: tracking.link.trackingUrl,
+        parcelNumber: parsed.data.trackingNumber ?? null,
+        labelDate: parsed.data.shippedAt ?? new Date(),
         existing: { number: null, parcels: null },
         restart: true,
         extraLinks: parcelLinks,
@@ -319,6 +324,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   if (consignment?.ok && consignment.consignment) {
     await recordConsignment(outcome.shipment.id, consignment.consignment, id)
+  }
+  if (consignment?.ok && consignment.pending.length > 0) {
+    await recordPendingParcelLinks(outcome.shipment.id, consignment.pending)
   }
 
   await followDispatchWithStatus(id, order.status, 'recorded')
@@ -445,26 +453,34 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const nextTrackingUrl = tracking?.ok ? tracking.link.trackingUrl : existing.trackingUrl
   const restart = nextShortCode !== existing.trackingShortCode || nextTrackingUrl !== existing.trackingUrl
   let consignment: { number: string; parcels: NonNullable<ShpShipmentWithItems['consignmentParcels']> } | null | undefined
+  let pendingLinks: string[] | undefined
   // A DPD parcel whose boxes were never counted - recorded before they were,
   // or never read since - is counted on this save too: it is how a parcel
   // already called delivered on the strength of one box finds out it is not.
-  const neverCounted = existing.consignmentParcels === null && Boolean(nextShortCode || nextTrackingUrl)
+  const nextNumber = rest.trackingNumber !== undefined ? rest.trackingNumber : existing.trackingNumber
+  const neverCounted = existing.consignmentParcels === null && Boolean(nextShortCode || nextTrackingUrl || nextNumber)
   if (nextCourier?.trackingSource === 'dpd' && (restart || parcelLinks.length > 0 || neverCounted)) {
     const resolved = await resolveDpdConsignmentLinks({
       // A follow-my-parcel link on a courier known only by its typed name is
       // kept as a link with no code beside it; it opens a box all the same.
       mainCode: nextShortCode ?? dpdFollowLinkCode(nextTrackingUrl),
       trackingUrl: nextTrackingUrl,
+      parcelNumber: nextNumber,
+      labelDate: existing.shippedAt,
       existing: { number: existing.consignmentNumber, parcels: existing.consignmentParcels },
       restart,
       extraLinks: parcelLinks,
+      // A different delivery's waiting links are not this one's.
+      pending: restart ? [] : existing.pendingParcelLinks,
     })
     if (!resolved.ok) return NextResponse.json({ error: resolved.error }, { status: 400 })
     consignment = resolved.consignment
+    pendingLinks = resolved.pending
   } else if (restart && existing.consignmentParcels) {
     // No longer a DPD parcel, or no longer this one: its boxes go with it.
     consignment = null
   }
+  if (restart && pendingLinks === undefined && existing.pendingParcelLinks.length > 0) pendingLinks = []
 
   const shipment = await updateShipmentDetails(shipmentId, id, {
     ...rest,
@@ -476,6 +492,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     await recordConsignment(shipmentId, consignment, id)
     shipment.consignmentNumber = consignment?.number ?? null
     shipment.consignmentParcels = consignment?.parcels ?? null
+  }
+  if (pendingLinks !== undefined) {
+    await recordPendingParcelLinks(shipmentId, pendingLinks)
+    shipment.pendingParcelLinks = pendingLinks
   }
   // Called delivered - or carrying a "received by", which every page reads
   // the same way - while the boxes say one is still to come: it is not, and

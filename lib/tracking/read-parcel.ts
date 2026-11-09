@@ -31,7 +31,7 @@ import {
   readDpd,
 } from '@/modules/shop/lib/tracking/dpd'
 import { fetchDpdMapLocation, fetchDpdParcel, fetchDpdRoute, mintDpdSession } from '@/modules/shop/lib/tracking/dpd-session'
-import { findDpdConsignment, mergeConsignmentBoxes } from '@/modules/shop/lib/tracking/dpd-consignment'
+import { findDpdConsignment, findDpdParcelByNumber, mergeConsignmentBoxes } from '@/modules/shop/lib/tracking/dpd-consignment'
 import { dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
 import { isSplitConsignment, type ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 import { aitImageHeaders, readAit } from '@/modules/shop/lib/tracking/ait'
@@ -314,7 +314,12 @@ async function readDpdParcelOnce(parcel: ShpShipment, timezone: string): Promise
   const shortCode = parcel.trackingShortCode ?? dpdFollowLinkCode(parcel.trackingUrl)
   const session = shortCode ? await mintDpdSession(shortCode) : null
   const cookie = session?.cookie ?? null
-  const parcelCode = dpdParcelCodeFromUrl(parcel.trackingUrl) ?? session?.parcelCode ?? null
+  // DPD refusing the session (they ration them) costs the rich feed, not the
+  // parcel: the number staff typed finds it anonymously (findDpdParcelByNumber).
+  const parcelCode = dpdParcelCodeFromUrl(parcel.trackingUrl)
+    ?? session?.parcelCode
+    ?? (await findDpdParcelByNumber(parcel.trackingNumber, parcel.shippedAt))?.code
+    ?? null
   if (!parcelCode) return null
 
   const payloads = await fetchDpdParcel(parcelCode, cookie)
@@ -328,8 +333,11 @@ async function readDpdParcelOnce(parcel: ShpShipment, timezone: string): Promise
   if (parcel.consignmentParcels === null) {
     const found = await findDpdConsignment(parcelCode, payloads.parcel)
     if (found) {
+      // The link goes on its box only when DPD said it opens that box: a box
+      // found from its typed number is not proof of which one the link opens,
+      // and the tracking check places it once DPD will say (store-reading.ts).
       const boxes = mergeConsignmentBoxes(found.boxes, null).map((box) => (
-        box.code === parcelCode ? { ...box, shortCode } : box
+        box.code === parcelCode && session?.parcelCode === parcelCode ? { ...box, shortCode } : box
       ))
       if (isSplitConsignment(boxes)) return readDpdConsignment(found.consignmentNumber, boxes, timezone)
       consignment = { number: found.consignmentNumber, parcels: boxes, photos: [] }

@@ -1,6 +1,7 @@
 import {
   recordCarrierReading,
   recordConsignment,
+  recordPendingParcelLinks,
   recordReceipt,
   recordSignature,
   recordTrackingPageDetails,
@@ -16,6 +17,8 @@ import { captureSignature } from '@/modules/shop/lib/tracking/signature-capture'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import { courierTimesEmailable } from '@/modules/shop/lib/tracking/provisional-window'
 import { windowForParcelOutToday } from '@/modules/shop/lib/tracking/out-for-delivery-window'
+import { placePendingDpdLinks } from '@/modules/shop/lib/tracking/dpd-consignment'
+import { dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
 import type { ConsignmentReading, ParcelReading } from '@/modules/shop/lib/tracking/read-parcel'
 import type { ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 import type { ShpCourier } from '@/modules/shop/lib/courier-faqs'
@@ -196,6 +199,22 @@ async function storeConsignment(parcel: ShpShipment, consignment: ConsignmentRea
     }
   }
 
-  await recordConsignment(parcel.id, { number: consignment.number, parcels: boxes })
-  return boxes
+  // Links saved while DPD would not say which box they open (migration 078):
+  // now there are boxes to put them on, DPD are asked again. Read with their
+  // own sessions from the next check on.
+  // The parcel's own link counts as waiting too while it is on none of the
+  // boxes: DPD would not open it when the boxes were first counted.
+  let placed = boxes
+  const saved = parcel.pendingParcelLinks ?? []
+  const main = parcel.trackingShortCode ?? dpdFollowLinkCode(parcel.trackingUrl)
+  const mainUnplaced = main && boxes.length > 1 && !boxes.some((b) => b.shortCode === main) ? [main] : []
+  const waiting = [...new Set([...saved, ...mainUnplaced])]
+  if (waiting.length > 0) {
+    const result = await placePendingDpdLinks(boxes, waiting)
+    placed = result.boxes
+    if (result.pending.join() !== saved.join()) await recordPendingParcelLinks(parcel.id, result.pending)
+  }
+
+  await recordConsignment(parcel.id, { number: consignment.number, parcels: placed })
+  return placed
 }
