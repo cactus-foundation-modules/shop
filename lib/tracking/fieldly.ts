@@ -83,6 +83,17 @@ export type FieldlyReading = TrackingReading & {
 /** Their window text as two 'HH:MM's: '2-4pm', '10am-12pm', '9:30-11.30am'.
  *  Null for anything else, rather than a guess. */
 export function parseFieldlyWindow(text: string | null | undefined): { start: string; end: string } | null {
+  // 24-hour clock, both ends with minutes: '13:00 - 15:00'. Needs the minutes
+  // so a bare '2-4' stays refused as the guess it is.
+  const h24 = /^\s*(\d{1,2})[:.](\d{2})\s*(?:-|–|to)\s*(\d{1,2})[:.](\d{2})\s*$/i.exec(text ?? '')
+  if (h24) {
+    const from = Number(h24[1]) * 60 + Number(h24[2])
+    const to = Number(h24[3]) * 60 + Number(h24[4])
+    if (Number(h24[1]) > 23 || Number(h24[3]) > 23 || Number(h24[2]) > 59 || Number(h24[4]) > 59 || from >= to) return null
+    const pad = (minutes: number) =>
+      `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+    return { start: pad(from), end: pad(to) }
+  }
   const m = /^\s*(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?\s*(?:-|–|to)\s*(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)\s*$/i
     .exec(text ?? '')
   if (!m) return null

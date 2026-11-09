@@ -44,12 +44,16 @@ describe('parseFieldlyWindow', () => {
     expect(parseFieldlyWindow('11-1pm')).toEqual({ start: '11:00', end: '13:00' })
     expect(parseFieldlyWindow('9:30am - 11.30am')).toEqual({ start: '09:30', end: '11:30' })
     expect(parseFieldlyWindow('8am to 6pm')).toEqual({ start: '08:00', end: '18:00' })
+    expect(parseFieldlyWindow('13:00 - 15:00')).toEqual({ start: '13:00', end: '15:00' })
+    expect(parseFieldlyWindow('09:30-11:30')).toEqual({ start: '09:30', end: '11:30' })
   })
 
   it('refuses anything it would have to guess', () => {
     expect(parseFieldlyWindow('AM')).toBeNull()
     expect(parseFieldlyWindow('2-4')).toBeNull()
     expect(parseFieldlyWindow('4pm-2pm')).toBeNull()
+    expect(parseFieldlyWindow('15:00 - 13:00')).toBeNull()
+    expect(parseFieldlyWindow('25:00 - 26:00')).toBeNull()
     expect(parseFieldlyWindow(null)).toBeNull()
   })
 })
