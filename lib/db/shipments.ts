@@ -1382,3 +1382,24 @@ export async function openAitParcels(): Promise<OpenAitParcel[]> {
   `
   return rows.map((r) => ({ shipmentId: r.id, orderId: r.order_id, orderNumber: r.order_number, postcode: r.postcode ?? '' }))
 }
+
+/**
+ * Parcels still on their way - not arrived, on an order nobody has finished,
+ * cancelled or refunded - grouped by the two things a parcel names its courier
+ * by. Grouped here and matched to couriers by the caller with
+ * `courierForShipment`, so "which courier is this" stays one rule.
+ *
+ * For the Couriers screen, which says how many parcels are still out with a
+ * courier before it is removed.
+ */
+export async function countOpenParcelsByCourierRef(): Promise<{ courierId: string | null; carrier: string | null; count: number }[]> {
+  const rows = await prisma.$queryRaw<{ courier_id: string | null; carrier: string | null; n: number }[]>`
+    SELECT s."courier_id", s."carrier", COUNT(*)::int AS n
+    FROM "shp_shipments" s
+    JOIN "shp_orders" o ON o."id" = s."order_id"
+    WHERE s."delivered_at" IS NULL
+      AND o."status" NOT IN ('COMPLETED', 'CANCELLED', 'REFUNDED')
+    GROUP BY s."courier_id", s."carrier"
+  `
+  return rows.map((r) => ({ courierId: r.courier_id, carrier: r.carrier, count: r.n }))
+}
