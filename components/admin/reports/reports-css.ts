@@ -147,7 +147,7 @@ export const reportsCss = `
 .rpt-table tfoot td{font-weight:700;border-top:2px solid var(--color-border-strong);border-bottom:0}
 .rpt-table .rpt-sub{display:block;font-size:0.75rem;color:var(--color-text-secondary)}
 .rpt-table tr.is-open td{background:var(--color-bg-subtle)}
-.rpt-expand{border:0;background:transparent;color:var(--color-text-secondary);cursor:pointer;width:1.5rem;height:1.5rem;border-radius:0.375rem;font-size:0.75rem}
+.rpt-expand{border:0;background:transparent;color:var(--color-text-secondary);cursor:pointer;width:1.5rem;height:1.5rem;border-radius:0.375rem;font-size:1.25rem;line-height:1;padding:0;display:inline-flex;align-items:center;justify-content:center}
 .rpt-expand:hover{background:var(--color-bg-subtle);color:var(--color-text)}
 .rpt-costs{display:grid;gap:0.25rem;padding:0.25rem 0 0.25rem 2rem}
 .rpt-costs>div{display:grid;grid-template-columns:7rem minmax(0,1fr) 8rem 6rem;gap:0.75rem;font-size:0.8125rem;align-items:center}

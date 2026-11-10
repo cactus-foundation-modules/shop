@@ -30,6 +30,8 @@ export type OrderCost = {
   path?: string
   /** The provider's own word for where it has got to: "Closed", "Draft". */
   status?: string
+  /** Billed costs only: the date the supplier invoiced it, as YYYY-MM-DD. */
+  invoicedOn?: string
   amount: number
   basis: OrderCostBasis
 }
@@ -115,6 +117,7 @@ export async function resolveOrderCosts(orders: OrderForCost[]): Promise<{
             label: clip(cost.label),
             path,
             status: clip(cost.status),
+            invoicedOn: typeof cost.invoicedOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(cost.invoicedOn) ? cost.invoicedOn : undefined,
             amount: Math.round(amount * 100) / 100,
             basis: cost.basis === 'billed' ? 'billed' : 'ordered',
           })

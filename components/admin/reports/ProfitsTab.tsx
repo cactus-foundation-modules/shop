@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { bucketOf, bucketsBetween } from '@/modules/shop/lib/reports/period'
 import { BarChart, Donut, MarginScatter, RankList, TrendChart, Waterfall, seriesColour } from './charts'
 import { Card, DataTable, Kpi, MultiPick, humanise, type Column } from './ui'
-import { compactMoney, count, money, pct, shortDate, type ProfitRow, type ProfitsReport } from './types'
+import { compactMoney, count, dayMonth, money, pct, shortDate, type ProfitRow, type ProfitsReport } from './types'
 
 // Reports > Profits. The rows arrive whole for the period (the API caps them at
 // 5,000); everything from here on - search, the cost filters, sorting, the
@@ -22,10 +22,16 @@ const COST_FILTERS: Array<{ key: CostFilter; label: string }> = [
   { key: 'billed', label: 'Invoiced' },
 ]
 
+/** Latest invoice date across the order's billed costs, so "Invoiced 4/11". */
+function lastInvoiced(row: ProfitRow): string | null {
+  const dates = row.costs.filter((c) => c.basis === 'billed' && c.invoicedOn).map((c) => c.invoicedOn as string).sort()
+  return dates.length ? dates[dates.length - 1] ?? null : null
+}
+
 function basisPill(row: ProfitRow) {
   if (row.basis === 'none') return <span className="rpt-pill is-warn" title="Nothing has told the shop what this order cost">No costs</span>
-  if (row.basis === 'billed') return <span className="rpt-pill is-good" title="Every cost is from an approved supplier invoice">Invoiced</span>
-  if (row.basis === 'mixed') return <span className="rpt-pill" title="Some costs are invoiced, some are still what was ordered">Part invoiced</span>
+  if (row.basis === 'billed') return <span className="rpt-pill is-good" title="Every cost is from an approved supplier invoice">Invoiced{lastInvoiced(row) ? ` ${dayMonth(lastInvoiced(row) as string)}` : ''}</span>
+  if (row.basis === 'mixed') return <span className="rpt-pill" title="Some costs are invoiced, some are still what was ordered">Part invoiced{lastInvoiced(row) ? ` ${dayMonth(lastInvoiced(row) as string)}` : ''}</span>
   return <span className="rpt-pill" title="What the purchase order asked for - no approved invoice yet">Estimated</span>
 }
 
@@ -132,7 +138,7 @@ export function ProfitsTab({
       render: (r) => (
         <>
           <a href={`/${adminPath}/m/shop/orders/${r.id}`} style={{ fontWeight: 600 }}>{r.orderNumber}</a>
-          <span className="rpt-sub">{shortDate(r.paidAt)} · {humanise(r.paymentMethod)}</span>
+          <span className="rpt-sub">{shortDate(r.paidAt)}</span>
         </>
       ),
       footer: `${count(rows.length)} order${rows.length === 1 ? '' : 's'}`,
@@ -141,7 +147,13 @@ export function ProfitsTab({
       key: 'customer', label: 'Customer', sort: (r) => (r.organisation || r.customer).toLowerCase(),
       render: (r) => <>{r.organisation || r.customer}{r.organisation && <span className="rpt-sub">{r.customer}</span>}</>,
     },
-    { key: 'status', label: 'Status', sort: (r) => r.status, render: (r) => <span className="rpt-pill">{humanise(r.status)}</span> },
+    { key: 'status', label: 'Status', sort: (r) => r.status, render: (r) => (
+        <>
+          <span className="rpt-pill">{humanise(r.status)}</span>
+          <span className="rpt-sub">{humanise(r.paymentMethod)}</span>
+        </>
+      ),
+    },
     {
       key: 'income', label: 'Income', numeric: true, sort: (r) => r.income,
       render: (r) => <>{m(r.income)}{r.charges > 0 && <span className="rpt-sub">incl. {m(r.charges)} extra</span>}</>,
