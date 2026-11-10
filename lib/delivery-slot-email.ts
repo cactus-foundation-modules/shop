@@ -1,5 +1,5 @@
 import { getShopConfigCached } from '@/modules/shop/lib/config'
-import { claimMovedWindowNotification, claimSlotNotification, getOrderDispatchSummary, getShipmentsForOrder, recordToldWindow } from '@/modules/shop/lib/db/shipments'
+import { claimCourierDay, claimMovedWindowNotification, claimSlotNotification, getOrderDispatchSummary, getShipmentsForOrder, recordToldWindow } from '@/modules/shop/lib/db/shipments'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { parcelCountVars } from '@/modules/shop/lib/consignment-parcels'
@@ -158,6 +158,40 @@ export async function sendDeliveryDayEmail(params: { orderId: string; shipmentId
     ...await parcelEmailVars(order, shipment),
     deliveryDay,
   }, { shipmentId: shipment.id })
+}
+
+/**
+ * The day the courier's own tracking has booked (Multidrop's "Date Scheduled"),
+ * put on the parcel and told to the customer with the day email - the same one
+ * staff typing a day sends. Order DW000250, 10 November 2026: booked for the
+ * 11th on the courier's page, and nothing on the order or in the customer's
+ * inbox.
+ *
+ * Told when the day on the parcel is new or has moved, as staff saving a day
+ * is (maybeSendDayEmail), and never once a window has been told: that email
+ * named the day, and a move after it is the moved-window email's to tell
+ * (maybeSendMovedDayEmail), which reads the day written here. A day in the
+ * past is a page left standing after the event, and is not taken at all.
+ *
+ * Whether it may be taken at all - a day staff typed, a booked slot, a delay -
+ * is claimCourierDay's call, made in the same statement that writes it.
+ */
+export async function maybeSendCourierDayEmail(
+  parcel: Pick<ShpShipment, 'id' | 'orderId' | 'quietCustomerEmails' | 'deliveredAt'>,
+  day: string | null,
+  timezone: string,
+): Promise<boolean> {
+  if (!day || parcel.deliveredAt) return false
+  if (day < calendarDateIn(new Date(), timezone)) return false
+  const claimed = await claimCourierDay(parcel.id, day)
+  if (!claimed?.dayChanged || claimed.windowTold || parcel.quietCustomerEmails) return false
+
+  try {
+    await sendDeliveryDayEmail({ orderId: parcel.orderId, shipmentId: parcel.id })
+  } catch (error) {
+    console.error('[shop] courier day email failed', error)
+  }
+  return true
 }
 
 /** Tell the customer their delivery window, when the courier's own tracking

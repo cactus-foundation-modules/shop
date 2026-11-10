@@ -54,6 +54,7 @@ function shipment(patch: Partial<ShpShipmentWithItems>): ShpShipmentWithItems {
     consignmentNumber: null,
     consignmentParcels: null,
     pendingParcelLinks: [],
+    courierDay: null,
     deliveryWindowFrom: null,
     deliveryWindowTo: null,
     stopNumber: null,

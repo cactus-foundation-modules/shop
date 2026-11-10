@@ -929,6 +929,10 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     -- for the tracking check to put each on its box. Also shipped as
     -- migrations/078_pending_parcel_links.sql.
     "pending_parcel_links" TEXT[],
+    -- The delivery day the courier's own tracking booked, which delivery_date
+    -- follows until staff type a different one. Also shipped as
+    -- migrations/079_courier_day.sql.
+    "courier_day" TEXT,
     "delivery_window_from" TIMESTAMP(3),
     "delivery_window_to" TIMESTAMP(3),
     "stop_number" INTEGER,

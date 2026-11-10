@@ -9,7 +9,7 @@ import {
   recordVehiclePosition,
 } from '@/modules/shop/lib/db/shipments'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
-import { maybeSendCarrierWindowEmail } from '@/modules/shop/lib/delivery-slot-email'
+import { maybeSendCarrierWindowEmail, maybeSendCourierDayEmail } from '@/modules/shop/lib/delivery-slot-email'
 import { maybeAnswerDelayFromCourier } from '@/modules/shop/lib/delivery-delay-email'
 import { maybeSendFailedDeliveryEmail } from '@/modules/shop/lib/failed-delivery-email'
 import { parseSignature } from '@/modules/shop/lib/tracking/multidrop-page'
@@ -77,6 +77,9 @@ export async function storeParcelReading(
   const courierTimes = courierTimesEmailable(courier.trackingSource)
   const answeredDelay = !delivered && await maybeAnswerDelayFromCourier(parcel, current, timezone, courierTimes)
   if (!answeredDelay) await maybeSendCarrierWindowEmail(parcel, current, timezone, courierTimes)
+  // The day the courier has booked before it has any times. After the window
+  // email, so a read carrying both tells the customer once, with the window.
+  if (!answeredDelay && !delivered) await maybeSendCourierDayEmail(parcel, reading.scheduledDate, timezone)
 
   await recordTrackingPageDetails(parcel.id, {
     clientId: reading.clientId,

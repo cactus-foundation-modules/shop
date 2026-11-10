@@ -1,12 +1,17 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
 import * as slotEmail from '@/modules/shop/lib/delivery-slot-email'
-import { claimMovedWindowNotification, claimSlotNotification } from '@/modules/shop/lib/db/shipments'
+import { claimCourierDay, claimMovedWindowNotification, claimSlotNotification } from '@/modules/shop/lib/db/shipments'
+import { getOrderById } from '@/modules/shop/lib/db/orders'
 
 vi.mock('@/modules/shop/lib/db/shipments', () => ({
+  claimCourierDay: vi.fn(),
   claimSlotNotification: vi.fn(),
   claimMovedWindowNotification: vi.fn(),
   recordToldWindow: vi.fn(async () => undefined),
 }))
+// The day email's first read. Null ends it there: what is under test is
+// whether it was set off, not what it says.
+vi.mock('@/modules/shop/lib/db/orders', () => ({ getOrderById: vi.fn(async () => null) }))
 
 const parcel = {
   id: 'shp_1',
@@ -175,5 +180,60 @@ describe('maybeSendCarrierWindowEmail', () => {
 
       expect(sent).toBe(false)
     })
+  })
+})
+
+describe('maybeSendCourierDayEmail', () => {
+  const live = { id: 'shp_1', orderId: 'ord_1', quietCustomerEmails: false, deliveredAt: null }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now: new Date('2026-11-10T15:15:00Z'), toFake: ['Date'] })
+    vi.mocked(claimCourierDay).mockReset()
+    vi.mocked(claimCourierDay).mockResolvedValue({ dayChanged: true, windowTold: false })
+    vi.mocked(getOrderById).mockClear()
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('puts the courier\'s booked day on the parcel and tells the customer', async () => {
+    // Order DW000250: "Date Scheduled - 11 November 2026" on the courier's page.
+    expect(await slotEmail.maybeSendCourierDayEmail(live, '2026-11-11', 'Europe/London')).toBe(true)
+    expect(claimCourierDay).toHaveBeenCalledWith('shp_1', '2026-11-11')
+    expect(getOrderById).toHaveBeenCalledWith('ord_1')
+  })
+
+  it('takes the day but sends nothing when the customer already has a window', async () => {
+    vi.mocked(claimCourierDay).mockResolvedValue({ dayChanged: true, windowTold: true })
+    expect(await slotEmail.maybeSendCourierDayEmail(live, '2026-11-11', 'Europe/London')).toBe(false)
+    expect(claimCourierDay).toHaveBeenCalled()
+    expect(getOrderById).not.toHaveBeenCalled()
+  })
+
+  it('sends nothing when the parcel already had that day', async () => {
+    vi.mocked(claimCourierDay).mockResolvedValue({ dayChanged: false, windowTold: false })
+    expect(await slotEmail.maybeSendCourierDayEmail(live, '2026-11-11', 'Europe/London')).toBe(false)
+    expect(getOrderById).not.toHaveBeenCalled()
+  })
+
+  it('sends nothing when the day could not be taken', async () => {
+    vi.mocked(claimCourierDay).mockResolvedValue(null)
+    expect(await slotEmail.maybeSendCourierDayEmail(live, '2026-11-11', 'Europe/London')).toBe(false)
+    expect(getOrderById).not.toHaveBeenCalled()
+  })
+
+  it('takes the day for a quiet parcel without emailing anybody', async () => {
+    expect(await slotEmail.maybeSendCourierDayEmail({ ...live, quietCustomerEmails: true }, '2026-11-11', 'Europe/London')).toBe(false)
+    expect(claimCourierDay).toHaveBeenCalled()
+    expect(getOrderById).not.toHaveBeenCalled()
+  })
+
+  it('leaves a day already gone, an arrived parcel and no day at all alone', async () => {
+    expect(await slotEmail.maybeSendCourierDayEmail(live, '2026-11-09', 'Europe/London')).toBe(false)
+    expect(await slotEmail.maybeSendCourierDayEmail({ ...live, deliveredAt: new Date() }, '2026-11-11', 'Europe/London')).toBe(false)
+    expect(await slotEmail.maybeSendCourierDayEmail(live, null, 'Europe/London')).toBe(false)
+    expect(claimCourierDay).not.toHaveBeenCalled()
+  })
+
+  it('counts today as still to come', async () => {
+    expect(await slotEmail.maybeSendCourierDayEmail(live, '2026-11-10', 'Europe/London')).toBe(true)
   })
 })

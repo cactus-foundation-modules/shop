@@ -70,6 +70,24 @@ describe('maybeAnswerDelayFromCourier', () => {
     }), { shipmentId: 's1' })
   })
 
+  it('answers with a day the courier booked before giving any times', async () => {
+    // Multidrop's "Date Scheduled - 15 October 2026", with no window yet.
+    const noWindow = { windowFrom: null, windowTo: null }
+    shipments.mockResolvedValue([{
+      ...parcel, deliveryDelay: null, deliveryDate: '2026-10-15', deliverySlotStart: null, deliverySlotEnd: null,
+      deliveryWindowFrom: null, deliveryWindowTo: null, items: [],
+    }])
+    expect(await maybeAnswerDelayFromCourier(parcel, { ...noWindow, scheduledDate: '2026-10-15' }, tz)).toBe(true)
+    expect(claim).toHaveBeenCalledWith('s1', '2026-10-15', false)
+    expect(notify).toHaveBeenCalledWith('DELIVERY_NEW_DATE', expect.anything(), expect.objectContaining({
+      hasNewDayOnly: 'true', hasNewDayWindow: 'false',
+    }), { shipmentId: 's1' })
+    // The missed day itself, still on the page, is not an answer.
+    claim.mockClear()
+    expect(await maybeAnswerDelayFromCourier(parcel, { ...noWindow, scheduledDate: '2026-10-09' }, tz)).toBe(false)
+    expect(claim).not.toHaveBeenCalled()
+  })
+
   it('tells an AIT parcel its new day without the holding window, and leaves the stamp free', async () => {
     shipments.mockResolvedValue([{
       ...parcel, courierId: 'cou-ait', carrier: 'AIT', deliveryDelay: null, deliveryDate: '2026-10-15',

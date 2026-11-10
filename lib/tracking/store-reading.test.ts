@@ -22,7 +22,8 @@ vi.mock('@/modules/shop/lib/db/shipments', () => ({
   recordVehiclePosition,
 }))
 vi.mock('@/modules/shop/lib/db/orders', () => ({ getOrderById: vi.fn(async () => ({ orderNumber: 'DW000001' })) }))
-vi.mock('@/modules/shop/lib/delivery-slot-email', () => ({ maybeSendCarrierWindowEmail: vi.fn() }))
+const maybeSendCourierDayEmail = vi.hoisted(() => vi.fn())
+vi.mock('@/modules/shop/lib/delivery-slot-email', () => ({ maybeSendCarrierWindowEmail: vi.fn(), maybeSendCourierDayEmail }))
 vi.mock('@/modules/shop/lib/failed-delivery-email', () => ({ maybeSendFailedDeliveryEmail: vi.fn() }))
 vi.mock('@/modules/shop/lib/tracking/signature-capture', () => ({ captureSignature }))
 
@@ -44,6 +45,7 @@ function reading(patch: Partial<ParcelReading>): ParcelReading {
     destinationLat: null,
     destinationLng: null,
     consignment: null,
+    scheduledDate: null,
     ...patch,
   }
 }
@@ -135,5 +137,21 @@ describe('storeParcelReading with several boxes', () => {
     }), 'Europe/London')
     expect(captureSignature).not.toHaveBeenCalled()
     expect(recordSignature).toHaveBeenCalledWith('shp_1', expect.objectContaining({ url: 'https://media/second.jpg', signedBy: 'Sam' }))
+  })
+})
+
+describe('storeParcelReading with a day booked and no times yet', () => {
+  const multidrop = { trackingSource: 'multidrop' as const, outForDeliveryStages: [], deliveredStages: ['Complete'], failedStages: [] }
+
+  beforeEach(() => maybeSendCourierDayEmail.mockClear())
+
+  it('hands the courier\'s day on to be put on the parcel and told', async () => {
+    await storeParcelReading(multidrop, parcel, reading({ stage: 'Date Confirmed', scheduledDate: '2026-11-11' }), 'Europe/London')
+    expect(maybeSendCourierDayEmail).toHaveBeenCalledWith(parcel, '2026-11-11', 'Europe/London')
+  })
+
+  it('does not once the parcel has arrived', async () => {
+    await storeParcelReading(multidrop, parcel, reading({ stage: 'Complete', scheduledDate: '2026-11-11' }), 'Europe/London')
+    expect(maybeSendCourierDayEmail).not.toHaveBeenCalled()
   })
 })

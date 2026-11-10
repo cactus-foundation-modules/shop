@@ -844,6 +844,9 @@ export type ShpShipment = {
   /** Follow-my-parcel codes saved while DPD would not say which box they
    *  open, waiting for the tracking check to place them (migration 078). */
   pendingParcelLinks: string[]
+  /** The delivery day the courier's own tracking last booked, 'YYYY-MM-DD'
+   *  (migration 079). deliveryDate follows it while the two are equal. */
+  courierDay: string | null
   /** The window the van is working to TODAY, as against the slot the shop was
    *  promised at booking. The two disagree often enough to keep both. */
   deliveryWindowFrom: Date | null

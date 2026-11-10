@@ -80,6 +80,8 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     pendingParcelLinks: Array.isArray(r.pending_parcel_links)
       ? (r.pending_parcel_links as unknown[]).filter((c): c is string => typeof c === 'string')
       : [],
+    // Migration 079.
+    courierDay: (r.courier_day as string | null) ?? null,
     deliveryWindowFrom: (r.delivery_window_from as Date | null) ?? null,
     deliveryWindowTo: (r.delivery_window_to as Date | null) ?? null,
     stopNumber: (r.stop_number as number | null) ?? null,
@@ -917,6 +919,65 @@ export async function claimDelayAnsweredByCourier(shipmentId: string, windowDate
       )
   `
   return claimed > 0
+}
+
+/**
+ * The courier's tracking has booked a day (Multidrop's "Date Scheduled") that
+ * the parcel does not have yet: put it on the parcel, and say whether the
+ * customer is still to hear about it.
+ *
+ * Taken only while the day on the parcel is the courier's own - none at all,
+ * or the one the courier booked last time. A day staff typed differs from
+ * courier_day and stands, as bookedDayStands says it should; a day staff
+ * cleared stays cleared until the courier books a different one. Never once
+ * times are on the parcel (that is a booked slot, and the courier's window
+ * email speaks for any change to it), on a delayed parcel (the delay has its
+ * own answer, claimDelayAnsweredByCourier) or on one that has arrived.
+ *
+ * A parcel already carrying that very day - typed by staff, or set by a
+ * delay the courier answered - takes the courier's day as its own with
+ * nothing new to tell, so a later move by the courier is followed.
+ *
+ * The statement that checks is the one that writes, so the hourly job and a
+ * watched order page reading the same page take it once between them, and the
+ * day email goes once. Null when nothing was taken; otherwise whether the day
+ * on the parcel changed and whether the customer has already been told a
+ * window, which between them settle the email (see maybeSendCourierDayEmail).
+ */
+export async function claimCourierDay(
+  shipmentId: string,
+  day: string,
+): Promise<{ dayChanged: boolean; windowTold: boolean } | null> {
+  // The day before, off the statement's own snapshot. No FOR UPDATE: it would
+  // skip the row this same statement updates and read back NULL. The update's
+  // row lock is what keeps it once-only - a second caller waits on it, then
+  // re-checks courier_day and finds it already moved.
+  const rows = await prisma.$queryRaw<{ slot_notified_at: Date | null; previous_date: string | null }[]>`
+    WITH "previous" AS (
+      SELECT "delivery_date" FROM "shp_shipments" WHERE "id" = ${shipmentId}
+    )
+    UPDATE "shp_shipments"
+    SET "delivery_date" = ${day}::text,
+        "courier_day" = ${day}::text,
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId}
+      AND "delivered_at" IS NULL
+      AND "delivery_delay" IS NULL
+      AND "delivery_slot_start" IS NULL
+      AND "delivery_slot_end" IS NULL
+      AND "courier_day" IS DISTINCT FROM ${day}::text
+      AND ("delivery_date" IS NULL OR "delivery_date" = "courier_day" OR "delivery_date" = ${day}::text)
+      -- The poller still reads a completed order's parcels for a signature;
+      -- an order that is finished, or called off, has no day to tell.
+      AND NOT EXISTS (
+        SELECT 1 FROM "shp_orders" o
+        WHERE o."id" = "shp_shipments"."order_id"
+          AND o."status" IN ('COMPLETED', 'CANCELLED', 'REFUNDED')
+      )
+    RETURNING "slot_notified_at", (SELECT "delivery_date" FROM "previous") AS "previous_date"
+  `
+  const row = rows[0]
+  return row ? { dayChanged: row.previous_date !== day, windowTold: row.slot_notified_at !== null } : null
 }
 
 /**

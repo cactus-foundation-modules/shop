@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { furthestStage, isMultidropUrl, parseMultidropStages } from '@/modules/shop/lib/tracking/multidrop'
+import { furthestStage, isMultidropUrl, parseMultidropStages, scheduledDay } from '@/modules/shop/lib/tracking/multidrop'
 
 // The real page, saved from a real delivery on 7 September 2026 rather than
 // written by hand. A fixture somebody typed out tests the parser against their
@@ -60,6 +60,24 @@ describe('parseMultidropStages', () => {
     expect(stages[2]?.label).toBe('Date Scheduled')
   })
 
+  it('keeps the date the scheduled step carries as the booked day', () => {
+    // Order DW000250, 10 November 2026: the page said "Date Scheduled - 11
+    // November 2026" and the parcel recorded no day at all, because the date
+    // was stripped off the label and dropped on the floor.
+    const stages = parseMultidropStages(REAL_PAGE)
+    expect(stages[2]?.date).toBe('2026-09-08')
+    expect(stages[0]?.date).toBeNull()
+    expect(scheduledDay(stages)).toBe('2026-09-08')
+  })
+
+  it('reads no day off a scheduled step that is not reached yet, or a day that does not exist', () => {
+    const step = (cls: string, text: string) => `<div id="tl-step3" class="timeline-step ${cls}">${text}</div>`
+    expect(scheduledDay(parseMultidropStages(step('', 'Date Scheduled - 11 November 2026')))).toBeNull()
+    expect(scheduledDay(parseMultidropStages(step('done', 'Date Scheduled - 31 November 2026')))).toBeNull()
+    expect(scheduledDay(parseMultidropStages(step('done', 'Date Scheduled - 1 Smarch 2026')))).toBeNull()
+    expect(scheduledDay(parseMultidropStages(step('done', 'Date Scheduled - 1 december 2026')))).toBe('2026-12-01')
+  })
+
   it('stops the last step at its own closing tag, not at the end of the page', () => {
     // The defect this exists for. Step 7 has no step after it to stop at, so it
     // ran to the end of the document and the stage came back as "Complete" plus
@@ -116,9 +134,9 @@ describe('furthestStage', () => {
     // reporting progress. Taking the first not-done step would have the parcel
     // moving back up its own timeline.
     const stages = [
-      { position: 1, label: 'One', done: true, failed: false, time: null },
-      { position: 2, label: 'Two', done: false, failed: false, time: null },
-      { position: 3, label: 'Three', done: true, failed: false, time: null },
+      { position: 1, label: 'One', done: true, failed: false, time: null, date: null },
+      { position: 2, label: 'Two', done: false, failed: false, time: null, date: null },
+      { position: 3, label: 'Three', done: true, failed: false, time: null, date: null },
     ]
     expect(furthestStage(stages)?.label).toBe('Three')
   })
@@ -150,15 +168,15 @@ describe('furthestStage', () => {
     // The failure sits at position 8, above everything, so position alone
     // would hold it there after a second visit went fine.
     const stages = [
-      { position: 6, label: "You're Up Next", done: true, failed: false, time: '25/09/2026 09:08' },
-      { position: 7, label: 'Complete', done: true, failed: false, time: '29/09/2026 11:02' },
-      { position: 8, label: 'Failed Attempt', done: false, failed: true, time: '25/09/2026 09:19' },
+      { position: 6, label: "You're Up Next", done: true, failed: false, time: '25/09/2026 09:08', date: null },
+      { position: 7, label: 'Complete', done: true, failed: false, time: '29/09/2026 11:02', date: null },
+      { position: 8, label: 'Failed Attempt', done: false, failed: true, time: '25/09/2026 09:19', date: null },
     ]
     expect(furthestStage(stages)?.label).toBe('Complete')
   })
 
   it('is nothing when nothing has happened yet', () => {
-    expect(furthestStage([{ position: 1, label: 'One', done: false, failed: false, time: null }])).toBeNull()
+    expect(furthestStage([{ position: 1, label: 'One', done: false, failed: false, time: null, date: null }])).toBeNull()
     expect(furthestStage([])).toBeNull()
   })
 })

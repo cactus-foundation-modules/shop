@@ -131,16 +131,22 @@ export async function sendDeliveryNewDateEmail(params: { orderId: string; shipme
  */
 export async function maybeAnswerDelayFromCourier(
   parcel: Pick<ShpShipment, 'id' | 'orderId' | 'deliveryDelay' | 'deliveryDelayedFrom' | 'deliveredAt' | 'quietCustomerEmails'>,
-  reading: { windowFrom: Date | null; windowTo: Date | null },
+  reading: { windowFrom: Date | null; windowTo: Date | null; scheduledDate?: string | null },
   timezone: string,
   courierTimes = true,
 ): Promise<boolean> {
   if (!parcel.deliveryDelay || !parcel.deliveryDelayedFrom || parcel.deliveredAt) return false
-  if (!reading.windowFrom || !reading.windowTo) return false
-  const windowDate = calendarDateIn(reading.windowFrom, timezone)
+  const { windowFrom: from, windowTo: to } = reading
+  // The window's day, or - from a courier that books a day before it has
+  // times (Multidrop's "Date Scheduled") - the day on its own.
+  const windowDate = from && to ? calendarDateIn(from, timezone) : reading.scheduledDate ?? null
+  if (!windowDate) return false
   if (isStaleCarrierWindow(parcel, windowDate) || windowDate <= parcel.deliveryDelayedFrom) return false
-  // A holding window (courierTimes false) is not told, so it takes no stamp.
-  const withWindow = courierTimes && !isWholeDayWindow(slotTimeFromInstant(reading.windowFrom, timezone), slotTimeFromInstant(reading.windowTo, timezone))
+  // A holding window (courierTimes false) is not told, so it takes no stamp;
+  // nor does a day with no window at all.
+  const withWindow = Boolean(
+    from && to && courierTimes && !isWholeDayWindow(slotTimeFromInstant(from, timezone), slotTimeFromInstant(to, timezone)),
+  )
   if (!(await claimDelayAnsweredByCourier(parcel.id, windowDate, withWindow))) return false
   if (parcel.quietCustomerEmails) return true
 

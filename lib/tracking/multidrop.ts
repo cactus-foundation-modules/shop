@@ -50,6 +50,10 @@ export type TrackingStage = {
    *  courier's own text - it is shown to nobody and parsed by nothing, and
    *  their format is theirs to change. */
   time: string | null
+  /** The day the step names, as 'YYYY-MM-DD', where it names one. Only the
+   *  scheduled step does - "Date Scheduled - 11 November 2026" - and that day
+   *  is the delivery day the courier has booked. */
+  date: string | null
 }
 
 // Each step's own chunk of markup, found by counting divs in and out from its
@@ -68,6 +72,23 @@ const STEP_SPLIT_ALL = /<div\s+id="tl-step(\d+)"/gi
 const CLASS_PATTERN = /class="([^"]*)"/i
 const TIME_PATTERN = /<div\s+class="tl-time"[^>]*>([\s\S]*?)<\/div>/i
 const DIV_TAG = /<div\b|<\/div\s*>/gi
+// The day a step's name carries at its end: "Date Scheduled - 11 November 2026".
+const TRAILING_DATE = /\s*-\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\s*$/
+
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december']
+
+/** '11 November 2026' as '2026-11-11', or null for anything that is not a real
+ *  day. By hand, for the same reason sortableTime is: Date would happily turn
+ *  31 November into 1 December. */
+function isoDay(day: string, monthName: string, year: string): string | null {
+  const month = MONTHS.indexOf(monthName.toLowerCase()) + 1
+  const d = Number(day)
+  const y = Number(year)
+  if (month === 0 || d < 1) return null
+  // Day 0 of the next month is the last day of this one.
+  if (d > new Date(Date.UTC(y, month, 0)).getUTCDate()) return null
+  return `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
 
 // Longest a stage's name may be and still be a stage. The settings box these
 // are matched against caps a stage at 120 characters, so anything past that is
@@ -132,9 +153,11 @@ export function parseMultidropStages(html: string): TrackingStage[] {
     // inside it, and with the trailing "- 08 September 2026" that the scheduled
     // step carries stripped: that is a date, not part of the stage's name, and
     // leaving it there would make the stage unmatchable against a setting.
-    const label = textOf(chunk.replace(TIME_PATTERN, ' '))
-      .replace(/\s*-\s*\d{1,2}\s+\w+\s+\d{4}\s*$/, '')
-      .trim()
+    // The date itself is kept, as `date`: on the scheduled step it is the day
+    // the courier has booked the delivery for.
+    const text = textOf(chunk.replace(TIME_PATTERN, ' '))
+    const dated = text.match(TRAILING_DATE)
+    const label = text.replace(TRAILING_DATE, '').trim()
     if (!label || label.length > MAX_LABEL_LENGTH) continue
 
     stages.push({
@@ -143,6 +166,7 @@ export function parseMultidropStages(html: string): TrackingStage[] {
       done: /(^|\s)done(\s|$)/.test(classes),
       failed: /(^|\s)failed(\s|$)/.test(classes),
       time: time || null,
+      date: dated ? isoDay(dated[1] as string, dated[2] as string, dated[3] as string) : null,
     })
   }
   return stages.sort((a, b) => a.position - b.position)
@@ -187,6 +211,19 @@ export function furthestStage(stages: TrackingStage[]): TrackingStage | null {
   if (!failedAt) return furthest
   const since = reached.filter((s) => !s.failed && (sortableTime(s.time) ?? '') > failedAt)
   return since[since.length - 1] ?? furthest
+}
+
+/**
+ * The delivery day the courier has booked, as 'YYYY-MM-DD', or null before
+ * they have booked one.
+ *
+ * Off the scheduled step - the one step that names a day - and only once it is
+ * reached. The latest such step if a redesign ever prints more than one, since
+ * a later booking replaces an earlier one.
+ */
+export function scheduledDay(stages: TrackingStage[]): string | null {
+  const booked = stages.filter((s) => s.date && (s.done || s.failed))
+  return booked[booked.length - 1]?.date ?? null
 }
 
 /** Whether a tracking link is one of these pages, so a shop with three

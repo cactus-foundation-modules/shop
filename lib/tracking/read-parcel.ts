@@ -11,7 +11,7 @@
 // a JSON payload. What each reader FINDS is settings again, immediately: the
 // stage's meaning is per courier, applied on the way out.
 
-import { isMultidropUrl, furthestStage, parseMultidropStages } from '@/modules/shop/lib/tracking/multidrop'
+import { isMultidropUrl, furthestStage, parseMultidropStages, scheduledDay } from '@/modules/shop/lib/tracking/multidrop'
 import {
   dropsAwayFromCrewLine,
   parseCrewLine,
@@ -75,6 +75,10 @@ export type ParcelReading = TrackingReading & {
    *  fetch and keep, which only the reader holding the sessions can hand over.
    *  Null from every other courier, and on a read that learned nothing new. */
   consignment: ConsignmentReading | null
+  /** The delivery day the courier has booked, as 'YYYY-MM-DD', where their
+   *  page names a day with no time yet (Multidrop's "Date Scheduled"). A
+   *  courier with a window says the day through that instead. */
+  scheduledDate: string | null
 }
 
 export type ConsignmentReading = {
@@ -95,6 +99,7 @@ const EMPTY_PARCEL_READING: ParcelReading = {
   destinationLat: null,
   destinationLng: null,
   consignment: null,
+  scheduledDate: null,
 }
 
 async function fetchText(url: string): Promise<string | null> {
@@ -121,7 +126,8 @@ async function fetchText(url: string): Promise<string | null> {
 async function readMultidrop(trackingUrl: string): Promise<ParcelReading | null> {
   const html = await fetchText(trackingUrl)
   if (!html) return null
-  const stage = furthestStage(parseMultidropStages(html))
+  const stages = parseMultidropStages(html)
+  const stage = furthestStage(stages)
   if (!stage) return null
 
   const page = parseTrackingConfig(html)
@@ -136,6 +142,7 @@ async function readMultidrop(trackingUrl: string): Promise<ParcelReading | null>
     dropsAway: dropsAwayFromCrewLine(crewLine),
     destinationLat: page.destinationLat,
     destinationLng: page.destinationLng,
+    scheduledDate: scheduledDay(stages),
   }
 }
 
