@@ -1,6 +1,7 @@
 import {
   recordCarrierReading,
   recordConsignment,
+  recordDeliveryPhoto,
   recordPendingParcelLinks,
   recordReceipt,
   recordSignature,
@@ -12,7 +13,7 @@ import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { maybeSendCarrierWindowEmail, maybeSendCourierDayEmail } from '@/modules/shop/lib/delivery-slot-email'
 import { maybeAnswerDelayFromCourier } from '@/modules/shop/lib/delivery-delay-email'
 import { maybeSendFailedDeliveryEmail } from '@/modules/shop/lib/failed-delivery-email'
-import { parseSignature } from '@/modules/shop/lib/tracking/multidrop-page'
+import { parseDeliveryPhoto, parseSignature } from '@/modules/shop/lib/tracking/multidrop-page'
 import { captureSignature } from '@/modules/shop/lib/tracking/signature-capture'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import { courierTimesEmailable } from '@/modules/shop/lib/tracking/provisional-window'
@@ -145,6 +146,21 @@ export async function storeParcelReading(
         key: stored.key,
       })
       signatureStored = true
+    }
+  }
+
+  // The photograph of the delivery, where their page has one beside the
+  // signature (Multidrop). Its own column and its own once-only guard, so it is
+  // taken whether the signature was taken this run, an earlier one, or never.
+  if (delivered && !parcel.deliveryPhotoUrl && reading.multidropHtml) {
+    const photoUrl = parseDeliveryPhoto(reading.multidropHtml)
+    if (photoUrl) {
+      const order = await getOrderById(parcel.orderId)
+      const stored = await captureSignature(photoUrl, order?.orderNumber ?? parcel.id, {
+        label: 'delivery-photo',
+        orderNumber: order?.orderNumber,
+      })
+      if (stored) await recordDeliveryPhoto(parcel.id, stored)
     }
   }
 

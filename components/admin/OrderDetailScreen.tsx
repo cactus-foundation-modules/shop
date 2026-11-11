@@ -210,6 +210,9 @@ type ShipmentDetail = {
   deliveryDelayNote?: string | null
   quietCustomerEmails?: boolean
   signedBy: string | null; signedAt: string | null; signatureUrl: string | null
+  /** OUR copy of the courier's photograph of the delivery (migration 080).
+   *  Optional so a response from an older deployment still renders. */
+  deliveryPhotoUrl?: string | null
   /** The boxes a DPD delivery travels as, each with its own tracking
    *  (migration 074). Optional so a response from an older deployment still
    *  renders. */
@@ -1749,6 +1752,19 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                                 loading="lazy"
                               />
                             </>
+                          )}
+                          {shipment.deliveryPhotoUrl && (
+                            <a href={shipment.deliveryPhotoUrl} target="_blank" rel="noopener noreferrer" className="sox-delivery-photo-link">
+                              {/* eslint-disable-next-line @next/next/no-img-element -- a third-party
+                                  photograph of unknown dimensions; next/image wants a size nobody here
+                                  can give it. */}
+                              <img
+                                className="sox-delivery-photo"
+                                src={shipment.deliveryPhotoUrl}
+                                alt="The courier's photograph of the delivery"
+                                loading="lazy"
+                              />
+                            </a>
                           )}
                         </div>
                         <div className="sod-action-group sox-noprint" role="group" aria-label="This parcel">

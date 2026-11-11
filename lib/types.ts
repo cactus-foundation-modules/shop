@@ -891,6 +891,10 @@ export type ShpShipment = {
   signedAt: Date | null
   signatureUrl: string | null
   signatureKey: string | null
+  /** OUR copy of the courier's photograph of the delivery, where they took
+   *  one. Kept apart from the signature: a delivery can come with both. */
+  deliveryPhotoUrl: string | null
+  deliveryPhotoKey: string | null
   notes: string | null
   createdAt: Date
   updatedAt: Date

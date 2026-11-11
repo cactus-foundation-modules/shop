@@ -2,8 +2,9 @@ import { instantAtWallClock } from '@/lib/config/timezone'
 import { textOf } from '@/modules/shop/lib/tracking/html-text'
 
 // The rest of a Multidrop tracking page: the config block their own map script
-// reads, the sentence they print above the map, and the signature card that
-// appears once the parcel has arrived. The seven timeline steps are multidrop.ts.
+// reads, the sentence they print above the map, and the signature card (with
+// its delivery photograph) that appears once the parcel has arrived. The seven
+// timeline steps are multidrop.ts.
 //
 // All of it comes out of the same HTML the stage poller already fetches, so
 // none of this costs a second request.
@@ -48,6 +49,11 @@ export type MultidropSignature = {
 const CONFIG_BLOCK = /var\s+trackingConfig\s*=\s*\{([\s\S]*?)\}\s*;/i
 const ETA_STATUS = /<div\s+id="eta-status"[^>]*>([\s\S]*?)<\/div>/i
 const SIGNATURE_BLOCK = /<div\s+class="signature-block-container"[\s\S]{0,2000}?<img[^>]*\ssrc="([^"]+)"/i
+// The photograph(s) of the delivery, in their own grid under the signature.
+// Bounded so a page without a closing tag cannot drag the match across the rest
+// of the document.
+const PHOTO_GRID = /<div\s+class="photo-grid"[^>]*>([\s\S]{0,4000}?)<\/div>/i
+const IMG_SRC = /<img[^>]*\ssrc="([^"]+)"/i
 const SIGNED_BY = /Signed\s+by\s*<strong>([\s\S]{0,200}?)<\/strong>/i
 
 // Their timestamps, everywhere they appear: 08/09/2026 14:23, sometimes with
@@ -132,6 +138,32 @@ export function dropsAwayFromCrewLine(line: string | null | undefined): number |
   return Number.isInteger(drops) && drops >= 0 && drops < 1000 ? drops : null
 }
 
+/** An image address of theirs, fit to be fetched by the site's own server:
+ *  absolute https, no credentials smuggled into the authority. */
+function fetchableImageUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  try {
+    const url = new URL(raw.trim())
+    return url.protocol === 'https:' && !url.username && !url.password ? url.toString() : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The courier's photograph of the delivery, from the grid under the signature.
+ *
+ * The first one only. The grid could hold several, but every delivery seen so
+ * far has had one, and the first is the doorstep shot; if they start taking a
+ * set, this is where to widen it. Null when there is no grid, which is every
+ * page before delivery and every drop where nobody took a picture.
+ */
+export function parseDeliveryPhoto(html: string): string | null {
+  const grid = html.match(PHOTO_GRID)?.[1]
+  if (!grid) return null
+  return fetchableImageUrl(grid.match(IMG_SRC)?.[1])
+}
+
 /**
  * The signature card, once the parcel has been signed for.
  *
@@ -144,17 +176,7 @@ export function parseSignature(html: string, timezone: string): MultidropSignatu
   const strong = html.match(SIGNED_BY)?.[1]
   if (!rawImage && !strong) return null
 
-  let imageUrl: string | null = null
-  if (rawImage) {
-    try {
-      // https only, and no credentials smuggled into the authority - this URL
-      // is about to be fetched by the site's own server.
-      const url = new URL(rawImage)
-      if (url.protocol === 'https:' && !url.username && !url.password) imageUrl = url.toString()
-    } catch {
-      imageUrl = null
-    }
-  }
+  const imageUrl = fetchableImageUrl(rawImage)
 
   // 'Megan, 08/09/2026 14:23' - the name is whatever precedes the timestamp,
   // with the comma that joined them taken off. Split on the timestamp rather

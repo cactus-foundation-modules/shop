@@ -512,6 +512,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       shipment.signedAt = null
       shipment.signatureUrl = null
       shipment.signatureKey = null
+      shipment.deliveryPhotoUrl = null
+      shipment.deliveryPhotoKey = null
     }
   }
 

@@ -950,6 +950,10 @@ CREATE TABLE IF NOT EXISTS "shp_shipments" (
     "signed_at" TIMESTAMP(3),
     "signature_url" TEXT,
     "signature_key" TEXT,
+    -- The courier's photograph of the delivery, beside the signature. Also in
+    -- migrations/080_delivery_photo.sql.
+    "delivery_photo_url" TEXT,
+    "delivery_photo_key" TEXT,
     "notes" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

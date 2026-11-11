@@ -55,6 +55,18 @@ export async function shopMediaReferenceRewriter(change: MediaReferenceChange): 
       WHERE "signature_key" = ${change.oldKey}
     `
   }
+  // The courier's photograph of the same delivery, kept beside the signature
+  // and moved for the same reasons.
+  await prisma.$executeRaw`
+    UPDATE "shp_shipments" SET "delivery_photo_url" = ${newUrl}, "updated_at" = CURRENT_TIMESTAMP
+    WHERE "delivery_photo_url" = ${oldUrl}
+  `
+  if (change.oldKey && change.oldKey !== change.newKey) {
+    await prisma.$executeRaw`
+      UPDATE "shp_shipments" SET "delivery_photo_key" = ${change.newKey}, "updated_at" = CURRENT_TIMESTAMP
+      WHERE "delivery_photo_key" = ${change.oldKey}
+    `
+  }
   await prisma.$executeRaw`
     UPDATE "shp_order_request_photos" SET "url" = ${newUrl} WHERE "url" = ${oldUrl}
   `

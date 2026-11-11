@@ -190,6 +190,13 @@ export const ordersScreenCss = `
 .sox-signature{margin-top:0.375rem;max-width:12rem;width:100%;height:auto;
   border:1px solid var(--color-border);border-radius:0.25rem;
   background:var(--color-surface);padding:0.25rem}
+/* The courier's photograph of the delivery, beside the signature. A little
+   bigger, since a doorstep is harder to read than a squiggle; the full size is
+   a click away. */
+.sox-delivery-photo-link{display:block;width:fit-content;margin-top:0.375rem}
+.sox-delivery-photo{display:block;max-width:16rem;width:100%;height:auto;
+  border:1px solid var(--color-border);border-radius:0.25rem;
+  background:var(--color-surface);padding:0.25rem}
 
 /* What a customer reported on the order: their words, then the photographs they
    sent as a strip of square thumbnails, each opening full size. Square and

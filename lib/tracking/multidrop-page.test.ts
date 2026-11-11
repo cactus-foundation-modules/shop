@@ -5,6 +5,7 @@ import {
   dropsAwayFromCrewLine,
   parseCourierTimestamp,
   parseCrewLine,
+  parseDeliveryPhoto,
   parseSignature,
   parseTrackingConfig,
 } from '@/modules/shop/lib/tracking/multidrop-page'
@@ -125,5 +126,38 @@ describe('parseSignature', () => {
 
   it('is nothing at all until the parcel has been signed for', () => {
     expect(parseSignature('<div class="card">Out for delivery</div>', LONDON)).toBeNull()
+  })
+})
+
+describe('parseDeliveryPhoto', () => {
+  // Their delivered card as it is printed today: signature, "Signed by", then a
+  // grid holding the photograph of the goods where they were left.
+  const PAGE = '<div class="card panel-success"><h3>Your Delivery is complete</h3>'
+    + '<div class="signature-block-container"><span class="signature-block">'
+    + '<img src="https://example.invalid/image/signature_1.png" alt="Signature" width="200"></span></div>'
+    + '<div style="color:#444;margin:0;">Signed by <strong>Mark, 11/11/2026 09:53</strong></div>'
+    + '<div class="photo-grid">\n\t<img src="https://example.invalid/image/image_order_1.png">\n</div></div>'
+
+  it('reads the photograph, not the signature', () => {
+    expect(parseDeliveryPhoto(PAGE)).toBe('https://example.invalid/image/image_order_1.png')
+  })
+
+  it('takes the first when the grid holds several', () => {
+    const page = '<div class="photo-grid"><img src="https://x.invalid/a.png"><img src="https://x.invalid/b.png"></div>'
+    expect(parseDeliveryPhoto(page)).toBe('https://x.invalid/a.png')
+  })
+
+  it('is nothing on a delivery with no photograph', () => {
+    // The older page this fixture was taken from had a signature and no grid.
+    expect(parseDeliveryPhoto(DELIVERED_PAGE)).toBeNull()
+  })
+
+  it('is nothing for an empty grid, and never reaches past it for the next image', () => {
+    const page = '<div class="photo-grid"></div><img src="https://x.invalid/logo.png">'
+    expect(parseDeliveryPhoto(page)).toBeNull()
+  })
+
+  it('refuses an image address that is not https', () => {
+    expect(parseDeliveryPhoto('<div class="photo-grid"><img src="http://x.invalid/a.png"></div>')).toBeNull()
   })
 })

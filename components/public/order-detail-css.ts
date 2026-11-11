@@ -298,6 +298,9 @@ ${DELIVERY_LIVE_MAP_CSS}
 .sod-signed-by{margin:0;font-weight:600;color:var(--color-text)}
 .sod-signed-img{max-width:14rem;width:100%;height:auto;background:var(--color-surface);
   border:1px solid var(--color-border);border-radius:0.375rem;padding:0.25rem}
+.sod-delivery-photo-link{display:block;width:fit-content}
+.sod-delivery-photo{display:block;max-width:18rem;width:100%;height:auto;background:var(--color-surface);
+  border:1px solid var(--color-border);border-radius:0.375rem;padding:0.25rem}
 
 /* --- One delivery in several boxes --------------------------------------- */
 .sod-boxes{display:grid;gap:0.375rem;margin-top:0.625rem}

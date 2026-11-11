@@ -1058,7 +1058,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                         useful half of a proof of delivery. */}
                     {/* A delivery in several boxes shows each drop's own
                         proof in its list above instead. */}
-                    {(shipment.signatureUrl || shipment.signedBy) && !isSplitConsignment(shipment.consignmentParcels) && (
+                    {(shipment.signatureUrl || shipment.signedBy || shipment.deliveryPhotoUrl) && !isSplitConsignment(shipment.consignmentParcels) && (
                       <div className="sod-signed">
                         <p className="sod-signed-by">
                           {shipment.signedBy ? `Received by ${shipment.signedBy}` : 'Delivered'}
@@ -1079,6 +1079,19 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                               loading="lazy"
                             />
                           </>
+                        )}
+                        {shipment.deliveryPhotoUrl && (
+                          <a href={shipment.deliveryPhotoUrl} target="_blank" rel="noopener noreferrer" className="sod-delivery-photo-link">
+                            {/* eslint-disable-next-line @next/next/no-img-element -- the courier's
+                                photograph, of unknown dimensions, for the same reason as the
+                                signature above. */}
+                            <img
+                              className="sod-delivery-photo"
+                              src={shipment.deliveryPhotoUrl}
+                              alt="The courier's photograph of your delivery"
+                              loading="lazy"
+                            />
+                          </a>
                         )}
                       </div>
                     )}

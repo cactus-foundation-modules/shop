@@ -78,6 +78,8 @@ function shipment(patch: Partial<ShpShipmentWithItems>): ShpShipmentWithItems {
     signedAt: null,
     signatureUrl: null,
     signatureKey: null,
+    deliveryPhotoUrl: null,
+    deliveryPhotoKey: null,
     notes: null,
     createdAt: new Date('2026-09-07T09:00:00Z'),
     updatedAt: new Date('2026-09-07T09:00:00Z'),

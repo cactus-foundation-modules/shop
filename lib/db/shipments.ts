@@ -105,6 +105,8 @@ function mapShipment(r: Record<string, unknown>): ShpShipment {
     signedAt: (r.signed_at as Date | null) ?? null,
     signatureUrl: (r.signature_url as string | null) ?? null,
     signatureKey: (r.signature_key as string | null) ?? null,
+    deliveryPhotoUrl: (r.delivery_photo_url as string | null) ?? null,
+    deliveryPhotoKey: (r.delivery_photo_key as string | null) ?? null,
     notes: (r.notes as string | null) ?? null,
     createdAt: r.created_at as Date,
     updatedAt: r.updated_at as Date,
@@ -1004,6 +1006,17 @@ export async function claimTrackingNotification(shipmentId: string, orderId: str
  *  asked about for the rest of the shop's life. */
 const SIGNATURE_CATCHUP_DAYS = 14
 
+// The courier's photograph of the delivery, caught up on the same way, and
+// only for parcels whose page is the kind that shows one: `tracking_client_id`
+// is written from Multidrop's page config and from nothing else. It cannot
+// settle itself the way the signature does - plenty of drops come with no
+// photograph at all, and "none yet" looks exactly like "none ever" - so the
+// window is short and runs from the delivery rather than the despatch: a week
+// of hourly reads at most for a parcel that never had one, which is enough to
+// ride out their bucket having a bad day and to pick up parcels delivered
+// before the shop kept these.
+const PHOTO_CATCHUP_DAYS = 7
+
 // Parcels worth asking a courier about, in two kinds.
 //
 // The first is the obvious one: a tracking link, not yet delivered, on an order
@@ -1041,6 +1054,12 @@ export async function listShipmentsForTrackingPoll(limit: number): Promise<ShpSh
           o."status" = 'COMPLETED'
           AND s."signature_url" IS NULL
           AND s."shipped_at" > CURRENT_TIMESTAMP - ${SIGNATURE_CATCHUP_DAYS}::int * INTERVAL '1 day'
+        )
+        OR (
+          s."delivered_at" > CURRENT_TIMESTAMP - ${PHOTO_CATCHUP_DAYS}::int * INTERVAL '1 day'
+          AND s."delivery_photo_url" IS NULL
+          AND s."tracking_client_id" IS NOT NULL
+          AND o."status" NOT IN ('CANCELLED', 'REFUNDED')
         )
       )
     ORDER BY
@@ -1250,6 +1269,8 @@ export async function reopenShipmentDelivery(shipmentId: string, orderId: string
         "signed_at" = NULL,
         "signature_url" = NULL,
         "signature_key" = NULL,
+        "delivery_photo_url" = NULL,
+        "delivery_photo_key" = NULL,
         "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${shipmentId} AND "order_id" = ${orderId}
       AND ("delivered_at" IS NOT NULL OR "signed_at" IS NOT NULL
@@ -1305,6 +1326,24 @@ export async function recordSignature(shipmentId: string, input: {
         "signature_key" = ${input.key},
         "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${shipmentId} AND "signature_url" IS NULL
+  `
+}
+
+/**
+ * The courier's photograph of the delivery, written once.
+ *
+ * Its own column and its own guard, for the reason recordSignature has one: a
+ * delivered page is read again every hour while the catch-up holds it, and
+ * without `delivery_photo_url IS NULL` each read would fetch the picture into
+ * the bucket again. Kept apart from the signature because Multidrop give both.
+ */
+export async function recordDeliveryPhoto(shipmentId: string, input: { url: string; key: string }): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "shp_shipments"
+    SET "delivery_photo_url" = ${input.url},
+        "delivery_photo_key" = ${input.key},
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${shipmentId} AND "delivery_photo_url" IS NULL
   `
 }
 

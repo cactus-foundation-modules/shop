@@ -67,6 +67,12 @@ export async function shopMediaUsageProvider(): Promise<string[]> {
     SELECT "signature_url" AS ref FROM "shp_shipments" WHERE "signature_url" IS NOT NULL
     UNION ALL
     SELECT "signature_key" AS ref FROM "shp_shipments" WHERE "signature_key" IS NOT NULL
+    UNION ALL
+    -- The courier's photograph of the delivery, kept the same way and for the
+    -- same reason (migrations/080_delivery_photo.sql).
+    SELECT "delivery_photo_url" AS ref FROM "shp_shipments" WHERE "delivery_photo_url" IS NOT NULL
+    UNION ALL
+    SELECT "delivery_photo_key" AS ref FROM "shp_shipments" WHERE "delivery_photo_key" IS NOT NULL
   `
   return rows.map((r) => r.ref).filter((r): r is string => !!r)
 }

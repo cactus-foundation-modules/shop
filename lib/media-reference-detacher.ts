@@ -21,7 +21,8 @@ import type { MediaReferenceDetach } from '@/lib/media/reference-detachers'
 //     dropping the row turns a refundable "the file is missing" into a silent
 //     "there was never a file", and re-attaching it needs the file back either
 //     way. The 409 warning names it; a person decides.
-//   - shp_order_request_photos and shp_shipments.signature_url/_key. A customer's
+//   - shp_order_request_photos, shp_shipments.signature_url/_key and
+//     shp_shipments.delivery_photo_url/_key. A customer's
 //     photograph of a damaged delivery and a courier's proof of delivery are
 //     evidence, kept for the day there is an argument. A library tidy-up is not
 //     the event that should erase either.
