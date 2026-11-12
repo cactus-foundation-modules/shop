@@ -1742,15 +1742,19 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                                 {shipment.signedBy ? ` by ${shipment.signedBy}` : ''}
                                 {shipment.signedAt ? ` · ${formatDateTime(shipment.signedAt)}` : ''}
                               </p>
-                              {/* eslint-disable-next-line @next/next/no-img-element -- a third-party
-                                  signature of unknown dimensions; next/image wants a size nobody here
-                                  can give it. */}
-                              <img
-                                className="sox-signature"
-                                src={shipment.signatureUrl}
-                                alt={shipment.signedBy ? `Signature of ${shipment.signedBy}` : 'Delivery signature'}
-                                loading="lazy"
-                              />
+                              {/* Linked to full size: Palletways' proof is the whole signed
+                                  delivery note, unreadable at a squiggle's size. */}
+                              <a href={shipment.signatureUrl} target="_blank" rel="noopener noreferrer" className="sox-signature-link">
+                                {/* eslint-disable-next-line @next/next/no-img-element -- a third-party
+                                    signature of unknown dimensions; next/image wants a size nobody here
+                                    can give it. */}
+                                <img
+                                  className="sox-signature"
+                                  src={shipment.signatureUrl}
+                                  alt={shipment.signedBy ? `Proof of delivery, signed for by ${shipment.signedBy}` : 'Proof of delivery'}
+                                  loading="lazy"
+                                />
+                              </a>
                             </>
                           )}
                           {shipment.deliveryPhotoUrl && (

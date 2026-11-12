@@ -150,14 +150,19 @@ export async function storeParcelReading(
   }
 
   // The photograph of the delivery, where their page has one beside the
-  // signature (Multidrop). Its own column and its own once-only guard, so it is
-  // taken whether the signature was taken this run, an earlier one, or never.
-  if (delivered && !parcel.deliveryPhotoUrl && reading.multidropHtml) {
-    const photoUrl = parseDeliveryPhoto(reading.multidropHtml)
-    if (photoUrl) {
+  // signature (Multidrop off its page, Palletways handed over with the read).
+  // Its own column and its own once-only guard, so it is taken whether the
+  // signature was taken this run, an earlier one, or never.
+  if (delivered && !parcel.deliveryPhotoUrl) {
+    const multidropPhoto = reading.multidropHtml ? parseDeliveryPhoto(reading.multidropHtml) : null
+    const photo = multidropPhoto
+      ? { url: multidropPhoto, headers: {}, label: 'delivery-photo' }
+      : reading.deliveryPhoto
+    if (photo) {
       const order = await getOrderById(parcel.orderId)
-      const stored = await captureSignature(photoUrl, order?.orderNumber ?? parcel.id, {
-        label: 'delivery-photo',
+      const stored = await captureSignature(photo.url, order?.orderNumber ?? parcel.id, {
+        headers: photo.headers,
+        label: photo.label,
         orderNumber: order?.orderNumber,
       })
       if (stored) await recordDeliveryPhoto(parcel.id, stored)

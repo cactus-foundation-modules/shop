@@ -1064,8 +1064,11 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                           {shipment.signedBy ? `Received by ${shipment.signedBy}` : 'Delivered'}
                           {shipment.signedAt ? ` at ${formatOrderDateTime(shipment.signedAt, timezone)}` : ''}
                         </p>
+                        {/* Linked to full size: some couriers' proof is a
+                            whole signed delivery note (Palletways), which is
+                            unreadable at the size a squiggle is shown. */}
                         {shipment.signatureUrl && (
-                          <>
+                          <a href={shipment.signatureUrl} target="_blank" rel="noopener noreferrer" className="sod-delivery-photo-link">
                             {/* eslint-disable-next-line @next/next/no-img-element -- proof of
                                 delivery is an arbitrary third-party image of unknown dimensions;
                                 next/image wants a size it cannot be told and a loader this file
@@ -1078,7 +1081,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                                 : 'Proof of delivery'}
                               loading="lazy"
                             />
-                          </>
+                          </a>
                         )}
                         {shipment.deliveryPhotoUrl && (
                           <a href={shipment.deliveryPhotoUrl} target="_blank" rel="noopener noreferrer" className="sod-delivery-photo-link">

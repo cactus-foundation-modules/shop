@@ -190,6 +190,7 @@ export const ordersScreenCss = `
 .sox-signature{margin-top:0.375rem;max-width:12rem;width:100%;height:auto;
   border:1px solid var(--color-border);border-radius:0.25rem;
   background:var(--color-surface);padding:0.25rem}
+.sox-signature-link{display:block;width:fit-content}
 /* The courier's photograph of the delivery, beside the signature. A little
    bigger, since a doorstep is harder to read than a squiggle; the full size is
    a click away. */

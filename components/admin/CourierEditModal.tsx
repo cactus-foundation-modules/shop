@@ -500,9 +500,13 @@ export function CourierEditModal({ initial, isNew, otherNames, onClose, onSave, 
                 <label htmlFor="scr-due">
                   Delivery due by
                   <InfoTip>
-                    Palletways give the day a pallet is due and not the time; the time comes with the
-                    service booked - 17:00 on their standard next-day pallets. The customer is told
-                    &ldquo;by&rdquo; this time on the due day. Clear it to show the day alone. Their
+                    Used when their full details cannot be read (an order with no delivery postcode,
+                    or their site having a moment): their open status page gives the day a pallet is
+                    due and not the time, which comes with the service booked - 17:00 on their
+                    standard next-day pallets. The customer is told &ldquo;by&rdquo; this time on the
+                    due day. Clear it to show the day alone. With the postcode, the scans, the
+                    due-by time, who signed, the delivery note and the photograph are all read
+                    from their full details. Their
                     status words are in capitals (&ldquo;AT DELIVERY DEPOT&rdquo;) - list them below as
                     they appear.
                   </InfoTip>

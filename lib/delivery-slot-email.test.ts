@@ -128,6 +128,57 @@ describe('maybeSendCarrierWindowEmail', () => {
     expect(claimSlotNotification).not.toHaveBeenCalled()
   })
 
+  describe('a customer told only a deadline, then given a real window that day', () => {
+    // DW000224's shape: Palletways' "by 17:00", then their depot's ETA window.
+    const told = {
+      ...parcel,
+      deliveryDate: '2026-11-12',
+      slotNotifiedAt: new Date('2026-11-11T17:30:00.000Z'),
+      slotNotifiedWindow: '2026-11-12 00:00-17:00',
+    }
+    const eta = {
+      windowFrom: new Date('2026-11-12T08:24:00.000Z'),
+      windowTo: new Date('2026-11-12T10:24:00.000Z'),
+    }
+
+    it('tells them the window once, claiming against the deadline they were told', async () => {
+      const sent = await slotEmail.maybeSendCarrierWindowEmail(told, eta, 'Europe/London', true)
+
+      expect(sent).toBe(true)
+      expect(claimMovedWindowNotification).toHaveBeenCalledWith('shp_1', 'ord_1', '2026-11-12 00:00-17:00', '2026-11-12 08:24-10:24')
+    })
+
+    it('uses the day they were told when no day is typed on the parcel', async () => {
+      const sent = await slotEmail.maybeSendCarrierWindowEmail({ ...told, deliveryDate: null }, eta, 'Europe/London', true)
+
+      expect(sent).toBe(true)
+    })
+
+    it('stays quiet when the window then drifts', async () => {
+      const sent = await slotEmail.maybeSendCarrierWindowEmail(
+        { ...told, slotNotifiedWindow: '2026-11-12 08:24-10:24' },
+        { windowFrom: new Date('2026-11-12T08:50:00.000Z'), windowTo: new Date('2026-11-12T10:50:00.000Z') },
+        'Europe/London',
+        true,
+      )
+
+      expect(sent).toBe(false)
+      expect(claimMovedWindowNotification).not.toHaveBeenCalled()
+    })
+
+    it('stays quiet when it is still only the deadline', async () => {
+      const sent = await slotEmail.maybeSendCarrierWindowEmail(
+        told,
+        { windowFrom: new Date('2026-11-12T00:00:00.000Z'), windowTo: new Date('2026-11-12T17:00:00.000Z') },
+        'Europe/London',
+        true,
+      )
+
+      expect(sent).toBe(false)
+      expect(claimMovedWindowNotification).not.toHaveBeenCalled()
+    })
+  })
+
   describe('a customer already told a window, then rebooked for another day', () => {
     const told = {
       ...parcel,

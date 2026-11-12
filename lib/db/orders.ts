@@ -104,6 +104,19 @@ export async function getOrderById(id: string): Promise<ShpOrder | null> {
   return rows[0] ? mapOrder(rows[0]) : null
 }
 
+/** The postcode an order is going to, or null where it has none. Couriers who
+ *  keep the full details of a delivery behind the destination postcode
+ *  (Palletways) are asked with this, exactly as their own page asks the
+ *  customer for it. Read on its own so a tracking poll does not load the
+ *  whole order to get one field. */
+export async function getOrderDeliveryPostcode(orderId: string): Promise<string | null> {
+  const rows = await prisma.$queryRaw<Array<{ postcode: string | null }>>`
+    SELECT "shipping_address"->>'postcode' AS postcode FROM "shp_orders" WHERE "id" = ${orderId} LIMIT 1
+  `
+  const postcode = rows[0]?.postcode?.trim() ?? ''
+  return postcode || null
+}
+
 export async function getOrderByNumber(orderNumber: string): Promise<ShpOrder | null> {
   const rows = await prisma.$queryRaw<Record<string, unknown>[]>`SELECT * FROM "shp_orders" WHERE "order_number" = ${orderNumber} LIMIT 1`
   return rows[0] ? mapOrder(rows[0]) : null

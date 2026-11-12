@@ -10,6 +10,7 @@ import type { ShpShipment } from '@/modules/shop/lib/types'
 const recordVehiclePosition = vi.hoisted(() => vi.fn())
 const recordConsignment = vi.hoisted(() => vi.fn())
 const recordSignature = vi.hoisted(() => vi.fn())
+const recordDeliveryPhoto = vi.hoisted(() => vi.fn())
 const recordCarrierReading = vi.hoisted(() => vi.fn())
 const captureSignature = vi.hoisted(() => vi.fn(async (): Promise<{ url: string; key: string } | null> => null))
 vi.mock('@/modules/shop/lib/db/shipments', () => ({
@@ -17,6 +18,7 @@ vi.mock('@/modules/shop/lib/db/shipments', () => ({
   recordCarrierReading,
   recordReceipt: vi.fn(),
   recordSignature,
+  recordDeliveryPhoto,
   recordTrackingPageDetails: vi.fn(),
   recordTrackingStage: vi.fn(),
   recordVehiclePosition,
@@ -37,6 +39,7 @@ function reading(patch: Partial<ParcelReading>): ParcelReading {
     ...EMPTY_READING,
     multidropHtml: null,
     proofImage: null,
+    deliveryPhoto: null,
     vehicle: null,
     clientId: null,
     routeId: null,
@@ -153,5 +156,37 @@ describe('storeParcelReading with a day booked and no times yet', () => {
   it('does not once the parcel has arrived', async () => {
     await storeParcelReading(multidrop, parcel, reading({ stage: 'Complete', scheduledDate: '2026-11-11' }), 'Europe/London')
     expect(maybeSendCourierDayEmail).not.toHaveBeenCalled()
+  })
+})
+
+describe('storeParcelReading with a delivery note and a photograph (Palletways)', () => {
+  const palletways = { trackingSource: 'palletways' as const, outForDeliveryStages: [], deliveredStages: ['JOB COMPLETE'], failedStages: [] }
+  const headers = { referer: 'https://track2.palletways.com/index.php?dc_syscon=60051828127' }
+  const delivered = reading({
+    stage: 'JOB COMPLETE',
+    receivedBy: 'Alan',
+    receivedAt: new Date('2026-11-12T09:34:00Z'),
+    proofImage: { url: 'https://track2.palletways.com/show_pod.php?fullsize=true&file=n_sos_pod.tif', headers, label: 'delivery-note' },
+    deliveryPhoto: { url: 'https://track2.palletways.com/show_pod.php?fullsize=true&file=n_pod_photo_1.jpg', headers, label: 'delivery-photo' },
+  })
+
+  beforeEach(() => {
+    captureSignature.mockReset()
+    captureSignature.mockImplementation(async () => ({ url: 'https://media/x.jpg', key: 'x.jpg' }))
+    recordSignature.mockClear()
+    recordDeliveryPhoto.mockClear()
+  })
+
+  it('keeps the note as the signature and the photograph beside it, both asked with their referer', async () => {
+    await storeParcelReading(palletways, { ...parcel, deliveryPhotoUrl: null } as ShpShipment, delivered, 'Europe/London')
+    expect(captureSignature).toHaveBeenCalledWith(delivered.proofImage?.url, 'DW000001', expect.objectContaining({ headers, label: 'delivery-note' }))
+    expect(captureSignature).toHaveBeenCalledWith(delivered.deliveryPhoto?.url, 'DW000001', expect.objectContaining({ headers, label: 'delivery-photo' }))
+    expect(recordSignature).toHaveBeenCalledWith('shp_1', expect.objectContaining({ signedBy: 'Alan' }))
+    expect(recordDeliveryPhoto).toHaveBeenCalledWith('shp_1', { url: 'https://media/x.jpg', key: 'x.jpg' })
+  })
+
+  it('does not fetch the photograph again once one is kept', async () => {
+    await storeParcelReading(palletways, { ...parcel, deliveryPhotoUrl: 'https://media/kept.jpg' } as ShpShipment, delivered, 'Europe/London')
+    expect(recordDeliveryPhoto).not.toHaveBeenCalled()
   })
 })

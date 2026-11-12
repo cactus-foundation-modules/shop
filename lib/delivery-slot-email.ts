@@ -11,6 +11,7 @@ import {
   deliveryBookingForShipment,
   formatDeliveryDay,
   formatDeliveryWindow,
+  isDueByWindow,
   isWholeDayWindow,
   slotTimeFromInstant,
   toldWindowKey,
@@ -253,7 +254,8 @@ export async function maybeSendCarrierWindowEmail(
  * with no times, and DPD's Saturday window arrived overnight to a stamp that
  * said "already told".)
  *
- * Only a change of day. The courier's window drifts by the hour as the round
+ * Only a change of day - or, once, a deadline becoming a real window on the
+ * same day (below). The courier's window drifts by the hour as the round
  * progresses, and an email for each drift would be a nuisance, not a service.
  * The window must also be for the day on the parcel, so a feed still holding
  * the day that fell through is not mistaken for the new booking.
@@ -268,9 +270,18 @@ async function maybeSendMovedDayEmail(
   const start = slotTimeFromInstant(reading.windowFrom, timezone)
   const end = slotTimeFromInstant(reading.windowTo, timezone)
   if (isWholeDayWindow(start, end)) return false
-  if (date !== parcel.deliveryDate) return false
+  // The one same-day change worth an email: a customer told only a deadline
+  // ("by 17:00", Palletways' service time) whose courier has since planned the
+  // round and given a real window ("between 08:24 and 10:24"). Once, because
+  // the claim below records the real window, and later drifts are not news.
+  const toldDate = parcel.slotNotifiedWindow.slice(0, 10)
+  const [toldStart = null, toldEnd = null] = parcel.slotNotifiedWindow.slice(11).split('-')
+  const narrowed = toldDate === date && isDueByWindow(toldStart, toldEnd) && !isDueByWindow(start, end)
+  // A deadline-only courier seldom has a day typed on the parcel; the day the
+  // customer was told is the booking there.
+  if (date !== (parcel.deliveryDate || (narrowed ? toldDate : null))) return false
   if (isStaleCarrierWindow(parcel, date)) return false
-  if (parcel.slotNotifiedWindow.slice(0, 10) === date) return false
+  if (toldDate === date && !narrowed) return false
   if (!(await claimMovedWindowNotification(parcel.id, parcel.orderId, parcel.slotNotifiedWindow, `${date} ${start}-${end}`))) return false
 
   try {

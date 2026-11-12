@@ -37,7 +37,14 @@ import { isSplitConsignment, type ConsignmentParcel } from '@/modules/shop/lib/c
 import { aitImageHeaders, readAit } from '@/modules/shop/lib/tracking/ait'
 import { aitLinkParts } from '@/modules/shop/lib/tracking/ait-link'
 import { readFieldly } from '@/modules/shop/lib/tracking/fieldly'
-import { palletwaysStatusUrl, readPalletwaysStatus } from '@/modules/shop/lib/tracking/palletways'
+import {
+  palletwaysDetailsUrl,
+  palletwaysRequestHeaders,
+  palletwaysStatusUrl,
+  readPalletwaysDetails,
+  readPalletwaysStatus,
+} from '@/modules/shop/lib/tracking/palletways'
+import { getOrderDeliveryPostcode } from '@/modules/shop/lib/db/orders'
 import { palletwaysTrackingId } from '@/modules/shop/lib/tracking/palletways-link'
 import { EMPTY_READING, type TrackingReading } from '@/modules/shop/lib/tracking/reading'
 import type { ShpCourier } from '@/modules/shop/lib/courier-faqs'
@@ -56,6 +63,10 @@ export type ParcelReading = TrackingReading & {
    *  from a session rather than a public bucket, and the reader is the only
    *  thing here holding that session. */
   proofImage: { url: string; headers: Record<string, string>; label: string } | null
+  /** A photograph of the goods where they were left, kept in its own column
+   *  beside the signature, where the courier hands one over with the read
+   *  (Palletways). Multidrop's comes off `multidropHtml` instead. */
+  deliveryPhoto: { url: string; headers: Record<string, string>; label: string } | null
   /** Where the crew is, where the courier hands that over as part of the
    *  read (AIT in the same answer, DPD off their van map's address - see
    *  dpdMapPoints). Carries no time of its own: the caller records when it
@@ -91,6 +102,7 @@ const EMPTY_PARCEL_READING: ParcelReading = {
   ...EMPTY_READING,
   multidropHtml: null,
   proofImage: null,
+  deliveryPhoto: null,
   vehicle: null,
   clientId: null,
   routeId: null,
@@ -102,14 +114,14 @@ const EMPTY_PARCEL_READING: ParcelReading = {
   scheduledDate: null,
 }
 
-async function fetchText(url: string): Promise<string | null> {
+async function fetchText(url: string, headers: Record<string, string> = {}): Promise<string | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
     const res = await fetch(url, {
       signal: controller.signal,
       redirect: 'follow',
-      headers: { 'user-agent': 'CactusShopDeliveryTracking/1.0 (+order status)' },
+      headers: { 'user-agent': 'CactusShopDeliveryTracking/1.0 (+order status)', ...headers },
       cache: 'no-store',
     })
     if (!res.ok) return null
@@ -422,6 +434,28 @@ async function readPalletways(parcel: ShpShipment, dueBy: string, timezone: stri
   // The ID from the link where there is one, or typed in as the number.
   const id = palletwaysTrackingId(parcel.trackingUrl) ?? palletwaysTrackingId(parcel.trackingNumber)
   if (!id) return null
+
+  // The full details, where the order has a postcode to open them with: the
+  // scans, who signed, and the pictures. Anything short of a page that reads
+  // falls back to the open status table, which is still a stage.
+  const postcode = await getOrderDeliveryPostcode(parcel.orderId).catch(() => null)
+  if (postcode) {
+    const headers = palletwaysRequestHeaders(id)
+    const html = await fetchText(palletwaysDetailsUrl(id, postcode), headers)
+    const details = html ? readPalletwaysDetails(html, timezone, dueBy) : null
+    if (details) {
+      const { photo, deliveryNote, ...reading } = details
+      return {
+        ...EMPTY_PARCEL_READING,
+        ...reading,
+        // The signed delivery note goes where a signature goes; the photograph
+        // of the pallet goes beside it.
+        proofImage: deliveryNote ? { ...deliveryNote, headers } : null,
+        deliveryPhoto: photo ? { ...photo, headers } : null,
+      }
+    }
+  }
+
   const html = await fetchText(palletwaysStatusUrl(id))
   if (!html) return null
   const reading = readPalletwaysStatus(html, timezone, dueBy)
