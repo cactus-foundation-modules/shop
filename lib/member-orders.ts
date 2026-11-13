@@ -46,7 +46,7 @@ import type {
 // person's order history, delivery addresses and all. Shops with email
 // verification switched off therefore claim nothing, which is the right way
 // round - a missing order history is a nuisance, the alternative is a leak.
-export async function listOrdersForMember(
+export async function syncMemberFromOrders(
   member: { id: string; email: string; emailVerified: boolean; marketingConsent?: boolean | null },
 ): Promise<ShpOrder[]> {
   if (member.emailVerified) await claimGuestOrdersForMember(member.id, member.email)
@@ -86,6 +86,15 @@ export async function listOrdersForMember(
   }
 
   return orders
+}
+
+/** Every order this member can see - see syncMemberFromOrders, which does the
+ *  claiming and filling and is also what core's "email verified" hook runs, so
+ *  a member no longer has to open their orders to be matched up. */
+export async function listOrdersForMember(
+  member: { id: string; email: string; emailVerified: boolean; marketingConsent?: boolean | null },
+): Promise<ShpOrder[]> {
+  return syncMemberFromOrders(member)
 }
 
 /** One line of an order as a shopper sees it: what they bought, a picture of

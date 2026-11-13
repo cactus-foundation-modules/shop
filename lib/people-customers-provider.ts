@@ -23,9 +23,11 @@ const PAID_STATES = Prisma.sql`('PAID', 'PARTIALLY_REFUNDED', 'REFUNDED')`
 // existed, where it is simply never called.
 type PeopleCustomerRefs = { memberId: Prisma.Sql; email: Prisma.Sql }
 type PeopleCustomerSummary = { label: string; title?: string }
+type PeopleContactDetails = { fullName?: string | null; organisation?: string | null }
 type PeopleCustomerProvider = {
   isCustomerSql: (refs: PeopleCustomerRefs) => Prisma.Sql
   summarise: (people: ReadonlyArray<{ memberId: string; email: string }>) => Promise<Record<string, PeopleCustomerSummary>>
+  contactDetails: (people: ReadonlyArray<{ memberId: string; email: string }>) => Promise<Record<string, PeopleContactDetails>>
 }
 
 function isCustomerSql({ memberId, email }: PeopleCustomerRefs): Prisma.Sql {
@@ -84,4 +86,37 @@ async function summarise(people: ReadonlyArray<{ memberId: string; email: string
   return out
 }
 
-export const shopPeopleCustomers: PeopleCustomerProvider = { isCustomerSql, summarise }
+// What the newest order says, for members whose account is still blank. Core
+// only asks about verified members, and it is only ever shown, never saved. An
+// order counts as theirs by member_id, or as a still-unclaimed guest order at
+// their address - the same "theirs" as above. Newest first, so somebody who has
+// moved firms reads as the firm they last bought from.
+type ContactRow = { member_id: string; customer_name: string; customer_organisation: string | null; billing_company: string | null; billing_present: boolean; shipping_company: string | null }
+
+async function contactDetails(people: ReadonlyArray<{ memberId: string; email: string }>): Promise<Record<string, PeopleContactDetails>> {
+  if (people.length === 0) return {}
+  const rows = await prisma.$queryRaw<ContactRow[]>`
+    WITH people AS (
+      SELECT * FROM UNNEST(${people.map((p) => p.memberId)}::text[], ${people.map((p) => p.email)}::text[]) AS p(member_id, email)
+    )
+    SELECT DISTINCT ON (p.member_id) p.member_id, o."customer_name", o."customer_organisation",
+      o."billing_address"->>'company' AS billing_company,
+      (o."billing_address" IS NOT NULL AND o."billing_address" <> 'null'::jsonb) AS billing_present,
+      o."shipping_address"->>'company' AS shipping_company
+    FROM people p
+    JOIN "shp_orders" o
+      ON o."member_id" = p.member_id OR (o."member_id" IS NULL AND LOWER(o."customer_email") = LOWER(p.email))
+    WHERE o."kind" = 'SALE'
+    ORDER BY p.member_id, o."created_at" DESC
+  `
+  const out: Record<string, PeopleContactDetails> = {}
+  for (const row of rows) {
+    const company = row.customer_organisation?.trim()
+      || row.billing_company?.trim()
+      || (row.billing_present ? null : row.shipping_company?.trim() || null)
+    out[row.member_id] = { fullName: row.customer_name, organisation: company }
+  }
+  return out
+}
+
+export const shopPeopleCustomers: PeopleCustomerProvider = { isCustomerSql, summarise, contactDetails }
