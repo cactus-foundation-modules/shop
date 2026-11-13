@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.535",
+  "version": "0.1.536",
   "tablePrefix": "shp_",
   "notificationKinds": [
     {"id": "new-order", "label": "New orders", "description": "An order has been placed or is awaiting payment.", "dedupePrefix": "shop:order:"},
@@ -911,6 +911,21 @@
       "permission": "shop.access",
       "import": "./components/admin/ShopDashboardWidget",
       "component": "shopDashboardWidget"
+    },
+    {
+      "point": "members.admin-member-detail",
+      "id": "shop-member-sales",
+      "permission": "shop.customers",
+      "import": "./components/admin/MemberSalesSection",
+      "component": "shopMemberSalesSection"
+    },
+    {
+      "point": "core.people-customers",
+      "id": "shop-customers",
+      "permission": "shop.customers",
+      "serverOnly": true,
+      "import": "./lib/people-customers-provider",
+      "component": "shopPeopleCustomers"
     },
     {
       "point": "search.shop-cards",
