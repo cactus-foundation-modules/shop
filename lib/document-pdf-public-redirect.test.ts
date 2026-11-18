@@ -6,8 +6,7 @@ import { NextRequest } from 'next/server'
 // https://localhost:<port>, so that redirect has to be built from the public
 // address or the visitor lands on localhost.
 
-vi.mock('@/lib/auth/rate-limit', () => ({ getClientIp: async () => '1.2.3.4' }))
-vi.mock('@/modules/shop/lib/rate-limit', () => ({ checkInMemoryRateLimit: () => true }))
+vi.mock('@/lib/auth/rate-limit', () => ({ getClientIp: async () => '1.2.3.4', checkSharedRateLimit: async () => true }))
 vi.mock('@/modules/shop/lib/config', () => ({ getShopConfigCached: async () => ({}) }))
 vi.mock('@/modules/shop/lib/document-access', () => ({
   documentPagePath: () => '/x',

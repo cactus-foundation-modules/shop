@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getOrderByNumber } from '@/modules/shop/lib/db/orders'
-import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
-import { getClientIp } from '@/lib/auth/rate-limit'
+import { getClientIp, checkSharedRateLimit } from '@/lib/auth/rate-limit'
 import { mayOpenReceipt } from '@/modules/shop/lib/order-viewer'
 import { isValidUkPhone, normaliseStoredPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
 import { setOrderNotifyChannels, smsCapableNumber } from '@/modules/shop/lib/order-notify'
@@ -36,7 +35,7 @@ const Body = z.object({
 // lib/access.ts).
 export async function POST(request: NextRequest) {
   const ip = await getClientIp()
-  if (!checkInMemoryRateLimit(`order-notifications:${ip}`, 20, 15 * 60 * 1000)) {
+  if (!(await checkSharedRateLimit(`order-notifications:${ip}`, 20, 15 * 60 * 1000))) {
     return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
   }
 

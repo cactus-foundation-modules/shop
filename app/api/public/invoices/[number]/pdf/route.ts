@@ -4,8 +4,7 @@ import { getInvoiceByNumber } from '@/modules/shop/lib/db/invoices'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { documentPagePath, resolveDocumentAccess } from '@/modules/shop/lib/document-access'
 import { signDocumentPrintToken } from '@/modules/shop/lib/document-print-token'
-import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
-import { getClientIp } from '@/lib/auth/rate-limit'
+import { getClientIp, checkSharedRateLimit } from '@/lib/auth/rate-limit'
 import { invoicePath } from '@/modules/shop/lib/invoice-token'
 import { InvoicePdfUnavailableError, invoicePdfFilename, printPath, renderInvoicePdf } from '@/modules/shop/lib/invoice-pdf'
 import { documentPageSetup } from '@/modules/shop/lib/invoice-document'
@@ -25,7 +24,7 @@ import { publicUrl } from '@/lib/security/public-origin'
 
 export async function GET(request: NextRequest, context: { params: Promise<{ number: string }> }) {
   const ip = await getClientIp()
-  if (!checkInMemoryRateLimit(`shp-invoice-pdf:${ip}`, 5, 60_000)) {
+  if (!(await checkSharedRateLimit(`shp-invoice-pdf:${ip}`, 5, 60_000))) {
     return NextResponse.json({ error: 'Too many downloads at once, please try again in a minute.' }, { status: 429 })
   }
 

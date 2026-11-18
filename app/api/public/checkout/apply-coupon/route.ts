@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { discountLines, resolveCartLines, resolveDiscounts } from '@/modules/shop/lib/checkout'
-import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
-import { getClientIp } from '@/lib/auth/rate-limit'
+import { getClientIp, checkSharedRateLimit } from '@/lib/auth/rate-limit'
 import { checkoutClosedResponse } from '@/modules/shop/lib/access'
 import { resolveShopCommerceMode } from '@/modules/shop/lib/commerce-mode'
 import { CheckoutLinesSchema, checkoutLinesRefusal } from '@/modules/shop/lib/checkout-lines'
@@ -15,7 +14,7 @@ const Body = z.object({
 
 export async function POST(request: NextRequest) {
   const ip = await getClientIp()
-  if (!checkInMemoryRateLimit(`apply-coupon:${ip}`, 20, 15 * 60 * 1000)) {
+  if (!(await checkSharedRateLimit(`apply-coupon:${ip}`, 20, 15 * 60 * 1000))) {
     return NextResponse.json({ error: 'Too many attempts, please try again later.' }, { status: 429 })
   }
 

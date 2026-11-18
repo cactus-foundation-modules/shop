@@ -3,8 +3,7 @@ import { errorResponse } from '@/lib/utils'
 import { getChargeById } from '@/modules/shop/lib/db/order-charges'
 import { requireOrderAccess } from '@/modules/shop/lib/order-route-access'
 import { cancelOrderKeepingCharge } from '@/modules/shop/lib/order-charges'
-import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
-import { getClientIp } from '@/lib/auth/rate-limit'
+import { getClientIp, checkSharedRateLimit } from '@/lib/auth/rate-limit'
 
 // PROTECTED - the customer's other way out of an extra charge: cancel the order
 // and be refunded what they paid, less the charge. Money moves on this, so it
@@ -12,7 +11,7 @@ import { getClientIp } from '@/lib/auth/rate-limit'
 // charge is still waiting. The figure refunded is worked out on the server from
 // the order itself; nothing the page sends has any say in it.
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string; chargeId: string }> }) {
-  if (!checkInMemoryRateLimit(`shop_charge_cancel:${(await getClientIp())}`, 5, 15 * 60 * 1000)) {
+  if (!(await checkSharedRateLimit(`shop_charge_cancel:${(await getClientIp())}`, 5, 15 * 60 * 1000))) {
     return errorResponse('Too many attempts, please try again in a little while.', 429)
   }
 

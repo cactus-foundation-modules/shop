@@ -15,8 +15,7 @@ import {
 } from '@/modules/shop/lib/order-receipt-challenge'
 import { grantGuestOrderAccess, guestOrderAccessIdsFromRequest } from '@/modules/shop/lib/guest-order-access'
 import { grantReceiptAccess } from '@/modules/shop/lib/receipt-access-cookie'
-import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
-import { getClientIp } from '@/lib/auth/rate-limit'
+import { getClientIp, checkSharedRateLimit } from '@/lib/auth/rate-limit'
 
 // PUBLIC - proving that a receipt is yours, on a browser that has not proved it.
 //
@@ -78,7 +77,7 @@ const SWEEP_ODDS = 50
 // post-purchase, and stays open while the shop is closed (see getShopGate in
 // lib/access.ts). The guards above are what protect it, and they still apply.
 export async function POST(request: NextRequest) {
-  if (!checkInMemoryRateLimit(`order-receipt-access:${(await getClientIp())}`, 20, 15 * 60 * 1000)) {
+  if (!(await checkSharedRateLimit(`order-receipt-access:${(await getClientIp())}`, 20, 15 * 60 * 1000))) {
     return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
   }
 

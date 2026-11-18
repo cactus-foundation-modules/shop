@@ -5,8 +5,7 @@ import { getChargeById } from '@/modules/shop/lib/db/order-charges'
 import { requireOrderAccess } from '@/modules/shop/lib/order-route-access'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { assertChargePayable, settleOrderChargePayment } from '@/modules/shop/lib/order-charges'
-import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
-import { getClientIp } from '@/lib/auth/rate-limit'
+import { getClientIp, checkSharedRateLimit } from '@/lib/auth/rate-limit'
 
 const Body = z.object({ method: z.string().min(1), payload: z.unknown() })
 
@@ -16,7 +15,7 @@ const Body = z.object({ method: z.string().min(1), payload: z.unknown() })
 // an outcome. A payment still settling is left to the provider's webhook, which
 // settles charges too (see `settlesOrderCharges`).
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string; chargeId: string }> }) {
-  if (!checkInMemoryRateLimit(`shop_charge_pay_confirm:${(await getClientIp())}`, 20, 15 * 60 * 1000)) {
+  if (!(await checkSharedRateLimit(`shop_charge_pay_confirm:${(await getClientIp())}`, 20, 15 * 60 * 1000))) {
     return errorResponse('Too many attempts, please try again in a little while.', 429)
   }
 

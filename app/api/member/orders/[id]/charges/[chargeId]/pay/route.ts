@@ -5,8 +5,7 @@ import { getChargeById } from '@/modules/shop/lib/db/order-charges'
 import { requireOrderAccess } from '@/modules/shop/lib/order-route-access'
 import { getPaymentProvider } from '@/modules/shop/lib/payments/registry'
 import { assertChargePayable } from '@/modules/shop/lib/order-charges'
-import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
-import { getClientIp } from '@/lib/auth/rate-limit'
+import { getClientIp, checkSharedRateLimit } from '@/lib/auth/rate-limit'
 
 const Body = z.object({ method: z.string().min(1) })
 
@@ -20,7 +19,7 @@ const Body = z.object({ method: z.string().min(1) })
 // the order row is touched here - unlike the order's own pay route, which has
 // to adopt the new method. See `settlesOrderCharges` in lib/payments/provider.ts.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string; chargeId: string }> }) {
-  if (!checkInMemoryRateLimit(`shop_charge_pay:${(await getClientIp())}`, 10, 15 * 60 * 1000)) {
+  if (!(await checkSharedRateLimit(`shop_charge_pay:${(await getClientIp())}`, 10, 15 * 60 * 1000))) {
     return errorResponse('Too many attempts, please try again in a little while.', 429)
   }
 

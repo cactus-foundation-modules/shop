@@ -6,8 +6,7 @@ import { fulfillPaidOrder } from '@/modules/shop/lib/order-fulfillment'
 import { announceOrderAwaitingPayment } from '@/modules/shop/lib/order-placed-email'
 import { notifyOrderPlacedUnpaid } from '@/modules/shop/lib/order-placed-hooks'
 import { rememberOrderAddress } from '@/modules/shop/lib/order-address-book'
-import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
-import { getClientIp } from '@/lib/auth/rate-limit'
+import { getClientIp, checkSharedRateLimit } from '@/lib/auth/rate-limit'
 import { getCheckoutDraft, materialiseDraftOrder } from '@/modules/shop/lib/checkout-draft'
 
 const Body = z.object({ orderId: z.string(), payload: z.unknown() })
@@ -28,7 +27,7 @@ export async function POST(request: NextRequest) {
   // `declined` on ShpPaymentResult), so an id alone cannot fail somebody else's
   // order either. The throttle is for everything else a script could run up.
   const ip = await getClientIp()
-  if (!checkInMemoryRateLimit(`checkout-confirm:${ip}`, 20, 15 * 60 * 1000)) {
+  if (!(await checkSharedRateLimit(`checkout-confirm:${ip}`, 20, 15 * 60 * 1000))) {
     return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
   }
 

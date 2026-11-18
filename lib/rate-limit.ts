@@ -1,12 +1,14 @@
 import { clientIpFromHeaders } from '@/lib/auth/rate-limit'
 
-// In-memory IP rate limiter for the shop module's public mutating routes
-// (back-in-stock, coupon apply). Deliberately not table-backed like
-// contact-form's - those tables carry a natural IP column already; adding one
-// purely for rate-limiting to shp_back_in_stock_subscriptions
-// would be a schema change for a non-critical last line of defence. Per-instance
-// only (resets on cold start, not shared across serverless instances) - an
-// acceptable tradeoff for a secondary guard behind normal validation.
+// In-memory IP rate limiter for the shop's busy, low-stakes routes - product
+// lists, cart refreshes, delivery polling - where a database write per request
+// would cost more than the limit is worth. Per process, and it resets on every
+// restart, so it is a ceiling against a runaway script, not a defence.
+//
+// Anything where the limit IS the defence - guessing an order number, a document
+// or quote code, a coupon; sending mail; taking a file; touching a payment -
+// uses core's table-backed checkSharedRateLimit (@/lib/auth/rate-limit)
+// instead, which holds across processes and restarts.
 
 type Bucket = { count: number; windowStart: number; expiresAt: number }
 const buckets = new Map<string, Bucket>()

@@ -25,8 +25,7 @@ import { getMemberFromCookie } from '@/lib/members/session'
 import { fillBlankMemberContactDetails } from '@/lib/members/contact'
 import { syncMemberMarketingConsent } from '@/lib/members/marketing-consent'
 import { marketingConsentFromAgreements } from '@/modules/shop/lib/marketing-consent'
-import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
-import { getClientIp } from '@/lib/auth/rate-limit'
+import { getClientIp, checkSharedRateLimit } from '@/lib/auth/rate-limit'
 import { isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
 import type { ShpAddress } from '@/modules/shop/lib/types'
 import { formatAddress } from '@/modules/shop/lib/address-format'
@@ -107,7 +106,7 @@ export async function POST(request: NextRequest) {
   // PaymentIntent / PayPal order) on every call, so it is the most expensive
   // public mutating route - rate-limit it per IP like apply-coupon/back-in-stock.
   const ip = await getClientIp()
-  if (!checkInMemoryRateLimit(`payment-intent:${ip}`, 10, 15 * 60 * 1000)) {
+  if (!(await checkSharedRateLimit(`payment-intent:${ip}`, 10, 15 * 60 * 1000))) {
     return NextResponse.json({ error: 'Too many attempts, please try again in a little while.' }, { status: 429 })
   }
 
