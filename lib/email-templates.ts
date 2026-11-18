@@ -515,9 +515,13 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     label: 'Replacement dispatched',
     subject: 'Your replacement for order {{parentOrderNumber}} is on its way',
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>The replacement for order <strong>{{parentOrderNumber}}</strong> has left us.</p>{{orderItems}}{{#if hasCarrier}}<p>Courier: {{carrier}}</p>{{/if}}{{#if hasSeveralParcels}}<p>It is coming in <strong>{{parcelCount}} parcels</strong>, and the courier may bring them separately, so please do not worry if they do not all turn up together. Your order page shows where each one has got to.</p>{{/if}}{{#if hasTracking}}<p>Tracking: {{trackingNumber}}</p>{{/if}}{{#if hasOrderUrl}}<p>Follow it at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}{{#if hasParentOrderUrl}}<p>Everything about the original is on <a href="{{parentOrderUrl}}">order {{parentOrderNumber}}</a>.</p>{{/if}}<p>Sorry again for the bother.</p>',
-    mergeTags: ['parcelCount', 'hasSeveralParcels', 'customerName', 'orderNumber', 'parentOrderNumber', 'parentOrderUrl', 'orderItems', 'carrier', 'trackingNumber', 'deliveryDay', 'deliveryWindow', 'deliveryWhen', 'hasDeliveryDay', 'hasDeliveryWindow', 'shopName', 'hasCarrier', 'hasTracking', 'orderUrl', 'hasOrderUrl', 'hasParentOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
-    rawTags: ['orderItems'],
+      '<p>Hi {{customerName}},</p><p>The replacement for order <strong>{{parentOrderNumber}}</strong> has left us.</p>{{orderItems}}{{#if hasCarrier}}<p>Courier: {{carrier}}</p>{{/if}}{{#if hasSeveralParcels}}<p>It is coming in <strong>{{parcelCount}} parcels</strong>, and the courier may bring them separately, so please do not worry if they do not all turn up together. Your order page shows where each one has got to.</p>{{/if}}{{#if hasTracking}}<p>Tracking: {{trackingNumber}}</p>{{/if}}{{#if hasTrackingLinks}}{{trackingLinks}}{{/if}}{{#if hasDeliveryDay}}<p>Delivery is booked for <strong>{{deliveryWhen}}</strong>.</p>{{/if}}{{#if hasOrderUrl}}<p>Follow it at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}{{#if hasParentOrderUrl}}<p>Everything about the original is on <a href="{{parentOrderUrl}}">order {{parentOrderNumber}}</a>.</p>{{/if}}<p>Sorry again for the bother.</p>',
+    mergeTags: ['parcelCount', 'hasSeveralParcels', 'customerName', 'orderNumber', 'parentOrderNumber', 'parentOrderUrl', 'orderItems', 'carrier', 'trackingNumber', 'trackingUrl', 'trackingLinks', 'deliveryDay', 'deliveryWindow', 'deliveryWhen', 'hasDeliveryDay', 'hasDeliveryWindow', 'shopName', 'hasCarrier', 'hasTracking', 'hasTrackingUrl', 'hasTrackingLinks', 'orderUrl', 'hasOrderUrl', 'hasParentOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
+    // The booked day and the tracking links were always passed in (the send in
+    // lib/shipment-email.ts fills the same values as STATUS_SHIPPED) but the
+    // wording never printed them, so a replacement went out with no day on it.
+    // trackingLinks is the escaped per-parcel block from lib/order-status.ts.
+    rawTags: ['orderItems', 'trackingLinks'],
     transactional: true,
   },
   {
