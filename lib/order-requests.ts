@@ -1,6 +1,7 @@
 import { NOTHING_RETURNABLE_REASON, nonCancellableReason } from '@/modules/shop/lib/returnable'
 import type {
   ShpOrder,
+  ShpMissingKind,
   ShpOrderItemDispatch,
   ShpOrderRequestType,
   ShpOrderRequestWithItems,
@@ -98,6 +99,9 @@ export const SHP_RETURN_REASONS = [
  */
 const RETIRED_REASON_LABELS: Record<string, string> = {
   FAULTY: 'It arrived damaged or faulty',
+  // Retired from issue reports when "something is missing" became its own path
+  // with a whole-or-parts answer per line. Older reports still say this.
+  PARTS_MISSING: 'Parts are missing or broken',
 }
 
 /**
@@ -112,12 +116,59 @@ export const DAMAGED_GOODS_GUIDANCE =
 // Damage has its own list, and FAULTY is on it. The same word means two
 // different things in the two places: on a return it was a shopper explaining
 // why they wanted their money back, and here it is the start of a replacement.
+//
+// The form asks which KIND of issue first (SHP_ISSUE_KINDS below) and only then
+// shows the questions that kind needs, so these codes are grouped by kind. The
+// codes stay flat on the request row because that is what the owner filters on.
 export const SHP_DAMAGE_REASONS = [
   { code: 'ARRIVED_DAMAGED', label: 'It arrived damaged' },
   { code: 'FAULTY', label: 'It has developed a fault' },
-  { code: 'PARTS_MISSING', label: 'Parts are missing or broken' },
-  { code: 'OTHER', label: 'Something else' },
+  { code: 'MISSING', label: 'Something is missing' },
+  { code: 'OTHER', label: 'Another issue' },
 ] as const
+
+export type ShpIssueKind = 'DAMAGE' | 'MISSING' | 'OTHER'
+
+/**
+ * The first question on the issue form, and what each answer leads to.
+ *
+ * Asked before anything else because the three want different forms: damage
+ * wants photographs, a missing item cannot be photographed and wants a "the
+ * whole thing, or bits of it?" per line, and anything else wants the customer's
+ * own words. One form asking all of it at once was a damage form that everybody
+ * with a missing box had to bend to fit.
+ */
+export const SHP_ISSUE_KINDS: ReadonlyArray<{
+  kind: ShpIssueKind
+  label: string
+  hint: string
+  /** The reason codes this kind may be filed under. A single code means the
+   *  form files it without asking. */
+  reasons: ReadonlyArray<string>
+}> = [
+  { kind: 'DAMAGE', label: 'Report damage', hint: 'Something arrived broken, scratched or faulty.', reasons: ['ARRIVED_DAMAGED', 'FAULTY'] },
+  { kind: 'MISSING', label: 'Report missing item(s)', hint: 'A whole item, or parts of one, did not turn up.', reasons: ['MISSING'] },
+  { kind: 'OTHER', label: 'Another issue', hint: 'Anything else that is not right with what arrived.', reasons: ['OTHER'] },
+]
+
+/** Which kind of issue a report's reason code belongs to. Retired codes land on
+ *  the kind they would be filed under today. */
+export function issueKindOf(reason: string): ShpIssueKind {
+  if (reason === 'MISSING' || reason === 'PARTS_MISSING') return 'MISSING'
+  if (reason === 'OTHER') return 'OTHER'
+  return 'DAMAGE'
+}
+
+export const SHP_MISSING_KIND_LABEL: Record<ShpMissingKind, string> = {
+  WHOLE: 'missing entirely',
+  PARTS: 'parts missing',
+}
+
+/** " (missing entirely)" / " (parts missing)" after a line, or nothing on a line
+ *  that carries no answer - which is every line of every other kind of request. */
+export function missingSuffix(line: { missing?: ShpMissingKind | null }): string {
+  return line.missing ? ` (${SHP_MISSING_KIND_LABEL[line.missing]})` : ''
+}
 
 /**
  * How many photographs one report may carry.
@@ -128,6 +179,34 @@ export const SHP_DAMAGE_REASONS = [
  * postcode, so it exists as much to bound that as to keep the queue readable.
  */
 export const MAX_DAMAGE_PHOTOS = 6
+
+/**
+ * How many photographs one report may carry in all, counting the ones added
+ * after it was sent - by the customer answering a request for them, or by staff
+ * from the queue. Generous, because a second round of pictures is the shop
+ * asking for more, and still a cap, because the customer half of it is
+ * reachable with a postcode.
+ */
+export const MAX_REPORT_PHOTOS_TOTAL = 24
+
+/** The query the order page opens its "add photos" form on, from the link in
+ *  the email asking for them. A switch like REPORT_ISSUE_QUERY_KEY: it opens the
+ *  newest open report the shop has asked for photographs on, so no id travels
+ *  in the link or across the postcode gate. */
+export const ADD_PHOTOS_QUERY_KEY = 'photos'
+
+/** The order page, asked to open the add-photos form. Same rules as
+ *  reportIssueUrl: parsed rather than appended, empty in, empty out. */
+export function addPhotosUrl(orderUrl: string): string {
+  if (!orderUrl) return ''
+  try {
+    const url = new URL(orderUrl)
+    url.searchParams.set(ADD_PHOTOS_QUERY_KEY, '1')
+    return url.toString()
+  } catch {
+    return ''
+  }
+}
 
 /** The query the order page opens its issue-report form on. */
 export const REPORT_ISSUE_QUERY_KEY = 'report'

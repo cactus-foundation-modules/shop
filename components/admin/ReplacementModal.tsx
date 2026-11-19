@@ -15,6 +15,8 @@ type DraftLine = {
   quantity: number
   unitPrice: string
   replacesOrderItemId: string
+  /** A whole new one of the line in `replacesOrderItemId`, not a part. */
+  wholeItem: boolean
 }
 
 // Sending a part out to put an order right.
@@ -25,17 +27,33 @@ type DraftLine = {
 // the lines here start empty and the order's own lines appear only as the
 // "which one is this for" answer beside each.
 //
+// Each line can also be a whole new one of something on the order - the chair
+// that never turned up, or the desk that arrived in two pieces. That line names
+// the order line and nothing else; the server copies the product and every
+// choice made on it, so nobody has to find the right fabric in a parts search.
+//
 // Free unless somebody types a price. That is the ordinary case by a mile, and
 // a price box that started at the shelf price would invoice a customer for the
 // shop's own mistake the first time anybody forgot to clear it.
 
 let nextKey = 0
-function blankLine(replacesOrderItemId: string): DraftLine {
+function blankLine(replacesOrderItemId: string, wholeItem = false, quantity = 1): DraftLine {
   nextKey += 1
-  return { key: `line-${nextKey}`, productId: null, name: '', quantity: 1, unitPrice: '', replacesOrderItemId }
+  return { key: `line-${nextKey}`, productId: null, name: '', quantity, unitPrice: '', replacesOrderItemId, wholeItem }
 }
 
-export function ReplacementModal({ orderId, orderNumber, items, requestId, defaultItemIds, onClose, onDone }: {
+/** The lines to open with. A report of things missing entirely starts on a
+ *  whole new one of each; anything else starts on one blank part. */
+function initialLines(defaultFor: string, wholeItems: ReplacementWholeDefault[] | undefined): DraftLine[] {
+  if (wholeItems && wholeItems.length > 0) {
+    return wholeItems.map((item) => blankLine(item.orderItemId, true, item.quantity))
+  }
+  return [blankLine(defaultFor)]
+}
+
+export type ReplacementWholeDefault = { orderItemId: string; quantity: number }
+
+export function ReplacementModal({ orderId, orderNumber, items, requestId, defaultItemIds, defaultWholeItems, onClose, onDone }: {
   orderId: string
   orderNumber: string
   items: ReplacementOrderLine[]
@@ -44,6 +62,9 @@ export function ReplacementModal({ orderId, orderNumber, items, requestId, defau
   /** The lines that report named, so the "which one is this for" box starts on
    *  the right answer instead of on nothing. */
   defaultItemIds?: string[]
+  /** Lines the report said were missing entirely, which open as whole-item
+   *  lines rather than as a part to search for. */
+  defaultWholeItems?: ReplacementWholeDefault[]
   onClose: () => void
   onDone: (orderNumber: string) => void
 }) {
@@ -51,7 +72,7 @@ export function ReplacementModal({ orderId, orderNumber, items, requestId, defau
   // The line a part is "for" when there is only one sensible answer: the one the
   // damage report named, or - on a single-line order - the only one there is.
   const defaultFor = defaultItemIds?.[0] ?? (items.length === 1 ? items[0]!.id : '')
-  const [lines, setLines] = useState<DraftLine[]>([blankLine(defaultFor)])
+  const [lines, setLines] = useState<DraftLine[]>(() => initialLines(defaultFor, defaultWholeItems))
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -60,7 +81,9 @@ export function ReplacementModal({ orderId, orderNumber, items, requestId, defau
     setLines((prev) => prev.map((line) => (line.key === key ? { ...line, ...changes } : line)))
   }
 
-  const ready = lines.some((line) => line.name.trim() !== '' || line.productId !== null)
+  const filled = (line: DraftLine) =>
+    line.wholeItem ? line.replacesOrderItemId !== '' : line.name.trim() !== '' || line.productId !== null
+  const ready = lines.some(filled) && lines.every((line) => !line.wholeItem || line.replacesOrderItemId !== '')
   const chargeable = lines.reduce((sum, line) => sum + (Number(line.unitPrice) || 0) * line.quantity, 0)
 
   async function submit() {
@@ -73,10 +96,11 @@ export function ReplacementModal({ orderId, orderNumber, items, requestId, defau
         requestId: requestId ?? null,
         note: note.trim() || null,
         lines: lines
-          .filter((line) => line.name.trim() !== '' || line.productId !== null)
+          .filter(filled)
           .map((line) => ({
-            productId: line.productId,
-            name: line.name.trim() || null,
+            wholeItem: line.wholeItem,
+            productId: line.wholeItem ? null : line.productId,
+            name: line.wholeItem ? null : line.name.trim() || null,
             quantity: line.quantity,
             // Empty means free, which is not the same statement as a typed 0 -
             // but both come to the same money, so there is nothing to preserve.
@@ -119,12 +143,33 @@ export function ReplacementModal({ orderId, orderNumber, items, requestId, defau
 
           {lines.map((line) => (
             <div key={line.key} style={{ display: 'grid', gap: '0.5rem', border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.75rem' }}>
-              <PartField
-                value={line.name}
-                productId={line.productId}
-                onPick={(part) => patch(line.key, { productId: part.id, name: part.name })}
-                onType={(text) => patch(line.key, { productId: null, name: text })}
-              />
+              {items.length > 0 && (
+                <div role="radiogroup" aria-label="What kind of replacement" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '0.8125rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                    <input type="radio" name={`${line.key}-kind`} checked={!line.wholeItem} onChange={() => patch(line.key, { wholeItem: false })} />
+                    <span>A part</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                    <input type="radio" name={`${line.key}-kind`} checked={line.wholeItem} onChange={() => patch(line.key, { wholeItem: true })} />
+                    <span>A whole new item</span>
+                  </label>
+                </div>
+              )}
+
+              {line.wholeItem ? (
+                <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
+                  {line.replacesOrderItemId
+                    ? `Sends another ${items.find((item) => item.id === line.replacesOrderItemId)?.productName ?? 'of that item'}, with every option the customer chose on it.`
+                    : 'Pick the item below and another one goes out, with every option the customer chose on it.'}
+                </p>
+              ) : (
+                <PartField
+                  value={line.name}
+                  productId={line.productId}
+                  onPick={(part) => patch(line.key, { productId: part.id, name: part.name })}
+                  onType={(text) => patch(line.key, { productId: null, name: text })}
+                />
+              )}
 
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                 <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.8125rem' }}>
@@ -146,13 +191,13 @@ export function ReplacementModal({ orderId, orderNumber, items, requestId, defau
                 </label>
 
                 <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.8125rem', flex: 1, minWidth: 200 }}>
-                  <span>Putting right</span>
+                  <span>{line.wholeItem ? 'Which item' : 'Putting right'}</span>
                   <select
                     value={line.replacesOrderItemId}
                     onChange={(e) => patch(line.key, { replacesOrderItemId: e.target.value })}
                     style={{ padding: '0.375rem 0.5rem', borderRadius: 6, border: '1px solid var(--color-border)' }}
                   >
-                    <option value="">Nothing in particular</option>
+                    <option value="">{line.wholeItem ? 'Choose an item…' : 'Nothing in particular'}</option>
                     {items.map((item) => (
                       <option key={item.id} value={item.id}>{item.productName}</option>
                     ))}
@@ -173,7 +218,7 @@ export function ReplacementModal({ orderId, orderNumber, items, requestId, defau
 
           <div>
             <button type="button" className="btn btn-sm" onClick={() => setLines((prev) => [...prev, blankLine(defaultFor)])}>
-              Add another part
+              Add another line
             </button>
           </div>
 

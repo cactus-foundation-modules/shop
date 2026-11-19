@@ -6,10 +6,11 @@ import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { reasonLabel } from '@/modules/shop/lib/order-requests'
+import { IssuePhotoActions } from '@/modules/shop/components/admin/IssuePhotoActions'
 import { paymentHeld, paymentTaken } from '@/modules/shop/lib/payment-taken'
 import { REQUEST_DECISION_LABEL, REQUEST_STATUS_DISPLAY, REQUEST_TYPE_LABEL, badgeClass } from '@/modules/shop/lib/order-display'
 import { ReplacementModal, type ReplacementOrderLine } from '@/modules/shop/components/admin/ReplacementModal'
-import type { ShpOrderRequestStatus, ShpOrderRequestType, ShpPaymentStatus } from '@/modules/shop/lib/types'
+import type { ShpMissingKind, ShpOrderRequestStatus, ShpOrderRequestType, ShpPaymentStatus } from '@/modules/shop/lib/types'
 
 // The queue: every cancellation, return and damage report a customer has
 // raised, oldest pending first, with the two buttons that settle it.
@@ -48,8 +49,13 @@ type RequestRow = {
    *  back would be a favour rather than a right - so saying no is genuinely on
    *  the table. */
   discretionary: boolean
-  items: Array<{ id: string; orderItemId: string; quantity: number }>
-  photos: Array<{ id: string; url: string }>
+  items: Array<{ id: string; orderItemId: string; quantity: number; missing: ShpMissingKind | null }>
+  photos: Array<{ id: string; url: string; createdAt: string; addedBy: string | null }>
+  /** When photographs were last asked for on this report, and what for. */
+  photosRequestedAt: string | null
+  photosRequestNote: string | null
+  /** Core User id where staff raised it on the customer's behalf. */
+  raisedBy: string | null
   /** The replacement raised for this report, where one has been. Null on
    *  everything else - and on a damage report nobody has acted on yet. */
   replacementOrderId: string | null
@@ -62,6 +68,24 @@ const FILTERS: Array<{ key: 'PENDING' | 'ALL' | ShpOrderRequestStatus; label: st
   { key: 'DECLINED', label: 'Declined' },
   { key: 'ALL', label: 'Everything' },
 ]
+
+/** " · 2 missing entirely, 1 with parts missing" on a missing-item report, so
+ *  the owner knows from the queue whether this is a whole box or a bag of bolts.
+ *  Null on anything else, which then says how many items it covers instead. */
+function missingSummary(items: RequestRow['items']): string | null {
+  let whole = 0
+  let parts = 0
+  for (const item of items) {
+    if (item.missing === 'WHOLE') whole += item.quantity
+    else if (item.missing === 'PARTS') parts += item.quantity
+  }
+  if (whole === 0 && parts === 0) return null
+  const bits = [
+    whole > 0 ? `${whole} missing entirely` : null,
+    parts > 0 ? `${parts} with parts missing` : null,
+  ].filter(Boolean)
+  return ` · ${bits.join(', ')}`
+}
 
 /** Money was taken and some of it is still there to send back. Anything else -
  *  an unpaid bank transfer, a card that never went through, an order already
@@ -244,6 +268,7 @@ export function RequestsScreen() {
                   {row.discretionary && row.type !== 'DAMAGE' && (
                     <span className={badgeClass('warning')}>Your call</span>
                   )}
+                  {row.raisedBy && <span className={badgeClass('default')}>Raised by staff</span>}
                   <span style={{ color: 'var(--color-text-secondary)' }}>
                     {row.orderNumber} · {row.customerName} ({row.customerEmail})
                   </span>
@@ -257,7 +282,7 @@ export function RequestsScreen() {
                 {reasonLabel(row.type, row.reason)}
                 {row.items.length > 0 && (
                   row.type === 'DAMAGE'
-                    ? ` · ${row.items.reduce((sum, item) => sum + item.quantity, 0)} item(s) affected`
+                    ? missingSummary(row.items) ?? ` · ${row.items.reduce((sum, item) => sum + item.quantity, 0)} item(s) affected`
                     : row.type === 'CANCEL'
                       // A cancellation naming lines is a part-cancellation. One
                       // naming none is still the whole order, and says nothing
@@ -282,7 +307,7 @@ export function RequestsScreen() {
                           uses; not page furniture the loader is configured for. */}
                       <img
                         src={photo.url}
-                        alt="Damage reported by the customer"
+                        alt={photo.addedBy ? 'Added to the report by staff' : 'Sent by the customer'}
                         style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}
                       />
                     </a>
@@ -322,6 +347,16 @@ export function RequestsScreen() {
                   </a>
                 )}
               </div>
+
+              {row.type === 'DAMAGE' && (
+                <IssuePhotoActions
+                  row={row}
+                  onChanged={(next) => {
+                    setMessage(next)
+                    reload()
+                  }}
+                />
+              )}
 
               {isOpen && (
                 <div style={{ display: 'grid', gap: 'var(--space-2)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)' }}>
@@ -417,6 +452,11 @@ export function RequestsScreen() {
           // The lines the customer actually complained about, so the "putting
           // right" box starts on the right answer rather than on nothing.
           defaultItemIds={replacing.row.items.map((item) => item.orderItemId)}
+          // Lines the customer said never turned up at all open as a whole new
+          // one each - a box that did not arrive is not answered with a part.
+          defaultWholeItems={replacing.row.items
+            .filter((item) => item.missing === 'WHOLE')
+            .map((item) => ({ orderItemId: item.orderItemId, quantity: item.quantity }))}
           onClose={() => setReplacing(null)}
           onDone={(orderNumber) => {
             setReplacing(null)

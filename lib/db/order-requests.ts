@@ -3,12 +3,15 @@ import { Prisma } from '@prisma/client'
 import { ORDER_LOCK_NAMESPACE } from '@/modules/shop/lib/db/shipments'
 import {
   MAX_DAMAGE_PHOTOS,
+  MAX_REPORT_PHOTOS_TOTAL,
   cancellableQty,
+  issueKindOf,
   isValidReason,
   outstandingUnits,
   returnableQty,
 } from '@/modules/shop/lib/order-requests'
 import type {
+  ShpMissingKind,
   ShpPaymentStatus,
   ShpOrderRequest,
   ShpOrderRequestItem,
@@ -47,6 +50,10 @@ function mapRequest(r: Record<string, unknown>): ShpOrderRequest {
     // Migration 052. Null on everything but a damage report somebody has sent a
     // part out for, and on an install that has not taken the migration yet.
     replacementOrderId: (r.replacement_order_id as string | null) ?? null,
+    // Migration 081, absent on an install that has not taken it: nobody asked.
+    photosRequestedAt: (r.photos_requested_at as Date | null | undefined) ?? null,
+    photosRequestNote: (r.photos_request_note as string | null | undefined) ?? null,
+    raisedBy: (r.raised_by as string | null | undefined) ?? null,
     decidedAt: (r.decided_at as Date | null) ?? null,
     decidedBy: (r.decided_by as string | null) ?? null,
     createdAt: r.created_at as Date,
@@ -60,6 +67,9 @@ function mapRequestItem(r: Record<string, unknown>): ShpOrderRequestItem {
     requestId: r.request_id as string,
     orderItemId: r.order_item_id as string,
     quantity: r.quantity as number,
+    // Migration 081. Absent on an install that has not taken it yet, which
+    // reads the same as every line recorded before it: no answer.
+    missing: (r.missing as ShpMissingKind | null | undefined) ?? null,
   }
 }
 
@@ -69,6 +79,7 @@ function mapRequestPhoto(r: Record<string, unknown>): ShpOrderRequestPhoto {
     requestId: r.request_id as string,
     mediaId: (r.media_id as string | null) ?? null,
     url: r.url as string,
+    addedBy: (r.added_by as string | null | undefined) ?? null,
     createdAt: r.created_at as Date,
   }
 }
@@ -90,7 +101,7 @@ async function attachItems(requests: ShpOrderRequest[]): Promise<ShpOrderRequest
     // happens, but the library row is the one thing that cannot be out of date.
     // A photo with no library item behind it keeps the address it was sent with.
     prisma.$queryRaw<Record<string, unknown>[]>`
-      SELECT p."id", p."request_id", p."media_id", p."created_at",
+      SELECT p."id", p."request_id", p."media_id", p."created_at", p."added_by",
         COALESCE(m."url", p."url") AS "url"
       FROM "shp_order_request_photos" p
       LEFT JOIN "Media" m ON m."id" = p."media_id"
@@ -248,13 +259,15 @@ export type CreateOrderRequestInput = {
    * "everything" is not a list, and a stored list would go stale the moment a
    * line was refunded.
    */
-  items?: Array<{ orderItemId: string; quantity: number }>
+  items?: Array<{ orderItemId: string; quantity: number; missing?: ShpMissingKind | null }>
   /**
    * Photographs, on a damage report. Already uploaded and already saved to the
    * media library by the time they get here - this layer records what they are
    * and what they belong to, nothing more.
    */
   photos?: Array<{ mediaId: string | null; url: string }>
+  /** Core User id where staff are raising this on the customer's behalf. */
+  raisedBy?: string | null
 }
 
 export type CreateOrderRequestResult =
@@ -287,17 +300,58 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
     merged.set(item.orderItemId, (merged.get(item.orderItemId) ?? 0) + item.quantity)
   }
 
+  // Whole-or-parts, per line, on a "something is missing" report - and on
+  // nothing else. One answer per line: the request holds one row per order item
+  // (UNIQUE on request + item), so two rows for the same line that disagree are
+  // a question this report cannot record, and a second report is the honest
+  // place for the other half.
+  const kind = input.type === 'DAMAGE' ? issueKindOf(input.reason) : null
+  const missingByItem = new Map<string, ShpMissingKind>()
+  if (kind === 'MISSING') {
+    for (const item of input.items ?? []) {
+      if (item.quantity <= 0) continue
+      if (item.missing !== 'WHOLE' && item.missing !== 'PARTS') {
+        return { ok: false, status: 400, error: 'For each missing item, tell us whether all of it is missing or just parts of it.' }
+      }
+      const earlier = missingByItem.get(item.orderItemId)
+      if (earlier && earlier !== item.missing) {
+        return { ok: false, status: 400, error: 'Pick one answer per item - send a second report for the rest.' }
+      }
+      missingByItem.set(item.orderItemId, item.missing)
+    }
+  }
+
   if (input.type === 'RETURN' && merged.size === 0) {
     return { ok: false, status: 400, error: 'Choose at least one item to send back.' }
   }
   if (input.type === 'DAMAGE' && merged.size === 0) {
-    return { ok: false, status: 400, error: 'Tell us which item is damaged.' }
+    return {
+      ok: false,
+      status: 400,
+      error: kind === 'MISSING'
+        ? 'Tell us which item is missing.'
+        : kind === 'OTHER'
+          ? 'Tell us which item this is about.'
+          : 'Tell us which item is damaged.',
+    }
+  }
+  // "Another issue" is the customer's own words or it is nothing, and a parts
+  // report the shop cannot act on without being told which parts. Both are
+  // asked for on the form; this is the same rule for a hand-rolled POST.
+  if (kind === 'OTHER' && !note) {
+    return { ok: false, status: 400, error: 'Tell us what is wrong so we can put it right.' }
+  }
+  if (kind === 'MISSING' && !note && [...missingByItem.values()].includes('PARTS')) {
+    return { ok: false, status: 400, error: 'Tell us which parts are missing so we can send the right ones.' }
   }
 
   // Photographs are not required - "parts are missing" is a report of something
   // that is not there to photograph, and a report with no picture still beats an
   // email nobody has attached to the order. The form asks hard for them anyway.
-  const photos = (input.photos ?? []).filter((photo) => photo.url.trim().length > 0)
+  // None on a missing-item report: there is nothing there to photograph, and
+  // the form does not offer it. Dropped rather than refused, as a photograph
+  // that failed to save is elsewhere - the report is the part that matters.
+  const photos = kind === 'MISSING' ? [] : (input.photos ?? []).filter((photo) => photo.url.trim().length > 0)
   if (photos.length > MAX_DAMAGE_PHOTOS) {
     return { ok: false, status: 400, error: `That is more than ${MAX_DAMAGE_PHOTOS} photographs - pick the ones that show it best.` }
   }
@@ -482,8 +536,8 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
       }
 
       const created = await tx.$queryRaw<[Record<string, unknown>]>`
-        INSERT INTO "shp_order_requests" ("order_id", "member_id", "type", "reason", "customer_note")
-        VALUES (${input.orderId}, ${input.memberId}, ${input.type}, ${input.reason}, ${note})
+        INSERT INTO "shp_order_requests" ("order_id", "member_id", "type", "reason", "customer_note", "raised_by")
+        VALUES (${input.orderId}, ${input.memberId}, ${input.type}, ${input.reason}, ${note}, ${input.raisedBy ?? null})
         RETURNING *
       `
       const request = mapRequest(created[0])
@@ -493,8 +547,8 @@ export async function createOrderRequest(input: CreateOrderRequestInput): Promis
       // definition, and "everything" is not a list.
       for (const [orderItemId, quantity] of merged) {
         const itemRows = await tx.$queryRaw<[Record<string, unknown>]>`
-          INSERT INTO "shp_order_request_items" ("request_id", "order_item_id", "quantity")
-          VALUES (${request.id}, ${orderItemId}, ${quantity})
+          INSERT INTO "shp_order_request_items" ("request_id", "order_item_id", "quantity", "missing")
+          VALUES (${request.id}, ${orderItemId}, ${quantity}, ${missingByItem.get(orderItemId) ?? null})
           RETURNING *
         `
         items.push(mapRequestItem(itemRows[0]))
@@ -725,4 +779,125 @@ export async function setRequestReplacementOrder(requestId: string, orderId: str
     WHERE "id" = ${requestId} AND "replacement_order_id" IS NULL
   `
   return updated > 0
+}
+
+/**
+ * Records that the shop has asked for photographs on an issue report, and what
+ * it asked to see. Overwrites an earlier ask: the customer's page shows the
+ * latest one, and the order notes keep the trail of every one sent.
+ *
+ * Only on a report still being looked at. Asking for pictures of something
+ * already settled is a message about a decision that has been made.
+ */
+export async function recordPhotoRequest(requestId: string, note: string | null): Promise<boolean> {
+  const updated = await prisma.$executeRaw`
+    UPDATE "shp_order_requests"
+    SET "photos_requested_at" = CURRENT_TIMESTAMP, "photos_request_note" = ${note}, "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = ${requestId} AND "type" = 'DAMAGE' AND "status" = 'PENDING'
+  `
+  return updated > 0
+}
+
+export type AddRequestPhotosResult =
+  | { ok: false; status: number; error: string }
+  | { ok: true; photos: ShpOrderRequestPhoto[] }
+
+/**
+ * Hangs more photographs off an issue report that is already in - the customer
+ * answering a request for them, or staff adding one that came in by email.
+ *
+ * Counted against MAX_REPORT_PHOTOS_TOTAL under a row lock on the report, so two
+ * uploads landing together cannot both squeeze under the cap. The cap exists
+ * because the customer half of this is reachable with a postcode.
+ */
+export async function addRequestPhotos(
+  requestId: string,
+  photos: Array<{ mediaId: string | null; url: string }>,
+  addedBy: string | null,
+): Promise<AddRequestPhotosResult> {
+  const wanted = photos.filter((photo) => photo.url.trim().length > 0)
+  if (wanted.length === 0) return { ok: false, status: 400, error: 'No photographs came through. Try again in a moment.' }
+
+  return prisma.$transaction(async (tx): Promise<AddRequestPhotosResult> => {
+    const rows = await tx.$queryRaw<{ type: string; count: number }[]>`
+      SELECT req."type",
+        (SELECT COUNT(*)::int FROM "shp_order_request_photos" p WHERE p."request_id" = req."id") AS count
+      FROM "shp_order_requests" req
+      WHERE req."id" = ${requestId}
+      FOR UPDATE OF req
+    `
+    const row = rows[0]
+    if (!row) return { ok: false, status: 404, error: 'That report no longer exists.' }
+    if (row.type !== 'DAMAGE') return { ok: false, status: 400, error: 'Photographs only go on an issue report.' }
+    if (row.count + wanted.length > MAX_REPORT_PHOTOS_TOTAL) {
+      const room = Math.max(MAX_REPORT_PHOTOS_TOTAL - row.count, 0)
+      return {
+        ok: false,
+        status: 400,
+        error: room === 0
+          ? `This report already has ${MAX_REPORT_PHOTOS_TOTAL} photographs, which is as many as it can hold.`
+          : `There is room for ${room} more on this report - pick the ones that show it best.`,
+      }
+    }
+    const saved: ShpOrderRequestPhoto[] = []
+    for (const photo of wanted) {
+      const inserted = await tx.$queryRaw<[Record<string, unknown>]>`
+        INSERT INTO "shp_order_request_photos" ("request_id", "media_id", "url", "added_by")
+        VALUES (${requestId}, ${photo.mediaId ?? null}, ${photo.url}, ${addedBy})
+        RETURNING *
+      `
+      saved.push(mapRequestPhoto(inserted[0]))
+    }
+    await tx.$executeRaw`UPDATE "shp_order_requests" SET "updated_at" = CURRENT_TIMESTAMP WHERE "id" = ${requestId}`
+    return { ok: true, photos: saved }
+  })
+}
+
+/** An open issue report the shop has asked for photographs on, with the order
+ *  it belongs to. */
+export type AwaitingPhotoRequest = {
+  requestId: string
+  orderId: string
+  orderNumber: string
+  photosRequestedAt: Date
+}
+
+/**
+ * Open issue reports waiting on photographs from one customer address, newest
+ * ask first - for matching an emailed reply to the report it answers.
+ *
+ * Only asks made in the last 60 days: an email turning up after that is not an
+ * answer to a question somebody still remembers asking.
+ */
+export async function findPhotoRequestsAwaitingFrom(email: string): Promise<AwaitingPhotoRequest[]> {
+  const address = email.trim().toLowerCase()
+  if (!address) return []
+  const rows = await prisma.$queryRaw<Array<{ id: string; order_id: string; order_number: string; photos_requested_at: Date }>>`
+    SELECT req."id", req."order_id", o."order_number", req."photos_requested_at"
+    FROM "shp_order_requests" req
+    JOIN "shp_orders" o ON o."id" = req."order_id"
+    WHERE req."type" = 'DAMAGE'
+      AND req."status" = 'PENDING'
+      AND req."photos_requested_at" IS NOT NULL
+      AND req."photos_requested_at" > CURRENT_TIMESTAMP - INTERVAL '60 days'
+      AND lower(o."customer_email") = ${address}
+    ORDER BY req."photos_requested_at" DESC
+  `
+  return rows.map((row) => ({
+    requestId: row.id,
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    photosRequestedAt: row.photos_requested_at,
+  }))
+}
+
+/** Which of these media ids are already on a report - so offering the same
+ *  email twice adds nothing the second time. */
+export async function requestPhotoMediaIds(requestId: string, mediaIds: string[]): Promise<Set<string>> {
+  if (mediaIds.length === 0) return new Set()
+  const rows = await prisma.$queryRaw<Array<{ media_id: string }>>`
+    SELECT "media_id" FROM "shp_order_request_photos"
+    WHERE "request_id" = ${requestId} AND "media_id" IN (${Prisma.join(mediaIds)})
+  `
+  return new Set(rows.map((row) => row.media_id))
 }

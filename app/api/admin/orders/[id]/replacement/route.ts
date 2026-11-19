@@ -21,6 +21,8 @@ const Body = z.object({
     // to charge for a part - out of warranty, or the customer's own doing.
     unitPrice: z.number().min(0).max(1000000).nullable().optional(),
     replacesOrderItemId: z.string().nullable().optional(),
+    // A whole new one of the line above, copied off it, rather than a part.
+    wholeItem: z.boolean().optional(),
   })).min(1).max(50),
   // The damage report being answered, where the owner came from the queue.
   requestId: z.string().nullable().optional(),
@@ -55,6 +57,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       quantity: line.quantity,
       unitPrice: line.unitPrice ?? null,
       replacesOrderItemId: line.replacesOrderItemId ?? null,
+      wholeItem: line.wholeItem ?? false,
     })),
     requestId: parsed.data.requestId ?? null,
     note: parsed.data.note ?? null,

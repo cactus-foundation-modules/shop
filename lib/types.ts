@@ -1254,6 +1254,13 @@ export type ShpOrderRequest = {
    * order page alike.
    */
   replacementOrderId: string | null
+  /** When the shop last asked for photographs on this issue report, and what it
+   *  asked to see. Null until somebody asks (migration 081). */
+  photosRequestedAt: Date | null
+  photosRequestNote: string | null
+  /** Core User id where staff raised this on the customer's behalf; null where
+   *  the customer raised it themselves (migration 081). */
+  raisedBy: string | null
   decidedAt: Date | null
   decidedBy: string | null
   createdAt: Date
@@ -1261,7 +1268,19 @@ export type ShpOrderRequest = {
 }
 
 /** Empty on a CANCEL: it covers the whole order, and "everything" is not a list. */
-export type ShpOrderRequestItem = { id: string; requestId: string; orderItemId: string; quantity: number }
+/** On a "something is missing" issue report, whether the whole item failed to
+ *  turn up or only parts of it (migration 081). */
+export type ShpMissingKind = 'WHOLE' | 'PARTS'
+
+export type ShpOrderRequestItem = {
+  id: string
+  requestId: string
+  orderItemId: string
+  quantity: number
+  /** Set on the lines of a "something is missing" report and null on every
+   *  other line of every other request. */
+  missing: ShpMissingKind | null
+}
 
 /**
  * A photograph on a damage report. `mediaId` is the core Media row it was saved
@@ -1269,7 +1288,16 @@ export type ShpOrderRequestItem = { id: string; requestId: string; orderItemId: 
  * reaching into core, and still has something to show if the library row is
  * tidied away underneath it.
  */
-export type ShpOrderRequestPhoto = { id: string; requestId: string; mediaId: string | null; url: string; createdAt: Date }
+export type ShpOrderRequestPhoto = {
+  id: string
+  requestId: string
+  mediaId: string | null
+  url: string
+  /** Core User id where staff added it from the queue; null where the customer
+   *  sent it (migration 081). */
+  addedBy: string | null
+  createdAt: Date
+}
 
 export type ShpOrderRequestWithItems = ShpOrderRequest & {
   items: ShpOrderRequestItem[]
@@ -1383,6 +1411,9 @@ export type ShpEmailTemplateTrigger =
   // and an owner rewriting "we have your return request" must not find they
   // have reworded the apology as well. See lib/order-request-actions.ts.
   | 'DAMAGE_RECEIVED' | 'DAMAGE_RESOLVED' | 'DAMAGE_DECLINED' | 'ADMIN_NEW_DAMAGE'
+  // Asking for photographs on an issue report once it is in, and telling the
+  // shop when they arrive. See lib/issue-photo-actions.ts.
+  | 'ISSUE_PHOTOS_REQUESTED' | 'ADMIN_ISSUE_PHOTOS_ADDED'
   // A replacement part, raised and then sent. Its own two rather than the order
   // wording, for the reason damage has its own four: a customer who has been
   // sent a gas lift did not place an order, is not paying for one, and being

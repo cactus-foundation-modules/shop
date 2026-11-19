@@ -1,8 +1,9 @@
-import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
+import { addOrderNote, getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
 import { getOrderDispatchSummary } from '@/modules/shop/lib/db/shipments'
 import { listRefundsForOrder, processRefund } from '@/modules/shop/lib/db/refunds'
 import { creditNoteForSettledRefund } from '@/modules/shop/lib/credit-notes'
-import { createOrderRequest, decideRequest, getRequestById, type CreateOrderRequestInput } from '@/modules/shop/lib/db/order-requests'
+import { createOrderRequest, decideRequest, getRequestById, recordPhotoRequest, type CreateOrderRequestInput } from '@/modules/shop/lib/db/order-requests'
+import { orderTrackingUrl } from '@/modules/shop/lib/order-tracking'
 import { refundRouteForOrder } from '@/modules/shop/lib/payments/order-refund-route'
 import { applyOrderStatusChange } from '@/modules/shop/lib/order-status'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
@@ -11,7 +12,7 @@ import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { formatMoney } from '@/modules/shop/lib/money'
 import { netOffReturnCharge, type RefundLine } from '@/modules/shop/lib/return-charge'
 import { requestRefundLines, withinRemaining } from '@/modules/shop/lib/request-refund-lines'
-import { coversWholeOrder, heldUnits, reasonLabel } from '@/modules/shop/lib/order-requests'
+import { addPhotosUrl, coversWholeOrder, heldUnits, missingSuffix, reasonLabel } from '@/modules/shop/lib/order-requests'
 import { refundableDelivery } from '@/modules/shop/lib/refund-delivery'
 import type { ShpOrder, ShpOrderItem, ShpOrderRequestWithItems } from '@/modules/shop/lib/types'
 
@@ -22,11 +23,11 @@ import type { ShpOrder, ShpOrderItem, ShpOrderRequestWithItems } from '@/modules
 
 const TYPE_WORD = { CANCEL: 'cancellation', RETURN: 'return', DAMAGE: 'damage report' } as const
 
-function itemsSummary(request: ShpOrderRequestWithItems, orderItems: ShpOrderItem[]): string {
+export function itemsSummary(request: ShpOrderRequestWithItems, orderItems: ShpOrderItem[]): string {
   if (request.items.length === 0 || coversWholeOrder(request, orderItems)) return 'The whole order'
   const byId = new Map(orderItems.map((i) => [i.id, i]))
   return request.items
-    .map((line) => `${byId.get(line.orderItemId)?.productName ?? 'Item'} x${line.quantity}`)
+    .map((line) => `${byId.get(line.orderItemId)?.productName ?? 'Item'} x${line.quantity}${missingSuffix(line)}`)
     .join(', ')
 }
 
@@ -45,12 +46,31 @@ export type SubmitRequestResult =
   | { ok: false; status: number; error: string }
   | { ok: true; request: ShpOrderRequestWithItems }
 
-/** Records a customer's request and tells both sides about it. */
-export async function submitOrderRequest(input: CreateOrderRequestInput): Promise<SubmitRequestResult> {
+export type SubmitRequestOptions = {
+  /** Send the customer the usual "we have your request" email. Always on when
+   *  the customer raises it; a tick-box when staff raise it on their behalf. */
+  notifyCustomer?: boolean
+  /** Send the shop's own new-request alert. Off when staff raised it - they
+   *  know, they were there. */
+  alertShop?: boolean
+  /** Ask for photographs on an issue report at the moment it is raised, with
+   *  what the shop needs to see. Rides on the received email (one message, not
+   *  two) when that is being sent, and shows on the order page either way. */
+  photoRequest?: { note: string | null; userId: string | null } | null
+}
+
+/** Records a request and tells both sides about it. */
+export async function submitOrderRequest(
+  input: CreateOrderRequestInput,
+  opts: SubmitRequestOptions = {},
+): Promise<SubmitRequestResult> {
+  const notifyCustomer = opts.notifyCustomer ?? true
+  const alertShop = opts.alertShop ?? true
+
   const created = await createOrderRequest(input)
   if (!created.ok) return created
 
-  const request = created.request
+  let request = created.request
   const [order, orderItems, config] = await Promise.all([
     getOrderById(request.orderId),
     getOrderItems(request.orderId),
@@ -58,13 +78,39 @@ export async function submitOrderRequest(input: CreateOrderRequestInput): Promis
   ])
   if (!order) return { ok: true, request } // recorded; nothing left to email about
 
+  // The trail on the order itself, for a request nobody will find the customer
+  // wrote: "raised by us after a phone call" is the first thing anybody looking
+  // into it later needs to know.
+  if (input.raisedBy) {
+    await addOrderNote(
+      order.id,
+      `${reasonLabel(request.type, request.reason)} - ${TYPE_WORD[request.type]} raised on the customer's behalf${notifyCustomer ? ', and they were emailed about it' : ', without emailing them'}.`,
+      true,
+      input.raisedBy,
+    )
+  }
+
+  const photoNote = opts.photoRequest?.note?.trim() || null
+  const askingForPhotos = request.type === 'DAMAGE' && Boolean(opts.photoRequest)
+    && (await recordPhotoRequest(request.id, photoNote))
+  if (askingForPhotos) {
+    request = { ...request, photosRequestedAt: new Date(), photosRequestNote: photoNote }
+    await addOrderNote(
+      order.id,
+      photoNote ? `Asked the customer for photographs on their report: ${photoNote}` : 'Asked the customer for photographs on their report.',
+      true,
+      opts.photoRequest?.userId ?? null,
+    )
+  }
+  const uploadUrl = askingForPhotos ? addPhotosUrl(orderTrackingUrl(order.orderNumber, config)) : ''
+
   const typeWord = TYPE_WORD[request.type]
   const summary = itemsSummary(request, orderItems)
   const shopName = config.shopTitle || 'Shop'
 
   const isDamage = request.type === 'DAMAGE'
 
-  await sendQuietly(
+  if (notifyCustomer) await sendQuietly(
     () =>
       notifyOrderCustomer(isDamage ? 'DAMAGE_RECEIVED' : 'REQUEST_RECEIVED', order, {
         customerName: order.customerName,
@@ -77,13 +123,21 @@ export async function submitOrderRequest(input: CreateOrderRequestInput): Promis
         // knows all four landed, without opening the order to count.
         photoCount: String(request.photos.length),
         hasPhotos: request.photos.length > 0 ? 'true' : 'false',
+        // The photograph request, where staff ticked it while raising the
+        // report: said in the same email rather than a second one a minute later.
+        hasPhotoRequest: askingForPhotos ? 'true' : 'false',
+        photoRequestNote: photoNote ?? '',
+        hasPhotoRequestNote: askingForPhotos && photoNote ? 'true' : 'false',
+        addPhotosUrl: uploadUrl,
+        hasAddPhotosUrl: uploadUrl ? 'true' : 'false',
+        hasNoAddPhotosUrl: askingForPhotos && !uploadUrl ? 'true' : 'false',
         shopName,
       }),
     'request received',
   )
 
   const adminAlertEmail = config.adminOrderAlertEmail || config.storeEmail
-  if (adminAlertEmail) {
+  if (alertShop && adminAlertEmail) {
     await sendQuietly(
       () =>
         sendShopEmail(isDamage ? 'ADMIN_NEW_DAMAGE' : 'ADMIN_NEW_REQUEST', adminAlertEmail, {

@@ -186,6 +186,16 @@ export const shopSmsTemplates: SmsTemplateDef[] = [
     transactional: false,
   },
   {
+    // Asked for photographs on a report. The text cannot carry the upload, so it
+    // points at the link (or the email) rather than trying to.
+    key: 'shop.issue-photos-requested',
+    label: 'Issue report - photographs asked for',
+    body: '{{shopName}}: could you send us a photo for your report on order {{orderNumber}}?{{#if hasAddPhotosUrl}} Add it here: {{addPhotosUrl}}{{/if}} Or reply to our email with it attached.',
+    mergeTags: ['shopName', 'customerName', 'orderNumber', 'addPhotosUrl', 'hasAddPhotosUrl', 'orderUrl', 'hasOrderUrl'],
+    requiredTags: ['orderNumber'],
+    transactional: false,
+  },
+  {
     key: 'shop.damage-resolved',
     label: 'Damage report - putting it right',
     body: '{{shopName}}: we have looked at the damage on order {{orderNumber}} and we are putting it right. The details are in your email.',
@@ -269,6 +279,7 @@ export const SHOP_TRIGGER_TO_SMS_KEY: Record<string, string> = {
   DAMAGE_RECEIVED: 'shop.damage-received',
   DAMAGE_RESOLVED: 'shop.damage-resolved',
   DAMAGE_DECLINED: 'shop.damage-declined',
+  ISSUE_PHOTOS_REQUESTED: 'shop.issue-photos-requested',
   REPLACEMENT_SENT: 'shop.replacement-sent',
   REPLACEMENT_DISPATCHED: 'shop.replacement-dispatched',
   REPLACEMENT_DELIVERED: 'shop.replacement-delivered',

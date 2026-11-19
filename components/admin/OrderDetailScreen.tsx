@@ -19,6 +19,7 @@ import { consignmentProgressLine, isSplitConsignment, type ConsignmentParcel } f
 import { DeliveryDelayModal } from '@/modules/shop/components/admin/DeliveryDelayModal'
 import { EmailCustomerModal } from '@/modules/shop/components/admin/EmailCustomerModal'
 import { ReplacementModal } from '@/modules/shop/components/admin/ReplacementModal'
+import { RaiseRequestModal } from '@/modules/shop/components/admin/RaiseRequestModal'
 import { orderDetailCss } from '@/modules/shop/components/admin/order-detail-css'
 import { ordersScreenCss } from '@/modules/shop/components/admin/orders-screen-css'
 import {
@@ -33,9 +34,9 @@ import {
   relativeTime,
 } from '@/modules/shop/components/admin/order-labels'
 import { formatMoney } from '@/modules/shop/lib/money'
-import { reasonLabel } from '@/modules/shop/lib/order-requests'
+import { missingSuffix, reasonLabel } from '@/modules/shop/lib/order-requests'
 import { REQUEST_STATUS_DISPLAY, REQUEST_TYPE_LABEL, badgeClass } from '@/modules/shop/lib/order-display'
-import type { ShpOrderRequestStatus, ShpOrderRequestType } from '@/modules/shop/lib/types'
+import type { ShpMissingKind, ShpOrderRequestStatus, ShpOrderRequestType } from '@/modules/shop/lib/types'
 import { DELIVERY_INSTRUCTIONS_MAX_LENGTH } from '@/modules/shop/lib/delivery-instructions'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { useAlert, useConfirm, usePrompt } from '@/modules/shop/components/admin/dialogs'
@@ -155,7 +156,11 @@ type OrderRequest = {
   replacementOrderId: string | null
   createdAt: string
   decidedAt: string | null
-  items: Array<{ id: string; orderItemId: string; quantity: number }>
+  /** Set where staff raised it on the customer's behalf. Optional so an older
+   *  response still renders. */
+  raisedBy?: string | null
+  /** `missing` is set on a "something is missing" report's lines only. */
+  items: Array<{ id: string; orderItemId: string; quantity: number; missing?: ShpMissingKind | null }>
   /** The photograph's current address - read off its library item on the
    *  server, so an optimised or re-filed picture shows as it is now. */
   photos: Array<{ id: string; url: string }>
@@ -532,6 +537,7 @@ export function OrderDetailScreen({ orderId, children, panels }: {
   const delayParcel = dispatch?.shipments.find((s) => s.id === delayParcelId) ?? null
   const [emailOpen, setEmailOpen] = useState(false)
   const [replacementOpen, setReplacementOpen] = useState(false)
+  const [raiseOpen, setRaiseOpen] = useState(false)
   // The customer's reference, while it is being edited. Null means "not being
   // edited", which is a different state from an empty string - an empty string
   // is somebody deliberately clearing it.
@@ -1191,6 +1197,9 @@ export function OrderDetailScreen({ orderId, children, panels }: {
                 ...(order.kind !== 'REPLACEMENT'
                   ? [{ key: 'replacement', label: 'Send a replacement', onSelect: () => setReplacementOpen(true) }]
                   : []),
+                // A cancellation, return or issue report the customer asked for
+                // by phone or email rather than from their order page.
+                { key: 'raise-request', label: 'Raise a request for the customer', onSelect: () => setRaiseOpen(true) },
                 { key: 'print', label: 'Print', onSelect: () => window.print() },
                 // Money going back out, a step apart from the rest.
                 ...(hasRefundableItems
@@ -2280,6 +2289,20 @@ export function OrderDetailScreen({ orderId, children, panels }: {
         />
       )}
 
+      {raiseOpen && (
+        <RaiseRequestModal
+          orderId={orderId}
+          orderNumber={order.orderNumber}
+          lines={dispatch ? dispatch.summary.lines : null}
+          onClose={() => setRaiseOpen(false)}
+          onDone={(message) => {
+            setRaiseOpen(false)
+            refresh()
+            void alert(message)
+          }}
+        />
+      )}
+
       {alertNode}
       {confirmNode}
       {promptNode}
@@ -2320,12 +2343,12 @@ function CustomerReports({ requests, itemNames, replacementNumbers, adminPath, c
                     <span className={badgeClass(state.tone)}>{state.label}</span>
                   </p>
                   <p className="sox-list-sub">
-                    {reasonLabel(request.type, request.reason)} · reported {formatDateTime(request.createdAt)}
+                    {reasonLabel(request.type, request.reason)} · {request.raisedBy ? 'raised by staff' : 'reported'} {formatDateTime(request.createdAt)}
                     {request.decidedAt && request.status !== 'PENDING' ? ` · settled ${formatDate(request.decidedAt)}` : ''}
                   </p>
                   {request.items.length > 0 ? (
                     <p className="sox-list-sub">
-                      {request.items.map((item) => `${item.quantity} × ${itemNames.get(item.orderItemId) ?? 'an item no longer on this order'}`).join(', ')}
+                      {request.items.map((item) => `${item.quantity} × ${itemNames.get(item.orderItemId) ?? 'an item no longer on this order'}${missingSuffix(item)}`).join(', ')}
                     </p>
                   ) : request.type === 'CANCEL' ? (
                     // A cancellation naming no lines is the whole order.

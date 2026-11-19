@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { prisma } from '@/lib/db/prisma'
 import { errorResponse } from '@/lib/utils'
-import { findFolderByPath } from '@/lib/media/organise'
-import { MAX_DAMAGE_PHOTOS, damagePhotoFolderPath } from '@/modules/shop/lib/order-requests'
+import { MAX_DAMAGE_PHOTOS } from '@/modules/shop/lib/order-requests'
+import { resolveIssuePhotos } from '@/modules/shop/lib/issue-photos'
 import { ORDER_LINE_BATCH_MAX } from '@/modules/shop/lib/order-line-limits'
 import { loadOrderDetail } from '@/modules/shop/lib/member-orders'
 import { requireOrderAccess } from '@/modules/shop/lib/order-route-access'
@@ -19,7 +18,13 @@ const Body = z.object({
   // longer than any order is a hand-rolled request, and every row of it would
   // otherwise be folded and checked before the refusal it was always going to get.
   items: z
-    .array(z.object({ orderItemId: z.string(), quantity: z.number().int().min(1) }))
+    .array(z.object({
+      orderItemId: z.string(),
+      quantity: z.number().int().min(1),
+      // Only read on a "something is missing" report, where it is required -
+      // lib/db/order-requests.ts decides that, beside the reason it depends on.
+      missing: z.enum(['WHOLE', 'PARTS']).nullable().optional(),
+    }))
     .max(ORDER_LINE_BATCH_MAX, 'That is more items than one order holds.')
     .optional(),
   // Ids of media rows already uploaded through the photos endpoint beside this
@@ -59,24 +64,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     : detail.return
   if (!eligibility.allowed) return errorResponse(eligibility.reason, 409)
 
-  // Resolved from the library, and only for a damage report: images, nothing
-  // else, and quietly dropped rather than refused where an id names nothing.
-  // A photograph that failed to save should not lose the report it belongs to.
-  //
-  // And only images filed in THIS order's issues folder, which is where the
-  // photos route beside this one puts every upload. A media id is a global
-  // handle: without the folder, anybody who could see one order could hang
-  // another customer's photograph - or a staff upload, or the catalogue - off
-  // it, and the owner's queue would open it full size. Looked up rather than
-  // created, so a report quoting ids on an order nobody has uploaded to finds
-  // no folder and keeps no photographs.
-  const ids = parsed.data.type === 'DAMAGE' ? parsed.data.photoMediaIds ?? [] : []
-  const folderId = ids.length > 0 ? await findFolderByPath(damagePhotoFolderPath(access.order.orderNumber)) : null
-  const photos = folderId
-    ? (await prisma.media.findMany({
-        where: { id: { in: ids }, folderId, mimeType: { startsWith: 'image/' } },
-        select: { id: true, url: true },
-      })).map((media) => ({ mediaId: media.id, url: media.url }))
+  // Resolved from the library, and only for an issue report - see
+  // lib/issue-photos.ts for why only this order's issues folder counts.
+  const photos = parsed.data.type === 'DAMAGE'
+    ? await resolveIssuePhotos(access.order.orderNumber, parsed.data.photoMediaIds ?? [])
     : []
 
   const outcome = await submitOrderRequest({

@@ -12,6 +12,7 @@ import { guestOrderAccessIds } from '@/modules/shop/lib/guest-order-access'
 import { orderViewerFor } from '@/modules/shop/lib/order-viewer'
 import { orderTrackingBasePath } from '@/modules/shop/lib/order-tracking'
 import OrderAccessGate from '@/modules/shop/components/public/OrderAccessGate'
+import IssuePhotoAdder from '@/modules/shop/components/public/IssuePhotoAdder'
 import GuestOrderAccountOffer from '@/modules/shop/components/public/GuestOrderAccountOffer'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { formatMoney } from '@/modules/shop/lib/money'
@@ -20,6 +21,8 @@ import {
   SHP_DAMAGE_REASONS,
   SHP_RETURN_REASONS,
   REPORT_ISSUE_QUERY_KEY,
+  ADD_PHOTOS_QUERY_KEY,
+  missingSuffix,
   reasonLabel,
   type RequestEligibility,
 } from '@/modules/shop/lib/order-requests'
@@ -493,6 +496,14 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
   // rather than from a page they then have to read for the right button. The
   // panel checks for itself whether it can honour it.
   const reportRequested = orderLinkIntentSet(query, REPORT_ISSUE_QUERY_KEY)
+  // "Could you send us a photograph?" in an email: opens the add-photos form on
+  // the newest open report the shop has asked for them on. No id in the link -
+  // it is a switch, like the one above, so nothing about the report travels
+  // across the postcode gate.
+  const photosAskedOn = openDamageRequests
+    .filter((report) => report.photosRequestedAt)
+    .sort((a, b) => b.photosRequestedAt!.getTime() - a.photosRequestedAt!.getTime())[0]?.id ?? null
+  const photosRequestedId = orderLinkIntentSet(query, ADD_PHOTOS_QUERY_KEY) ? photosAskedOn : null
   const faqShipmentId = deliveries.find((d) => questionsFor(d.shipmentId))?.shipmentId ?? null
 
   // How this order was settled, in a sentence rather than a status code.
@@ -833,6 +844,21 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
               {report.photos.length > 0 && `, with ${report.photos.length} photograph${report.photos.length === 1 ? '' : 's'}`}
               . We will email you as soon as somebody has looked at it.
             </p>
+            {/* Said where the button is, so the customer answering the email
+                sees what the shop asked to see beside the place to send it. */}
+            {report.photosRequestedAt && (
+              <p>
+                <strong>We have asked for a photograph.</strong>{' '}
+                {report.photosRequestNote ?? 'Anything that shows the problem helps.'} Add it below, or reply to our
+                email with it attached.
+              </p>
+            )}
+            <IssuePhotoAdder
+              orderId={order.id}
+              requestId={report.id}
+              asked={report.photosRequestedAt !== null}
+              initiallyOpen={photosRequestedId === report.id}
+            />
             <div><WithdrawRequestButton requestId={report.id} /></div>
           </OrderNote>
         ))}
@@ -1247,7 +1273,7 @@ export default async function ShopAccountOrderDetailPage({ params, searchParams 
                           <>
                             {' · '}
                             {request.items
-                              .map((item) => `${itemsById.get(item.orderItemId)?.productName ?? 'Item'} × ${item.quantity}`)
+                              .map((item) => `${itemsById.get(item.orderItemId)?.productName ?? 'Item'} × ${item.quantity}${missingSuffix(item)}`)
                               .join(', ')}
                           </>
                         )}

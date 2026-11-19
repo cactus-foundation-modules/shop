@@ -1,5 +1,5 @@
 import { FAQ_QUERY_KEY } from '@/modules/shop/lib/courier-faqs'
-import { REPORT_ISSUE_QUERY_KEY } from '@/modules/shop/lib/order-requests'
+import { ADD_PHOTOS_QUERY_KEY, REPORT_ISSUE_QUERY_KEY } from '@/modules/shop/lib/order-requests'
 
 // What a link in an email asked the order page to DO, carried across the
 // postcode gate that stands between the link and the page.
@@ -14,10 +14,10 @@ import { REPORT_ISSUE_QUERY_KEY } from '@/modules/shop/lib/order-requests'
 //
 // An allowlist rather than the whole query string, deliberately. What comes in
 // is somebody else's URL: forwarding the lot would let a crafted link put
-// arbitrary query onto an authenticated page, and the two keys below are the
-// only two that mean anything on the other end.
+// arbitrary query onto an authenticated page, and the keys below are the
+// only ones that mean anything on the other end.
 
-const INTENT_KEYS = [FAQ_QUERY_KEY, REPORT_ISSUE_QUERY_KEY] as const
+const INTENT_KEYS = [FAQ_QUERY_KEY, REPORT_ISSUE_QUERY_KEY, ADD_PHOTOS_QUERY_KEY] as const
 
 type Query = Record<string, string | string[] | undefined>
 

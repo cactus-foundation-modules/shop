@@ -476,11 +476,14 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
   // think of its newsletter.
   {
     key: 'shop.damage-received',
-    label: 'Damage reported',
-    subject: "We've got your damage report for order {{orderNumber}}",
+    // Covers every kind of issue report - damage, something missing, anything
+    // else - so the default wording says "report" and lets {{requestReason}}
+    // say which. The key keeps its old name so an owner's own wording survives.
+    label: 'Issue reported',
+    subject: "We've got your report about order {{orderNumber}}",
     bodyHtml:
-      '<p>Hi {{customerName}},</p><p>Thanks for telling us - sorry about this. We have your report for order <strong>{{orderNumber}}</strong>{{#if hasPhotos}} along with your photographs ({{photoCount}}){{/if}}, and someone will look at it shortly.</p><p>What you told us: {{requestReason}}</p>{{#if hasItems}}<p><strong>Affected:</strong></p><p>{{requestItems}}</p>{{/if}}<p>Please hold on to the packaging until you hear from us - it is often the fastest way to settle what happened.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['customerName', 'orderNumber', 'requestReason', 'requestItems', 'photoCount', 'shopName', 'hasItems', 'hasPhotos', 'orderUrl', 'hasOrderUrl'],
+      '<p>Hi {{customerName}},</p><p>Thanks for telling us - sorry about this. We have your report for order <strong>{{orderNumber}}</strong>{{#if hasPhotos}} along with your photographs ({{photoCount}}){{/if}}, and someone will look at it shortly.</p><p>What you told us: {{requestReason}}</p>{{#if hasItems}}<p><strong>Affected:</strong></p><p>{{requestItems}}</p>{{/if}}<p>Please hold on to the packaging until you hear from us - it is often the fastest way to settle what happened.</p>{{#if hasPhotoRequest}}<p><strong>Could you send us a photograph?</strong> It helps us put this right as quickly as we can.</p>{{/if}}{{#if hasPhotoRequestNote}}<p>What we need to see: {{photoRequestNote}}</p>{{/if}}{{#if hasAddPhotosUrl}}<p><a href="{{addPhotosUrl}}">Add your photographs to the report</a>, or reply to this email with them attached.</p>{{/if}}{{#if hasNoAddPhotosUrl}}<p>Just reply to this email with them attached.</p>{{/if}}{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['customerName', 'orderNumber', 'requestReason', 'requestItems', 'photoCount', 'photoRequestNote', 'addPhotosUrl', 'shopName', 'hasItems', 'hasPhotos', 'hasPhotoRequest', 'hasPhotoRequestNote', 'hasAddPhotosUrl', 'hasNoAddPhotosUrl', 'orderUrl', 'hasOrderUrl'],
     transactional: true,
   },
   {
@@ -590,11 +593,37 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     transactional: true,
   },
   {
-    key: 'shop.admin-new-damage',
-    label: 'Damage reported (admin alert)',
-    subject: 'Damage reported: order {{orderNumber}}',
+    // The shop asking for photographs on an issue report once it has looked.
+    // Two ways to answer, both in the default wording: the link straight to the
+    // report's upload form on their order page, and replying with the pictures
+    // attached - for the customer who would rather not, or the shop with guest
+    // tracking switched off, where the link's whole line drops out.
+    // Transactional: it is about a problem with something they bought.
+    key: 'shop.issue-photos-requested',
+    label: 'Issue report - photographs asked for',
+    subject: 'Could you send us a photograph? Order {{orderNumber}}',
     bodyHtml:
-      '<p>{{customerName}} ({{customerEmail}}) has reported damage on order <strong>{{orderNumber}}</strong>.</p><p>What they said: {{requestReason}}</p>{{#if hasItems}}<p><strong>Affected:</strong></p><p>{{requestItems}}</p>{{/if}}{{#if hasCustomerNote}}<p>They added: {{customerNote}}</p>{{/if}}<p>Photographs: {{photoCount}}. They are on the report under Shop &rarr; Cancellations &amp; returns.</p>',
+      '<p>Hi {{customerName}},</p><p>Thanks for your report about order <strong>{{orderNumber}}</strong>. To help us put it right as quickly as we can, could you send us a photograph or two?</p>{{#if hasPhotoRequestNote}}<p><strong>What we need to see:</strong> {{photoRequestNote}}</p>{{/if}}{{#if hasItems}}<p><strong>Your report:</strong> {{requestReason}} - {{requestItems}}</p>{{/if}}{{#if hasAddPhotosUrl}}<p><a href="{{addPhotosUrl}}">Add your photographs to the report</a> - the link takes you straight to it.</p><p>Or, if it is easier, just reply to this email with them attached.</p>{{/if}}{{#if hasNoAddPhotosUrl}}<p>Just reply to this email with them attached.</p>{{/if}}<p>Thank you - and sorry again for the bother.</p>',
+    mergeTags: ['customerName', 'orderNumber', 'requestReason', 'requestItems', 'photoRequestNote', 'addPhotosUrl', 'shopName', 'hasItems', 'hasPhotoRequestNote', 'hasAddPhotosUrl', 'hasNoAddPhotosUrl', 'orderUrl', 'hasOrderUrl'],
+    transactional: true,
+  },
+  {
+    // Tells the shop photographs have arrived on a report, so it does not sit
+    // waiting for somebody to happen to open it. Internal alert.
+    key: 'shop.admin-issue-photos-added',
+    label: 'Photographs added to an issue report (admin alert)',
+    subject: 'New photographs on the report for order {{orderNumber}}',
+    bodyHtml:
+      '<p>{{customerName}} ({{customerEmail}}) has added {{photoCount}} photograph(s) to their report on order <strong>{{orderNumber}}</strong> ({{requestReason}}). The report now has {{totalPhotoCount}} in all.</p><p>They are on the report under Shop &rarr; Cancellations &amp; returns.</p>',
+    mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'requestReason', 'photoCount', 'totalPhotoCount', 'shopName'],
+    transactional: false,
+  },
+  {
+    key: 'shop.admin-new-damage',
+    label: 'Issue reported (admin alert)',
+    subject: 'Issue reported: order {{orderNumber}}',
+    bodyHtml:
+      '<p>{{customerName}} ({{customerEmail}}) has reported an issue on order <strong>{{orderNumber}}</strong>.</p><p>What they said: {{requestReason}}</p>{{#if hasItems}}<p><strong>Affected:</strong></p><p>{{requestItems}}</p>{{/if}}{{#if hasCustomerNote}}<p>They added: {{customerNote}}</p>{{/if}}<p>Photographs: {{photoCount}}. They are on the report under Shop &rarr; Cancellations &amp; returns.</p>',
     mergeTags: ['orderNumber', 'customerName', 'customerEmail', 'requestReason', 'requestItems', 'customerNote', 'photoCount', 'shopName', 'hasCustomerNote', 'hasItems', 'hasPhotos'],
     transactional: false,
   },
@@ -670,6 +699,8 @@ export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   DAMAGE_RESOLVED: 'shop.damage-resolved',
   DAMAGE_DECLINED: 'shop.damage-declined',
   ADMIN_NEW_DAMAGE: 'shop.admin-new-damage',
+  ISSUE_PHOTOS_REQUESTED: 'shop.issue-photos-requested',
+  ADMIN_ISSUE_PHOTOS_ADDED: 'shop.admin-issue-photos-added',
   REPLACEMENT_SENT: 'shop.replacement-sent',
   REPLACEMENT_DISPATCHED: 'shop.replacement-dispatched',
   REPLACEMENT_DELIVERED: 'shop.replacement-delivered',

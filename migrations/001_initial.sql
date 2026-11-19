@@ -1045,6 +1045,13 @@ CREATE TABLE IF NOT EXISTS "shp_order_requests" (
     -- (052_replacement_orders.sql). Joins the asking to the doing, so the trail
     -- reads end to end: photographs, decision, part, parcel, delivery.
     "replacement_order_id" TEXT,
+    -- When the owner asked for photographs on an issue report, and what they
+    -- asked to see (081_issue_reports.sql). NULL until somebody asks.
+    "photos_requested_at" TIMESTAMP(3),
+    "photos_request_note" TEXT,
+    -- Core User id where staff raised the request on the customer's behalf;
+    -- NULL where the customer raised it (081_issue_reports.sql).
+    "raised_by" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -1073,9 +1080,13 @@ CREATE TABLE IF NOT EXISTS "shp_order_request_items" (
     "request_id" TEXT NOT NULL,
     "order_item_id" TEXT NOT NULL,
     "quantity" INTEGER NOT NULL,
+    -- On a "something is missing" issue report: WHOLE or PARTS, per line
+    -- (081_issue_reports.sql). NULL everywhere else.
+    "missing" TEXT,
 
     CONSTRAINT "shp_order_request_items_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "shp_order_request_items_quantity_check" CHECK ("quantity" > 0),
+    CONSTRAINT "shp_order_request_items_missing_check" CHECK ("missing" IN ('WHOLE', 'PARTS')),
     CONSTRAINT "shp_order_request_items_request_id_fkey" FOREIGN KEY ("request_id") REFERENCES "shp_order_requests"("id") ON DELETE CASCADE,
     CONSTRAINT "shp_order_request_items_order_item_id_fkey" FOREIGN KEY ("order_item_id") REFERENCES "shp_order_items"("id") ON DELETE RESTRICT
 );
@@ -1093,6 +1104,9 @@ CREATE TABLE IF NOT EXISTS "shp_order_request_photos" (
     "media_id" TEXT,
     -- Snapshotted beside the id so the queue needs no join into core.
     "url" TEXT NOT NULL,
+    -- Core User id where staff added it from the queue; NULL where the
+    -- customer sent it (081_issue_reports.sql).
+    "added_by" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "shp_order_request_photos_pkey" PRIMARY KEY ("id"),

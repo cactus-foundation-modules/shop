@@ -2,9 +2,15 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { DAMAGED_GOODS_GUIDANCE, MAX_DAMAGE_PHOTOS } from '@/modules/shop/lib/order-requests'
+import {
+  DAMAGED_GOODS_GUIDANCE,
+  MAX_DAMAGE_PHOTOS,
+  SHP_ISSUE_KINDS,
+  type ShpIssueKind,
+} from '@/modules/shop/lib/order-requests'
 import type { ReturnsPolicy } from '@/modules/shop/lib/returnable'
-import type { ShpOrderRequestType } from '@/modules/shop/lib/types'
+import type { ShpMissingKind, ShpOrderRequestType } from '@/modules/shop/lib/types'
+import { IssuePhotoPicker, useIssuePhotos } from '@/modules/shop/components/public/IssuePhotoPicker'
 
 // The customer's side of the three things they can ask for after the order has
 // gone: call it off, send it back, or tell us it arrived broken.
@@ -18,6 +24,12 @@ import type { ShpOrderRequestType } from '@/modules/shop/lib/types'
 // our mistake and ends in a replacement, and the two want different questions
 // asked. Put in one dropdown, "it arrived damaged" is the line people pick, and
 // every breakage then has to be unpicked by email.
+//
+// It starts with a question rather than a form: damage, something missing, or
+// another issue. Each wants different things asked - photographs of a broken
+// leg, "all of it or just bits?" about a box that never came, the customer's own
+// words about anything else - and one form asking all of it read as a damage
+// form that everyone else had to bend to fit.
 //
 // It is also the one door that stays open after it has been used. A report
 // spends nothing, so a second one is allowed while the first is still being
@@ -64,45 +76,6 @@ type Props = {
   openReportInitially?: boolean
 }
 
-type Photo = { mediaId: string; url: string; name: string }
-
-const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-
-/**
- * Shrinks a photograph in the browser before it is sent.
- *
- * A phone camera hands over eight megapixels and four megabytes, the upload
- * limit is four, and the shop needs to see a broken corner rather than the
- * weave of the fabric. Sixteen hundred pixels on the long edge is plenty for
- * both, and it turns a minute of hotel wi-fi into a couple of seconds.
- *
- * Falls back to the original file whenever anything goes wrong - a canvas the
- * browser will not give us is a reason to send the big one, not to lose the
- * photograph.
- */
-async function shrink(file: File): Promise<File> {
-  if (!PHOTO_TYPES.includes(file.type)) return file
-  try {
-    const bitmap = await createImageBitmap(file)
-    const longest = Math.max(bitmap.width, bitmap.height)
-    const scale = longest > 1600 ? 1600 / longest : 1
-    const width = Math.round(bitmap.width * scale)
-    const height = Math.round(bitmap.height * scale)
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const context = canvas.getContext('2d')
-    if (!context) return file
-    context.drawImage(bitmap, 0, 0, width, height)
-    bitmap.close?.()
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82))
-    if (!blob || blob.size >= file.size) return file
-    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' })
-  } catch {
-    return file
-  }
-}
-
 const muted: React.CSSProperties = { color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }
 const label: React.CSSProperties = { fontWeight: 'var(--font-medium)' }
 
@@ -117,12 +90,16 @@ export default function OrderRequestPanel(props: Props) {
     props.openReportInitially && canOpenReport ? 'DAMAGE' : null,
   )
   const [reason, setReason] = useState('')
+  // Which kind of issue, on a report. Null until the customer has answered the
+  // first question, which is what shows the three choices instead of a form.
+  const [issueKind, setIssueKind] = useState<ShpIssueKind | null>(null)
+  // Per line, on a missing-item report: the whole thing, or parts of it.
+  const [missing, setMissing] = useState<Record<string, ShpMissingKind>>({})
   const [note, setNote] = useState('')
   const [quantities, setQuantities] = useState<Record<string, number>>({})
-  const [photos, setPhotos] = useState<Photo[]>([])
-  const [uploading, setUploading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { photos, uploading, addPhotos, removePhoto, clear: clearPhotos } = useIssuePhotos(props.orderId, MAX_DAMAGE_PHOTOS, setError)
 
   const returnable = props.lines.filter((line) => line.returnableQty > 0)
   // Listed under the form rather than left out of it. A shopper who ordered four
@@ -141,8 +118,20 @@ export default function OrderRequestPanel(props: Props) {
   const cancellable = props.lines.filter((line) => line.cancellableQty > 0)
   const cannotCancel = props.lines.filter((line) => line.cancellableQty === 0)
   const chosen = open === 'DAMAGE' ? arrived : open === 'CANCEL' ? cancellable : returnable
+  const issue = SHP_ISSUE_KINDS.find((one) => one.kind === issueKind) ?? null
+  // On a report, only the codes the chosen kind files under - and none at all to
+  // pick from when that is a single code, which the form then sends by itself.
   const reasons =
-    open === 'CANCEL' ? props.cancelReasons : open === 'DAMAGE' ? props.damageReasons : props.returnReasons
+    open === 'CANCEL'
+      ? props.cancelReasons
+      : open === 'DAMAGE'
+        ? props.damageReasons.filter((option) => issue?.reasons.includes(option.code))
+        : props.returnReasons
+  const askReason = open !== 'DAMAGE' || reasons.length > 1
+  const partsMissing = issueKind === 'MISSING' && Object.entries(missing).some(
+    ([orderItemId, kind]) => kind === 'PARTS' && (quantities[orderItemId] ?? 0) > 0,
+  )
+  const noteRequired = issueKind === 'OTHER' || partsMissing
 
   /** Why a line is not on the cancellation form. Said in the customer's terms:
    *  "it is a return now" and "we cannot unmake this one" send them to two
@@ -158,8 +147,10 @@ export default function OrderRequestPanel(props: Props) {
   function start(type: ShpOrderRequestType) {
     setOpen(type)
     setReason('')
+    setIssueKind(null)
+    setMissing({})
     setNote('')
-    setPhotos([])
+    clearPhotos()
     setError(null)
     // Everything still going, pre-ticked: calling the lot off and sending the
     // lot back are both the common case, and un-ticking is less work than
@@ -174,36 +165,16 @@ export default function OrderRequestPanel(props: Props) {
     )
   }
 
-  async function addPhotos(files: FileList | null) {
-    if (!files || files.length === 0) return
+  /** The answer to "what kind of issue?". A kind with one reason code files
+   *  under it without asking; damage still asks arrived-broken or gone-faulty. */
+  function chooseIssue(kind: ShpIssueKind) {
+    const chosenKind = SHP_ISSUE_KINDS.find((one) => one.kind === kind)
+    setIssueKind(kind)
+    setReason(chosenKind && chosenKind.reasons.length === 1 ? chosenKind.reasons[0]! : '')
+    setQuantities({})
+    setMissing({})
+    clearPhotos()
     setError(null)
-    setUploading(true)
-    try {
-      for (const file of Array.from(files)) {
-        // Checked as we go rather than up front: the cap is on what ends up on
-        // the report, and somebody who picks eight should keep the first six
-        // rather than be told to start again.
-        if (photos.length + 1 > MAX_DAMAGE_PHOTOS) {
-          setError(`That is as many as we need - ${MAX_DAMAGE_PHOTOS} is the limit.`)
-          break
-        }
-        const body = new FormData()
-        body.append('file', await shrink(file))
-        const res = await fetch(`/api/m/shop/member/orders/${props.orderId}/photos`, { method: 'POST', body })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) {
-          setError(data.error ?? 'That photograph did not go through. Try again in a moment.')
-          break
-        }
-        setPhotos((current) =>
-          current.length >= MAX_DAMAGE_PHOTOS
-            ? current
-            : [...current, { mediaId: data.mediaId, url: data.url, name: file.name }],
-        )
-      }
-    } finally {
-      setUploading(false)
-    }
   }
 
   async function submit() {
@@ -214,7 +185,11 @@ export default function OrderRequestPanel(props: Props) {
     }
     const items = Object.entries(quantities)
       .filter(([, quantity]) => quantity > 0)
-      .map(([orderItemId, quantity]) => ({ orderItemId, quantity }))
+      .map(([orderItemId, quantity]) => ({
+        orderItemId,
+        quantity,
+        ...(issueKind === 'MISSING' ? { missing: missing[orderItemId] ?? null } : {}),
+      }))
     if (open === 'RETURN' && items.length === 0) {
       setError('Choose at least one item to send back.')
       return
@@ -224,7 +199,21 @@ export default function OrderRequestPanel(props: Props) {
       return
     }
     if (open === 'DAMAGE' && items.length === 0) {
-      setError('Tell us which item is damaged.')
+      setError(
+        issueKind === 'MISSING'
+          ? 'Tell us which item is missing.'
+          : issueKind === 'OTHER'
+            ? 'Tell us which item this is about.'
+            : 'Tell us which item is damaged.',
+      )
+      return
+    }
+    if (issueKind === 'MISSING' && items.some((item) => !missing[item.orderItemId])) {
+      setError('For each missing item, tell us whether all of it is missing or just parts of it.')
+      return
+    }
+    if (noteRequired && !note.trim()) {
+      setError(issueKind === 'OTHER' ? 'Tell us what is wrong so we can put it right.' : 'Tell us which parts are missing.')
       return
     }
 
@@ -242,7 +231,7 @@ export default function OrderRequestPanel(props: Props) {
           // that adds up to the whole order - one place to decide it, rather
           // than a form and an endpoint that can drift apart about it.
           items,
-          photoMediaIds: open === 'DAMAGE' ? photos.map((photo) => photo.mediaId) : [],
+          photoMediaIds: open === 'DAMAGE' && issueKind !== 'MISSING' ? photos.map((photo) => photo.mediaId) : [],
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -259,6 +248,38 @@ export default function OrderRequestPanel(props: Props) {
     }
   }
 
+  if (open === 'DAMAGE' && !issue) {
+    return (
+      <section className="sod-card sod-wide">
+        <div className="sod-card-head">
+          <h2 className="sod-card-title">Report an issue</h2>
+        </div>
+        <div className="sod-card-body">
+          <span style={label}>What is the problem?</span>
+          <div style={{ display: 'grid', gap: '0.5rem' }}>
+            {SHP_ISSUE_KINDS.map((option) => (
+              <button
+                key={option.kind}
+                type="button"
+                className="btn"
+                onClick={() => chooseIssue(option.kind)}
+                style={{ display: 'grid', justifyItems: 'start', textAlign: 'left', gap: '0.125rem' }}
+              >
+                <span style={label}>{option.label}</span>
+                <span style={muted}>{option.hint}</span>
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="button" className="btn" onClick={() => setOpen(null)}>
+              Never mind
+            </button>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
   if (open) {
     return (
       // The closed card is one cell of the paired grid; the open form is a list
@@ -269,11 +290,24 @@ export default function OrderRequestPanel(props: Props) {
             {open === 'CANCEL'
               ? 'Cancel this order'
               : open === 'DAMAGE'
-                ? 'Report an issue'
+                ? issue?.label ?? 'Report an issue'
                 : 'Send something back'}
           </h2>
         </div>
         <div className="sod-card-body">
+
+        {open === 'DAMAGE' && (
+          <p style={{ margin: 0, ...muted }}>
+            {issueKind === 'MISSING'
+              ? 'Only things we have already sent you are listed. Tick what is missing and tell us whether all of it is missing or just parts of it.'
+              : issueKind === 'OTHER'
+                ? 'Tick the item or items this is about and tell us what is wrong.'
+                : 'Tick what has arrived damaged and tell us what happened.'}{' '}
+            <button type="button" className="btn btn-sm" onClick={() => setIssueKind(null)} disabled={busy}>
+              Not this? Go back
+            </button>
+          </p>
+        )}
 
         {open === 'RETURN' && (
           // Said above the form rather than offered inside it. Somebody with a
@@ -308,17 +342,27 @@ export default function OrderRequestPanel(props: Props) {
         <div style={{ display: 'grid', gap: '0.5rem' }}>
             <span style={label}>
               {open === 'DAMAGE'
-                ? 'What has arrived damaged?'
+                ? issueKind === 'MISSING'
+                  ? 'What is missing?'
+                  : issueKind === 'OTHER'
+                    ? 'Which item is this about?'
+                    : 'What has arrived damaged?'
                 : open === 'CANCEL'
                   ? 'What are you calling off?'
                   : 'What are you sending back?'}
             </span>
-            {chosen.map((line) => {
-              const max = open === 'DAMAGE'
-                ? line.dispatchedQty
-                : open === 'CANCEL'
-                  ? line.cancellableQty
-                  : line.returnableQty
+            {open === 'DAMAGE' && chosen.map((line) => (
+              <IssueLine
+                key={line.orderItemId}
+                line={line}
+                quantity={quantities[line.orderItemId] ?? 0}
+                onQuantity={(quantity) => setQuantities((current) => ({ ...current, [line.orderItemId]: quantity }))}
+                missing={issueKind === 'MISSING' ? missing[line.orderItemId] ?? null : undefined}
+                onMissing={(kind) => setMissing((current) => ({ ...current, [line.orderItemId]: kind }))}
+              />
+            ))}
+            {open !== 'DAMAGE' && chosen.map((line) => {
+              const max = open === 'CANCEL' ? line.cancellableQty : line.returnableQty
               return (
                 <label key={line.orderItemId} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <input
@@ -375,70 +419,51 @@ export default function OrderRequestPanel(props: Props) {
             )}
           </div>
 
-        <label style={{ display: 'grid', gap: '0.25rem' }}>
-          <span style={label}>{open === 'DAMAGE' ? 'What has happened?' : 'Why?'}</span>
-          <select value={reason} onChange={(e) => setReason(e.target.value)}>
-            <option value="">Choose a reason…</option>
-            {reasons.map((option) => (
-              <option key={option.code} value={option.code}>{option.label}</option>
-            ))}
-          </select>
-        </label>
+        {askReason && (
+          <label style={{ display: 'grid', gap: '0.25rem' }}>
+            <span style={label}>{open === 'DAMAGE' ? 'What has happened?' : 'Why?'}</span>
+            <select value={reason} onChange={(e) => setReason(e.target.value)}>
+              <option value="">Choose a reason…</option>
+              {reasons.map((option) => (
+                <option key={option.code} value={option.code}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+        )}
 
-        {open === 'DAMAGE' && (
+        {/* Optional on every kind of report. Asked for, because a picture of the
+            damage and of the packaging settles most of these on the spot, but
+            never required: a customer with no camera to hand still has an issue
+            worth hearing about. Not offered on a missing item, which is not
+            there to photograph. */}
+        {open === 'DAMAGE' && issueKind !== 'MISSING' && (
           <div style={{ display: 'grid', gap: '0.5rem' }}>
-            <span style={label}>Photographs</span>
+            <span style={label}>Photographs (optional)</span>
             <p style={{ margin: 0, ...muted }}>
-              Please add at least one - a picture of the damage and one of the packaging it came in settle almost
-              every one of these on the spot. Up to {MAX_DAMAGE_PHOTOS}.
+              {issueKind === 'OTHER'
+                ? 'If a picture would help show what is wrong, add it here.'
+                : 'A picture of the damage and one of the packaging it came in usually settle these on the spot.'}{' '}
+              Up to {MAX_DAMAGE_PHOTOS}.
             </p>
-            {photos.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                {photos.map((photo) => (
-                  <span key={photo.mediaId} style={{ position: 'relative', display: 'inline-flex' }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element -- a
-                        just-uploaded file on a provider domain the image loader
-                        is not configured for; it is a thumbnail of their own
-                        photograph, not page furniture. */}
-                    <img
-                      src={photo.url}
-                      alt={photo.name}
-                      style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={() => setPhotos((current) => current.filter((p) => p.mediaId !== photo.mediaId))}
-                      aria-label={`Remove ${photo.name}`}
-                      style={{ position: 'absolute', top: 2, right: 2, padding: '0 0.375rem', lineHeight: 1.4 }}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            {photos.length < MAX_DAMAGE_PHOTOS && (
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                multiple
-                disabled={uploading || busy}
-                onChange={(e) => {
-                  void addPhotos(e.target.files)
-                  // Cleared so the same file can be picked again after a
-                  // failure - a file input fires nothing when the value has not
-                  // changed, and "nothing happens" is a maddening way to fail.
-                  e.target.value = ''
-                }}
-              />
-            )}
-            {uploading && <p style={{ margin: 0, ...muted }}>Sending your photographs…</p>}
+            <IssuePhotoPicker
+              photos={photos}
+              max={MAX_DAMAGE_PHOTOS}
+              uploading={uploading}
+              disabled={busy}
+              onAdd={(files) => void addPhotos(files)}
+              onRemove={removePhoto}
+            />
           </div>
         )}
 
         <label style={{ display: 'grid', gap: '0.25rem' }}>
-          <span style={label}>Anything else we should know? (optional)</span>
+          <span style={label}>
+            {issueKind === 'OTHER' && open === 'DAMAGE'
+              ? 'What is wrong?'
+              : partsMissing
+                ? 'Which parts are missing?'
+                : 'Anything else we should know? (optional)'}
+          </span>
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={2000} />
         </label>
 
@@ -520,7 +545,7 @@ export default function OrderRequestPanel(props: Props) {
           <p style={{ margin: '0.375rem 0 0', ...muted }}>
             {props.openReports > 0
               ? 'Found something else? Tell us about that one too - a report already with us does not stop you sending another.'
-              : 'Arrived damaged or faulty? Send us photographs and we will arrange a replacement - there is no window on this and it applies to everything, including anything we cannot normally take back.'}
+              : 'Something damaged, missing or otherwise not right? Tell us and we will put it right - there is no window on this and it applies to everything, including anything we cannot normally take back.'}
           </p>
         </div>
       ) : (
@@ -528,5 +553,76 @@ export default function OrderRequestPanel(props: Props) {
       )}
       </div>
     </section>
+  )
+}
+
+/**
+ * One delivered line on an issue report: tick it, say how many, and - on a
+ * missing-item report - whether all of it is missing or only parts of it.
+ *
+ * A tick rather than a number box because the question is "which one", and a
+ * row of zeroes reads as a sum to do. The number appears only once there is a
+ * choice to make: one of a thing is one of it.
+ */
+function IssueLine({ line, quantity, onQuantity, missing, onMissing }: {
+  line: RequestLine
+  quantity: number
+  onQuantity: (quantity: number) => void
+  /** Undefined when the report is not about something missing, which hides the
+   *  whole-or-parts question altogether. */
+  missing: ShpMissingKind | null | undefined
+  onMissing: (kind: ShpMissingKind) => void
+}) {
+  const max = line.dispatchedQty
+  const ticked = quantity > 0
+  return (
+    <div style={{ display: 'grid', gap: '0.375rem' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <input type="checkbox" checked={ticked} onChange={(e) => onQuantity(e.target.checked ? 1 : 0)} />
+        <span>{line.productName}</span>
+      </label>
+      {ticked && (max > 1 || missing !== undefined) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', paddingLeft: '1.5rem' }}>
+          {max > 1 && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={muted}>How many?</span>
+              <input
+                type="number"
+                min={1}
+                max={max}
+                value={quantity}
+                onChange={(e) => onQuantity(Math.max(1, Math.min(max, Number(e.target.value) || 1)))}
+                style={{ width: '4.5rem' }}
+                aria-label={`How many of ${line.productName}`}
+              />
+              <span style={muted}>of {max}</span>
+            </label>
+          )}
+          {missing !== undefined && (
+            <fieldset style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', border: 0, padding: 0, margin: 0 }}>
+              <legend className="sr-only">Is all of {line.productName} missing?</legend>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                <input
+                  type="radio"
+                  name={`missing-${line.orderItemId}`}
+                  checked={missing === 'WHOLE'}
+                  onChange={() => onMissing('WHOLE')}
+                />
+                <span>The whole item</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                <input
+                  type="radio"
+                  name={`missing-${line.orderItemId}`}
+                  checked={missing === 'PARTS'}
+                  onChange={() => onMissing('PARTS')}
+                />
+                <span>Just parts of it</span>
+              </label>
+            </fieldset>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

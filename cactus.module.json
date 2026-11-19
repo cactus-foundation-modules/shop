@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.541",
+  "version": "0.1.542",
   "tablePrefix": "shp_",
   "notificationKinds": [
     {"id": "new-order", "label": "New orders", "description": "An order has been placed or is awaiting payment.", "dedupePrefix": "shop:order:"},
@@ -897,6 +897,13 @@
       "serverOnly": true,
       "import": "./lib/despatch-observer",
       "component": "shopDespatchRecordedObserver"
+    },
+    {
+      "point": "unified-inbox.message-received",
+      "id": "shop-issue-photo-email",
+      "serverOnly": true,
+      "import": "./lib/issue-photo-inbound",
+      "component": "shopIssuePhotoEmailHandler"
     },
     {
       "point": "unified-inbox.message-received",

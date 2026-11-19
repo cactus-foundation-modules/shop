@@ -17,7 +17,7 @@ import {
 import { setRequestReplacementOrder } from '@/modules/shop/lib/db/order-requests'
 import { sendReplacementRaisedEmail } from '@/modules/shop/lib/replacement-emails'
 import { findShippingZoneForPostcode, getTaxRateForZoneAndClass } from '@/modules/shop/lib/db/tax-shipping'
-import type { ShpOrder, ShpOrderItem, ShpProduct } from '@/modules/shop/lib/types'
+import type { LineMeta, ShpOrder, ShpOrderItem, ShpProduct } from '@/modules/shop/lib/types'
 
 // Sending a replacement part out, and giving the customer something to watch.
 //
@@ -50,6 +50,14 @@ export type ReplacementLineInput = {
   unitPrice?: number | null
   /** The line of the original order this part is for. */
   replacesOrderItemId?: string | null
+  /**
+   * Send a whole new one of the line named by `replacesOrderItemId`, rather than
+   * a part out of it. The product, its name, SKU and every choice the customer
+   * made on it (fabric, size, personalisation) are copied off that line, so the
+   * second chair is the chair they bought and not whatever the catalogue now
+   * calls it. `productId` and `name` are ignored on such a line.
+   */
+  wholeItem?: boolean
 }
 
 export type CreateReplacementInput = {
@@ -79,6 +87,8 @@ type PreparedLine = {
   taxClassId: string | null
   returnable: boolean
   nonReturnableNote: string | null
+  /** The original line's choices, on a whole-item line. Null on a part. */
+  lineMeta: LineMeta | null
 }
 
 /** The stock sentence on a free part. A shop that sends somebody a gas lift for
@@ -95,13 +105,46 @@ const FREE_PART_NOTE = 'This was sent out to put an earlier order right, so ther
  * one-off nobody will ever send again should be. Both are legitimate, and the
  * difference is only ever `productId`.
  */
-async function prepareLines(lines: ReplacementLineInput[]): Promise<PreparedLine[] | { error: string }> {
+async function prepareLines(
+  lines: ReplacementLineInput[],
+  parentItems: ReadonlyMap<string, ShpOrderItem>,
+): Promise<PreparedLine[] | { error: string }> {
   const prepared: PreparedLine[] = []
   const seen = new Map<string, ShpProduct | null>()
 
   for (const input of lines) {
     if (!Number.isInteger(input.quantity) || input.quantity < 1) {
       return { error: 'Every line needs a whole number of items, at least one.' }
+    }
+
+    // A whole new one of something they bought. Everything that says WHAT it
+    // is comes off the original line; only the price and the returns answer are
+    // worked out as for any other replacement line, because both follow the
+    // money rather than the product.
+    if (input.wholeItem) {
+      const original = input.replacesOrderItemId ? parentItems.get(input.replacesOrderItemId) : undefined
+      if (!original) return { error: 'Pick which item on the order a whole new one is being sent for.' }
+      let product: ShpProduct | null = null
+      if (original.productId) {
+        if (!seen.has(original.productId)) seen.set(original.productId, await getProductById(original.productId))
+        // Allowed to be gone. The line still says what was sold, which is
+        // what goes in the box; it only loses stock and tax-class lookups.
+        product = seen.get(original.productId) ?? null
+      }
+      const unitPrice = round2(Math.max(input.unitPrice ?? 0, 0))
+      prepared.push({
+        input: { ...input, productId: product?.id ?? null },
+        product,
+        name: original.productName,
+        sku: original.productSku,
+        type: original.productType,
+        unitPrice,
+        taxClassId: product?.taxClassId ?? null,
+        returnable: unitPrice > 0 ? original.returnable : false,
+        nonReturnableNote: unitPrice > 0 ? original.nonReturnableNote : FREE_PART_NOTE,
+        lineMeta: original.lineMeta,
+      })
+      continue
     }
 
     let product: ShpProduct | null = null
@@ -133,6 +176,7 @@ async function prepareLines(lines: ReplacementLineInput[]): Promise<PreparedLine
       // spare, and keeps whatever the product itself says about returns.
       returnable: unitPrice > 0 ? (product?.returnable ?? true) : false,
       nonReturnableNote: unitPrice > 0 ? (product?.nonReturnableNote ?? null) : FREE_PART_NOTE,
+      lineMeta: null,
     })
   }
 
@@ -166,22 +210,21 @@ export async function createReplacementOrder(input: CreateReplacementInput): Pro
     return { ok: false, status: 400, error: 'Raise the replacement against the original order, not against another replacement.' }
   }
 
-  const prepared = await prepareLines(input.lines)
-  if ('error' in prepared) return { ok: false, status: 400, error: prepared.error }
-
   // Every named line has to belong to the order being put right. Without this
   // check a mistyped id would file a part against somebody else's order, and
   // the customer whose order it was would see a part they never asked about.
-  const namedItemIds = prepared
-    .map((line) => line.input.replacesOrderItemId)
+  // Read before the lines are prepared, because a whole-item line is copied
+  // off the parent line it names.
+  const parentItems = new Map((await getOrderItems(parent.id)).map((item) => [item.id, item]))
+  const namedItemIds = input.lines
+    .map((line) => line.replacesOrderItemId)
     .filter((id): id is string => Boolean(id))
-  if (namedItemIds.length > 0) {
-    const parentItems = await getOrderItems(parent.id)
-    const known = new Set(parentItems.map((item) => item.id))
-    if (namedItemIds.some((id) => !known.has(id))) {
-      return { ok: false, status: 400, error: 'One of those lines is not on this order.' }
-    }
+  if (namedItemIds.some((id) => !parentItems.has(id))) {
+    return { ok: false, status: 400, error: 'One of those lines is not on this order.' }
   }
+
+  const prepared = await prepareLines(input.lines, parentItems)
+  if ('error' in prepared) return { ok: false, status: 400, error: prepared.error }
 
   const config = await getShopConfigCached()
   // The zone is wanted for its tax rates and nothing else - see the note above
@@ -218,6 +261,7 @@ export async function createReplacementOrder(input: CreateReplacementInput): Pro
       total: lineSubtotal,
       isPreOrder: false,
       preOrderDispatchDate: null,
+      lineMeta: line.lineMeta,
       returnable: line.returnable,
       nonReturnableNote: line.nonReturnableNote,
       replacesOrderItemId: line.input.replacesOrderItemId ?? null,

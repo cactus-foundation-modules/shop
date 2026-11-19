@@ -454,4 +454,123 @@ suite('cancel, return and damage requests, against a real database', () => {
       expect(outcome.ok).toBe(true)
     })
   })
+
+  // Migration 081: the issue form asks what kind of problem it is, a missing
+  // item is answered whole-or-parts per line, photographs can be asked for and
+  // added after the report is in, and staff can raise one on a customer's behalf.
+  describe('issue report kinds and photographs after the fact', () => {
+    let missingId = ''
+
+    it('records whole-or-parts per line on a missing-item report, and drops photographs', async () => {
+      const outcome = await requests.createOrderRequest({
+        orderId: 'ord-1',
+        memberId: null,
+        type: 'DAMAGE',
+        reason: 'MISSING',
+        customerNote: 'The leg bolts were not in the box.',
+        items: [
+          { orderItemId: 'item-ok', quantity: 1, missing: 'WHOLE' },
+          { orderItemId: 'item-maybe', quantity: 1, missing: 'PARTS' },
+        ],
+        photos: [{ mediaId: null, url: 'https://example.test/nothing-to-see.jpg' }],
+        raisedBy: 'staff-1',
+      })
+      expect(outcome.ok).toBe(true)
+      if (!outcome.ok) return
+      missingId = outcome.request.id
+      const byItem = new Map(outcome.request.items.map((item) => [item.orderItemId, item.missing]))
+      expect(byItem.get('item-ok')).toBe('WHOLE')
+      expect(byItem.get('item-maybe')).toBe('PARTS')
+      expect(outcome.request.photos).toEqual([])
+      expect(outcome.request.raisedBy).toBe('staff-1')
+      const reread = await requests.getRequestById(missingId)
+      expect(reread?.items.find((item) => item.orderItemId === 'item-ok')?.missing).toBe('WHOLE')
+    })
+
+    it('refuses a missing line with no whole-or-parts answer', async () => {
+      const outcome = await requests.createOrderRequest({
+        orderId: 'ord-1', memberId: null, type: 'DAMAGE', reason: 'MISSING',
+        items: [{ orderItemId: 'item-ok', quantity: 1 }],
+      })
+      expect(outcome.ok).toBe(false)
+      expect(!outcome.ok && outcome.error).toContain('whether all of it is missing')
+    })
+
+    it('refuses parts missing without saying which parts', async () => {
+      const outcome = await requests.createOrderRequest({
+        orderId: 'ord-1', memberId: null, type: 'DAMAGE', reason: 'MISSING',
+        items: [{ orderItemId: 'item-ok', quantity: 1, missing: 'PARTS' }],
+      })
+      expect(outcome.ok).toBe(false)
+      expect(!outcome.ok && outcome.error).toContain('which parts')
+    })
+
+    it('wants words on "another issue", and keeps its photographs', async () => {
+      const bare = await requests.createOrderRequest({
+        orderId: 'ord-1', memberId: null, type: 'DAMAGE', reason: 'OTHER',
+        items: [{ orderItemId: 'item-ok', quantity: 1 }],
+      })
+      expect(bare.ok).toBe(false)
+      const told = await requests.createOrderRequest({
+        orderId: 'ord-1', memberId: null, type: 'DAMAGE', reason: 'OTHER',
+        customerNote: 'Wrong colour arrived.',
+        items: [{ orderItemId: 'item-ok', quantity: 1 }],
+        photos: [{ mediaId: null, url: 'https://example.test/colour.jpg' }],
+      })
+      expect(told.ok).toBe(true)
+      expect(told.ok && told.request.photos).toHaveLength(1)
+      expect(told.ok && told.request.raisedBy).toBeNull()
+    })
+
+    it('no longer takes the retired parts-missing code', async () => {
+      const outcome = await requests.createOrderRequest({
+        orderId: 'ord-1', memberId: null, type: 'DAMAGE', reason: 'PARTS_MISSING',
+        items: [{ orderItemId: 'item-ok', quantity: 1 }],
+      })
+      expect(outcome.ok).toBe(false)
+    })
+
+    it('records a request for photographs, and reads it back', async () => {
+      expect(await requests.recordPhotoRequest(missingId, 'The inside of the box')).toBe(true)
+      const reread = await requests.getRequestById(missingId)
+      expect(reread?.photosRequestedAt).toBeInstanceOf(Date)
+      expect(reread?.photosRequestNote).toBe('The inside of the box')
+    })
+
+    it('adds photographs after the fact, saying who added them', async () => {
+      const customer = await requests.addRequestPhotos(missingId, [{ mediaId: null, url: 'https://example.test/c.jpg' }], null)
+      const staff = await requests.addRequestPhotos(missingId, [{ mediaId: null, url: 'https://example.test/s.jpg' }], 'staff-1')
+      expect(customer.ok && staff.ok).toBe(true)
+      const photos = (await requests.getRequestById(missingId))?.photos ?? []
+      expect(photos.map((photo) => photo.addedBy)).toEqual([null, 'staff-1'])
+    })
+
+    it('stops at the cap', async () => {
+      const many = Array.from({ length: 30 }, (_, i) => ({ mediaId: null, url: `https://example.test/${i}.jpg` }))
+      const outcome = await requests.addRequestPhotos(missingId, many, null)
+      expect(outcome.ok).toBe(false)
+      expect(!outcome.ok && outcome.error).toContain('room for')
+    })
+
+    it('finds the reports waiting on photographs from a customer address, any case', async () => {
+      const waiting = await requests.findPhotoRequestsAwaitingFrom('BUYER@example.com')
+      expect(waiting.map((one) => one.requestId)).toContain(missingId)
+      expect(waiting[0]?.orderNumber).toBe('DW000200')
+      expect(await requests.findPhotoRequestsAwaitingFrom('someone-else@example.com')).toEqual([])
+    })
+
+    it('says which media ids are already on a report', async () => {
+      await requests.addRequestPhotos(missingId, [{ mediaId: 'media-inbox-1', url: 'https://example.test/i.jpg' }], null)
+      const found = await requests.requestPhotoMediaIds(missingId, ['media-inbox-1', 'media-inbox-2'])
+      expect([...found]).toEqual(['media-inbox-1'])
+    })
+
+    it('will not ask for photographs on, or add them to, a cancel or return', async () => {
+      const ret = (await requests.listRequestsForOrder('ord-1')).find((r) => r.type !== 'DAMAGE')
+      expect(ret).toBeTruthy()
+      expect(await requests.recordPhotoRequest(ret!.id, null)).toBe(false)
+      const added = await requests.addRequestPhotos(ret!.id, [{ mediaId: null, url: 'https://example.test/x.jpg' }], null)
+      expect(added.ok).toBe(false)
+    })
+  })
 })

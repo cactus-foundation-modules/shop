@@ -120,7 +120,7 @@ describe('pendingRequestUnits', () => {
     type: ShpOrderRequestWithItems['type'],
     status: ShpOrderRequestWithItems['status'],
     items: Array<{ orderItemId: string; quantity: number }>,
-  ) => ({ type, status, items: items.map((item, i) => ({ id: `ri-${i}`, requestId: 'r', ...item })) })
+  ) => ({ type, status, items: items.map((item, i) => ({ id: `ri-${i}`, requestId: 'r', missing: null, ...item })) })
 
   const lines = [
     { orderItemId: 'chair', outstandingQty: 3 },
