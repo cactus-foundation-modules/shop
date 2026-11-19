@@ -8,6 +8,7 @@ import {
   type ParcelDetails,
 } from '@/modules/shop/components/admin/ParcelDetailsFields'
 import { dpdFollowLink } from '@/modules/shop/lib/tracking/dpd-follow-link'
+import { courierPrefill, prefillUsed, withoutUntouchedPrefill } from '@/modules/shop/lib/courier-booking-prefill'
 import type { ConsignmentParcel } from '@/modules/shop/lib/consignment-parcels'
 
 // Filling in a parcel after it has gone.
@@ -78,6 +79,13 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   const openingLink = parcel.trackingShortCode?.trim()
     ? dpdFollowLink(parcel.trackingShortCode.trim())
     : parcel.trackingUrl ?? ''
+  // The day and window the order page shows, where tracking found them and the
+  // parcel has none of its own (lib/courier-booking-prefill.ts). Left as filled,
+  // they go back blank on save and the parcel keeps following the courier.
+  // The email wording, so a holding window (AIT) fills the day and not its
+  // placeholder times.
+  const [prefill] = useState(() => courierPrefill(parcel, parcel.emailBooking ?? parcel.booking))
+  const fromTracking = prefillUsed(parcel, prefill)
   const [details, setDetails] = useState<ParcelDetails>({
     courierId: parcel.courierId ?? '',
     carrier: parcel.carrier ?? '',
@@ -86,9 +94,9 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
     // to leave - its code saved separately, beside a long tracking address -
     // shows the link the code stands for, since that is now the one to keep.
     trackingUrl: openingLink,
-    deliveryDate: parcel.deliveryDate ?? '',
-    deliverySlotStart: parcel.deliverySlotStart ?? '',
-    deliverySlotEnd: parcel.deliverySlotEnd ?? '',
+    deliveryDate: prefill.deliveryDate,
+    deliverySlotStart: prefill.deliverySlotStart,
+    deliverySlotEnd: prefill.deliverySlotEnd,
     notes: parcel.notes ?? '',
     parcelLinks: [],
   })
@@ -96,6 +104,9 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   const [emailTracking, setEmailTracking] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // What a save would send, which is what every email decision below is judged
+  // on: the courier's own values, untouched, are not a booking by the shop.
+  const sent = withoutUntouchedPrefill(details, parcel, prefill)
 
   // The email only goes out on the save that first completes a window, and only
   // once per parcel. Saying so here stops an owner tidying up a typo and
@@ -112,13 +123,13 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   // except on a courier whose page shows a holding window, which is never
   // emailed, so emailBooking carries no times for it.
   const booking = parcel.emailBooking ?? parcel.booking
-  const courierWindow = !details.deliverySlotStart && !details.deliverySlotEnd
+  const courierWindow = !sent.deliverySlotStart && !sent.deliverySlotEnd
     && booking?.slotStart && booking.slotEnd
-    && details.deliveryDate === booking.date && details.deliveryDate === (parcel.deliveryDate ?? '')
+    && sent.deliveryDate === booking.date && sent.deliveryDate === (parcel.deliveryDate ?? '')
     ? `${booking.date} ${booking.slotStart}-${booking.slotEnd}`
     : ''
-  const formWindow = details.deliveryDate && details.deliverySlotStart && details.deliverySlotEnd
-    ? `${details.deliveryDate} ${details.deliverySlotStart}-${details.deliverySlotEnd}`
+  const formWindow = sent.deliveryDate && sent.deliverySlotStart && sent.deliverySlotEnd
+    ? `${sent.deliveryDate} ${sent.deliverySlotStart}-${sent.deliverySlotEnd}`
     : courierWindow
   const shownWindow = booking
     ? (booking.date && booking.slotStart && booking.slotEnd
@@ -129,17 +140,17 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
     && formWindow !== (parcel.slotNotifiedWindow || shownWindow)
   // A new day on a delayed parcel is the news the delay promised, and goes
   // whatever was told about the window that fell through.
-  const answersDelay = Boolean(parcel.delayOpen) && Boolean(details.deliveryDate)
-    && details.deliveryDate !== (parcel.deliveryDate ?? '')
+  const answersDelay = Boolean(parcel.delayOpen) && Boolean(sent.deliveryDate)
+    && sent.deliveryDate !== (parcel.deliveryDate ?? '')
   // The times still in the form were for the day that was missed. Saved
   // against the new day unchanged, the customer would be told them for it.
-  const staleTimes = answersDelay && Boolean(details.deliverySlotStart || details.deliverySlotEnd)
-    && details.deliverySlotStart === (parcel.deliverySlotStart ?? '')
-    && details.deliverySlotEnd === (parcel.deliverySlotEnd ?? '')
-  const windowComplete = Boolean(details.deliveryDate && details.deliverySlotStart && details.deliverySlotEnd)
+  const staleTimes = answersDelay && Boolean(sent.deliverySlotStart || sent.deliverySlotEnd)
+    && sent.deliverySlotStart === (parcel.deliverySlotStart ?? '')
+    && sent.deliverySlotEnd === (parcel.deliverySlotEnd ?? '')
+  const windowComplete = Boolean(sent.deliveryDate && sent.deliverySlotStart && sent.deliverySlotEnd)
   // Until the window is in, the day alone is worth an email whenever it is new
   // or has moved - the window email follows once the times are filled in.
-  const dayChanged = Boolean(details.deliveryDate) && details.deliveryDate !== (parcel.deliveryDate ?? '')
+  const dayChanged = Boolean(sent.deliveryDate) && sent.deliveryDate !== (parcel.deliveryDate ?? '')
   const emailHint = windowComplete
     ? ''
     : dayChanged
@@ -195,7 +206,7 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
     const res = await fetch(`/api/m/shop/admin/orders/${orderId}/dispatch`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ shipmentId: parcel.id, ...parcelDetailsPayload(details), emailCustomer, emailTracking }),
+      body: JSON.stringify({ shipmentId: parcel.id, ...parcelDetailsPayload(sent), emailCustomer, emailTracking }),
     })
     if (!res.ok) {
       setSaving(false)
@@ -256,6 +267,14 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
             consignmentLink={openingLink}
           />
 
+          {fromTracking && (
+            <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
+              The delivery day{prefill.deliverySlotStart && !parcel.deliverySlotStart ? ' and window' : ''} above
+              came from the courier&rsquo;s tracking. Leave it as it is and the parcel keeps following their
+              tracking; change it and yours stands instead.
+            </p>
+          )}
+
           {offerTrackingEmail && !quiet && (
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input type="checkbox" checked={emailTracking} onChange={(e) => setEmailTracking(e.target.checked)} />
@@ -280,7 +299,7 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
           {quiet ? (
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input type="checkbox" checked={sendNoteWithSave} onChange={(e) => setSendNoteWithSave(e.target.checked)} />
-              {details.deliveryDate
+              {sent.deliveryDate
                 ? 'Email the customer after saving - the dispatch note, with this delivery day'
                 : 'Email the customer after saving - the dispatch note'}
             </label>
