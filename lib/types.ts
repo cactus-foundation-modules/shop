@@ -1369,6 +1369,11 @@ export type ShpEmailTemplateTrigger =
   // courier has a window for it. Sent again if the day moves; the window email
   // follows once there is one. See lib/delivery-slot-email.ts.
   | 'DELIVERY_DAY_BOOKED'
+  // The courier moving a day it had already booked, and the customer been told,
+  // to another day still to come: "Route1 have moved your delivery from Monday
+  // to Tuesday". Sent in place of a second DELIVERY_DAY_BOOKED, which read as
+  // a mistake. See lib/delivery-slot-email.ts.
+  | 'DELIVERY_DAY_CHANGED'
   // Sent when the courier's tracking reports a failed attempt: it could not be
   // delivered, and here is how a new day gets booked - or, where staff have
   // said so, that the courier will be in touch. See lib/failed-delivery-email.ts.

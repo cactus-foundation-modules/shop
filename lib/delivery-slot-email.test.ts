@@ -240,7 +240,7 @@ describe('maybeSendCourierDayEmail', () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: new Date('2026-11-10T15:15:00Z'), toFake: ['Date'] })
     vi.mocked(claimCourierDay).mockReset()
-    vi.mocked(claimCourierDay).mockResolvedValue({ dayChanged: true, windowTold: false })
+    vi.mocked(claimCourierDay).mockResolvedValue({ dayChanged: true, windowTold: false, previousDay: null })
     vi.mocked(getOrderById).mockClear()
   })
   afterEach(() => vi.useRealTimers())
@@ -253,14 +253,14 @@ describe('maybeSendCourierDayEmail', () => {
   })
 
   it('takes the day but sends nothing when the customer already has a window', async () => {
-    vi.mocked(claimCourierDay).mockResolvedValue({ dayChanged: true, windowTold: true })
+    vi.mocked(claimCourierDay).mockResolvedValue({ dayChanged: true, windowTold: true, previousDay: null })
     expect(await slotEmail.maybeSendCourierDayEmail(live, '2026-11-11', 'Europe/London')).toBe(false)
     expect(claimCourierDay).toHaveBeenCalled()
     expect(getOrderById).not.toHaveBeenCalled()
   })
 
   it('sends nothing when the parcel already had that day', async () => {
-    vi.mocked(claimCourierDay).mockResolvedValue({ dayChanged: false, windowTold: false })
+    vi.mocked(claimCourierDay).mockResolvedValue({ dayChanged: false, windowTold: false, previousDay: null })
     expect(await slotEmail.maybeSendCourierDayEmail(live, '2026-11-11', 'Europe/London')).toBe(false)
     expect(getOrderById).not.toHaveBeenCalled()
   })

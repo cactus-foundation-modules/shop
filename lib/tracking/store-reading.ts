@@ -18,6 +18,7 @@ import { captureSignature } from '@/modules/shop/lib/tracking/signature-capture'
 import { stageMeaning } from '@/modules/shop/lib/tracking/stage-meaning'
 import { courierTimesEmailable } from '@/modules/shop/lib/tracking/provisional-window'
 import { windowForParcelOutToday } from '@/modules/shop/lib/tracking/out-for-delivery-window'
+import { wholeDayWindowDate } from '@/modules/shop/lib/delivery-slot'
 import { placePendingDpdLinks } from '@/modules/shop/lib/tracking/dpd-consignment'
 import { dpdFollowLinkCode } from '@/modules/shop/lib/tracking/dpd-follow-link'
 import type { ConsignmentReading, ParcelReading } from '@/modules/shop/lib/tracking/read-parcel'
@@ -80,7 +81,12 @@ export async function storeParcelReading(
   if (!answeredDelay) await maybeSendCarrierWindowEmail(parcel, current, timezone, courierTimes)
   // The day the courier has booked before it has any times. After the window
   // email, so a read carrying both tells the customer once, with the window.
-  if (!answeredDelay && !delivered) await maybeSendCourierDayEmail(parcel, reading.scheduledDate, timezone)
+  // Multidrop name the day outright; Fieldly, DPD and AIT pass it as the whole
+  // day (wholeDayWindowDate). Never Palletways: their due-by is the latest
+  // day, not a booked one, whatever cut-off the shop has set for it.
+  const bookedDay = reading.scheduledDate
+    ?? (courier.trackingSource === 'palletways' ? null : wholeDayWindowDate(current.windowFrom, current.windowTo, timezone))
+  if (!answeredDelay && !delivered) await maybeSendCourierDayEmail(parcel, bookedDay, timezone)
 
   await recordTrackingPageDetails(parcel.id, {
     clientId: reading.clientId,

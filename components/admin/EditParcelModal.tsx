@@ -157,7 +157,13 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   const windowComplete = Boolean(sent.deliveryDate && sent.deliverySlotStart && sent.deliverySlotEnd)
   // Until the window is in, the day alone is worth an email whenever it is new
   // or has moved - the window email follows once the times are filled in.
-  const dayChanged = Boolean(sent.deliveryDate) && sent.deliveryDate !== (parcel.deliveryDate ?? '')
+  // The courier's day with no times, filled in above and saved back blank, is
+  // told on this save when nobody has been told anything yet - judged as the
+  // server judges it (maybeSendUntoldCourierDay). Order DW000284: the box was
+  // ticked over the courier's day and the save had nothing to send.
+  const untoldCourierDay = !alreadyTold && !parcel.deliveryDate && Boolean(prefill.deliveryDate)
+    && !sent.deliveryDate && !sent.deliverySlotStart && !sent.deliverySlotEnd && !prefill.deliverySlotStart
+  const dayChanged = (Boolean(sent.deliveryDate) && sent.deliveryDate !== (parcel.deliveryDate ?? '')) || untoldCourierDay
   // A new day with no times, on a parcel whose window was already told: the
   // email named a day that no longer stands, so the day email is offered -
   // judged as the server judges it (maybeSendDayEmail, `rebooking`). Order

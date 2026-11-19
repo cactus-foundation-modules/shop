@@ -17,6 +17,7 @@ import { listRequestsForOrder } from '@/modules/shop/lib/db/order-requests'
 import { pendingRequestUnits } from '@/modules/shop/lib/order-requests'
 import { ORDER_LINE_BATCH_MAX, ORDER_LINE_BATCH_MAX_MESSAGE } from '@/modules/shop/lib/order-line-limits'
 import { sendShipmentDispatchedEmail } from '@/modules/shop/lib/shipment-email'
+import { maybeSendUntoldCourierDay } from '@/modules/shop/lib/delivery-slot-email'
 import { deliveryBookingForShipment, formatDeliveryDay, isDeliveryDate, isSlotTime, nowInTimezone, slotMinutes } from '@/modules/shop/lib/delivery-slot'
 import { currentDelay, delayIsNewerThanStage } from '@/modules/shop/lib/delivery-delay'
 import { getSiteTimezone } from '@/lib/config/timezone.server'
@@ -539,7 +540,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   const notified = await maybeSendSlotEmail(id, shipment, emailCustomer !== false, existing)
-  const dayTold = await maybeSendDayEmail(id, existing, shipment, emailCustomer !== false, { rebooking: true })
+  const typedDayTold = await maybeSendDayEmail(id, existing, shipment, emailCustomer !== false, { rebooking: true })
+  // The courier's own whole-day booking, shown in the form and saved back
+  // untouched, never told: the box was ticked for it (order DW000284).
+  const dayTold = typedDayTold || (!notified && await maybeSendUntoldCourierDay(
+    shipment,
+    emailCustomer !== false,
+    courierForShipment(config, shipment)?.trackingSource,
+    await getSiteTimezone(),
+  ))
   // `existing` is the row as it was BEFORE this save - read above for the window
   // check - which is the only way to tell "tracking has just been added" from
   // "tracking has been here since it went out".

@@ -15,6 +15,7 @@ import {
   isWholeDayWindow,
   slotTimeFromInstant,
   toldWindowKey,
+  wholeDayWindowDate,
 } from '@/modules/shop/lib/delivery-slot'
 import { courierFaqUrl, faqsForShipment } from '@/modules/shop/lib/courier-faqs'
 import { isStaleCarrierWindow } from '@/modules/shop/lib/delivery-delay'
@@ -144,8 +145,19 @@ export async function sendDeliverySlotEmail(params: {
  * Not stamped. It goes when the DAY is new or has moved, which is the caller's
  * test (see the dispatch route), because a moved day is exactly the thing a
  * customer who has already been told one needs to hear about.
+ *
+ * `courierMovedFrom` is the day the courier had booked before moving it, on
+ * the courier's own say-so (maybeSendCourierDayEmail). Then the customer gets
+ * 'Delivery day changed' instead: a second "booked in for..." with a different
+ * day reads as a mistake, or as two deliveries (order DW000263, 19 November
+ * 2026: told Monday 23rd, then Tuesday 24th, in identical emails four hours
+ * apart).
  */
-export async function sendDeliveryDayEmail(params: { orderId: string; shipmentId: string }): Promise<void> {
+export async function sendDeliveryDayEmail(params: {
+  orderId: string
+  shipmentId: string
+  courierMovedFrom?: string | null
+}): Promise<void> {
   const order = await getOrderById(params.orderId)
   if (!order) return
 
@@ -155,10 +167,27 @@ export async function sendDeliveryDayEmail(params: { orderId: string; shipmentId
   const deliveryDay = formatDeliveryDay(shipment.deliveryDate ?? '')
   if (!deliveryDay) return
 
-  await notifyOrderCustomer('DELIVERY_DAY_BOOKED', order, {
-    ...await parcelEmailVars(order, shipment),
-    deliveryDay,
-  }, { shipmentId: shipment.id })
+  const previousDeliveryDay = params.courierMovedFrom && params.courierMovedFrom !== shipment.deliveryDate
+    ? formatDeliveryDay(params.courierMovedFrom)
+    : ''
+  const vars = { ...await parcelEmailVars(order, shipment), deliveryDay }
+
+  if (previousDeliveryDay) {
+    await notifyOrderCustomer('DELIVERY_DAY_CHANGED', order, { ...vars, previousDeliveryDay }, { shipmentId: shipment.id })
+    return
+  }
+  await notifyOrderCustomer('DELIVERY_DAY_BOOKED', order, vars, { shipmentId: shipment.id })
+}
+
+/**
+ * The day the courier moved a booking away from, worth telling as a change:
+ * a real day, and not yet gone. A day already past was a missed delivery, not
+ * a reshuffle - the failed-delivery email is the one for that - so the new day
+ * goes out as a plain booking.
+ */
+function courierMovedFromDay(previousDay: string | null, today: string): string | null {
+  if (!previousDay || !formatDeliveryDay(previousDay)) return null
+  return previousDay >= today ? previousDay : null
 }
 
 /**
@@ -183,16 +212,58 @@ export async function maybeSendCourierDayEmail(
   timezone: string,
 ): Promise<boolean> {
   if (!day || parcel.deliveredAt) return false
-  if (day < calendarDateIn(new Date(), timezone)) return false
+  const today = calendarDateIn(new Date(), timezone)
+  if (day < today) return false
   const claimed = await claimCourierDay(parcel.id, day)
   if (!claimed?.dayChanged || claimed.windowTold || parcel.quietCustomerEmails) return false
 
   try {
-    await sendDeliveryDayEmail({ orderId: parcel.orderId, shipmentId: parcel.id })
+    await sendDeliveryDayEmail({
+      orderId: parcel.orderId,
+      shipmentId: parcel.id,
+      courierMovedFrom: courierMovedFromDay(claimed.previousDay ?? null, today),
+    })
   } catch (error) {
     console.error('[shop] courier day email failed', error)
   }
   return true
+}
+
+/**
+ * Staff saving a parcel, box ticked, whose only day is the courier's whole-day
+ * booking and was never told: the day email goes, as the tracking poll would
+ * have sent it. The edit form shows that day filled in and sends it back blank
+ * when untouched (so the parcel keeps following the courier), which left the
+ * save with no new day to tell and the ticked box promising an email that
+ * never went (order DW000284, 19 November 2026).
+ *
+ * Only while the parcel has no day or times of its own after the save - a day
+ * staff typed is maybeSendDayEmail's to tell. Never Palletways (a due-by is
+ * the latest day, not a booking). claimCourierDay keeps it once per day and
+ * refuses a parcel whose window was already told.
+ */
+export async function maybeSendUntoldCourierDay(
+  parcel: Pick<
+    ShpShipment,
+    | 'id'
+    | 'orderId'
+    | 'quietCustomerEmails'
+    | 'deliveredAt'
+    | 'deliveryDate'
+    | 'deliverySlotStart'
+    | 'deliverySlotEnd'
+    | 'deliveryWindowFrom'
+    | 'deliveryWindowTo'
+    | 'slotNotifiedAt'
+  >,
+  wanted: boolean,
+  trackingSource: string | undefined,
+  timezone: string,
+): Promise<boolean> {
+  if (!wanted || trackingSource === 'palletways' || parcel.slotNotifiedAt) return false
+  if (parcel.deliveryDate || parcel.deliverySlotStart || parcel.deliverySlotEnd) return false
+  const day = wholeDayWindowDate(parcel.deliveryWindowFrom, parcel.deliveryWindowTo, timezone)
+  return maybeSendCourierDayEmail(parcel, day, timezone)
 }
 
 /** Tell the customer their delivery window, when the courier's own tracking

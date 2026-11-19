@@ -214,6 +214,24 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     transactional: false,
   },
   {
+    // The courier moving a day it had booked, and we had told, to another day
+    // still to come. Sent in place of a second 'Delivery day booked', which
+    // put "booked in for Monday" and "booked in for Tuesday" side by side in
+    // the customer's inbox with nothing to say which one stood. Not a delay:
+    // the shop reports those itself, from the order screen. See
+    // lib/delivery-slot-email.ts.
+    key: 'shop.delivery-day-changed',
+    label: 'Delivery day changed by the courier',
+    subject: 'Your delivery day has changed to {{deliveryDay}}',
+    bodyHtml:
+      '<p>Hi {{customerName}},</p><p>A quick heads-up: {{#if hasCarrier}}{{carrier}} have{{/if}}{{#if noCarrier}}the courier has{{/if}} moved the delivery for order <strong>{{orderNumber}}</strong> from {{previousDeliveryDay}} to <strong>{{deliveryDay}}</strong>.</p><p>Couriers shuffle their rounds about from time to time, so there is nothing you need to do, other than making sure somebody is in on the new day. Please ignore the earlier email that said {{previousDeliveryDay}}.</p><p>We do not have a time for it yet. As soon as {{#if hasCarrier}}{{carrier}} gives{{/if}}{{#if noCarrier}}the courier gives{{/if}} us one, we will email you with it.</p>{{#if hasSeveralParcels}}<p>It is coming in <strong>{{parcelCount}} parcels</strong>, and the courier may bring them separately, so please do not worry if they do not all turn up together. Your order page shows where each one has got to.</p>{{/if}}{{#if hasParcelItems}}<p><strong>Arriving:</strong></p>{{parcelItems}}{{/if}}<p>If nobody is in to take it, the driver will have to bring it back and we will have to book it in all over again.</p>{{#if hasFaq}}<p><a href="{{faqUrl}}">Questions about your delivery</a> - what happens on the day, and what to do if it does not suit.</p>{{/if}}<p>Thanks for shopping with {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
+    mergeTags: ['parcelCount', 'hasSeveralParcels', 'customerName', 'orderNumber', 'deliveryDay', 'previousDeliveryDay', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'noCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
+    // Same table the dispatch note uses, built by this module with every value
+    // escaped on the way in. See lib/order-items-email.ts.
+    rawTags: ['parcelItems'],
+    transactional: false,
+  },
+  {
     // The courier tried and could not deliver. Sent once per failed attempt,
     // off the courier's own tracking - see lib/failed-delivery-email.ts. Two
     // versions in one template, picked by flags: get in touch with the courier,
@@ -677,6 +695,7 @@ export const SHOP_TRIGGER_TO_TEMPLATE_KEY: Record<string, string> = {
   PARTIAL_SHIPPED: 'shop.partial-shipped',
   DELIVERY_SLOT_CONFIRMED: 'shop.delivery-slot-confirmed',
   DELIVERY_DAY_BOOKED: 'shop.delivery-day-booked',
+  DELIVERY_DAY_CHANGED: 'shop.delivery-day-changed',
   DELIVERY_FAILED: 'shop.delivery-failed',
   DELIVERY_RUNNING_LATE: 'shop.delivery-running-late',
   DELIVERY_DELAYED: 'shop.delivery-delayed',

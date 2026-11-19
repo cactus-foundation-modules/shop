@@ -949,7 +949,7 @@ export async function claimDelayAnsweredByCourier(shipmentId: string, windowDate
 export async function claimCourierDay(
   shipmentId: string,
   day: string,
-): Promise<{ dayChanged: boolean; windowTold: boolean } | null> {
+): Promise<{ dayChanged: boolean; windowTold: boolean; previousDay: string | null } | null> {
   // The day before, off the statement's own snapshot. No FOR UPDATE: it would
   // skip the row this same statement updates and read back NULL. The update's
   // row lock is what keeps it once-only - a second caller waits on it, then
@@ -979,7 +979,9 @@ export async function claimCourierDay(
     RETURNING "slot_notified_at", (SELECT "delivery_date" FROM "previous") AS "previous_date"
   `
   const row = rows[0]
-  return row ? { dayChanged: row.previous_date !== day, windowTold: row.slot_notified_at !== null } : null
+  return row
+    ? { dayChanged: row.previous_date !== day, windowTold: row.slot_notified_at !== null, previousDay: row.previous_date }
+    : null
 }
 
 /**

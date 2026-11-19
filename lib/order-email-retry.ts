@@ -70,6 +70,7 @@ export function threadKeyFor(trigger: string, orderId: string | undefined): { th
 const DELIVERY_NEWS = [
   'DELIVERY_SLOT_CONFIRMED',
   'DELIVERY_DAY_BOOKED',
+  'DELIVERY_DAY_CHANGED',
   'DELIVERY_NEW_DATE',
   'DELIVERY_DELAYED',
   'DELIVERY_RUNNING_LATE',

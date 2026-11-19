@@ -158,6 +158,28 @@ export function isWholeDayWindow(start: string | null, end: string | null): bool
   return slotMinutes(end) - slotMinutes(start) >= 23 * 60
 }
 
+/**
+ * The day a courier's whole-day window stands for, or null when the window is
+ * missing or is a real time.
+ *
+ * Fieldly, DPD and AIT all pass on a booked day with no time yet as the whole
+ * day. It is a booking all the same, and the customer needs telling the day
+ * (maybeSendCourierDayEmail) - the window email will never go for it, because
+ * there is no window. Order DW000284, 19 November 2026: Fieldly booked the
+ * 26th, the order page showed it, and the customer heard nothing.
+ */
+export function wholeDayWindowDate(
+  windowFrom: Date | null,
+  windowTo: Date | null,
+  timezone: string,
+): string | null {
+  if (!windowFrom || !windowTo) return null
+  const day = calendarDateIn(windowFrom, timezone)
+  if (calendarDateIn(windowTo, timezone) !== day) return null
+  if (!isWholeDayWindow(slotTimeFromInstant(windowFrom, timezone), slotTimeFromInstant(windowTo, timezone))) return null
+  return isDeliveryDate(day) ? day : null
+}
+
 /** Minutes since midnight, for comparing times of day without dates. */
 export function slotMinutes(time: string): number {
   const parts = time.split(':')
