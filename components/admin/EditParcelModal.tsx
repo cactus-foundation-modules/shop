@@ -82,10 +82,17 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   // The day and window the order page shows, where tracking found them and the
   // parcel has none of its own (lib/courier-booking-prefill.ts). Left as filled,
   // they go back blank on save and the parcel keeps following the courier.
-  // The email wording, so a holding window (AIT) fills the day and not its
-  // placeholder times.
-  const [prefill] = useState(() => courierPrefill(parcel, parcel.emailBooking ?? parcel.booking))
+  // The page's booking, not the email wording: a holding window (AIT) is shown
+  // here as the page shows it (order DW000288, 19 November 2026: the form
+  // opened with the day and no times beside a window the page was showing).
+  // Its times still never reach an email unless somebody changes them, since
+  // untouched filled values go back blank on save.
+  const [prefill] = useState(() => courierPrefill(parcel, parcel.booking ?? parcel.emailBooking))
   const fromTracking = prefillUsed(parcel, prefill)
+  // The window filled is one the courier treats as a placeholder until they
+  // email the real one (lib/tracking/provisional-window.ts).
+  const provisionalWindow = Boolean(prefill.deliverySlotStart && !parcel.deliverySlotStart
+    && parcel.emailBooking && !parcel.emailBooking.slotStart)
   const [details, setDetails] = useState<ParcelDetails>({
     courierId: parcel.courierId ?? '',
     carrier: parcel.carrier ?? '',
@@ -272,6 +279,7 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
               The delivery day{prefill.deliverySlotStart && !parcel.deliverySlotStart ? ' and window' : ''} above
               came from the courier&rsquo;s tracking. Leave it as it is and the parcel keeps following their
               tracking; change it and yours stands instead.
+              {provisionalWindow && ' The courier counts that window as provisional until they email the real one, so it is not emailed to the customer as it stands.'}
             </p>
           )}
 
