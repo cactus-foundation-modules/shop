@@ -539,7 +539,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   const notified = await maybeSendSlotEmail(id, shipment, emailCustomer !== false, existing)
-  const dayTold = await maybeSendDayEmail(id, existing, shipment, emailCustomer !== false)
+  const dayTold = await maybeSendDayEmail(id, existing, shipment, emailCustomer !== false, { rebooking: true })
   // `existing` is the row as it was BEFORE this save - read above for the window
   // check - which is the only way to tell "tracking has just been added" from
   // "tracking has been here since it went out".

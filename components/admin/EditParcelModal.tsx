@@ -158,6 +158,14 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
   // Until the window is in, the day alone is worth an email whenever it is new
   // or has moved - the window email follows once the times are filled in.
   const dayChanged = Boolean(sent.deliveryDate) && sent.deliveryDate !== (parcel.deliveryDate ?? '')
+  // A new day with no times, on a parcel whose window was already told: the
+  // email named a day that no longer stands, so the day email is offered -
+  // judged as the server judges it (maybeSendDayEmail, `rebooking`). Order
+  // DW000285: moved from Friday to Thursday, and the form said it had nothing
+  // to send.
+  const toldDay = parcel.slotNotifiedWindow ? parcel.slotNotifiedWindow.slice(0, 10) : null
+  const dayMovedAfterTold = alreadyTold && !windowMoved && dayChanged && !windowComplete
+    && sent.deliveryDate !== toldDay
   const emailHint = windowComplete
     ? ''
     : dayChanged
@@ -320,6 +328,11 @@ export function EditParcelModal({ orderId, parcel, couriers, onClose, onDone }: 
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input type="checkbox" checked={emailCustomer} onChange={(e) => setEmailCustomer(e.target.checked)} />
               Email the customer their new delivery window
+            </label>
+          ) : dayMovedAfterTold ? (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input type="checkbox" checked={emailCustomer} onChange={(e) => setEmailCustomer(e.target.checked)} />
+              Email the customer their new delivery day (the time follows once you have it)
             </label>
           ) : alreadyTold ? (
             <p style={{ fontSize: '0.8125rem', background: 'var(--color-bg-subtle)', borderRadius: 6, padding: '0.5rem 0.75rem' }}>

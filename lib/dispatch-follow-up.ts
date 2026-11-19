@@ -204,18 +204,28 @@ export function bookingMoved(
  *
  * A day recorded at dispatch is not sent from here: the dispatch note carries
  * it (see dispatchDeliveryVars).
+ *
+ * `rebooking` is staff saving a new day by hand, with the box ticked, on a
+ * parcel whose window was already told. That email named a day that no longer
+ * stands, and waiting for the courier's new window left the customer holding
+ * the wrong day (order DW000285, 19 November 2026: told Friday by 17:00,
+ * rebooked for the following Thursday with no times, no way to email). The day
+ * email goes; the told window is left as it was, so the courier's window for
+ * the new day still counts as a moved day and is emailed when it comes
+ * (maybeSendMovedDayEmail). Automatic paths do not pass it.
  */
 export async function maybeSendDayEmail(
   orderId: string,
   before: ShpShipmentWithItems,
   after: ShpShipmentWithItems,
   wanted: boolean,
+  options: { rebooking?: boolean } = {},
 ): Promise<FollowUpEmail> {
   if (!wanted || after.quietCustomerEmails) return false
   if (!isDeliveryDate(after.deliveryDate)) return false
   if (after.deliveryDate === before.deliveryDate) return false
   if (after.deliverySlotStart && after.deliverySlotEnd) return false
-  if (after.slotNotifiedAt) return false
+  if (after.slotNotifiedAt && !(options.rebooking && toldDay(after) !== after.deliveryDate)) return false
 
   try {
     await sendDeliveryDayEmail({ orderId, shipmentId: after.id })
@@ -224,6 +234,13 @@ export async function maybeSendDayEmail(
     return 'failed'
   }
   return true
+}
+
+/** The day the customer was last emailed for this parcel: the told window's
+ *  day where recorded (migration 072), otherwise null - an older parcel whose
+ *  day just changed was told a different one, since the save moved it. */
+function toldDay(parcel: ShpShipmentWithItems): string | null {
+  return parcel.slotNotifiedWindow ? parcel.slotNotifiedWindow.slice(0, 10) : null
 }
 
 /**
