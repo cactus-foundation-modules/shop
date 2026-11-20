@@ -5,6 +5,7 @@ import { useEffect, useState, type ComponentType, type CSSProperties, type Input
 import { getCart } from '@/modules/shop/components/public/cart'
 import { EMPTY_ADDRESS, getCheckoutState, subscribeCheckoutState, updateCheckoutState, type ShpAddressForm } from '@/modules/shop/components/public/checkout-state'
 import type { ShopCheckoutAddressLookupProps, ShpLookupAddress } from '@/modules/shop/components/public/checkout-address-lookup'
+import { countyAfterEdit, editOwnsCounty, type LookupCounty } from '@/modules/shop/components/public/checkout-lookup-county'
 import { DELIVERY_INSTRUCTIONS_MAX_LENGTH } from '@/modules/shop/lib/delivery-instructions'
 import { formatUkPhone, isValidUkPhone, UK_PHONE_MESSAGE } from '@/modules/shop/lib/phone'
 import { useCartPopulated } from '@/modules/shop/components/public/use-cart-populated'
@@ -234,6 +235,11 @@ export function CheckoutShippingClient({
   // parcel, so filling it in with their default delivery address would be
   // answering the opposite of the question they asked.
   const [billingChoice, setBillingChoice] = useState<AddressChoice | null>(null)
+  // The county each form's address finder last filled in, with the postcode it
+  // came with - so a postcode changed afterwards (by hand or by autofill) cannot
+  // leave the old address's county behind. See checkout-lookup-county.ts.
+  const [shippingLookup, setShippingLookup] = useState<LookupCounty | null>(null)
+  const [billingLookup, setBillingLookup] = useState<LookupCounty | null>(null)
 
   useEffect(() => {
     // No fetch in the editor preview: nobody drawing this block in Puck is a
@@ -333,7 +339,8 @@ export function CheckoutShippingClient({
   }, [preview])
 
   function set<K extends keyof ShpAddressForm>(key: K, value: ShpAddressForm[K]) {
-    const next = { ...address, [key]: value }
+    if (editOwnsCounty(key)) setShippingLookup(null)
+    const next = { ...address, [key]: value, county: countyAfterEdit(address, key, value, shippingLookup) }
     setAddress(next)
     // The number the order actually carries is customerPhone - that is what the
     // review step checks, what the order-creating route enforces and what the
@@ -358,6 +365,7 @@ export function CheckoutShippingClient({
     // already on this delivery stays.
     const savedCompany = saved.address.company?.trim() ?? ''
     const form = { ...toAddressForm(saved.address), company: savedCompany || address.company }
+    setShippingLookup(null)
     // A whole-form replacement, never a merge: anything the shopper typed before
     // changing their mind is gone rather than left hiding behind a collapsed
     // form, waiting to go on the order in a field this saved address left blank.
@@ -381,6 +389,7 @@ export function CheckoutShippingClient({
     // handed somebody else's half of one is how a delivery ends up at the old
     // office with the new postcode on it.
     const blank = { ...EMPTY_ADDRESS, company: address.company }
+    setShippingLookup(null)
     setAddress(blank)
     setChoice({ kind: 'new' })
     updateCheckoutState({ shippingAddress: blank, customerPhone: '' })
@@ -429,13 +438,15 @@ export function CheckoutShippingClient({
   // would each clobber the previous one's spread of a stale `address`.
   function applyLookup(picked: ShpLookupAddress) {
     const next = { ...address, line1: picked.line1, line2: picked.line2, city: picked.city, county: picked.county, postcode: picked.postcode }
+    setShippingLookup({ county: picked.county, postcode: picked.postcode })
     setAddress(next)
     updateCheckoutState({ shippingAddress: next })
     if (choice?.kind !== 'saved') setChoice({ kind: 'new' })
   }
 
   function setBillingField<K extends keyof ShpAddressForm>(key: K, value: ShpAddressForm[K]) {
-    const next = { ...billing, [key]: value }
+    if (editOwnsCounty(key)) setBillingLookup(null)
+    const next = { ...billing, [key]: value, county: countyAfterEdit(billing, key, value, billingLookup) }
     setBilling(next)
     updateCheckoutState({ billingAddress: next })
     // Typing over an address out of the book means this is no longer that
@@ -446,6 +457,7 @@ export function CheckoutShippingClient({
 
   function chooseSavedBilling(saved: SavedAddress) {
     const form = toBillingForm(saved.address)
+    setBillingLookup(null)
     // A whole-form replacement, never a merge, exactly as on the delivery form:
     // half of a previous address left behind in a box this one leaves blank is
     // how an invoice ends up at the old office with the new postcode on it.
@@ -456,6 +468,7 @@ export function CheckoutShippingClient({
   }
 
   function chooseNewBilling() {
+    setBillingLookup(null)
     setBilling(EMPTY_ADDRESS)
     setBillingChoice({ kind: 'new' })
     updateCheckoutState({ billingAddress: EMPTY_ADDRESS })
@@ -476,6 +489,7 @@ export function CheckoutShippingClient({
   // several set() calls each spreading a stale address.
   function applyBillingLookup(picked: ShpLookupAddress) {
     const next = { ...billing, line1: picked.line1, line2: picked.line2, city: picked.city, county: picked.county, postcode: picked.postcode }
+    setBillingLookup({ county: picked.county, postcode: picked.postcode })
     setBilling(next)
     updateCheckoutState({ billingAddress: next })
     if (billingChoice?.kind !== 'saved') setBillingChoice({ kind: 'new' })

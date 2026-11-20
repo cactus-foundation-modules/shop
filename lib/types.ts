@@ -1145,9 +1145,10 @@ export type ShpInvoice = {
   updatedAt: Date
 }
 
-/** One correction to the billing address on an issued invoice.
+/** One correction to an address on an issued invoice - the billing address,
+ *  or the delivery address printed beside it.
  *
- *  Only ever the address. A change of NAME is a change of the party being
+ *  Only ever an address. A change of NAME is a change of the party being
  *  billed, which is credited and reissued rather than edited - see
  *  lib/customer-billing.ts for where that line is drawn and why.
  *
@@ -1160,7 +1161,9 @@ export type ShpInvoiceCustomerAmendment = {
   at: string
   /** 'CUSTOMER' where the buyer corrected it from their own order page. */
   by: 'CUSTOMER' | 'STAFF'
-  field: 'billingAddress'
+  /** 'shippingAddress' only by staff so far: a delivery address on a raised
+   *  invoice corrected by hand (e.g. a county a lookup left behind). */
+  field: 'billingAddress' | 'shippingAddress'
   was: string[]
   now: string[]
 }
