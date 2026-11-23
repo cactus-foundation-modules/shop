@@ -10,6 +10,7 @@ import {
   HandIcon, MailIcon, NewTabIcon, PenIcon, ReceiptIcon, TickIcon, TruckIcon, UndoIcon, VoidIcon,
 } from '@/modules/shop/components/admin/order-icons'
 import { RefundModal } from '@/modules/shop/components/admin/RefundModal'
+import { useOrdersListQuery } from '@/modules/shop/lib/orders-list-return'
 import { OrderChargesPanel } from '@/modules/shop/components/admin/OrderChargesPanel'
 import type { ShpRefundNoticeSource } from '@/modules/shop/lib/payments/refund-notice'
 import { DispatchModal } from '@/modules/shop/components/admin/DispatchModal'
@@ -515,6 +516,9 @@ export function OrderDetailScreen({ orderId, children, panels }: {
   const [alert, alertNode] = useAlert()
   const [confirm, confirmNode] = useConfirm()
   const [prompt, promptNode] = usePrompt()
+  // The list this order was opened from, filters and all, so the back arrow
+  // does not drop the owner on the unfiltered list.
+  const listQuery = useOrdersListQuery()
 
   const [data, setData] = useState<OrderDetail | null>(null)
   const [dispatch, setDispatch] = useState<DispatchDetail | null>(null)
@@ -1142,9 +1146,9 @@ export function OrderDetailScreen({ orderId, children, panels }: {
           <div className="sox-orderhead-title">
             {/* The way back to the list, drawn as the inbox draws its own on a
                 phone: a chevron in glass, icon only. */}
-            <a className="sod-back sox-noprint" href={`/${adminPath}/m/shop/orders`} title="Back to all orders">
+            <a className="sod-back sox-noprint" href={`/${adminPath}/m/shop/orders${listQuery ? `?${listQuery}` : ''}`} title="Back to orders">
               <span aria-hidden="true">{BackIcon}</span>
-              <span className="sr-only">Back to all orders</span>
+              <span className="sr-only">Back to orders</span>
             </a>
             <h1>Order {order.orderNumber}</h1>
             <p className="sox-orderhead-meta">

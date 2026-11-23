@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useAdminPath } from '@/components/admin/AdminPathContext'
 import { ordersScreenCss } from '@/modules/shop/components/admin/orders-screen-css'
 import {
@@ -17,6 +18,8 @@ import { formatMoney } from '@/modules/shop/lib/money'
 import { formatDeliveryDayShort } from '@/modules/shop/lib/delivery-slot'
 import { useCurrencySymbol } from '@/modules/shop/components/admin/use-currency-symbol'
 import { useAlert, useConfirm } from '@/modules/shop/components/admin/dialogs'
+import { OrderItemsModal } from '@/modules/shop/components/admin/OrderItemsModal'
+import { rememberOrdersListQuery } from '@/modules/shop/lib/orders-list-return'
 import type { ShpAddress } from '@/modules/shop/lib/types'
 
 type OrderRow = {
@@ -117,8 +120,14 @@ type Filters = {
 
 const DEFAULTS: Filters = {
   search: '', status: '', paymentStatus: '', fulfilment: '', preOrder: false, openOnly: false,
-  dateFrom: '', dateTo: '', sort: 'newest', page: 1, perPage: 25,
+  dateFrom: '', dateTo: '', sort: 'newest', page: 1, perPage: 50,
 }
+
+// The page sizes on offer. A size not on this list (an old link saying 25, a
+// hand-edited URL) opens on the default instead: the picker can only show a
+// value it has, and one it lacks reads as its first option while the list
+// quietly shows something else.
+const PER_PAGE_OPTIONS = [50, 100, 250] as const
 
 const STATUS_TABS: Array<{ value: string; label: string }> = [
   { value: '', label: 'All' },
@@ -162,7 +171,8 @@ function filtersToParams(f: Filters): URLSearchParams {
   return p
 }
 
-function paramsToFilters(p: URLSearchParams): Filters {
+function paramsToFilters(p: { get(name: string): string | null }): Filters {
+  const perPage = Number(p.get('perPage'))
   return {
     search: p.get('search') ?? '',
     status: p.get('status') ?? '',
@@ -174,7 +184,7 @@ function paramsToFilters(p: URLSearchParams): Filters {
     dateTo: p.get('dateTo') ?? '',
     sort: p.get('sort') ?? DEFAULTS.sort,
     page: Math.max(1, Number(p.get('page')) || 1),
-    perPage: Math.min(200, Math.max(5, Number(p.get('perPage')) || DEFAULTS.perPage)),
+    perPage: (PER_PAGE_OPTIONS as readonly number[]).includes(perPage) ? perPage : DEFAULTS.perPage,
   }
 }
 
@@ -184,11 +194,15 @@ export function OrdersScreen() {
   const [alert, alertNode] = useAlert()
   const [confirm, confirmNode] = useConfirm()
 
-  // Read straight from the address bar on first render so a link to a filtered
-  // list opens on that list rather than flashing the default one first.
-  const [filters, setFilters] = useState<Filters>(() =>
-    typeof window === 'undefined' ? DEFAULTS : paramsToFilters(new URLSearchParams(window.location.search))
-  )
+  // Read from the router's own query on first render so a link to a filtered
+  // list opens on that list rather than flashing the default one first. Not
+  // window.location: on an in-app navigation that still holds the PREVIOUS
+  // page's address while this one renders (so the list opened with another
+  // screen's page size), and on the server it does not exist at all, so the
+  // server drew the default filters and the browser back button came back to a
+  // list whose buttons said "All" whatever it was filtered on.
+  const searchParams = useSearchParams()
+  const [filters, setFilters] = useState<Filters>(() => paramsToFilters(searchParams))
   const [searchBox, setSearchBox] = useState(filters.search)
 
   const [orders, setOrders] = useState<OrderRow[]>([])
@@ -210,6 +224,9 @@ export function OrdersScreen() {
   // Bumped whenever something changes an order, so the counters at the top are
   // re-read rather than sitting there stale after a bulk change.
   const [overviewToken, setOverviewToken] = useState(0)
+  // The order whose products are open in the pop-up from its item count.
+  const [itemsFor, setItemsFor] = useState<{ id: string; orderNumber: string } | null>(null)
+  const closeItems = useCallback(() => setItemsFor(null), [])
 
   function update(patch: Partial<Filters>) {
     // Any change to what is being looked at goes back to page one - staying on
@@ -231,6 +248,8 @@ export function OrdersScreen() {
     const query = filtersToParams(filters).toString()
     const url = query ? `${window.location.pathname}?${query}` : window.location.pathname
     window.history.replaceState(null, '', url)
+    // And remembered, so the back arrow on an order returns to this list.
+    rememberOrdersListQuery(query)
   }, [filters])
 
   const refresh = useCallback(() => {
@@ -669,7 +688,17 @@ export function OrdersScreen() {
                       ) : '—'}
                     </td>
                     <td className="sox-nowrap">
-                      {m ? `${m.unitCount} item${m.unitCount === 1 ? '' : 's'}` : '—'}
+                      {m ? (
+                        <button
+                          type="button"
+                          className="sox-items-btn"
+                          aria-haspopup="dialog"
+                          title="See the products on this order"
+                          onClick={() => setItemsFor({ id: o.id, orderNumber: o.orderNumber })}
+                        >
+                          {m.unitCount} item{m.unitCount === 1 ? '' : 's'}
+                        </button>
+                      ) : '—'}
                       {m && m.lineCount !== m.unitCount && <p className="sox-sub">{m.lineCount} product{m.lineCount === 1 ? '' : 's'}</p>}
                     </td>
                     <td>
@@ -719,9 +748,7 @@ export function OrdersScreen() {
           <span className="sox-pager-info">Showing {firstOnPage}–{lastOnPage} of {total}</span>
           <div className="sox-pager-btns">
             <select className="sox-select" aria-label="Orders per page" value={filters.perPage} onChange={(e) => update({ perPage: Number(e.target.value) })}>
-              <option value={25}>25 per page</option>
-              <option value={50}>50 per page</option>
-              <option value={100}>100 per page</option>
+              {PER_PAGE_OPTIONS.map((n) => <option key={n} value={n}>{n} per page</option>)}
             </select>
             <button type="button" className="btn btn-secondary btn-sm" disabled={filters.page <= 1} onClick={() => setFilters((f) => ({ ...f, page: Math.max(1, f.page - 1) }))}>Previous</button>
             <span className="btn btn-ghost btn-sm" style={{ pointerEvents: 'none' }}>Page {filters.page} of {pageCount}</span>
@@ -753,6 +780,16 @@ export function OrdersScreen() {
             ))}
           </div>
         </>
+      )}
+
+      {itemsFor && (
+        <OrderItemsModal
+          orderId={itemsFor.id}
+          orderNumber={itemsFor.orderNumber}
+          orderHref={`/${adminPath}/m/shop/orders/${itemsFor.id}`}
+          currencySymbol={currencySymbol}
+          onClose={closeItems}
+        />
       )}
 
       {alertNode}

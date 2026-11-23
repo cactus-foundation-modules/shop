@@ -233,4 +233,30 @@ export const ordersScreenCss = `
 .sox-stranded-error{margin:0.375rem 0 0;font-size:0.6875rem;line-height:1.4;
   font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);
   color:var(--color-text-muted);word-break:break-word;overflow-wrap:anywhere}
+
+/* --- Items count and its products pop-up --------------------------------- */
+.sox-items-btn{background:none;border:0;padding:0;font:inherit;color:var(--color-primary);
+  text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.sox-items-btn:hover{color:var(--color-primary-hover,var(--color-primary))}
+.sox-items-btn:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px;border-radius:2px}
+.sox-im-overlay{position:fixed;inset:0;z-index:10000;background:var(--color-overlay);
+  display:flex;align-items:center;justify-content:center;padding:1rem}
+.sox-im{background:var(--color-surface);color:var(--color-text);border:1px solid var(--color-border);
+  border-radius:var(--radius-lg);width:100%;max-width:560px;max-height:min(80vh,720px);
+  display:flex;flex-direction:column;box-shadow:0 25px 50px -12px var(--color-overlay)}
+.sox-im-head{padding:1rem 1.25rem 0.75rem;border-bottom:1px solid var(--color-border)}
+.sox-im-title{margin:0;font-size:1rem;font-weight:600}
+.sox-im-body{overflow-y:auto;padding:0.25rem 1.25rem}
+.sox-im-note{margin:1rem 0;font-size:0.875rem;color:var(--color-text-secondary)}
+.sox-im-list{list-style:none;margin:0;padding:0}
+.sox-im-line{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:0.75rem;
+  align-items:baseline;padding:0.75rem 0;border-bottom:1px solid var(--color-border)}
+.sox-im-line:last-child{border-bottom:0}
+.sox-im-qty{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sox-im-name{font-weight:600;overflow-wrap:anywhere}
+.sox-im-opt{color:var(--color-text-muted)}
+.sox-im-badges{margin-top:0.375rem}
+.sox-im-total{font-variant-numeric:tabular-nums;white-space:nowrap}
+.sox-im-foot{display:flex;justify-content:flex-end;gap:0.5rem;padding:0.75rem 1.25rem;
+  border-top:1px solid var(--color-border)}
 `

@@ -11,9 +11,10 @@ import type { ShpAddress, ShpOrder } from '@/modules/shop/lib/types'
 // (see below), because a spreadsheet that is quietly short reads as the lot.
 const EXPORT_MAX_ORDERS = 5000
 
-// listOrders serves the screen and clamps a page to 200 whatever it is asked
-// for, so the export walks pages of that size. Asking it for 5000 in one go
-// used to return the first 200 and nothing to say the rest were missing.
+// listOrders serves the screen and clamps a page (ORDER_LIST_MAX_PER_PAGE)
+// whatever it is asked for, so the export walks pages instead. Asking it for
+// 5000 in one go used to return the first page and nothing to say the rest
+// were missing. 200 sits under that ceiling, so every page comes back whole.
 const EXPORT_PAGE_SIZE = 200
 
 // A download of whatever the orders screen is currently showing - same filters,

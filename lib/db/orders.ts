@@ -869,9 +869,13 @@ const PAYMENT_FILTER_SQL: Partial<Record<ShpPaymentStatus, Prisma.Sql>> = {
   REFUNDED: Prisma.sql`(o."payment_status" = 'REFUNDED' OR (o."payment_status" = 'PAID' AND o."status" = 'REFUNDED'))`,
 }
 
+// The biggest page the orders screen offers. One page is one query plus one
+// metrics read for the whole page, so 250 rows costs two reads, not 250.
+export const ORDER_LIST_MAX_PER_PAGE = 250
+
 export async function listOrders(filter: ListOrdersFilter): Promise<{ orders: ShpOrder[]; total: number }> {
   const page = Math.max(1, Math.floor(Number(filter.page)) || 1)
-  const perPage = Math.min(200, Math.max(1, Math.floor(Number(filter.perPage)) || 25))
+  const perPage = Math.min(ORDER_LIST_MAX_PER_PAGE, Math.max(1, Math.floor(Number(filter.perPage)) || 50))
   const offset = (page - 1) * perPage
 
   const conditions: Prisma.Sql[] = []
