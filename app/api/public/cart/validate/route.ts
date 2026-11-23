@@ -122,7 +122,13 @@ export async function POST(request: NextRequest) {
       quantityLocked: line.quantityLocked === true,
       removable: line.removable !== false,
       // Normalised personalisation for display (null for a plain line).
-      lineMeta: line.lineMeta,
+      // A line with its own options line (CartLineIdentity.secondary) keeps the
+      // same words as a detail row too, because the ORDER prints rows and not
+      // the basket's secondary line. In the basket that reads twice, one under
+      // the other, so a row that only restates the secondary is left out here.
+      lineMeta: line.identity?.secondary && line.lineMeta
+        ? { ...line.lineMeta, fields: line.lineMeta.fields.filter((f) => String(f.value) !== line.identity?.secondary) }
+        : line.lineMeta,
       // Optional per-line picker a resolver offered (e.g. a delivery tier).
       control,
       // Optional cart-display retitle (e.g. a variant's base name + options).
