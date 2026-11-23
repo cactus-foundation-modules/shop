@@ -231,7 +231,7 @@ export async function GET(request: NextRequest) {
       unitPrice: item.unitPrice,
       total: item.total,
       lineMeta: item.lineMeta,
-      imageUrl: imageFor(item.productId),
+      imageUrl: item.lineMeta?.imageUrl ?? imageFor(item.productId),
     })),
     instructions,
     manualPayment,

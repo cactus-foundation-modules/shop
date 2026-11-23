@@ -4,7 +4,7 @@ import { requireShopUser } from '@/modules/shop/lib/access'
 import { listOrders, createPendingOrder } from '@/modules/shop/lib/db'
 import { getOrderRowMetrics, getOrdersOverview } from '@/modules/shop/lib/db/orders'
 import { parseOrderListFilter } from '@/modules/shop/lib/order-filters'
-import { resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkout'
+import { orderItemIdentity, resolveCartLines, resolveOrderTotals } from '@/modules/shop/lib/checkout'
 import { findShippingZoneForPostcode } from '@/modules/shop/lib/db/tax-shipping'
 import { generateOrderNumber } from '@/modules/shop/lib/order-number'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
     currency: config.currency,
     paymentMethod: data.paymentMethod,
     items: totals.lineItems.map((l) => ({
-      productId: l.product.id, productName: l.product.name, productSku: l.product.sku, saleSku: l.saleSku, productType: l.product.type,
+      ...orderItemIdentity(l), saleSku: l.saleSku, productType: l.product.type,
       quantity: l.quantity, unitPrice: l.unitPrice, taxRate: l.taxRate, taxAmount: l.taxAmount, total: l.lineTotal,
       isPreOrder: l.isPreOrder, preOrderDispatchDate: l.product.preOrderDispatchDate, lineMeta: l.lineMeta,
       orderSizeDeduction: l.orderSizeDeduction ?? null,

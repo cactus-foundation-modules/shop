@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { blockedLinesMessage, resolveCartLines, resolveOrderTotals, round2 } from '@/modules/shop/lib/checkout'
+import { blockedLinesMessage, orderItemIdentity, resolveCartLines, resolveOrderTotals, round2 } from '@/modules/shop/lib/checkout'
 import { resolveShippingZoneForPostcode, getShippingRateById } from '@/modules/shop/lib/db/tax-shipping'
 import { excludedPostcodeMessage, refusesDelivery } from '@/modules/shop/lib/excluded-postcode'
 import { createPendingOrder, type CreateOrderInput } from '@/modules/shop/lib/db/orders'
@@ -338,9 +338,9 @@ export async function POST(request: NextRequest) {
     agreements: agreementRecord,
     marketingConsent,
     items: totals.lineItems.map((l) => ({
-      productId: l.product.id,
-      productName: l.product.name,
-      productSku: l.product.sku,
+      // The product, or the name the line was agreed under and no product at
+      // all for a line that never had one - see orderItemIdentity.
+      ...orderItemIdentity(l),
       saleSku: l.saleSku,
       productType: l.product.type,
       quantity: l.quantity,

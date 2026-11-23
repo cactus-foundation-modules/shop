@@ -64,6 +64,13 @@ type ValidatedLine = {
   // no minimum at all.
   minOrderQuantity?: number
   minOrderPooled?: boolean
+  // An agreed line's rules (see CartLineResolution.quantityLocked/removable):
+  // a fixed charge's quantity cannot be changed, and some lines cannot be taken
+  // out. Absent reads as the ordinary answer. A line with no page (a quoted
+  // charge with no product behind it) arrives with an empty slug and is not a
+  // link.
+  quantityLocked?: boolean
+  removable?: boolean
   lineId?: string | null; lineMeta?: LineMeta | null
   control?: CartLineControl | null
   displayTitle?: CartLineTitle | null
@@ -388,7 +395,9 @@ export function CartDrawerClient({
                 {attachment?.caption && (
                   <p className="scd-sec" style={{ margin: '0 0 0.125rem' }}><span aria-hidden="true">↳ </span>{attachment.caption}</p>
                 )}
-                <a className="scd-name" href={productHref(line.slug, urlStyle)}>{title}</a>
+                {line.slug
+                  ? <a className="scd-name" href={productHref(line.slug, urlStyle)}>{title}</a>
+                  : <span className="scd-name">{title}</span>}
                 {secondary && <p className="scd-sec">{secondary}</p>}
                 {!line.available && (
                   <p className="scd-warn">
@@ -406,19 +415,25 @@ export function CartDrawerClient({
               <div className="scd-side">
                 <CartLinePrice className="scd-price" now={money(line.lineSubtotal)} was={wasPrice(line)} />
                 <div className="scd-qty">
-                  <QuantityStepper
-                    value={line.quantity}
-                    label={`Quantity for ${title}`}
-                    min={line.minOrderPooled ? 1 : minOrderQuantity(line.minOrderQuantity)}
-                    onChange={(next) => setLineQuantity(key, Math.max(0, next))}
-                  />
+                  {line.quantityLocked
+                    ? <span style={{ color: 'var(--color-text-muted)' }}>× {line.quantity}</span>
+                    : (
+                      <QuantityStepper
+                        value={line.quantity}
+                        label={`Quantity for ${title}`}
+                        min={line.minOrderPooled ? 1 : minOrderQuantity(line.minOrderQuantity)}
+                        onChange={(next) => setLineQuantity(key, Math.max(0, next))}
+                      />
+                    )}
                 </div>
-                <button
-                  type="button" className="scd-removetxt" aria-label={`Remove ${title}`}
-                  onClick={() => (members.length > 1 ? setConfirmingKey(key) : removeLine(key, title))}
-                >
-                  Remove
-                </button>
+                {line.removable !== false && (
+                  <button
+                    type="button" className="scd-removetxt" aria-label={`Remove ${title}`}
+                    onClick={() => (members.length > 1 ? setConfirmingKey(key) : removeLine(key, title))}
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
               {confirmingKey === key && members.length > 1 && (
                 <div

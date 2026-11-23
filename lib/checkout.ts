@@ -7,7 +7,8 @@ import { getCouponByCode, listAutomaticDiscounts } from '@/modules/shop/lib/db/d
 import { countPriorCouponOrdersByEmail } from '@/modules/shop/lib/db/orders'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { effectivePrice } from '@/modules/shop/lib/pricing'
-import { getCartLineResolvers, getCartLineResolverPrefetchers, resolveLineMeta, type CartLineCharge, type CartLineControl, type CartLineGroup, type CartLineTitle } from '@/modules/shop/lib/line-meta'
+import { getCartLineResolvers, getCartLineResolverPrefetchers, resolveLineMeta, type CartLineCharge, type CartLineControl, type CartLineGroup, type CartLineIdentity, type CartLineTitle } from '@/modules/shop/lib/line-meta'
+import { isVirtualProductId, loadVirtualProducts } from '@/modules/shop/lib/virtual-cart-products'
 import { minOrderQuantity, minOrderShortfallReason } from '@/modules/shop/lib/min-order'
 import { applyCartRequirements } from '@/modules/shop/lib/cart-requirements'
 import { isReturnable } from '@/modules/shop/lib/returnable'
@@ -100,6 +101,33 @@ export type ResolvedCartLine = {
   // pinned to products matches against. Optional only so a line built by hand
   // elsewhere still type-checks; read it as `listingId ?? product.id`.
   listingId?: string | null
+  // The agreed-price facts a resolver settled for this line (see
+  // CartLineResolution.priceOverride onwards in lib/line-meta.ts). All optional
+  // so a line built by hand elsewhere still type-checks; absent reads as the
+  // ordinary answer - no floor, quantity free, removable, discounts apply.
+  quantityFloor?: number | null
+  quantityLocked?: boolean
+  removable?: boolean
+  discountExempt?: boolean
+  // What the line is called, where that is not the product's own name. The
+  // basket shows it and the order snapshots it - see orderItemIdentity.
+  identity?: CartLineIdentity | null
+  // A line with no product behind it (lib/virtual-cart-products.ts). Its
+  // `product` is a stand-in that exists for this request only, so nothing may
+  // store its id as a product reference or count its stock.
+  virtual?: boolean
+}
+
+/** What an order item is called, its SKU and its stored product reference,
+ *  for one resolved line - the resolver's identity where it gave one, else the
+ *  product's own. One function so the three order-item builders (checkout,
+ *  staff order entry, the payment-note preview) cannot disagree. */
+export function orderItemIdentity(line: ResolvedCartLine): { productId: string | null; productName: string; productSku: string | null } {
+  return {
+    productId: line.virtual ? null : line.product.id,
+    productName: line.identity?.name ?? line.product.name,
+    productSku: line.identity ? (line.identity.sku ?? null) : line.product.sku,
+  }
 }
 
 // Turns a resolver's per-unit charge attributions into this line's own totals,
@@ -158,8 +186,12 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[], opts?: Res
     getCartLineResolvers(),
     getCartLineResolverPrefetchers(),
     getShopConfigCached(),
-    getProductsByIds(cart.map((line) => line.productId)),
+    getProductsByIds(cart.map((line) => line.productId).filter((id) => !isVirtualProductId(id))),
   ])
+  // Lines with no product behind them, answered for by the module that minted
+  // them (see lib/virtual-cart-products.ts). Folded into the same map so every
+  // pass below treats them like any other line.
+  for (const [id, product] of await loadVirtualProducts(cart.map((line) => line.productId))) products.set(id, product)
 
   // Warm every contributing module's request-scoped cache once for the whole
   // cart (delivery estimates, add-on lookups). After this the per-line resolvers
@@ -196,10 +228,18 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[], opts?: Res
     const product = products.get(line.productId)
     if (!product || product.status !== 'ACTIVE') return null
 
+    // Personalisation add-ons: a registered resolver validates the shopper's
+    // inputs and returns a server-authoritative price adjustment. An invalid
+    // input fails the line just like an out-of-stock one. The client never
+    // sends a price - only the raw meta it collected. Resolved before the stock
+    // check because a resolver can take the line out of stock's hands entirely
+    // (an agreed made-to-order line - see CartLineResolution.stockExempt).
+    const metaResolution = await resolveLineMeta(product, line.meta, resolvers)
+
     let available = true
     let availabilityReason: string | undefined
     const wanted = wantedByProduct.get(line.productId) ?? line.quantity
-    if (product.trackInventory) {
+    if (product.trackInventory && !metaResolution.stockExempt) {
       const stock = product.stockCount ?? 0
       if (stock <= 0) {
         if (product.isPreOrder) {
@@ -214,6 +254,7 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[], opts?: Res
       }
     }
     if (
+      !metaResolution.stockExempt &&
       product.isPreOrder &&
       product.preOrderMaxQuantity != null &&
       product.preOrderCount + wanted > product.preOrderMaxQuantity
@@ -222,11 +263,6 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[], opts?: Res
       availabilityReason = 'Pre-order is no longer available'
     }
 
-    // Personalisation add-ons: a registered resolver validates the shopper's
-    // inputs and returns a server-authoritative price adjustment. An invalid
-    // input fails the line just like an out-of-stock one. The client never
-    // sends a price - only the raw meta it collected.
-    const metaResolution = await resolveLineMeta(product, line.meta, resolvers)
     if (!metaResolution.valid) {
       available = false
       availabilityReason = metaResolution.reason ?? 'Please check the options on this item'
@@ -239,6 +275,13 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[], opts?: Res
     if (product.partsOnly && !opts?.includeParts) {
       available = false
       availabilityReason = 'No longer available'
+    }
+    // The line's own floor - an agreed quantity, never pooled (contrast the
+    // minimum below). Checked only where nothing worse is already wrong.
+    const quantityFloor = metaResolution.quantityFloor != null && metaResolution.quantityFloor > 1 ? metaResolution.quantityFloor : null
+    if (available && quantityFloor != null && line.quantity < quantityFloor) {
+      available = false
+      availabilityReason = `This was agreed for at least ${quantityFloor}`
     }
 
     // The minimum this line answers to: its own product row, or the resolver's
@@ -282,11 +325,16 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[], opts?: Res
     // effectivePrice, not product.price: a product on offer is charged its sale
     // price. Resolved here rather than at display time so the figure charged is
     // the one the server worked out, never one the client sent.
-    const unitPrice = effectivePrice(product, enabledPriceTypes) + metaResolution.priceAdjust
+    // An agreed price (see CartLineResolution.priceOverride) replaces the
+    // product's own; every resolver's adjustment - a delivery service - still
+    // goes on top of whichever it is.
+    const agreedPrice = metaResolution.priceOverride ?? null
+    const unitPrice = (agreedPrice ?? effectivePrice(product, enabledPriceTypes)) + metaResolution.priceAdjust
     // Settled here, alongside the price it goes with, and nowhere else - see
     // ShpOrderItem.saleSku for why every order-item builder just carries this
-    // through rather than asking the product again.
-    const saleSku = isOnSale(product, enabledPriceTypes) ? (product.saleSku?.trim() || null) : null
+    // through rather than asking the product again. An agreed price is not the
+    // sale price, whatever the product is on today.
+    const saleSku = agreedPrice == null && isOnSale(product, enabledPriceTypes) ? (product.saleSku?.trim() || null) : null
     return {
       product,
       quantity: line.quantity,
@@ -316,6 +364,12 @@ export async function resolveCartLinesWithDeduction(cart: CartLine[], opts?: Res
       // and a discounted product can otherwise disagree about what is left.
       charges: attributeCharges(metaResolution.charges, unitPrice, line.quantity),
       group: metaResolution.group ?? null,
+      quantityFloor,
+      quantityLocked: metaResolution.quantityLocked === true,
+      removable: metaResolution.removable !== false,
+      discountExempt: metaResolution.discountExempt === true,
+      identity: metaResolution.identity ?? null,
+      virtual: isVirtualProductId(product.id),
     }
   }))
   const pooled = applyMinimumOrderQuantities(resolved.filter((line): line is PoolingLine => line !== null))
@@ -364,7 +418,9 @@ export async function applyOrderSizeDeductions(
     quantity: line.quantity,
     lineSubtotal: line.lineSubtotal,
     charges: line.charges ?? null,
-    deduction: deductionAmount(line.product.orderSizeDeduction),
+    // An agreed price is already the deal - nothing comes off it, and it does
+    // not count towards anyone's threshold either.
+    deduction: line.discountExempt ? null : deductionAmount(line.product.orderSizeDeduction),
   }))
 
   // Nothing carrying an amount means nothing to deduct and nothing to say, so
@@ -421,8 +477,17 @@ export type PoolingLine = ResolvedCartLine & { minOrderGroupKey: string | null }
 // a minimum is no help when the thing cannot be bought at all.
 export function applyMinimumOrderQuantities(lines: PoolingLine[]): ResolvedCartLine[] {
   const pools = new Map<string, { requirement: number; total: number; pooled: boolean }>()
+  // A line on an agreed quantity (CartLineResolution.quantityFloor) answers to
+  // that agreement, not to the listing's minimum: it stands in a pool of its
+  // own whose requirement is its floor, which the resolve pass already checked.
+  const keyOf = (line: PoolingLine) =>
+    line.quantityFloor != null ? `agreed:${line.lineId ?? line.product.id}` : (line.minOrderGroupKey ?? `product:${line.product.id}`)
   for (const line of lines) {
-    const key = line.minOrderGroupKey ?? `product:${line.product.id}`
+    if (line.quantityFloor != null) {
+      pools.set(keyOf(line), { requirement: line.quantityFloor, total: line.quantity, pooled: false })
+      continue
+    }
+    const key = keyOf(line)
     const pool = pools.get(key)
     if (pool) {
       pool.requirement = Math.max(pool.requirement, line.minOrderQuantity)
@@ -436,8 +501,9 @@ export function applyMinimumOrderQuantities(lines: PoolingLine[]): ResolvedCartL
     }
   }
 
-  return lines.map(({ minOrderGroupKey, ...line }) => {
-    const pool = pools.get(minOrderGroupKey ?? `product:${line.product.id}`)!
+  return lines.map((pooling) => {
+    const pool = pools.get(keyOf(pooling))!
+    const { minOrderGroupKey: _key, ...line } = pooling
     const out: ResolvedCartLine = {
       ...line,
       minOrderQuantity: pool.requirement,
@@ -610,7 +676,9 @@ export type DiscountLine = { productId: string; listingId?: string | null; quant
 
 /** A resolved basket, as resolveDiscounts reads it. */
 export function discountLines(lines: ResolvedCartLine[]): DiscountLine[] {
-  return lines.map((l) => ({ productId: l.product.id, listingId: l.listingId ?? null, quantity: l.quantity, lineSubtotal: l.lineSubtotal }))
+  // A line on an agreed price takes no discount and is not part of the base any
+  // discount is worked out from (see CartLineResolution.discountExempt).
+  return lines.filter((l) => !l.discountExempt).map((l) => ({ productId: l.product.id, listingId: l.listingId ?? null, quantity: l.quantity, lineSubtotal: l.lineSubtotal }))
 }
 
 export type ShippingResolution = { rateId: string | null; rateName: string | null; amount: number }
@@ -709,7 +777,11 @@ export async function resolveOrderTotals(params: {
   const config = await getShopConfigCached()
   const subtotal = params.lines.reduce((sum, l) => sum + l.lineSubtotal, 0)
   const discounts = await resolveDiscounts(discountLines(params.lines), params.couponCode, params.customerEmail)
-  const discountRatio = subtotal > 0 ? discounts.discountAmount / subtotal : 0
+  // The discount comes off the lines it was worked out from and no others, so
+  // the tax relief lands where the money did: a line on an agreed price keeps
+  // its whole taxable base.
+  const discountableSubtotal = params.lines.reduce((sum, l) => sum + (l.discountExempt ? 0 : l.lineSubtotal), 0)
+  const discountRatio = discountableSubtotal > 0 ? discounts.discountAmount / discountableSubtotal : 0
 
   let taxAmount = 0
   const lineItems: OrderTotals['lineItems'] = []
@@ -720,7 +792,7 @@ export async function resolveOrderTotals(params: {
   const taxZoneId = params.taxZoneId !== undefined ? params.taxZoneId : params.zoneId
   for (const line of params.lines) {
     const taxRate = taxZoneId ? await getTaxRateForZoneAndClass(taxZoneId, line.product.taxClassId) : 0
-    const taxableBase = line.lineSubtotal * (1 - discountRatio)
+    const taxableBase = line.discountExempt ? line.lineSubtotal : line.lineSubtotal * (1 - discountRatio)
     const lineTax = config.taxMode === 'INCLUSIVE'
       ? taxableBase - taxableBase / (1 + taxRate)
       : taxableBase * taxRate

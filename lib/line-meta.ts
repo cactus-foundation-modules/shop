@@ -192,6 +192,48 @@ export type CartLineResolution = {
   // saying "at our discretion" is never talked back up into a promise. Absent
   // reads as false, so an older companion module behaves as it does today.
   returns?: { returnable: boolean; note: string | null; discretionary?: boolean } | null
+  // An agreed price for this line, replacing what the product itself costs
+  // (its own or sale price). PER UNIT, and the figure every other resolver's
+  // priceAdjust is then added to - so a delivery service chosen on the line is
+  // still charged on top of it. Built for a price an owner quoted by hand: the
+  // resolver offering one must have checked it against something the shopper
+  // cannot write (a saved quote), because shop takes it as given. First
+  // resolver to name one keeps it - a line has one agreed price.
+  priceOverride?: number | null
+  // The fewest this LINE may be bought in, counted against the line alone and
+  // never pooled with its neighbours (contrast CartLineMinOrder). A quoted
+  // quantity is a promise about this line: the stepper stops there and the
+  // checkout refuses fewer. The strictest resolver wins.
+  quantityFloor?: number | null
+  // Whether the line's quantity may not be changed at all (a fixed charge). Any
+  // resolver saying so settles it.
+  quantityLocked?: boolean
+  // Whether the shopper may take the line out of the basket. Absent reads as
+  // yes; any resolver saying no settles it.
+  removable?: boolean
+  // Leave stock out of it: the line is made to order against an agreement, so
+  // neither a low count nor a pre-order ceiling may refuse it, and its quantity
+  // is not counted against the product's stock. Any resolver saying so settles it.
+  stockExempt?: boolean
+  // Keep discounts off this line - coupons, automatic discounts and the
+  // supplier order-size deduction. The price on it is already the deal. Any
+  // resolver saying so settles it.
+  discountExempt?: boolean
+  // What the line is CALLED, where that is not the product's own name - a
+  // one-off made-up item quoted on the back of a real listing. Wins over
+  // displayTitle in the basket, and is what the order snapshots as the item's
+  // name, SKU and picture, so the order says what was actually sold. First
+  // resolver to name one keeps it.
+  identity?: CartLineIdentity | null
+}
+
+/** See CartLineResolution.identity. `secondary` is the line under the name (a
+ *  custom set of options); `imageUrl` replaces the product's own picture. */
+export type CartLineIdentity = {
+  name: string
+  secondary?: string | null
+  sku?: string | null
+  imageUrl?: string | null
 }
 
 // What a resolver can tell shop about a line's minimum order, where the product
@@ -332,6 +374,17 @@ export async function resolveLineMeta(
 ): Promise<CartLineResolution> {
   if (resolvers.length === 0) return { valid: true, priceAdjust: 0, persistMeta: null, control: null, displayTitle: null, charges: null }
 
+  // The agreed-price fields (see CartLineResolution.priceOverride onwards),
+  // folded the way their comments there say: first writer keeps a price or a
+  // name, the strictest floor wins, and any single "no" settles a yes/no.
+  let priceOverride: number | null = null
+  let quantityFloor: number | null = null
+  let quantityLocked = false
+  let removable = true
+  let stockExempt = false
+  let discountExempt = false
+  let identity: CartLineIdentity | null = null
+
   let priceAdjust = 0
   let valid = true
   let reason: string | undefined
@@ -411,6 +464,17 @@ export async function resolveLineMeta(
       }
     }
     if (!listingId && res.listingId) listingId = res.listingId
+    if (priceOverride == null && res.priceOverride != null && Number.isFinite(res.priceOverride) && res.priceOverride >= 0) {
+      priceOverride = res.priceOverride
+    }
+    if (res.quantityFloor != null && Number.isFinite(res.quantityFloor) && res.quantityFloor > 1) {
+      quantityFloor = Math.max(quantityFloor ?? 1, Math.floor(res.quantityFloor))
+    }
+    if (res.quantityLocked) quantityLocked = true
+    if (res.removable === false) removable = false
+    if (res.stockExempt) stockExempt = true
+    if (res.discountExempt) discountExempt = true
+    if (!identity && res.identity?.name) identity = res.identity
     if (!batch && res.persistMeta?.batch) batch = res.persistMeta.batch
     if (res.returns) {
       returnsAnswered = true
@@ -439,8 +503,16 @@ export async function resolveLineMeta(
     // order raised off this line months later has to know what the delivery
     // service cost, and the resolver that priced it is long gone. Note the
     // figure stored is the per-unit, unclamped one - see LineMeta.charges.
-    persistMeta: fields.length || data || group || batch || charges.length
-      ? { fields, ...(data ? { data } : {}), ...(group ? { group } : {}), ...(batch ? { batch } : {}), ...(charges.length ? { charges } : {}) }
+    persistMeta: fields.length || data || group || batch || charges.length || stockExempt || identity?.imageUrl
+      ? {
+          fields,
+          ...(data ? { data } : {}),
+          ...(group ? { group } : {}),
+          ...(batch ? { batch } : {}),
+          ...(charges.length ? { charges } : {}),
+          ...(stockExempt ? { stockExempt: true } : {}),
+          ...(identity?.imageUrl ? { imageUrl: identity.imageUrl } : {}),
+        }
       : null,
     reason,
     control,
@@ -452,5 +524,12 @@ export async function resolveLineMeta(
     returns: returnsAnswered
       ? { returnable: returnsFlag, note: returnsNote, discretionary: returnsDiscretion }
       : null,
+    priceOverride,
+    quantityFloor,
+    quantityLocked,
+    removable,
+    stockExempt,
+    discountExempt,
+    identity,
   }
 }

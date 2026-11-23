@@ -46,6 +46,13 @@ type ValidatedLine = {
   // no minimum at all.
   minOrderQuantity?: number
   minOrderPooled?: boolean
+  // An agreed line's rules (see CartLineResolution.quantityLocked/removable):
+  // a fixed charge's quantity cannot be changed, and some lines cannot be taken
+  // out. Absent reads as the ordinary answer. A line with no page (a quoted
+  // charge with no product behind it) arrives with an empty slug and is not a
+  // link.
+  quantityLocked?: boolean
+  removable?: boolean
   lineId?: string | null; lineMeta?: LineMeta | null
   control?: CartLineControl | null
   displayTitle?: CartLineTitle | null
@@ -490,7 +497,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
             <span aria-hidden="true">↳ </span>{attachment.caption}
           </p>
         )}
-        {preview
+        {preview || !line.slug
           ? <span style={style}>{title}</span>
           : <a href={productHref(line.slug, urlStyle)} style={style}>{title}</a>}
         {secondary && (
@@ -782,7 +789,7 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
   }
 
   function renderQty(line: ValidatedLine) {
-    if (quantityControl === 'readonly') {
+    if (quantityControl === 'readonly' || line.quantityLocked) {
       return <span className="scl-qty" style={{ minWidth: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>× {line.quantity}</span>
     }
     // A pooled line goes down to 1: its minimum is the listing's, and the
@@ -812,6 +819,8 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
 
   function renderRemove(line: ValidatedLine) {
     if (!showRemove) return null
+    // Kept as an empty cell, not dropped, so the shared column tracks still line up.
+    if (line.removable === false) return <span className="scl-remove" aria-hidden="true" />
     const label = `Remove ${line.displayTitle?.name || line.name}`
     if (removeIcon) return <RemoveCross label={label} onClick={() => onRemove(line)} disabled={preview} />
     return (

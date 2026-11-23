@@ -85,6 +85,14 @@ export type LineMeta = {
   // LineMetaBatch. Persisted for the same reason `group` is: it is shop's own
   // contract, and the surfaces that use it render long after the resolvers ran.
   batch?: LineMetaBatch | null
+  // The line was agreed as made to order (CartLineResolution.stockExempt), so
+  // paying for it takes nothing off the shelf. Persisted because the stock is
+  // taken from the ORDER, long after the resolvers ran.
+  stockExempt?: boolean
+  // The picture an agreed line was sold under, where that is not its product's
+  // own (CartLineIdentity.imageUrl). The order's surfaces prefer it to the
+  // product's photograph.
+  imageUrl?: string | null
 }
 
 export type ShpAddress = {

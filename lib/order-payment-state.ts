@@ -28,7 +28,7 @@
 import { prisma } from '@/lib/db/prisma'
 import { gatherCartExtensionPoint } from '@/modules/shop/lib/line-meta'
 import { getOrderById, getOrderItems } from '@/modules/shop/lib/db/orders'
-import type { ResolvedCartLine } from '@/modules/shop/lib/checkout'
+import { orderItemIdentity, type ResolvedCartLine } from '@/modules/shop/lib/checkout'
 import type { LineMeta, LineMetaField, ShpAddress, ShpOrder, ShpOrderItem } from '@/modules/shop/lib/types'
 
 export type OrderPaymentStateInput = {
@@ -195,9 +195,7 @@ function prospectiveItems(lines: ResolvedCartLine[]): ShpOrderItem[] {
   return lines.map((line, index) => ({
     id: `preview-${index}`,
     orderId: '',
-    productId: line.product.id,
-    productName: line.product.name,
-    productSku: line.product.sku,
+    ...orderItemIdentity(line),
     saleSku: line.saleSku,
     productType: line.product.type,
     quantity: line.quantity,

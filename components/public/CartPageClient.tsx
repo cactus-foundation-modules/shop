@@ -30,6 +30,13 @@ type ValidatedLine = {
   // no minimum at all.
   minOrderQuantity?: number
   minOrderPooled?: boolean
+  // An agreed line's rules (see CartLineResolution.quantityLocked/removable):
+  // a fixed charge's quantity cannot be changed, and some lines cannot be taken
+  // out. Absent reads as the ordinary answer. A line with no page (a quoted
+  // charge with no product behind it) arrives with an empty slug and is not a
+  // link.
+  quantityLocked?: boolean
+  removable?: boolean
   lineId?: string | null; lineMeta?: LineMeta | null
   displayTitle?: CartLineTitle | null
   // What came off each unit because the basket reached its supplier's order-size
@@ -192,7 +199,9 @@ export function CartPageClient() {
               <img className="scl-thumb" src={line.imageUrl} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6 }} />
             )}
             <div className="scl-main" style={{ flex: 1, minWidth: 0 }}>
-              <a href={productHref(line.slug, urlStyle)} style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>{line.displayTitle?.name || line.name}</a>
+              {line.slug
+                ? <a href={productHref(line.slug, urlStyle)} style={{ color: 'inherit', textDecoration: 'none', fontWeight: 600 }}>{line.displayTitle?.name || line.name}</a>
+                : <span style={{ fontWeight: 600 }}>{line.displayTitle?.name || line.name}</span>}
               {line.displayTitle?.secondary && <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>{line.displayTitle.secondary}</p>}
               {!line.available && <p style={{ color: 'var(--color-danger)', fontSize: '0.8125rem', margin: '0.25rem 0 0' }}>{line.availabilityReason}{line.availabilityLink && <>{' '}<a href={line.availabilityLink.href} style={{ color: 'inherit', textDecoration: 'underline' }}>{line.availabilityLink.label}</a></>}</p>}
               {line.isPreOrder && <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '0.25rem 0 0' }}>Pre-order</p>}
@@ -207,17 +216,25 @@ export function CartPageClient() {
                 </ul>
               ) : null}
             </div>
-            <QuantityStepper
-              value={line.quantity}
-              label={`Quantity for ${line.displayTitle?.name || line.name}`}
-              min={line.minOrderPooled ? 1 : minOrderQuantity(line.minOrderQuantity)}
-              onChange={(next) => setLineQuantity(lineKey(line), next)}
-            />
+            {line.quantityLocked
+              ? <span style={{ color: 'var(--color-text-muted)', minWidth: 40, textAlign: 'center' }}>× {line.quantity}</span>
+              : (
+                <QuantityStepper
+                  value={line.quantity}
+                  label={`Quantity for ${line.displayTitle?.name || line.name}`}
+                  min={line.minOrderPooled ? 1 : minOrderQuantity(line.minOrderQuantity)}
+                  onChange={(next) => setLineQuantity(lineKey(line), next)}
+                />
+              )}
             <CartLinePrice className="scl-price" style={{ minWidth: 70, textAlign: 'right' }} now={money(line.lineSubtotal)} was={wasPrice(line)} />
-            <RemoveCross
-              label={`Remove ${line.displayTitle?.name || line.name}`}
-              onClick={() => removeLine(lineKey(line), line.displayTitle?.name || line.name)}
-            />
+            {line.removable === false
+              ? <span aria-hidden="true" />
+              : (
+                <RemoveCross
+                  label={`Remove ${line.displayTitle?.name || line.name}`}
+                  onClick={() => removeLine(lineKey(line), line.displayTitle?.name || line.name)}
+                />
+              )}
           </li>
         ))}
       </ul>

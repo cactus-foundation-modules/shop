@@ -244,7 +244,7 @@ function buildLines(
     return {
       item,
       productSlug: item.productId ? products.get(item.productId)?.slug ?? null : null,
-      imageUrl: image?.url ?? null,
+      imageUrl: item.lineMeta?.imageUrl ?? image?.url ?? null,
       dispatchedQty,
       outstandingQty,
       // The one sum lib/db/order-requests.ts checks the POST against, so the form

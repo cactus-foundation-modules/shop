@@ -31,6 +31,8 @@ export async function orderItemEmailMedia(
   const siteUrl = getSiteUrl()
   const orderItems = await getOrderItems(orderId).catch(() => [])
   const productByOrderItemId = new Map(orderItems.map((i) => [i.id, i.productId]))
+  // A line sold under a picture of its own (LineMeta.imageUrl) shows that one.
+  const ownImageByOrderItemId = new Map(orderItems.map((i) => [i.id, i.lineMeta?.imageUrl ?? null]))
   const productIds = orderItems.map((i) => i.productId).filter((id): id is string => !!id)
   const [mediaByProduct, slugByProduct] = await Promise.all([
     productIds.length > 0
@@ -43,6 +45,8 @@ export async function orderItemEmailMedia(
 
   return {
     imageFor: (orderItemId) => {
+      const own = ownImageByOrderItemId.get(orderItemId)
+      if (own) return absoluteImageUrl(own, siteUrl)
       const productId = productByOrderItemId.get(orderItemId) ?? null
       const media = productId ? mediaByProduct.get(productId) ?? [] : []
       const image = media.find((m) => m.type === 'IMAGE' && m.isPrimary) ?? media.find((m) => m.type === 'IMAGE')

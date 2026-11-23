@@ -12,6 +12,7 @@ import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { supplierPageLinks } from '@/modules/shop/lib/supplier-links'
 import { displayAmount, type PriceDisplay } from '@/modules/shop/lib/tax-display-shared'
 import { CheckoutLinesSchema, checkoutLinesRefusal } from '@/modules/shop/lib/checkout-lines'
+import { isVirtualProductId } from '@/modules/shop/lib/virtual-cart-products'
 
 const Body = z.object({
   lines: CheckoutLinesSchema,
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
   // line's product, not one per line.
   const [{ lines: resolved, orderSizeDeduction }, mediaByProduct, defaultZoneId, config] = await Promise.all([
     resolveCartLinesWithDeduction(parsed.data.lines),
-    getProductMediaForProducts(parsed.data.lines.map((line) => line.productId)),
+    getProductMediaForProducts(parsed.data.lines.map((line) => line.productId).filter((id) => !isVirtualProductId(id))),
     // The cart quotes tax before an address exists, so it prices against the
     // shop's default zone (see getDefaultTaxZoneId). The checkout still resolves
     // the real zone from the delivery postcode and recomputes every figure - the
@@ -93,8 +94,10 @@ export async function POST(request: NextRequest) {
       // Echo the client line key so personalised lines (same product, different
       // options) can be matched back one-to-one instead of merging by productId.
       lineId: line.lineId ?? null,
-      name: line.product.name,
-      slug: line.product.slug,
+      name: line.identity?.name ?? line.product.name,
+      // Empty for a line with no product behind it, which the baskets read as
+      // "not a link" - there is no page to go to.
+      slug: line.virtual ? '' : line.product.slug,
       quantity: line.quantity,
       unitPrice: shown(line.unitPrice),
       lineSubtotal: shown(line.lineSubtotal),
@@ -115,13 +118,19 @@ export async function POST(request: NextRequest) {
       minOrderQuantity: line.minOrderQuantity,
       minOrderPooled: line.minOrderPooled,
       preOrderDispatchDate: line.product.preOrderDispatchDate,
-      imageUrl: primary?.url ?? null,
+      imageUrl: line.identity?.imageUrl ?? primary?.url ?? null,
+      quantityLocked: line.quantityLocked === true,
+      removable: line.removable !== false,
       // Normalised personalisation for display (null for a plain line).
       lineMeta: line.lineMeta,
       // Optional per-line picker a resolver offered (e.g. a delivery tier).
       control,
       // Optional cart-display retitle (e.g. a variant's base name + options).
-      displayTitle: line.displayTitle ?? null,
+      // An agreed line's own name and options win over a resolver's retitle -
+      // see CartLineResolution.identity.
+      displayTitle: line.identity
+        ? { name: line.identity.name, ...(line.identity.secondary ? { secondary: line.identity.secondary } : {}) }
+        : (line.displayTitle ?? null),
       // Which basket group the line belongs to, when a resolver declared one -
       // the cart sorts attachments under their main and indents them from this.
       group: line.group ?? null,

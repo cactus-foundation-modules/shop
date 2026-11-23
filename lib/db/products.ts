@@ -883,6 +883,8 @@ export async function decrementStockOnShip(orderItemIds: string[]): Promise<void
       SELECT oi."product_id" AS product_id, SUM(oi."quantity")::int AS ordered_qty
       FROM "shp_order_items" oi
       WHERE oi."id" IN (${Prisma.join(orderItemIds)}) AND oi."product_id" IS NOT NULL
+        -- A line agreed as made to order never touched stock (LineMeta.stockExempt).
+        AND COALESCE((oi."line_meta"->>'stockExempt')::boolean, false) = false
       GROUP BY oi."product_id"
     ) agg
     WHERE agg."product_id" = p."id" AND p."track_inventory" = true
