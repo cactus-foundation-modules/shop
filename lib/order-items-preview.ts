@@ -9,6 +9,9 @@ export type OrderItemsPreviewLine = {
   refundedQty: number
   total: string
   isPreOrder: boolean
+  /** The line's own picture if it was sold under one, else its product's
+   *  primary image - the rule the order emails use. Null when it has none. */
+  imageUrl: string | null
   options: Array<{ label: string; value: string }>
 }
 

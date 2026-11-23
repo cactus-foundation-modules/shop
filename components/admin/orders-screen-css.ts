@@ -249,8 +249,10 @@ export const ordersScreenCss = `
 .sox-im-body{overflow-y:auto;padding:0.25rem 1.25rem}
 .sox-im-note{margin:1rem 0;font-size:0.875rem;color:var(--color-text-secondary)}
 .sox-im-list{list-style:none;margin:0;padding:0}
-.sox-im-line{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:0.75rem;
-  align-items:baseline;padding:0.75rem 0;border-bottom:1px solid var(--color-border)}
+.sox-im-line{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:0.75rem;
+  align-items:start;padding:0.75rem 0;border-bottom:1px solid var(--color-border)}
+.sox-im-thumb{display:block;width:64px;height:64px;object-fit:contain;border-radius:var(--radius-md);
+  border:1px solid var(--color-border);background:var(--color-bg-subtle)}
 .sox-im-line:last-child{border-bottom:0}
 .sox-im-qty{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .sox-im-name{font-weight:600;overflow-wrap:anywhere}

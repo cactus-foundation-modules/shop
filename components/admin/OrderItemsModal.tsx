@@ -64,6 +64,12 @@ export function OrderItemsModal({ orderId, orderNumber, orderHref, currencySymbo
             <ul className="sox-im-list">
               {lines.map((line) => (
                 <li key={line.id} className="sox-im-line">
+                  {line.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- media can live on any storage host
+                    <img className="sox-im-thumb" src={line.imageUrl} alt="" loading="lazy" />
+                  ) : (
+                    <span className="sox-im-thumb sox-im-thumb-empty" aria-hidden="true" />
+                  )}
                   <span className="sox-im-qty">{line.quantity} ×</span>
                   <div className="sox-im-main">
                     <span className="sox-im-name">{line.productName}</span>
