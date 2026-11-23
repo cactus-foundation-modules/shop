@@ -8,6 +8,7 @@
 // which each caller already injects.
 import Link from 'next/link'
 import type { CSSProperties } from 'react'
+import { QuantityInput } from '@/modules/shop/components/public/QuantityInput'
 
 export function TickIcon() {
   return (
@@ -71,8 +72,8 @@ export function RemoveCross({ label, onClick, disabled }: { label: string; onCli
 // Quantity stepper. The box is a text input with a numeric keypad rather than
 // type="number" - the browser spinners would fight the − / + buttons for the
 // same job and land the row's width all over the place. Non-digits are dropped
-// as typed, and an emptied box is left alone until it's blurred, so backspacing
-// to retype doesn't remove the line under the shopper.
+// as typed, and an emptied box is left alone until it's blurred (QuantityInput),
+// so backspacing to retype neither removes the line nor snaps straight back.
 //
 // `min` is the smallest the shop will sell of this line, 1 for all but a handful
 // of products. It is the floor the − button and the typed value both stop at, so
@@ -85,18 +86,7 @@ export function QuantityStepper({
   return (
     <div className="scl-qty scl-qtybox">
       <button type="button" aria-label="Decrease quantity" disabled={disabled || value <= floor} onClick={() => onChange(Math.max(floor, value - 1))}>−</button>
-      <input
-        type="text"
-        inputMode="numeric"
-        aria-label={label}
-        value={value}
-        readOnly={disabled}
-        onChange={(e) => {
-          const digits = e.target.value.replace(/[^0-9]/g, '')
-          if (digits === '') return
-          onChange(Math.max(floor, Number(digits)))
-        }}
-      />
+      <QuantityInput value={value} min={floor} ariaLabel={label} readOnly={disabled} onCommit={onChange} />
       <button type="button" aria-label="Increase quantity" disabled={disabled} onClick={() => onChange(value + 1)}>+</button>
     </div>
   )

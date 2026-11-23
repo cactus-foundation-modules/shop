@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { addToCart } from '@/modules/shop/components/public/cart'
 import { publishPurchaseQuantity } from '@/modules/shop/components/public/purchase-quantity'
 import { minOrderSentence } from '@/modules/shop/lib/min-order'
+import { QuantityInput } from '@/modules/shop/components/public/QuantityInput'
 
 // Quantity stepper + primary add button. Styling comes from the scoped
 // `spd-*` <style> emitted by the Add to Cart part on the same page. The stepper
@@ -39,13 +40,7 @@ export function AddToCartButton({ productId, label, showStepper = true, minQuant
             >
               &minus;
             </button>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={quantity}
-              aria-label="Quantity"
-              onChange={(e) => setQuantity(Math.max(min, Number(e.target.value.replace(/\D/g, '')) || min))}
-            />
+            <QuantityInput value={quantity} min={min} ariaLabel="Quantity" onCommit={setQuantity} />
             <button type="button" aria-label="Increase quantity" onClick={() => setQuantity((q) => q + 1)}>
               +
             </button>

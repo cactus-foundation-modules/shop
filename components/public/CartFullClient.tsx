@@ -16,6 +16,7 @@ import {
   SHOP_DEFAULT_COMMERCE_MODE,
 } from '@/modules/shop/lib/commerce-mode-shared'
 import { CART_LINE_CSS } from '@/modules/shop/components/public/cart-line-css'
+import { QuantityInput } from '@/modules/shop/components/public/QuantityInput'
 import { CartLinePrice, CartStickyBar, CartUndoToast, QuantityStepper, RemoveCross, TickIcon, lineSubtotalBeforeDeduction } from '@/modules/shop/components/public/CartChrome'
 import { CartNotes } from '@/modules/shop/components/public/CartNotes'
 import { CartDeductionNotes, type CartDeductionNote } from '@/modules/shop/components/public/CartDeductionNote'
@@ -808,10 +809,11 @@ export function CartFullClient(props: CartFullOptions & { preview?: boolean; sec
       )
     }
     return (
-      <input
+      <QuantityInput
         className="scl-qty"
-        type="number" min={0} step={1} value={line.quantity} readOnly={preview}
-        onChange={(e) => onQty(lineKey(line), Number(e.target.value), min)}
+        type="number" inputProps={{ min, step: 1 }} value={line.quantity} min={min} readOnly={preview}
+        ariaLabel={`Quantity for ${line.displayTitle?.name || line.name}`}
+        onCommit={(next) => onQty(lineKey(line), next, min)}
         style={{ width: 56, padding: '0.375rem', borderRadius: 6, border: '1px solid var(--color-border)' }}
       />
     )
