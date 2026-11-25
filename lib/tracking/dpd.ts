@@ -19,6 +19,7 @@
 // tested against a captured payload and never over a network.
 
 import { z } from 'zod'
+import { calendarDateIn } from '@/lib/config/timezone'
 import { courierInstant } from '@/modules/shop/lib/tracking/courier-clock'
 import { EMPTY_READING, type TrackingEvent, type TrackingReading } from '@/modules/shop/lib/tracking/reading'
 
@@ -213,12 +214,45 @@ export function dpdDriverName(statusHtml: string | null | undefined): string | n
 
 /** The one-hour slot out of the same sentence, as 'HH:MM' pair, where DPD have
  *  committed to one. Used only when the session feed - which gives the window
- *  as proper instants - is not available. */
+ *  as proper instants - is not available (see anonymousWindow). */
 export function dpdStatusWindow(statusHtml: string | null | undefined): { start: string; end: string } | null {
   if (!statusHtml) return null
   const m = /between\s*(\d{1,2}:\d{2})\s*and\s*(\d{1,2}:\d{2})/i.exec(statusHtml.replace(/<[^>]*>/g, ''))
   if (!m) return null
   return { start: (m[1] as string).padStart(5, '0'), end: (m[2] as string).padStart(5, '0') }
+}
+
+/**
+ * Today's one-hour slot from DPD's own words, for a read without a session.
+ *
+ * Sessions are rationed - five an hour per address - so on a site with more
+ * than a handful of DPD parcels most hourly reads are anonymous, and the stop
+ * window only a session carries is missing. DPD still print the hour: in the
+ * newest scan ("Your parcel will be with you today  between 12:58 and 13:58")
+ * and in the status sentence. Without this, those parcels never had a window
+ * and the customer was never emailed one (order DW000297).
+ *
+ * Only ever TODAY's slot. The scan is dated, and "today" in a scan from an
+ * earlier day is a delivery that did not happen - emailing that would tell a
+ * customer about a window already gone. The status sentence carries no date of
+ * its own, so it is read only when it says "today", and dated now.
+ */
+function anonymousWindow(
+  data: Pick<DpdParcel, 'parcelStatusHtml' | 'trackingStatusCurrent'> | null,
+  events: TrackingEvent[],
+  now: Date,
+  timezone: string,
+): { windowFrom: Date; windowTo: Date } | null {
+  const today = calendarDateIn(now, timezone)
+  const newest = events[0]
+  const fromScan = newest && newest.at.slice(0, 10) === today ? dpdStatusWindow(newest.text) : null
+  const sentence = [data?.parcelStatusHtml, data?.trackingStatusCurrent]
+    .find((text) => text && /\btoday\b/i.test(text.replace(/<[^>]*>/g, ' ')) && dpdStatusWindow(text))
+  const slot = fromScan ?? dpdStatusWindow(sentence)
+  if (!slot || slot.end <= slot.start) return null
+  const windowFrom = courierInstant(`${today}T${slot.start}:00`, timezone)
+  const windowTo = courierInstant(`${today}T${slot.end}:00`, timezone)
+  return windowFrom && windowTo ? { windowFrom, windowTo } : null
 }
 
 /** Whether DPD's feed says this parcel has arrived.
@@ -275,6 +309,8 @@ export function readDpd(input: {
   route?: unknown
   /** The site's timezone. Their clock readings mean nothing without it. */
   timezone: string
+  /** When the read happened - what "today" in their words means. */
+  now?: Date
 }): TrackingReading {
   const parcel = dpdParcelSchema.safeParse(input.parcel)
   const events = dpdEvents(input.events)
@@ -291,9 +327,16 @@ export function readDpd(input: {
   const delivered = dpdFeedSaysDelivered(data, events)
   const estimated = delivered ? null : data?.estimatedDeliveryDate?.trim() ?? null
   const day = estimated && /^\d{4}-\d{2}-\d{2}$/.test(estimated) ? estimated : null
-  const windowFrom = asDate(stop?.deliveryWindowFrom, input.timezone)
+  // A session's stop window first; without one, the hour DPD printed for today
+  // (anonymousWindow) - the two are the same slot when both are there.
+  const stopFrom = asDate(stop?.deliveryWindowFrom, input.timezone)
+  const stopTo = asDate(stop?.deliveryWindowTo, input.timezone)
+  const printed = delivered || (stopFrom && stopTo)
+    ? null
+    : anonymousWindow(data, events, input.now ?? new Date(), input.timezone)
+  const windowFrom = stopFrom ?? printed?.windowFrom
     ?? (day ? asDate(`${day} 00:00:00`, input.timezone) : null)
-  const windowTo = asDate(stop?.deliveryWindowTo, input.timezone)
+  const windowTo = stopTo ?? printed?.windowTo
     ?? (day ? asDate(`${day} 23:59:00`, input.timezone) : null)
 
   return {

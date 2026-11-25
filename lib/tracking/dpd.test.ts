@@ -66,6 +66,9 @@ const EVENTS = {
   ],
 }
 
+/** Mid-morning on the day of EVENTS' "with you today" scan. */
+const ON_THE_DAY = new Date('2026-09-10T09:00:00Z')
+
 const ROUTE = {
   data: {
     routeCode: '0045*21438*215*3600',
@@ -154,15 +157,42 @@ describe('dpdEvents', () => {
 
 describe('readDpd', () => {
   it('reads the anonymous payload without inventing what it cannot see', () => {
-    const reading = readDpd({ parcel: ANONYMOUS, events: EVENTS, timezone: 'Europe/London' })
+    const reading = readDpd({ parcel: ANONYMOUS, events: EVENTS, timezone: 'Europe/London', now: ON_THE_DAY })
     // The stage is the newest SCAN, not the status sentence: the sentence names
     // the shipper, the driver and the timeslot, so no two parcels would ever
     // produce a string a setting could match.
     expect(reading.stage).toBe('Your parcel will be with you today  between 11:41 and 12:41')
     expect(reading.driverName).toBe('Mozam')
     expect(reading.stopNumber).toBeNull()
-    expect(reading.windowFrom).toBeNull()
     expect(reading.minutesToStop).toBeNull()
+  })
+
+  // Sessions are five an hour, so most reads are anonymous - and a window only
+  // a session could give meant DW000297's customer was never told their hour.
+  it('takes today s hour from DPD s own words when there is no session', () => {
+    const reading = readDpd({ parcel: ANONYMOUS, events: EVENTS, timezone: 'Europe/London', now: ON_THE_DAY })
+    expect(reading.windowFrom?.toISOString()).toBe('2026-09-10T10:41:00.000Z')
+    expect(reading.windowTo?.toISOString()).toBe('2026-09-10T11:41:00.000Z')
+  })
+
+  it('reads the hour from the scan alone when the sentence is missing', () => {
+    const reading = readDpd({ parcel: { data: {} }, events: EVENTS, timezone: 'Europe/London', now: ON_THE_DAY })
+    expect(reading.windowFrom?.toISOString()).toBe('2026-09-10T10:41:00.000Z')
+  })
+
+  // "Today" in yesterday's scan is a delivery that did not happen. Emailing it
+  // would tell a customer about an hour already gone.
+  it('never takes "today" from a scan of an earlier day', () => {
+    const next = new Date('2026-09-11T08:00:00Z')
+    const reading = readDpd({ parcel: { data: {} }, events: EVENTS, timezone: 'Europe/London', now: next })
+    expect(reading.windowFrom).toBeNull()
+    expect(reading.windowTo).toBeNull()
+  })
+
+  it('has no window once the parcel has landed', () => {
+    const landed = { data: { ...ANONYMOUS.data, deliveredToConsumer: true } }
+    const reading = readDpd({ parcel: landed, events: EVENTS, timezone: 'Europe/London', now: ON_THE_DAY })
+    expect(reading.windowFrom).toBeNull()
   })
 
   it('reads the round out of the session payload', () => {
