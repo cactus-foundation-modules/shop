@@ -2,7 +2,7 @@ import { claimDelayAnsweredByCourier, getShipmentsForOrder, recordToldWindow, se
 import { getOrderById } from '@/modules/shop/lib/db/orders'
 import { notifyOrderCustomer } from '@/modules/shop/lib/order-notify'
 import { parcelEmailVars } from '@/modules/shop/lib/delivery-slot-email'
-import { deliveryBookingForShipment, formatDeliveryDay, formatDeliveryWindow, isWholeDayWindow, slotTimeFromInstant, toldWindowKey } from '@/modules/shop/lib/delivery-slot'
+import { deliveryBookingForShipment, formatDeliveryDay, formatDeliveryDayWhen, formatDeliveryWindow, isWholeDayWindow, slotTimeFromInstant, toldWindowKey } from '@/modules/shop/lib/delivery-slot'
 import { delayNoteForCustomer, isStaleCarrierWindow, type DelayKind } from '@/modules/shop/lib/delivery-delay'
 import { calendarDateIn } from '@/lib/config/timezone'
 import { getSiteTimezone } from '@/lib/config/timezone.server'
@@ -36,6 +36,8 @@ async function newDayVars(shipment: ShpShipment): Promise<Record<string, string>
   const window = day ? formatDeliveryWindow(booking.slotStart, booking.slotEnd) : ''
   return {
     deliveryDay: day,
+    // "today" / "tomorrow" for the subject; the body keeps the date.
+    deliveryDayWhen: formatDeliveryDayWhen(booking.date, calendarDateIn(new Date(), await getSiteTimezone())),
     deliveryWindow: window,
     hasNewDay: day ? 'true' : 'false',
     hasNewDayOnly: day && !window ? 'true' : 'false',

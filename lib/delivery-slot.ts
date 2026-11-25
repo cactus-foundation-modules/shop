@@ -332,6 +332,31 @@ export function formatDeliveryWindowSpoken(start: string | null, end: string | n
 }
 
 /**
+ * "today", "tomorrow", or the full date: the {{deliveryDayWhen}} merge tag, for
+ * an email SUBJECT. "Booked in for delivery Wednesday 25th of November" on the
+ * morning of the 25th reads as though the shop has lost track of the calendar.
+ *
+ * The one place an email says a relative day, and only because the inbox
+ * prints the date it arrived right beside the subject, so "today" still means
+ * something the week after. The body keeps {{deliveryDay}}, the full date, for
+ * anybody who opens it later. No bare weekday for the days after tomorrow, as
+ * formatDeliveryDayRelative has: "booked in for Monday" sent on a Friday and
+ * read on the Monday is a puzzle.
+ *
+ * `today` is the site's calendar date at the moment of sending
+ * (calendarDateIn(new Date(), timezone)).
+ */
+export function formatDeliveryDayWhen(date: string, today: string): string {
+  if (!isDeliveryDate(date)) return ''
+  if (isDeliveryDate(today)) {
+    const days = daysBetween(today, date)
+    if (days === 0) return 'today'
+    if (days === 1) return 'tomorrow'
+  }
+  return formatDeliveryDay(date)
+}
+
+/**
  * The day, relative to today where that is the plainer thing to say: "today",
  * "tomorrow", then the bare weekday for the rest of this coming week, and the
  * full date beyond that.
@@ -343,6 +368,8 @@ export function formatDeliveryWindowSpoken(start: string | null, end: string | n
  *
  * Lower case for the relative words, so they sit inside a sentence - "Arranged
  * for tomorrow" - while a weekday or a date keeps the capital it is entitled to.
+ *
+ * (An email subject is the one exception, and it gets formatDeliveryDayWhen.)
  */
 export function formatDeliveryDayRelative(date: string, today: string): string {
   if (!isDeliveryDate(date)) return ''

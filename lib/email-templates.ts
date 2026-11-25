@@ -186,10 +186,10 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     // people actually plan a morning around. See lib/delivery-slot-email.ts.
     key: 'shop.delivery-slot-confirmed',
     label: 'Delivery time confirmed',
-    subject: 'Your delivery is booked in for {{deliveryDay}}',
+    subject: 'Your delivery is booked in for {{deliveryDayWhen}}',
     bodyHtml:
       '<p>Hi {{customerName}},</p><p>Good news - your delivery for order <strong>{{orderNumber}}</strong> is booked in for <strong>{{deliveryDay}}</strong>, {{deliveryWindow}}.</p>{{#if hasParcelItems}}<p><strong>Arriving:</strong></p>{{parcelItems}}{{/if}}{{#if hasCarrier}}<p>Coming with {{carrier}}.</p>{{/if}}{{#if hasSeveralParcels}}<p>It is coming in <strong>{{parcelCount}} parcels</strong>, and the courier may bring them separately, so please do not worry if they do not all turn up together. Your order page shows where each one has got to.</p>{{/if}}<p>Please make sure somebody is in to take it. If nobody is, the driver will have to bring it back and we will have to book it in all over again.</p>{{#if hasFaq}}<p><a href="{{faqUrl}}">Questions about your delivery</a> - what happens on the day, and what to do if the time does not suit.</p>{{/if}}<p>Thanks for shopping with {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['parcelCount', 'hasSeveralParcels', 'customerName', 'orderNumber', 'deliveryDay', 'deliveryWindow', 'deliverySlotStart', 'deliverySlotEnd', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
+    mergeTags: ['parcelCount', 'hasSeveralParcels', 'customerName', 'orderNumber', 'deliveryDay', 'deliveryDayWhen', 'deliveryWindow', 'deliverySlotStart', 'deliverySlotEnd', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
     // Same table the dispatch note uses, built by this module with every value
     // escaped on the way in. See lib/order-items-email.ts.
     rawTags: ['parcelItems'],
@@ -204,10 +204,10 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     // lib/delivery-slot-email.ts.
     key: 'shop.delivery-day-booked',
     label: 'Delivery day booked',
-    subject: 'Your delivery is booked in for {{deliveryDay}}',
+    subject: 'Your delivery is booked in for {{deliveryDayWhen}}',
     bodyHtml:
       '<p>Hi {{customerName}},</p><p>Good news - your delivery for order <strong>{{orderNumber}}</strong> is booked in for <strong>{{deliveryDay}}</strong>.</p><p>We do not have a time for it yet. As soon as {{#if hasCarrier}}{{carrier}} gives{{/if}}{{#if noCarrier}}the courier gives{{/if}} us one, we will email you with it.</p>{{#if hasSeveralParcels}}<p>It is coming in <strong>{{parcelCount}} parcels</strong>, and the courier may bring them separately, so please do not worry if they do not all turn up together. Your order page shows where each one has got to.</p>{{/if}}{{#if hasParcelItems}}<p><strong>Arriving:</strong></p>{{parcelItems}}{{/if}}<p>Please make sure somebody is in to take it. If nobody is, the driver will have to bring it back and we will have to book it in all over again.</p>{{#if hasFaq}}<p><a href="{{faqUrl}}">Questions about your delivery</a> - what happens on the day, and what to do if it does not suit.</p>{{/if}}<p>Thanks for shopping with {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['parcelCount', 'hasSeveralParcels', 'customerName', 'orderNumber', 'deliveryDay', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'noCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
+    mergeTags: ['parcelCount', 'hasSeveralParcels', 'customerName', 'orderNumber', 'deliveryDay', 'deliveryDayWhen', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'noCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
     // Same table the dispatch note uses, built by this module with every value
     // escaped on the way in. See lib/order-items-email.ts.
     rawTags: ['parcelItems'],
@@ -222,10 +222,10 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     // lib/delivery-slot-email.ts.
     key: 'shop.delivery-day-changed',
     label: 'Delivery day changed by the courier',
-    subject: 'Your delivery day has changed to {{deliveryDay}}',
+    subject: 'Your delivery day has changed to {{deliveryDayWhen}}',
     bodyHtml:
       '<p>Hi {{customerName}},</p><p>A quick heads-up: {{#if hasCarrier}}{{carrier}} have{{/if}}{{#if noCarrier}}the courier has{{/if}} moved the delivery for order <strong>{{orderNumber}}</strong> from {{previousDeliveryDay}} to <strong>{{deliveryDay}}</strong>.</p><p>Couriers shuffle their rounds about from time to time, so there is nothing you need to do, other than making sure somebody is in on the new day. Please ignore the earlier email that said {{previousDeliveryDay}}.</p><p>We do not have a time for it yet. As soon as {{#if hasCarrier}}{{carrier}} gives{{/if}}{{#if noCarrier}}the courier gives{{/if}} us one, we will email you with it.</p>{{#if hasSeveralParcels}}<p>It is coming in <strong>{{parcelCount}} parcels</strong>, and the courier may bring them separately, so please do not worry if they do not all turn up together. Your order page shows where each one has got to.</p>{{/if}}{{#if hasParcelItems}}<p><strong>Arriving:</strong></p>{{parcelItems}}{{/if}}<p>If nobody is in to take it, the driver will have to bring it back and we will have to book it in all over again.</p>{{#if hasFaq}}<p><a href="{{faqUrl}}">Questions about your delivery</a> - what happens on the day, and what to do if it does not suit.</p>{{/if}}<p>Thanks for shopping with {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['parcelCount', 'hasSeveralParcels', 'customerName', 'orderNumber', 'deliveryDay', 'previousDeliveryDay', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'noCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
+    mergeTags: ['parcelCount', 'hasSeveralParcels', 'customerName', 'orderNumber', 'deliveryDay', 'deliveryDayWhen', 'previousDeliveryDay', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'noCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl', 'reportIssueUrl', 'hasReportIssueUrl'],
     // Same table the dispatch note uses, built by this module with every value
     // escaped on the way in. See lib/order-items-email.ts.
     rawTags: ['parcelItems'],
@@ -271,10 +271,10 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     // neither nests nor has an else, hence the flat flags.
     key: 'shop.delivery-delayed',
     label: 'Delivery delayed',
-    subject: '{{#if hasNewDay}}Your delivery has moved to {{deliveryDay}}{{/if}}{{#if noNewDay}}Your delivery for order {{orderNumber}} is delayed{{/if}}',
+    subject: '{{#if hasNewDay}}Your delivery has moved to {{deliveryDayWhen}}{{/if}}{{#if noNewDay}}Your delivery for order {{orderNumber}} is delayed{{/if}}',
     bodyHtml:
       '<p>Hi {{customerName}},</p><p>We are sorry - your delivery for order <strong>{{orderNumber}}</strong> has been delayed.</p>{{#if hasDelayNote}}<p>{{delayNote}}</p>{{/if}}{{#if hasNewDayOnly}}<p>It is now booked in for <strong>{{deliveryDay}}</strong>. We do not have a time for it yet, and will email you as soon as we do.</p>{{/if}}{{#if hasNewDayWindow}}<p>It is now booked in for <strong>{{deliveryDay}}</strong>, {{deliveryWindow}}.</p>{{/if}}{{#if noNewDay}}<p>We do not have a new delivery date yet. As soon as we do, we will email you with it - there is nothing you need to do in the meantime.</p>{{/if}}{{#if hasParcelItems}}<p><strong>In this delivery:</strong></p>{{parcelItems}}{{/if}}{{#if hasNewDay}}<p>Please make sure somebody is in to take it. If nobody is, the driver will have to bring it back and we will have to book it in all over again.</p>{{/if}}{{#if hasFaq}}<p><a href="{{faqUrl}}">Questions about your delivery</a> - what happens on the day, and what to do if it does not suit.</p>{{/if}}<p>Thanks for bearing with us - {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['customerName', 'orderNumber', 'delayNote', 'hasDelayNote', 'deliveryDay', 'deliveryWindow', 'hasNewDay', 'hasNewDayOnly', 'hasNewDayWindow', 'noNewDay', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl'],
+    mergeTags: ['customerName', 'orderNumber', 'delayNote', 'hasDelayNote', 'deliveryDay', 'deliveryDayWhen', 'deliveryWindow', 'hasNewDay', 'hasNewDayOnly', 'hasNewDayWindow', 'noNewDay', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl'],
     rawTags: ['parcelItems'],
     transactional: false,
   },
@@ -288,7 +288,7 @@ export const shopEmailTemplates: EmailTemplateDef[] = [
     subject: 'A new delivery date for your order {{orderNumber}}',
     bodyHtml:
       '<p>Hi {{customerName}},</p><p>Thanks for your patience. We now have a new delivery date for your order <strong>{{orderNumber}}</strong>.</p>{{#if hasNewDayOnly}}<p>It is booked in for <strong>{{deliveryDay}}</strong>. We do not have a time for it yet, and will email you as soon as we do.</p>{{/if}}{{#if hasNewDayWindow}}<p>It is booked in for <strong>{{deliveryDay}}</strong>, {{deliveryWindow}}.</p>{{/if}}{{#if hasParcelItems}}<p><strong>Arriving:</strong></p>{{parcelItems}}{{/if}}{{#if hasCarrier}}<p>Coming with {{carrier}}.</p>{{/if}}{{#if hasSeveralParcels}}<p>It is coming in <strong>{{parcelCount}} parcels</strong>, and the courier may bring them separately, so please do not worry if they do not all turn up together. Your order page shows where each one has got to.</p>{{/if}}<p>Please make sure somebody is in to take it. If nobody is, the driver will have to bring it back and we will have to book it in all over again.</p>{{#if hasFaq}}<p><a href="{{faqUrl}}">Questions about your delivery</a> - what happens on the day, and what to do if it does not suit.</p>{{/if}}<p>Thanks for shopping with {{shopName}}.</p>{{#if hasOrderUrl}}<p>Keep track of your order at <a href="{{orderUrl}}">{{orderUrl}}</a></p>{{/if}}',
-    mergeTags: ['parcelCount', 'hasSeveralParcels', 'customerName', 'orderNumber', 'deliveryDay', 'deliveryWindow', 'hasNewDayOnly', 'hasNewDayWindow', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl'],
+    mergeTags: ['parcelCount', 'hasSeveralParcels', 'customerName', 'orderNumber', 'deliveryDay', 'deliveryDayWhen', 'deliveryWindow', 'hasNewDayOnly', 'hasNewDayWindow', 'parcelItems', 'hasParcelItems', 'carrier', 'hasCarrier', 'faqUrl', 'hasFaq', 'shopName', 'orderUrl', 'hasOrderUrl'],
     rawTags: ['parcelItems'],
     transactional: false,
   },

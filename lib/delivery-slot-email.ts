@@ -10,6 +10,7 @@ import {
   bookedDayStands,
   deliveryBookingForShipment,
   formatDeliveryDay,
+  formatDeliveryDayWhen,
   formatDeliveryWindow,
   isDueByWindow,
   isWholeDayWindow,
@@ -21,6 +22,7 @@ import { courierFaqUrl, faqsForShipment } from '@/modules/shop/lib/courier-faqs'
 import { isStaleCarrierWindow } from '@/modules/shop/lib/delivery-delay'
 import { parcelCourierTimesEmailable } from '@/modules/shop/lib/tracking/provisional-window'
 import { calendarDateIn } from '@/lib/config/timezone'
+import { getSiteTimezone } from '@/lib/config/timezone.server'
 import type { ShpOrder, ShpShipment, ShpShipmentWithItems } from '@/modules/shop/lib/types'
 
 // "Your delivery is confirmed for Tuesday, between 10:00 and 13:00."
@@ -45,12 +47,13 @@ function deliveryEmailParts(
   shipment: Pick<ShpShipment, 'deliveryDate' | 'deliverySlotStart' | 'deliverySlotEnd' | 'deliveryWindowFrom' | 'deliveryWindowTo'>,
   timezone: string,
   courierTimes: boolean,
-): { day: string; window: string; slotStart: string; slotEnd: string; told: string } | null {
+): { day: string; dayWhen: string; window: string; slotStart: string; slotEnd: string; told: string } | null {
   const booking = deliveryBookingForShipment(shipment, timezone, { courierTimes })
   const day = formatDeliveryDay(booking.date)
   const window = formatDeliveryWindow(booking.slotStart, booking.slotEnd)
   if (!day || !window || !booking.slotStart || !booking.slotEnd) return null
-  return { day, window, slotStart: booking.slotStart, slotEnd: booking.slotEnd, told: toldWindowKey(booking) }
+  const dayWhen = formatDeliveryDayWhen(booking.date, calendarDateIn(new Date(), timezone))
+  return { day, dayWhen, window, slotStart: booking.slotStart, slotEnd: booking.slotEnd, told: toldWindowKey(booking) }
 }
 
 /** What is in THIS parcel and who is bringing it, shared by the day and the
@@ -123,6 +126,7 @@ export async function sendDeliverySlotEmail(params: {
   await notifyOrderCustomer('DELIVERY_SLOT_CONFIRMED', order, {
     ...await parcelEmailVars(order, shipment),
     deliveryDay: parts.day,
+    deliveryDayWhen: parts.dayWhen,
     deliveryWindow: parts.window,
     deliverySlotStart: parts.slotStart,
     deliverySlotEnd: parts.slotEnd,
@@ -170,7 +174,9 @@ export async function sendDeliveryDayEmail(params: {
   const previousDeliveryDay = params.courierMovedFrom && params.courierMovedFrom !== shipment.deliveryDate
     ? formatDeliveryDay(params.courierMovedFrom)
     : ''
-  const vars = { ...await parcelEmailVars(order, shipment), deliveryDay }
+  // "today" / "tomorrow" for the subject; the body keeps the date.
+  const deliveryDayWhen = formatDeliveryDayWhen(shipment.deliveryDate ?? '', calendarDateIn(new Date(), await getSiteTimezone()))
+  const vars = { ...await parcelEmailVars(order, shipment), deliveryDay, deliveryDayWhen }
 
   if (previousDeliveryDay) {
     await notifyOrderCustomer('DELIVERY_DAY_CHANGED', order, { ...vars, previousDeliveryDay }, { shipmentId: shipment.id })

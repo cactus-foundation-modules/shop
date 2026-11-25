@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  formatDeliveryDayWhen,
   deliveryProgress,
   formatClockTime,
   formatDeliveryDay,
@@ -401,5 +402,23 @@ describe('dispatchDeliveryVars', () => {
 
   it('ignores an undated parcel alongside a dated one', () => {
     expect(dispatchDeliveryVars([parcel(null), parcel('2026-09-29')]).deliveryDay).toBe('Tuesday 29th of September')
+  })
+})
+
+describe('formatDeliveryDayWhen', () => {
+  it('says today and tomorrow, across a month end too', () => {
+    expect(formatDeliveryDayWhen('2026-11-25', '2026-11-25')).toBe('today')
+    expect(formatDeliveryDayWhen('2026-11-26', '2026-11-25')).toBe('tomorrow')
+    expect(formatDeliveryDayWhen('2026-12-01', '2026-11-30')).toBe('tomorrow')
+  })
+
+  it('gives the full date from the day after tomorrow, and for a day gone', () => {
+    expect(formatDeliveryDayWhen('2026-11-27', '2026-11-25')).toBe('Friday 27th of November')
+    expect(formatDeliveryDayWhen('2026-11-24', '2026-11-25')).toBe('Tuesday 24th of November')
+  })
+
+  it('falls back to the date with no usable today, and to nothing with no day', () => {
+    expect(formatDeliveryDayWhen('2026-11-25', '')).toBe('Wednesday 25th of November')
+    expect(formatDeliveryDayWhen('', '2026-11-25')).toBe('')
   })
 })
