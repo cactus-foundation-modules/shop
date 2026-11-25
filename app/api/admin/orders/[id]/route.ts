@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/prisma'
 import { requireShopUser } from '@/modules/shop/lib/access'
 import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { DELIVERY_INSTRUCTIONS_MAX_LENGTH, deliveryInstructionsLabel } from '@/modules/shop/lib/delivery-instructions'
+import { notifyOrderDeliveryChanged } from '@/modules/shop/lib/order-delivery-hooks'
 import { getCustomerSummary, getOrderById, getOrderItems, listOrderNotes, listOrderEmails, type OrderNoteRow, listReplacementOrdersForParent, setOrderAskForReview, setOrderCustomerReference, setOrderDeliveryInstructions, setOrderShippingAddress } from '@/modules/shop/lib/db/orders'
 import { formatAddress } from '@/modules/shop/lib/address-format'
 import { sendAddressUpdatedEmail, type DeliveryDetailsChange } from '@/modules/shop/lib/address-updated-email'
@@ -237,6 +238,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
     if ((before.deliveryInstructions ?? '').trim() !== deliveryInstructions.trim()) change.instructions = deliveryInstructions.trim()
+  }
+
+  // Tell any module holding its own copy of the delivery details (a drop-ship
+  // purchase order, say). Before the email, so a mail server having a moment
+  // cannot stop the supplier hearing about the corrected address.
+  if (before && (change.address !== undefined || change.instructions !== undefined)) {
+    await notifyOrderDeliveryChanged({
+      orderId: id,
+      orderNumber: before.orderNumber,
+      addressChanged: change.address !== undefined,
+      instructionsChanged: change.instructions !== undefined,
+    })
   }
 
   if (emailCustomer && (change.address !== undefined || change.instructions !== undefined)) {
