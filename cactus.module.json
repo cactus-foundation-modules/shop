@@ -1,6 +1,6 @@
 {
   "name": "shop",
-  "version": "0.1.550",
+  "version": "0.1.551",
   "tablePrefix": "shp_",
   "notificationKinds": [
     {"id": "new-order", "label": "New orders", "description": "An order has been placed or is awaiting payment.", "dedupePrefix": "shop:order:"},
@@ -329,6 +329,16 @@
       "component": "shopProductDetailPuckComponent",
       "rscComponent": "shopProductDetailPuckRscComponent",
       "rscImport": "./components/puck/ShopProductDetail.rsc",
+      "layoutTypes": [
+        "shopProduct"
+      ]
+    },
+    {
+      "type": "ShopProductBreadcrumb",
+      "import": "./components/puck/ShopProductBreadcrumb",
+      "component": "shopProductBreadcrumbPuckComponent",
+      "rscComponent": "shopProductBreadcrumbPuckRscComponent",
+      "rscImport": "./components/puck/ShopProductBreadcrumb.rsc",
       "layoutTypes": [
         "shopProduct"
       ]

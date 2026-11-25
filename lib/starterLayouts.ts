@@ -286,10 +286,11 @@ export function shopProductStarters() {
     {
       id: 'starter-shop-product-classic',
       name: 'Classic Detail',
-      description: 'Product detail, back-in-stock form, related products below.',
+      description: 'Breadcrumb, product detail, back-in-stock form, related products below.',
       publishByDefault: true,
       data: {
         content: [
+          block('ShopProductBreadcrumb', 'shop-product-breadcrumb'),
           block('ShopProductDetail', 'shop-product-detail'),
           block('ShopBackInStockForm', 'shop-product-backinstock', { buttonLabel: 'Notify me' }),
           block('ShopRelatedProducts', 'shop-product-related', { heading: 'You might also like', layout: 'Grid' }),
@@ -301,9 +302,10 @@ export function shopProductStarters() {
     {
       id: 'starter-shop-product-sidebar',
       name: 'With Upsells Sidebar',
-      description: 'Product detail (70%) with back-in-stock and upsells in a sidebar (30%), related products full-width below.',
+      description: 'Breadcrumb, then product detail (70%) with back-in-stock and upsells in a sidebar (30%), related products full-width below.',
       data: {
         content: [
+          block('ShopProductBreadcrumb', 'breadcrumb-1'),
           split('columns-1', '70/30'),
           block('ShopRelatedProducts', 'related-1', { heading: 'You might also like', layout: 'Grid' }),
         ],
@@ -317,9 +319,10 @@ export function shopProductStarters() {
     {
       id: 'starter-shop-product-hero',
       name: 'Full Width Hero then Details',
-      description: 'Full-width product detail, boxed back-in-stock form, related and upsell products stacked below.',
+      description: 'Breadcrumb, full-width product detail, boxed back-in-stock form, related and upsell products stacked below.',
       data: {
         content: [
+          block('ShopProductBreadcrumb', 'breadcrumb-1'),
           block('ShopProductDetail', 'detail-1'),
           section('section-1', { content: [block('ShopBackInStockForm', 'backinstock-1', { buttonLabel: 'Notify me' })] }),
           block('ShopRelatedProducts', 'related-1', { heading: 'You might also like', layout: 'Grid' }),

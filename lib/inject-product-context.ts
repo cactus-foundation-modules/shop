@@ -1,6 +1,6 @@
 import type { PuckData } from '@/modules/shop/lib/types'
 
-const PRODUCT_CONTEXT_BLOCKS = new Set(['ShopProductDetail', 'ShopRelatedProducts', 'ShopUpsellProducts', 'ShopBackInStockForm'])
+const PRODUCT_CONTEXT_BLOCKS = new Set(['ShopProductDetail', 'ShopProductBreadcrumb', 'ShopRelatedProducts', 'ShopUpsellProducts', 'ShopBackInStockForm'])
 
 // The 'product' page layout's blocks have no per-instance product slug of
 // their own (they're a shared template rendered for every product) - the
