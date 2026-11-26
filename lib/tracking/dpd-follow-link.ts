@@ -10,7 +10,7 @@
 // Its own file, with no imports, because the dispatch form runs it as you type
 // and has no business pulling a schema library into the admin bundle for it.
 
-const FOLLOW_LINK = /^(?:https?:\/\/)?(?:www\.)?dpd\.co\.uk\/d\/([A-Za-z0-9]{6,32})\/?$/i
+const FOLLOW_LINK = /^(?:https?:\/\/)?(?:www\.)?dpd\.co\.uk\/d\/([A-Za-z0-9_-]{6,32})\/?$/i
 
 /** An example, for placeholders and error messages. */
 export const DPD_FOLLOW_LINK_EXAMPLE = 'https://www.dpd.co.uk/d/6dPoGvP3DMDN'

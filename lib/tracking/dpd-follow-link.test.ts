@@ -6,6 +6,11 @@ describe('dpdFollowLinkCode', () => {
     expect(dpdFollowLinkCode('https://www.dpd.co.uk/d/6dPoGvP3DMDN')).toBe('6dPoGvP3DMDN')
   })
 
+  it('takes a code with an underscore or hyphen in it, which DPD does hand out', () => {
+    expect(dpdFollowLinkCode('https://www.dpd.co.uk/d/6dPoGZb_sx5M')).toBe('6dPoGZb_sx5M')
+    expect(dpdFollowLinkCode('https://www.dpd.co.uk/d/6dPoGZb-sx5M')).toBe('6dPoGZb-sx5M')
+  })
+
   it('forgives the link typed without https:// or www.', () => {
     expect(dpdFollowLinkCode('dpd.co.uk/d/6dPoGvP3DMDN')).toBe('6dPoGvP3DMDN')
     expect(dpdFollowLinkCode('http://dpd.co.uk/d/6dPoGvP3DMDN/')).toBe('6dPoGvP3DMDN')

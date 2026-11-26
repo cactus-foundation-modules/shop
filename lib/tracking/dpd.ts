@@ -78,9 +78,9 @@ export function dpdTypedParcelNumber(text: string | null | undefined): { code: s
 export function dpdShortCodeFromUrl(value: string | null | undefined): string | null {
   if (!value) return null
   const trimmed = value.trim()
-  const m = /dpd(?:local)?\.co\.uk\/d\/([A-Za-z0-9]{6,32})/i.exec(trimmed)
+  const m = /dpd(?:local)?\.co\.uk\/d\/([A-Za-z0-9_-]{6,32})/i.exec(trimmed)
   if (m?.[1]) return m[1]
-  return /^[A-Za-z0-9]{6,32}$/.test(trimmed) ? trimmed : null
+  return /^[A-Za-z0-9_-]{6,32}$/.test(trimmed) ? trimmed : null
 }
 
 // Their timestamps are 'YYYY-MM-DD HH:MM:SS' with no offset and no 'T'. Safari

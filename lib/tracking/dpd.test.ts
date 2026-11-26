@@ -97,6 +97,11 @@ describe('dpdShortCodeFromUrl', () => {
     expect(dpdShortCodeFromUrl('https://www.dpd.co.uk/d/6dPoGe7yvJAW')).toBe('6dPoGe7yvJAW')
   })
 
+  it('keeps an underscore in the code rather than cutting it off there', () => {
+    expect(dpdShortCodeFromUrl('https://www.dpd.co.uk/d/6dPoGZb_sx5M')).toBe('6dPoGZb_sx5M')
+    expect(dpdShortCodeFromUrl('6dPoGZb_sx5M')).toBe('6dPoGZb_sx5M')
+  })
+
   // An owner pasting from an email is as likely to paste the code as the
   // address, and refusing them costs the parcel its live tracking.
   it('accepts the bare code too', () => {
