@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSiteTimezone } from '@/lib/config/timezone.server'
 import { getClientIp } from '@/lib/auth/rate-limit'
-import { getShopConfigCached } from '@/modules/shop/lib/config'
 import { getOrderById } from '@/modules/shop/lib/db/orders'
-import { claimViewerTrackingCheck, getShipmentForOrder } from '@/modules/shop/lib/db/shipments'
-import { completeOrderIfEveryParcelArrived } from '@/modules/shop/lib/order-auto-complete'
+import { getShipmentForOrder } from '@/modules/shop/lib/db/shipments'
+import { checkParcelOnView } from '@/modules/shop/lib/tracking/view-check'
 import { resolveOrderViewer } from '@/modules/shop/lib/order-viewer'
-import { courierForShipment } from '@/modules/shop/lib/courier-faqs'
-import { courierIsPolled } from '@/modules/shop/lib/tracking/stage-meaning'
-import { readParcelTracking } from '@/modules/shop/lib/tracking/read-parcel'
-import { storeParcelReading } from '@/modules/shop/lib/tracking/store-reading'
-import { VIEW_CHECK_MIN_AGE_MINUTES } from '@/modules/shop/lib/tracking/live-delivery'
 import { checkInMemoryRateLimit } from '@/modules/shop/lib/rate-limit'
 
 // PUBLIC - ask the courier about one parcel because somebody has just opened
@@ -56,45 +49,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const shipment = shipmentId ? await getShipmentForOrder(order.id, shipmentId) : null
   if (!shipment) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Nothing to ask about: already here, on a courier the shop does not follow,
-  // on an order called off, or with nothing to follow it by.
-  const config = await getShopConfigCached()
-  const courier = courierForShipment(config, shipment)
-  if (
-    shipment.deliveredAt
-    || !courier
-    || !courierIsPolled(courier)
-    || order.status === 'CANCELLED'
-    || order.status === 'REFUNDED'
-    || !(shipment.trackingUrl || shipment.trackingShortCode)
-  ) {
-    return NextResponse.json({ refresh: false })
-  }
-
-  // Asked within the last few minutes, by this viewer or anybody else. What
-  // was learned is already on the page.
-  if (!(await claimViewerTrackingCheck(shipment.id, VIEW_CHECK_MIN_AGE_MINUTES))) {
-    return NextResponse.json({ refresh: false })
-  }
-
-  const timezone = await getSiteTimezone()
-  const reading = await readParcelTracking(courier, shipment, timezone)
-  // A courier having a moment is not news. The claim above has stamped the
-  // parcel as looked at, and the next open or the hourly job asks again.
-  if (!reading?.stage) return NextResponse.json({ refresh: false })
-
-  const { delivered } = await storeParcelReading(courier, shipment, reading, timezone)
-  if (delivered) {
-    // Finished off here, as the live map does, so the reload lands on a
-    // completed order. A failure is logged and left to the hourly job's
-    // leftovers sweep - the delivery itself is already recorded.
-    await completeOrderIfEveryParcelArrived(order.id).catch((error: unknown) => {
-      console.error('[shop] could not complete delivered order', order.id, error)
-    })
-  }
-
-  // Events, the window and the driver can change without the stage moving, so
-  // a reading that says anything at all is worth a re-render. It is at most one
-  // per parcel per few minutes.
-  return NextResponse.json({ refresh: true })
+  return NextResponse.json({ refresh: await checkParcelOnView(order, shipment) })
 }

@@ -575,6 +575,28 @@ export function OrderDetailScreen({ orderId, children, panels }: {
 
   useEffect(refresh, [refresh])
 
+  // Asks each parcel's courier as the order opens, as the customer's own page
+  // does, rather than showing whatever the hourly job last heard - which left a
+  // delivery hour DPD had published since missing for up to an hour. Once per
+  // parcel per mount; the server throttles per parcel as well. Re-reads the
+  // parcels only if a courier had anything to say.
+  const askedCouriers = useRef(new Set<string>())
+  useEffect(() => {
+    for (const s of dispatch?.shipments ?? []) {
+      if (s.deliveredAt || !(s.trackingUrl || s.trackingShortCode) || askedCouriers.current.has(s.id)) continue
+      askedCouriers.current.add(s.id)
+      fetch(`/api/m/shop/admin/orders/${orderId}/tracking-check?shipment=${encodeURIComponent(s.id)}`, { method: 'POST' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then(async (body: { refresh?: boolean } | null) => {
+          if (!body?.refresh) return
+          const res = await fetch(`/api/m/shop/admin/orders/${orderId}/dispatch`)
+          if (res.ok) setDispatch(await res.json())
+        })
+        // A courier that cannot be reached leaves the screen as it was.
+        .catch(() => {})
+    }
+  }, [dispatch, orderId])
+
   if (loadError) return <div className="alert alert-danger">{loadError}</div>
   if (!data) return <div className="sox-loading">Loading order…</div>
 
