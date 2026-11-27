@@ -212,4 +212,68 @@ suite('reported delivery delays, against a real database', () => {
     expect(parcel).toMatchObject({ deliveryDelay: 'today', deliveryDelayedFrom: '2026-10-09', deliveryDelayNote: 'Late' })
     expect(parcel?.deliveryDelayedAt).toBeInstanceOf(Date)
   })
+
+  // The courier's own booked day (claimCourierDay). Order DW000295: Route1
+  // booked the 27th, staff added 13:00-16:00 and told the customer, then Route1
+  // moved it to the 30th - and the times on the parcel blocked the move.
+  describe('the courier booking a day', () => {
+    async function courierRow() {
+      return (await client.query(
+        `SELECT "delivery_date","courier_day","delivery_slot_start","delivery_slot_end",
+                "slot_notified_at","slot_notified_window"
+           FROM "shp_shipments" WHERE "id" = 'shp-1'`,
+      )).rows[0]
+    }
+
+    async function setParcel(values: {
+      date: string | null; courierDay: string | null; start: string | null; end: string | null; toldWindow: string | null
+    }) {
+      await client.query(
+        `UPDATE "shp_shipments" SET "delivery_date" = $1, "courier_day" = $2,
+           "delivery_slot_start" = $3, "delivery_slot_end" = $4,
+           "slot_notified_at" = CASE WHEN $5::text IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END,
+           "slot_notified_window" = $5
+         WHERE "id" = 'shp-1'`,
+        [values.date, values.courierDay, values.start, values.end, values.toldWindow],
+      )
+    }
+
+    it('moves a told slot on its own day to the new day, dropping the times and the stamp', async () => {
+      await setParcel({ date: '2026-11-27', courierDay: '2026-11-27', start: '13:00', end: '16:00', toldWindow: '2026-11-27 13:00-16:00' })
+      expect(await shipments.claimCourierDay('shp-1', '2026-11-30')).toEqual({ dayChanged: true, windowTold: false, previousDay: '2026-11-27' })
+      expect(await courierRow()).toMatchObject({
+        delivery_date: '2026-11-30', courier_day: '2026-11-30',
+        delivery_slot_start: null, delivery_slot_end: null, slot_notified_at: null, slot_notified_window: null,
+      })
+      // Once only: a second read of the same page takes nothing.
+      expect(await shipments.claimCourierDay('shp-1', '2026-11-30')).toBeNull()
+    })
+
+    it('leaves a day and times staff typed themselves alone', async () => {
+      await setParcel({ date: '2026-11-28', courierDay: '2026-11-27', start: '13:00', end: '16:00', toldWindow: '2026-11-28 13:00-16:00' })
+      expect(await shipments.claimCourierDay('shp-1', '2026-11-30')).toBeNull()
+      expect(await courierRow()).toMatchObject({ delivery_date: '2026-11-28', courier_day: '2026-11-27', delivery_slot_start: '13:00' })
+    })
+
+    it('keeps the times when the courier books the very day already on the parcel', async () => {
+      await setParcel({ date: '2026-11-30', courierDay: null, start: '09:00', end: '12:00', toldWindow: '2026-11-30 09:00-12:00' })
+      expect(await shipments.claimCourierDay('shp-1', '2026-11-30')).toEqual({ dayChanged: false, windowTold: true, previousDay: '2026-11-30' })
+      expect(await courierRow()).toMatchObject({
+        delivery_date: '2026-11-30', courier_day: '2026-11-30', delivery_slot_start: '09:00', delivery_slot_end: '12:00',
+        slot_notified_window: '2026-11-30 09:00-12:00',
+      })
+    })
+
+    it('a first day on an empty parcel is new and untold', async () => {
+      await setParcel({ date: null, courierDay: null, start: null, end: null, toldWindow: null })
+      expect(await shipments.claimCourierDay('shp-1', '2026-11-30')).toEqual({ dayChanged: true, windowTold: false, previousDay: null })
+    })
+
+    it('takes nothing on a delayed parcel', async () => {
+      await setParcel({ date: '2026-11-27', courierDay: '2026-11-27', start: '13:00', end: '16:00', toldWindow: '2026-11-27 13:00-16:00' })
+      await shipments.recordDeliveryDelay('shp-1', 'ord-1', { kind: 'today', missedDay: '2026-11-27', note: null })
+      expect(await shipments.claimCourierDay('shp-1', '2026-11-30')).toBeNull()
+      expect(await courierRow()).toMatchObject({ delivery_date: '2026-11-27', delivery_slot_start: '13:00' })
+    })
+  })
 })

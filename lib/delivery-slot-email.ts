@@ -204,10 +204,12 @@ function courierMovedFromDay(previousDay: string | null, today: string): string 
  * inbox.
  *
  * Told when the day on the parcel is new or has moved, as staff saving a day
- * is (maybeSendDayEmail), and never once a window has been told: that email
- * named the day, and a move after it is the moved-window email's to tell
- * (maybeSendMovedDayEmail), which reads the day written here. A day in the
- * past is a page left standing after the event, and is not taken at all.
+ * is (maybeSendDayEmail), and never while a window told for that very day
+ * stands: that email already named it. A window told for the day the courier
+ * moved away from has its stamp lifted by the claim, so the move is told here
+ * (order DW000295: told the 27th, 13:00-16:00, moved to the 30th, and nothing
+ * else would ever have said so - Multidrop give no times). A day in the past
+ * is a page left standing after the event, and is not taken at all.
  *
  * Whether it may be taken at all - a day staff typed, a booked slot, a delay -
  * is claimCourierDay's call, made in the same statement that writes it.

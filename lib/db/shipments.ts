@@ -931,14 +931,26 @@ export async function claimDelayAnsweredByCourier(shipmentId: string, windowDate
  * Taken only while the day on the parcel is the courier's own - none at all,
  * or the one the courier booked last time. A day staff typed differs from
  * courier_day and stands, as bookedDayStands says it should; a day staff
- * cleared stays cleared until the courier books a different one. Never once
- * times are on the parcel (that is a booked slot, and the courier's window
- * email speaks for any change to it), on a delayed parcel (the delay has its
- * own answer, claimDelayAnsweredByCourier) or on one that has arrived.
+ * cleared stays cleared until the courier books a different one. Never on a
+ * delayed parcel (the delay has its own answer, claimDelayAnsweredByCourier)
+ * or on one that has arrived.
+ *
+ * Times on the parcel do not stop it while the day is still the courier's:
+ * times typed for the courier's day belong to that day, so when the courier
+ * moves the day they go with it, and so does the stamp of a window told for
+ * it - that email now names a day that is not happening, and the customer is
+ * told the new day instead (a window for it, if the courier gives one, is a
+ * fresh window email). Order DW000295, 27 November 2026: Route1 booked the
+ * 27th, staff added 13:00-16:00 and the customer was told it, then Route1
+ * moved it to the 30th. Times used to block this claim outright, Multidrop
+ * never gives times for the window email to correct it with, so the parcel
+ * sat on the 27th and the customer heard nothing. Times on a day staff typed
+ * themselves (not the courier's) still stand, as the day does.
  *
  * A parcel already carrying that very day - typed by staff, or set by a
  * delay the courier answered - takes the courier's day as its own with
- * nothing new to tell, so a later move by the courier is followed.
+ * nothing new to tell, times and all, so a later move by the courier is
+ * followed.
  *
  * The statement that checks is the one that writes, so the hourly job and a
  * watched order page reading the same page take it once between them, and the
@@ -961,14 +973,32 @@ export async function claimCourierDay(
     UPDATE "shp_shipments"
     SET "delivery_date" = ${day}::text,
         "courier_day" = ${day}::text,
+        -- The right-hand side reads the row as it was. Times for the day being
+        -- left belong to it; on the same day they are kept.
+        "delivery_slot_start" = CASE WHEN "delivery_date" IS DISTINCT FROM ${day}::text THEN NULL ELSE "delivery_slot_start" END,
+        "delivery_slot_end" = CASE WHEN "delivery_date" IS DISTINCT FROM ${day}::text THEN NULL ELSE "delivery_slot_end" END,
+        -- A window told for another day than the new one is no longer true:
+        -- the stamp goes, so the new day is told (maybeSendCourierDayEmail).
+        "slot_notified_at" = CASE
+          WHEN "delivery_date" IS DISTINCT FROM ${day}::text
+            AND LEFT(COALESCE("slot_notified_window", ''), 10) IS DISTINCT FROM ${day}::text
+          THEN NULL ELSE "slot_notified_at" END,
+        "slot_notified_window" = CASE
+          WHEN "delivery_date" IS DISTINCT FROM ${day}::text
+            AND LEFT(COALESCE("slot_notified_window", ''), 10) IS DISTINCT FROM ${day}::text
+          THEN NULL ELSE "slot_notified_window" END,
         "updated_at" = CURRENT_TIMESTAMP
     WHERE "id" = ${shipmentId}
       AND "delivered_at" IS NULL
       AND "delivery_delay" IS NULL
-      AND "delivery_slot_start" IS NULL
-      AND "delivery_slot_end" IS NULL
       AND "courier_day" IS DISTINCT FROM ${day}::text
-      AND ("delivery_date" IS NULL OR "delivery_date" = "courier_day" OR "delivery_date" = ${day}::text)
+      -- No day on the parcel (and so no times either), the courier's own day,
+      -- or the very day now booked. A day staff typed stands, times and all.
+      AND (
+        ("delivery_date" IS NULL AND "delivery_slot_start" IS NULL AND "delivery_slot_end" IS NULL)
+        OR "delivery_date" = "courier_day"
+        OR "delivery_date" = ${day}::text
+      )
       -- The poller still reads a completed order's parcels for a signature;
       -- an order that is finished, or called off, has no day to tell.
       AND NOT EXISTS (

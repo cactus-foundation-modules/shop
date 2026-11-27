@@ -56,7 +56,9 @@ describe('maybeSendCourierDayEmail when the courier moves a told day', () => {
     expect(notify).toHaveBeenCalledWith('DELIVERY_DAY_BOOKED', expect.anything(), expect.anything(), { shipmentId: 's1' })
   })
 
-  it('stays quiet once a window was told (the moved-window email has it)', async () => {
+  // The claim lifts the stamp of a window told for the day being left
+  // (claimCourierDay), so a stamp that survives it was for the new day.
+  it('stays quiet when a window for the new day was already told', async () => {
     claim.mockResolvedValue({ dayChanged: true, windowTold: true, previousDay: '2099-11-23' })
     expect(await email.maybeSendCourierDayEmail(parcel, '2099-11-24', TZ)).toBe(false)
     expect(notify).not.toHaveBeenCalled()
