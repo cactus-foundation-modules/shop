@@ -126,8 +126,8 @@ export function OrderSizeDeductionClient({
   )
 }
 
-// The supplier's name sits in the tail ("on Dynamic Office Solutions orders of
-// £350 or more") and links to their page where the shop publishes one.
+// The supplier's name sits in the tail ("when you spend £339 or more on Dynamic
+// Office Solutions offer prices") and links to their page where the shop publishes one.
 function LineFigures({ figures, supplierLink }: { figures: OrderSizeDeductionFigures; supplierLink?: SupplierLink | null }) {
   return (
     <>

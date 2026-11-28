@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
   //
   // The figures are stored-side, like the thresholds and amounts they come from,
   // so the sentence quotes what the owner typed rather than a tax conversion of
-  // it. Deliberate: "orders of £350 or more" is the supplier's rule, not a price.
+  // it. Deliberate: "£339 or more on offer prices" is the supplier's rule, not a price.
   //
   // The supplier's name in it links to their page where the shop publishes one,
   // looked up only for the suppliers that actually have a note to print.

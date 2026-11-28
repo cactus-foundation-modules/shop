@@ -163,11 +163,11 @@ describe('applyOrderSizeDeductions', () => {
 
   it('leaves the money in a basket held back by resolver charges', async () => {
     // £360 on the line, £60 of it a delivery service the resolver attributed out.
-    // £300 of goods, against a £350 threshold: the basket has not reached it.
+    // £300 of goods, £294 once the £6 is off, against a £350 threshold.
     const held = line({ price: 400, salePrice: 360, quantity: 1 })
     held.charges = [{ label: 'Delivery', amount: 60 }]
     const out = await applyOrderSizeDeductions([held])
-    expect(out.states[0]!.goodsSubtotal).toBe(300)
+    expect(out.states[0]!.offerSubtotal).toBe(294)
     expect(out.states[0]!.qualified).toBe(false)
     expect(out.lines[0]!.unitPrice).toBe(360)
   })

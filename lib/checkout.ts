@@ -408,7 +408,8 @@ export async function applyOrderSizeDeductions(
   if (!orderSizeDeductionEnabled) return { lines, states: [] }
 
   // The basket as the rule sees it. `lineSubtotal` less the resolver charges is
-  // the goods figure - see goodsValue in the rule module. The stamp on the
+  // the goods figure, and only lines carrying an amount count towards the
+  // threshold, at their reduced price - see orderSizeDeductionStates. The stamp on the
   // product is the whole test: it says how much of TODAY'S price was put there
   // to come back off, whether that price is a sale one or the ordinary one.
   const candidates: Array<OrderSizeDeductionLine & { index: number }> = lines.map((line, index) => ({

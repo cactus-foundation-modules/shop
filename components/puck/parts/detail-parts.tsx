@@ -933,7 +933,7 @@ export function ShopDetailOrderSizeDeduction(props: OrderSizeDeductionProps) {
       <div className="spd-osd" style={{ opacity: 0.6, ...textAlignStyle(props.align) }}>
         <div className="spd-osd-box">
           <p className="spd-osd-line">
-            Get it for just <s className="spd-osd-was">£116</s> <span className="spd-osd-amount">£110</span> on <a className="spd-osd-supplier">Dynamic Office Solutions</a> orders of £350 or more
+            Get it for just <s className="spd-osd-was">£116</s> <span className="spd-osd-amount">£110</span> when you spend £350 or more on <a className="spd-osd-supplier">Dynamic Office Solutions</a> offer prices
           </p>
         </div>
       </div>

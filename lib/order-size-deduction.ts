@@ -1,8 +1,18 @@
 // Order-size deduction: the whole commercial rule, in one pure file.
 //
 // A product may carry a per-unit amount already inside its shelf price. Once the
-// basket holds enough of that supplier's goods, the amount comes off every line
-// that carries one.
+// basket holds enough of that supplier's OFFER items - the lines carrying an
+// amount, counted at the price they are charged once it is off - the amount comes
+// off every one of them.
+//
+// Why offers only, and why at the reduced price: the threshold exists so the
+// supplier's own minimum order is met whenever the money is given away. Judged
+// on shelf prices with full-price items counted in, a basket could qualify while
+// the purchase order behind it fell well short of that minimum, and the shop
+// paid the supplier's small-order surcharge out of a margin it had just handed
+// to the customer. Counted this way, a threshold set at the right figure
+// guarantees the supplier's minimum by construction: full-price items on top can
+// only add to the purchase order, never stand in for it.
 //
 // It is NOT delivery, and must never be described as carriage. Delivery is a
 // service the shop sells and prices; this is money already inside the goods
@@ -57,12 +67,17 @@ export type OrderSizeDeductionLine = {
 /** Where one supplier stands in this basket, for the copy and for the tests. */
 export type OrderSizeDeductionState = {
   supplier: string
-  /** Whether the goods subtotal reached the threshold. Judged PRE-deduction. */
+  /** Whether the offer subtotal reached the threshold. */
   qualified: boolean
-  /** This supplier's goods in the basket, charges already taken out. */
-  goodsSubtotal: number
+  /**
+   * This supplier's OFFER items in the basket, at the price they come to once
+   * the amount is off, charges already taken out. Full-price lines are not in
+   * it, and a line's own amount never is - so this is the figure the shopper
+   * would actually pay for those items on a qualifying basket.
+   */
+  offerSubtotal: number
   threshold: number
-  /** How much more of this supplier's goods is needed. 0 once qualified. */
+  /** How much more of this supplier's offer items is needed. 0 once qualified. */
   shortfall: number
   /** What comes off the basket for this supplier, per unit x quantity across
    *  every carrying line. The figure a qualified basket has saved, or the one a
@@ -116,12 +131,18 @@ function lineDeduction(line: OrderSizeDeductionLine): number | null {
 }
 
 /**
- * Where every supplier in the basket stands, judged BEFORE any money comes off.
+ * Where every supplier in the basket stands.
  *
- * That ordering is the reason this can never oscillate: a basket that qualifies
- * and then falls below the threshold once the amounts are taken off keeps its
- * deduction, because the test was already settled. One pass, no fixed point to
- * hunt for, nothing to guard against.
+ * The test is on what the offer items come to AFTER their amounts are off, and
+ * it is worked out directly from that - never by applying the deduction and then
+ * looking at the result - so it still cannot oscillate: a line's reduced value
+ * is the same figure whether or not the basket qualifies. One pass, no fixed
+ * point to hunt for, nothing to guard against.
+ *
+ * Only lines carrying an amount count. A full-price line from the same supplier
+ * is charged in full and adds nothing towards the threshold either: the point of
+ * the threshold is that the supplier's minimum order is met by the offer items
+ * alone.
  *
  * Suppliers are scored separately - two suppliers' goods do not add up to one
  * supplier's threshold - and a line with no supplier at all is simply not in any
@@ -145,26 +166,30 @@ export function orderSizeDeductionStates(
     if (!name) continue
     const rule = byName.get(name.toLowerCase())
     if (!rule) continue
+    const per = lineDeduction(line)
+    // A line carrying no amount is not an offer: it counts for nothing here, and
+    // a supplier with no offers in the basket has no standing to report.
+    if (per == null) continue
     let row = tally.get(rule.supplier)
     if (!row) {
       row = { rule, goods: 0, saving: 0 }
       tally.set(rule.supplier, row)
     }
-    row.goods += goodsValue(line)
-    const per = lineDeduction(line)
     // Per unit, not per line: five chairs at £6 is £30.
-    if (per != null) row.saving += per * Math.max(0, line.quantity)
+    const off = per * Math.max(0, line.quantity)
+    row.goods += Math.max(0, goodsValue(line) - off)
+    row.saving += off
   }
 
   return [...tally.values()].map(({ rule, goods, saving }) => {
-    const goodsSubtotal = round2(goods)
-    const qualified = goodsSubtotal >= rule.threshold
+    const offerSubtotal = round2(goods)
+    const qualified = offerSubtotal >= rule.threshold
     return {
       supplier: rule.supplier,
       qualified,
-      goodsSubtotal,
+      offerSubtotal,
       threshold: rule.threshold,
-      shortfall: qualified ? 0 : round2(rule.threshold - goodsSubtotal),
+      shortfall: qualified ? 0 : round2(rule.threshold - offerSubtotal),
       saving: round2(saving),
     }
   })
@@ -184,8 +209,9 @@ export type DeductedLine<T> = T & {
  * The whole rule, applied to a basket: reduced lines, plus where each supplier
  * stands.
  *
- * Only lines that actually carry an amount lose anything. Lines from the same
- * supplier carrying none count towards the threshold and are charged in full.
+ * Only lines that actually carry an amount lose anything, and only they count
+ * towards the threshold. Lines from the same supplier carrying none are charged
+ * in full and left out of the sum.
  */
 export function applyOrderSizeDeduction<T extends OrderSizeDeductionLine>(
   lines: readonly T[],
@@ -251,7 +277,7 @@ export type OrderSizeDeductionLineView = {
   was: string | null
   /** What they would pay once the basket clears the threshold. */
   now: string
-  /** " on Dynamic Office Solutions orders of £350 or more". */
+  /** " when you spend £339 or more on Dynamic Office Solutions offer prices". */
   tail: string
   /**
    * The figured half of the sentence on each side of tax, where the shopper's
@@ -288,8 +314,8 @@ export type OrderSizeDeductionFigures = Pick<OrderSizeDeductionLineView, 'was' |
 /**
  * The product page's line, in the parts a renderer needs to dress it:
  *
- *   Get it for just  [£35]  £29  on Dynamic Office Solutions orders of £350 or more
- *   \_ lead ______/  \_was/  \now/  \_ tail _______________________________________/
+ *   Get it for just  [£137]  £97  when you spend £339 or more on Dynamic Office Solutions offer prices
+ *   \_ lead ______/  \_was_/  \now/  \_ tail ____________________________________________________/
  *
  * `was` is what the shopper pays TODAY and is struck through; `now` is what they
  * would pay once the basket clears the threshold. Showing both is the difference
@@ -332,7 +358,9 @@ export function orderSizeDeductionLineParts(params: {
   // Equal figures after formatting are the same price wearing two labels, and a
   // line through one of them would say something untrue about the other.
   const was = strike && strike !== now ? strike : null
-  const tail = ` on ${supplier} orders of ${tidyMoney(threshold, currencySymbol)} or more`
+  // "Offer prices" is what tells the shopper the threshold is counted at the
+  // reduced figure, and only on the items that carry one - see the rule above.
+  const tail = ` when you spend ${tidyMoney(threshold, currencySymbol)} or more on ${supplier} offer prices`
   return { lead, was, now, tail, text: `${lead}${was ? `${was} ` : ''}${now}${tail}` }
 }
 
@@ -365,23 +393,23 @@ export function orderSizeDeductionRangeLine(params: {
 /**
  * The basket's nudge, for a supplier the shopper is short of:
  *
- *   "Add £62 more from Dynamic Office Solutions and save £24."
+ *   "Add £44 more of Dynamic Office Solutions offers and £120 comes off."
  *
  * The saving quoted is what would come off the basket AS IT STANDS. Adding
  * another carrying item raises it, so the sentence under-promises and can never
  * over-promise.
  */
 export function orderSizeDeductionShortfallNote(state: OrderSizeDeductionState, currencySymbol = '£'): string {
-  return `Add ${tidyMoney(state.shortfall, currencySymbol)} more from ${state.supplier} and save ${tidyMoney(state.saving, currencySymbol)}.`
+  return `Add ${tidyMoney(state.shortfall, currencySymbol)} more of ${state.supplier} offers and ${tidyMoney(state.saving, currencySymbol)} comes off.`
 }
 
 /**
  * And once they are over it:
  *
- *   "£24 has come off this order - your Dynamic Office Solutions items are over £350."
+ *   "£120 has come off - your Dynamic Office Solutions offers are over £339."
  */
 export function orderSizeDeductionQualifiedNote(state: OrderSizeDeductionState, currencySymbol = '£'): string {
-  return `${tidyMoney(state.saving, currencySymbol)} has come off this order - your ${state.supplier} items are over ${tidyMoney(state.threshold, currencySymbol)}.`
+  return `${tidyMoney(state.saving, currencySymbol)} has come off - your ${state.supplier} offers are over ${tidyMoney(state.threshold, currencySymbol)}.`
 }
 
 /**

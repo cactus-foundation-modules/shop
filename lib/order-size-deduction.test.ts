@@ -62,21 +62,33 @@ describe('deductionAmount', () => {
 })
 
 describe('the qualifying subtotal', () => {
-  it('counts full-price lines towards the threshold, and takes nothing off them', () => {
-    // The asymmetry that IS the feature: a full-price chair from the same
-    // supplier helps the basket over the line and is charged in full.
-    const { lines, states } = applyOrderSizeDeduction(
+  it('leaves full-price lines out of the threshold, and takes nothing off them', () => {
+    // A full-price item cannot stand in for offer items: the threshold is there
+    // so the supplier's minimum is met by the offers alone. £220 of offers at
+    // their reduced price, plus £200 at full price, has not reached £350.
+    const short = applyOrderSizeDeduction(
       [
         line({ unitPrice: 116, quantity: 2, lineSubtotal: 232, deduction: 6 }),
         line({ unitPrice: 200, quantity: 1, lineSubtotal: 200, deduction: null }),
       ],
       [rule()],
     )
-    expect(states[0]!.goodsSubtotal).toBe(432)
+    expect(short.states[0]!.offerSubtotal).toBe(220)
+    expect(short.states[0]!.qualified).toBe(false)
+    expect(short.lines[0]!.unitPrice).toBe(116)
+
+    // Enough offers on their own, and the full-price line rides along untouched.
+    const { lines, states } = applyOrderSizeDeduction(
+      [
+        line({ unitPrice: 116, quantity: 4, lineSubtotal: 464, deduction: 6 }),
+        line({ unitPrice: 200, quantity: 1, lineSubtotal: 200, deduction: null }),
+      ],
+      [rule()],
+    )
+    expect(states[0]!.offerSubtotal).toBe(440)
     expect(states[0]!.qualified).toBe(true)
     expect(lines[0]!.unitPrice).toBe(110)
     expect(lines[0]!.orderSizeDeduction).toBe(6)
-    // Untouched, and no note that it lost anything.
     expect(lines[1]!.unitPrice).toBe(200)
     expect(lines[1]!.orderSizeDeduction).toBeNull()
   })
@@ -92,21 +104,47 @@ describe('the qualifying subtotal', () => {
     expect(states[0]!.saving).toBe(30)
   })
 
-  it('judges qualification BEFORE the money comes off, so a basket cannot oscillate', () => {
-    // £354 of goods clears £350. Take £6 x 1 off and it is £348 - under the
-    // threshold. Judged pre-deduction, so it keeps what it earned; judged after,
-    // this basket would flip between qualified and not for ever.
+  it('judges the threshold on the offer prices, not the shelf prices', () => {
+    // £360 on the shelf, but £342 once the £6s are off - under £350, so nothing
+    // comes off. Judged on the shelf price this basket would have qualified.
     const { lines, states } = applyOrderSizeDeduction(
-      [
-        line({ unitPrice: 116, quantity: 1, lineSubtotal: 116, deduction: 6 }),
-        line({ unitPrice: 238, quantity: 1, lineSubtotal: 238, deduction: null }),
-      ],
+      [line({ unitPrice: 120, quantity: 3, lineSubtotal: 360, deduction: 6 })],
       [rule()],
     )
-    expect(states[0]!.goodsSubtotal).toBe(354)
-    expect(states[0]!.qualified).toBe(true)
-    expect(lines[0]!.unitPrice).toBe(110)
-    expect(lines[0]!.lineSubtotal + lines[1]!.lineSubtotal).toBe(348)
+    expect(states[0]!.offerSubtotal).toBe(342)
+    expect(states[0]!.qualified).toBe(false)
+    expect(states[0]!.shortfall).toBe(8)
+    expect(lines[0]!.unitPrice).toBe(120)
+  })
+
+  it('refuses the basket that lost money on the supplier\'s minimum order', () => {
+    // The order that prompted the rule: two cupboards and a pedestal, £415 on the
+    // shelf against a £339 threshold, £295 once the £40s are off. Its purchase
+    // order came to £271 against the supplier's £300 minimum, and the shop paid
+    // the difference as a surcharge. Counted at offer prices it does not qualify.
+    const { lines, states } = applyOrderSizeDeduction(
+      [
+        line({ unitPrice: 137, quantity: 2, lineSubtotal: 274, deduction: 40 }),
+        line({ unitPrice: 141, quantity: 1, lineSubtotal: 141, deduction: 40 }),
+      ],
+      [rule({ threshold: 339 })],
+    )
+    expect(states[0]!.offerSubtotal).toBe(295)
+    expect(states[0]!.qualified).toBe(false)
+    expect(states[0]!.shortfall).toBe(44)
+    expect(states[0]!.saving).toBe(120)
+    expect(lines.every((l) => l.orderSizeDeduction === null)).toBe(true)
+  })
+
+  it('works the test out directly, so the same basket always gets the same answer', () => {
+    // Exactly on the threshold at the reduced price qualifies, and applying the
+    // rule to its own output answers the same way - a line's reduced value does
+    // not depend on whether the basket qualified.
+    const basket = [line({ unitPrice: 76, quantity: 5, lineSubtotal: 380, deduction: 6 })]
+    const first = applyOrderSizeDeduction(basket, [rule()])
+    expect(first.states[0]!.offerSubtotal).toBe(350)
+    expect(first.states[0]!.qualified).toBe(true)
+    expect(applyOrderSizeDeduction(basket, [rule()]).states).toEqual(first.states)
   })
 
   it('leaves a resolver\'s named charges out of the qualifying subtotal', () => {
@@ -125,10 +163,11 @@ describe('the qualifying subtotal', () => {
       ],
       [rule()],
     )
-    // £432 on the line, £200 of it delivery: £232 of goods.
-    expect(states[0]!.goodsSubtotal).toBe(232)
+    // £432 on the line, £200 of it delivery: £232 of goods, £220 once the £6s
+    // are off.
+    expect(states[0]!.offerSubtotal).toBe(220)
     expect(states[0]!.qualified).toBe(false)
-    expect(states[0]!.shortfall).toBe(118)
+    expect(states[0]!.shortfall).toBe(130)
   })
 
   it('refuses a basket that clears the threshold only because of delivery', () => {
@@ -144,7 +183,7 @@ describe('the qualifying subtotal', () => {
       ],
       [rule()],
     )
-    expect(states[0]!.goodsSubtotal).toBe(300)
+    expect(states[0]!.offerSubtotal).toBe(294)
     expect(states[0]!.qualified).toBe(false)
     expect(lines[0]!.unitPrice).toBe(360)
     expect(lines[0]!.orderSizeDeduction).toBeNull()
@@ -164,9 +203,9 @@ describe('the qualifying subtotal', () => {
     const furdeco = states.find((s) => s.supplier === 'Furdeco')!
     // Neither supplier gets the other's money, and the £400 supplier-less line
     // is in nobody's sum.
-    expect(dynamic.goodsSubtotal).toBe(348)
+    expect(dynamic.offerSubtotal).toBe(330)
     expect(dynamic.qualified).toBe(false)
-    expect(furdeco.goodsSubtotal).toBe(100)
+    expect(furdeco.offerSubtotal).toBe(90)
     expect(furdeco.qualified).toBe(false)
     expect(lines.every((l) => l.orderSizeDeduction === null)).toBe(true)
   })
@@ -193,14 +232,13 @@ describe('the qualifying subtotal', () => {
 
 describe('which lines actually lose money', () => {
   it('never takes anything off a line carrying no amount', () => {
-    // The stamp is the whole test. A line without one counts towards the
-    // threshold and is charged in full, whether or not it is on offer.
+    // The stamp is the whole test. A line without one is charged in full and
+    // counts for nothing, so a basket of them has no standing at all.
     const { lines, states } = applyOrderSizeDeduction(
       [line({ unitPrice: 400, quantity: 1, lineSubtotal: 400, deduction: null })],
       [rule()],
     )
-    expect(states[0]!.qualified).toBe(true)
-    expect(states[0]!.saving).toBe(0)
+    expect(states).toEqual([])
     expect(lines[0]!.unitPrice).toBe(400)
     expect(lines[0]!.orderSizeDeduction).toBeNull()
   })
@@ -223,7 +261,7 @@ describe('which lines actually lose money', () => {
     // A mis-stamped row: the amount is worth more than the thing. Charge nothing,
     // never a negative - the admin report flags the row either way.
     const { lines } = applyOrderSizeDeduction(
-      [line({ unitPrice: 4, quantity: 2, lineSubtotal: 8, deduction: 6 }), line({ unitPrice: 400, quantity: 1, lineSubtotal: 400, deduction: null })],
+      [line({ unitPrice: 4, quantity: 2, lineSubtotal: 8, deduction: 6 }), line({ unitPrice: 400, quantity: 1, lineSubtotal: 400, deduction: 6 })],
       [rule()],
     )
     expect(lines[0]!.unitPrice).toBe(0)
@@ -241,8 +279,7 @@ describe('which lines actually lose money', () => {
       ],
       [rule()],
     )
-    expect(states[0]!.qualified).toBe(true)
-    expect(states[0]!.saving).toBe(0)
+    expect(states).toEqual([])
     expect(lines.every((l) => l.unitPrice === 100 && l.orderSizeDeduction === null)).toBe(true)
   })
 
@@ -263,8 +300,8 @@ describe('the copy', () => {
       lead: 'Get it for just ',
       was: '£116',
       now: '£110',
-      tail: ' on Dynamic Office Solutions orders of £350 or more',
-      text: 'Get it for just £116 £110 on Dynamic Office Solutions orders of £350 or more',
+      tail: ' when you spend £350 or more on Dynamic Office Solutions offer prices',
+      text: 'Get it for just £116 £110 when you spend £350 or more on Dynamic Office Solutions offer prices',
     })
 
     expect(orderSizeDeductionLineParts({
@@ -291,19 +328,20 @@ describe('the copy', () => {
 
   it('says it the four approved ways', () => {
     expect(orderSizeDeductionLine({ reducedPrice: 110, supplier: DYNAMIC, threshold: 350, currencySymbol: currency }))
-      .toBe('Get it for just £110 on Dynamic Office Solutions orders of £350 or more')
+      .toBe('Get it for just £110 when you spend £350 or more on Dynamic Office Solutions offer prices')
 
     expect(orderSizeDeductionRangeLine({ reducedPrice: 110, supplier: DYNAMIC, threshold: 350, currencySymbol: currency }))
-      .toBe('Some options drop to £110 on Dynamic Office Solutions orders of £350 or more')
+      .toBe('Some options drop to £110 when you spend £350 or more on Dynamic Office Solutions offer prices')
 
     const short = orderSizeDeductionStates(
       [line({ unitPrice: 116, quantity: 4, lineSubtotal: 288, deduction: 6 })],
       [rule()],
     )[0]!
-    expect(short.shortfall).toBe(62)
+    // £288 of offers on the shelf, £264 once the £6s are off: £86 short.
+    expect(short.shortfall).toBe(86)
     expect(short.saving).toBe(24)
     expect(orderSizeDeductionShortfallNote(short, currency))
-      .toBe('Add £62 more from Dynamic Office Solutions and save £24.')
+      .toBe('Add £86 more of Dynamic Office Solutions offers and £24 comes off.')
 
     const over = orderSizeDeductionStates(
       [line({ unitPrice: 116, quantity: 4, lineSubtotal: 464, deduction: 6 })],
@@ -311,7 +349,7 @@ describe('the copy', () => {
     )[0]!
     expect(over.qualified).toBe(true)
     expect(orderSizeDeductionQualifiedNote(over, currency))
-      .toBe('£24 has come off this order - your Dynamic Office Solutions items are over £350.')
+      .toBe('£24 has come off - your Dynamic Office Solutions offers are over £350.')
   })
 
   it('never mentions a discount, a saving, carriage or delivery', () => {
@@ -330,22 +368,16 @@ describe('the copy', () => {
   })
 
   it('stays quiet when there is nothing worth saying', () => {
-    // Qualified, but nothing in the basket carries an amount.
-    const nothingToTake = orderSizeDeductionStates(
-      [line({ unitPrice: 400, quantity: 1, lineSubtotal: 400, deduction: null })],
-      [rule()],
-    )
-    expect(nothingToTake[0]!.qualified).toBe(true)
-    expect(orderSizeDeductionNotes(nothingToTake, currency)).toEqual([])
-
-    // Short, but of a supplier the shopper has no carrying items from - being
-    // told to spend another £62 to save nothing is worse than being told nothing.
-    const nothingToGain = orderSizeDeductionStates(
-      [line({ unitPrice: 100, quantity: 1, lineSubtotal: 100, deduction: null })],
-      [rule()],
-    )
-    expect(nothingToGain[0]!.qualified).toBe(false)
-    expect(orderSizeDeductionNotes(nothingToGain, currency)).toEqual([])
+    // Nothing in the basket carries an amount, however much of it there is - and
+    // being told to spend more to have nothing come off is worse than silence.
+    for (const unitPrice of [400, 100]) {
+      const nothing = orderSizeDeductionStates(
+        [line({ unitPrice, quantity: 1, lineSubtotal: unitPrice, deduction: null })],
+        [rule()],
+      )
+      expect(nothing).toEqual([])
+      expect(orderSizeDeductionNotes(nothing, currency)).toEqual([])
+    }
 
     // And no rules at all.
     expect(orderSizeDeductionNotes(orderSizeDeductionStates([line()], []), currency)).toEqual([])
@@ -365,7 +397,7 @@ describe('the copy', () => {
       'shop-order-size-deduction:Dynamic Office Solutions',
       'shop-order-size-deduction:Furdeco',
     ])
-    expect(notes[1]!.text).toBe('Add £400 more from Furdeco and save £10.')
+    expect(notes[1]!.text).toBe('Add £410 more of Furdeco offers and £10 comes off.')
   })
 })
 

@@ -310,7 +310,7 @@ export function SuppliersScreen({ label, enabled, pagesEnabled, deductionEnabled
             <fieldset style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.75rem', margin: 0, display: 'grid', gap: '0.5rem' }}>
               <legend style={{ padding: '0 0.375rem', fontSize: '0.875rem' }}>Order-size deduction</legend>
               <p className="field-hint" style={{ margin: '0 0 0.5rem' }}>
-                Once a basket holds this much of their goods, the amount stamped on each product comes off it. Set the amounts on the products themselves, under Prices.
+                Once a basket holds this much of their offer items, counted at the price they come to with the amount already off, the amount stamped on each of those products comes off it. Full-price items from this supplier do not count towards it. Set it to the value that guarantees their own minimum order, and set the amounts on the products themselves, under Prices.
               </p>
               <label>
                 Basket has to reach ({currencySymbol})
