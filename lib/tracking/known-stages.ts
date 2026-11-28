@@ -55,12 +55,15 @@ export const SOURCE_STAGES: Readonly<Record<PolledSource, SourceStages>> = {
     reportsItself: { outForDeliveryStages: false, deliveredStages: true, failedStages: false },
     known: {},
   },
-  // Their status column, in capitals; both seen on real pallets, October 2026.
+  // Their old status column, in capitals; both seen on real pallets, October
+  // 2026. "Delivered" is the rebuilt page's heading, seen 28 November 2026;
+  // that page's card colour also says delivered outright (palletways.ts), but
+  // the old table does not, so the list still matters.
   palletways: {
     reportsItself: NONE,
     known: {
       outForDeliveryStages: ['OUT FOR DELIVERY'],
-      deliveredStages: ['JOB COMPLETE'],
+      deliveredStages: ['JOB COMPLETE', 'Delivered'],
     },
   },
 }

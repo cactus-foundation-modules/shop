@@ -8,6 +8,12 @@
 // refusal for the customer, and carries their postcode in the address bar of
 // every email it goes out in. So a recorded link is shown as the index page.
 //
+// The rebuilt site (late November 2026) unlocks the full details with a signed
+// `access` token in the index.php address instead. Copied out of a browser
+// after typing the postcode, that link opens the customer's address and
+// signature to whoever it reaches until the token runs out, and then stops
+// working. It is shown as the plain index page too.
+//
 // No imports: the customer's order page and the emails both run this.
 
 const ID = /^\d{11}$/
@@ -32,11 +38,16 @@ export function palletwaysTrackingLink(id: string): string {
   return `https://track2.palletways.com/index.php?dc_syscon=${encodeURIComponent(id)}`
 }
 
-/** A Palletways full-details link as their public page; anything else as it came. */
+/** A Palletways full-details link - old or rebuilt - as their public page;
+ *  anything else as it came. */
 export function openablePalletwaysLink(url: string): string {
   try {
     const parsed = new URL(url)
-    if (!/(^|\.)palletways\.com$/i.test(parsed.hostname) || !/\/tt2\.php$/i.test(parsed.pathname)) return url
+    if (!/(^|\.)palletways\.com$/i.test(parsed.hostname)) return url
+    const unlocked = /\/tt2\.php$/i.test(parsed.pathname)
+      || parsed.searchParams.has('access')
+      || parsed.searchParams.has('postcode')
+    if (!unlocked) return url
     const id = palletwaysTrackingId(url)
     return id ? palletwaysTrackingLink(id) : url
   } catch {

@@ -39,10 +39,13 @@ import { aitLinkParts } from '@/modules/shop/lib/tracking/ait-link'
 import { readFieldly } from '@/modules/shop/lib/tracking/fieldly'
 import {
   palletwaysDetailsUrl,
+  palletwaysPageHasHistory,
   palletwaysRequestHeaders,
   palletwaysStatusUrl,
+  palletwaysUnlockRequest,
   readPalletwaysDetails,
   readPalletwaysStatus,
+  type PalletwaysDetails,
 } from '@/modules/shop/lib/tracking/palletways'
 import { getOrderDeliveryPostcode } from '@/modules/shop/lib/db/orders'
 import { palletwaysTrackingId } from '@/modules/shop/lib/tracking/palletways-link'
@@ -114,14 +117,23 @@ const EMPTY_PARCEL_READING: ParcelReading = {
   scheduledDate: null,
 }
 
-async function fetchText(url: string, headers: Record<string, string> = {}): Promise<string | null> {
+/** `form`, where given, is posted as a form (a courier's own lookup box); a
+ *  303 after it is followed as the GET it asks for. */
+async function fetchText(url: string, headers: Record<string, string> = {}, form?: string): Promise<string | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
     const res = await fetch(url, {
       signal: controller.signal,
       redirect: 'follow',
-      headers: { 'user-agent': 'CactusShopDeliveryTracking/1.0 (+order status)', ...headers },
+      ...(form === undefined
+        ? {}
+        : { method: 'POST', body: form }),
+      headers: {
+        'user-agent': 'CactusShopDeliveryTracking/1.0 (+order status)',
+        ...(form === undefined ? {} : { 'content-type': 'application/x-www-form-urlencoded' }),
+        ...headers,
+      },
       cache: 'no-store',
     })
     if (!res.ok) return null
@@ -436,15 +448,33 @@ async function readPalletways(parcel: ShpShipment, dueBy: string, timezone: stri
   if (!id) return null
 
   // The full details, where the order has a postcode to open them with: the
-  // scans, who signed, and the pictures. Anything short of a page that reads
-  // falls back to the open status table, which is still a stage.
+  // scans, who signed, and the pictures. Asked the rebuilt site's way first
+  // (their postcode form, posted), then the old details page. A page that
+  // reads but has no history - the open card the rebuilt site serves when it
+  // will not unlock - is held while the other way is tried, and used if
+  // neither does better. Anything short of that falls back to the open status
+  // page, which is still a stage.
   const postcode = await getOrderDeliveryPostcode(parcel.orderId).catch(() => null)
   if (postcode) {
     const headers = palletwaysRequestHeaders(id)
-    const html = await fetchText(palletwaysDetailsUrl(id, postcode), headers)
-    const details = html ? readPalletwaysDetails(html, timezone, dueBy) : null
-    if (details) {
-      const { photo, deliveryNote, ...reading } = details
+    const unlock = palletwaysUnlockRequest(id, postcode)
+    const asks = [
+      () => fetchText(unlock.url, headers, unlock.body),
+      () => fetchText(palletwaysDetailsUrl(id, postcode), headers),
+    ]
+    let partial: PalletwaysDetails | null = null
+    for (const ask of asks) {
+      const html = await ask()
+      const details = html ? readPalletwaysDetails(html, timezone, dueBy) : null
+      if (!html || !details) continue
+      if (palletwaysPageHasHistory(html)) {
+        partial = details
+        break
+      }
+      partial ??= details
+    }
+    if (partial) {
+      const { photo, deliveryNote, ...reading } = partial
       return {
         ...EMPTY_PARCEL_READING,
         ...reading,
@@ -456,6 +486,8 @@ async function readPalletways(parcel: ShpShipment, dueBy: string, timezone: stri
     }
   }
 
+  // tt_basic.php: the old open table, or, since the rebuild, a redirect to the
+  // open card - the parser reads either.
   const html = await fetchText(palletwaysStatusUrl(id))
   if (!html) return null
   const reading = readPalletwaysStatus(html, timezone, dueBy)

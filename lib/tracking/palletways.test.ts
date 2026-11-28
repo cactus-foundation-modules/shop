@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import {
   palletwaysDetailsUrl,
+  palletwaysPageHasHistory,
   palletwaysRequestHeaders,
   palletwaysStatusUrl,
+  palletwaysUnlockRequest,
   parsePalletwaysDate,
   parsePalletwaysStatus,
   readPalletwaysDetails,
   readPalletwaysStatus,
 } from '@/modules/shop/lib/tracking/palletways'
 import { openablePalletwaysLink, palletwaysTrackingId, palletwaysTrackingLink } from '@/modules/shop/lib/tracking/palletways-link'
+import { CARD_DELIVERED, CARD_FULL_DELIVERED, cardMoving } from '@/modules/shop/lib/tracking/__fixtures__/palletways-rebuilt'
 
 // Their status table as tt_basic.php served it on 27 October 2026 for order
 // DW000246, trimmed to the table.
@@ -56,11 +59,23 @@ describe('openablePalletwaysLink', () => {
     expect(openablePalletwaysLink(index)).toBe(index)
     expect(openablePalletwaysLink('https://track.dpd.co.uk/parcels/1')).toBe('https://track.dpd.co.uk/parcels/1')
   })
+
+  it('turns the rebuilt site\'s unlocked link into the public page, dropping the access token', () => {
+    expect(openablePalletwaysLink('https://track2.palletways.com/index.php?dc_syscon=60052045327&access=1795876208.07f6fc15ada4878319a91f1efcfdf2c0'))
+      .toBe(palletwaysTrackingLink('60052045327'))
+  })
 })
 
 describe('parsePalletwaysStatus', () => {
   it('finds the status and due day by header name', () => {
-    expect(parsePalletwaysStatus(BASIC)).toEqual({ status: 'AT DELIVERY DEPOT', dueDate: '2026-10-28', dueTime: null })
+    expect(parsePalletwaysStatus(BASIC)).toEqual({
+      status: 'AT DELIVERY DEPOT',
+      dueDate: '2026-10-28',
+      dueTime: null,
+      tone: null,
+      doneAt: null,
+      signedBy: null,
+    })
   })
 
   it('takes the day and time off the full page form', () => {
@@ -214,5 +229,74 @@ describe('readPalletwaysDetails', () => {
   it('asks the way their own page does', () => {
     expect(palletwaysDetailsUrl('60051828127', ' L6 6AE ')).toBe('https://track2.palletways.com/tt2.php?dc_syscon=60051828127&postcode=L6%206AE')
     expect(palletwaysRequestHeaders('60051828127')).toEqual({ referer: 'https://track2.palletways.com/index.php?dc_syscon=60051828127' })
+  })
+})
+
+describe('the rebuilt page (late November 2026)', () => {
+  it('reads the open card: their heading as the stage, delivered outright, the timeline as history', () => {
+    const reading = readPalletwaysStatus(CARD_DELIVERED, 'Europe/London', '17:00')
+    expect(reading.stage).toBe('Delivered')
+    expect(reading.delivered).toBe(true)
+    expect(reading.outForDelivery).toBeNull()
+    expect(reading.windowFrom).toBeNull()
+    expect(reading.receivedAt?.toISOString()).toBe('2026-11-26T10:12:00.000Z')
+    expect(reading.receivedBy).toBeNull()
+    expect(reading.events).toEqual([
+      { at: '2026-11-26T10:12:00', location: '', text: 'Delivered' },
+      { at: '2026-11-26T08:30:00', location: '', text: 'Out for delivery' },
+      { at: '2026-11-19T05:51:00', location: 'SK Distribution', text: 'Arrived at the delivering depot' },
+    ])
+    expect(palletwaysPageHasHistory(CARD_DELIVERED)).toBe(false)
+  })
+
+  it('reads the unlocked page: notes as history, the receipt, both pictures', () => {
+    const details = readPalletwaysDetails(CARD_FULL_DELIVERED, 'Europe/London', '17:00')
+    expect(palletwaysPageHasHistory(CARD_FULL_DELIVERED)).toBe(true)
+    expect(details?.stage).toBe('Delivered')
+    expect(details?.delivered).toBe(true)
+    expect(details?.receivedBy).toBe('Alan')
+    expect(details?.receivedAt?.toISOString()).toBe('2026-11-26T10:12:00.000Z')
+    expect(details?.photo?.url).toBe('https://track2.palletways.com/show_pod.php?fullsize=true&file=20261126101217_267_60052045327_pod_photo_1.jpg')
+    expect(details?.deliveryNote?.url).toBe('https://track2.palletways.com/show_pod.php?fullsize=true&file=20261126101217_233_60052045327_sos_pod.tif')
+    expect(details?.events.map((e) => e.text)).toEqual([
+      'POD Photo',
+      'IMAGE SCANNED',
+      'CLEAN POD: Alan @ 10:12 26/11/2026',
+      'ETA: Estimated Delivery Time: 10:17 on 26/11/2026 Delivery Window: 09:17 - 11:17',
+      'SCAN: Scanned onto vehicle AB12CDE at depot 59 C&D Route-12',
+    ])
+    expect(details?.windowFrom?.toISOString()).toBe('2026-11-26T09:17:00.000Z')
+    expect(details?.windowTo?.toISOString()).toBe('2026-11-26T11:17:00.000Z')
+  })
+
+  it('takes "Signed by" off the card where there is no receipt row', () => {
+    const noRow = CARD_FULL_DELIVERED.replace(/<tr class="notes__row--pod">[\s\S]*?<\/tr>/, '')
+    expect(readPalletwaysDetails(noRow, 'Europe/London', '17:00')?.receivedBy).toBe('Alan')
+  })
+
+  it('says out for delivery outright off the card, and nothing about held or problem', () => {
+    expect(readPalletwaysStatus(cardMoving('out', 'Out for delivery', ''), 'Europe/London', '17:00')).toMatchObject({
+      stage: 'Out for delivery', delivered: null, outForDelivery: true,
+    })
+    expect(readPalletwaysStatus(cardMoving('held', 'On hold', ''), 'Europe/London', '17:00')).toMatchObject({
+      stage: 'On hold', delivered: null, outForDelivery: null,
+    })
+  })
+
+  it('takes a due day only from a line that says due', () => {
+    const due = readPalletwaysStatus(cardMoving('', 'In transit', 'Due 28/11/2026'), 'Europe/London', '17:00')
+    expect(due.windowFrom?.toISOString()).toBe('2026-11-28T00:00:00.000Z')
+    expect(due.windowTo?.toISOString()).toBe('2026-11-28T17:00:00.000Z')
+    const dueBy = readPalletwaysStatus(cardMoving('', 'In transit', 'Due by 28/11/2026, 12:00'), 'Europe/London', '17:00')
+    expect(dueBy.windowTo?.toISOString()).toBe('2026-11-28T12:00:00.000Z')
+    const stamp = readPalletwaysStatus(cardMoving('', 'In transit', '27/11/2026, 15:29'), 'Europe/London', '17:00')
+    expect(stamp.windowFrom).toBeNull()
+  })
+
+  it('posts the postcode to their own form, never in the address', () => {
+    expect(palletwaysUnlockRequest(' 60052045327 ', ' XX1 1XX ')).toEqual({
+      url: 'https://track2.palletways.com/index.php',
+      body: 'dc_syscon=60052045327&postcode=XX1+1XX',
+    })
   })
 })

@@ -21,7 +21,18 @@
 // service, and the service is what fixes the time ("BY 1700" on a standard
 // next-day pallet), not the parcel.
 //
-// Server-rendered PHP, plain tables, parsed with regular expressions for the
+// Late November 2026 they rebuilt it. tt_basic.php and tt2.php now redirect to
+// index.php, which is the only page: a status card (their words in a heading,
+// "Delivered", with a modifier class saying which of delivered, out, held or
+// problem it is), a journey timeline, and a box for the delivery postcode.
+// Posting the postcode to index.php answers 303 to the same page with a signed,
+// expiring `access` token in the query string, and that page carries the old
+// notes table - same six columns, same picture links - under "Full history".
+// Both shapes are read here, whichever comes back: an install may meet either
+// (an old cached page, a rollback on their side), and the old one cost nothing
+// to keep.
+//
+// Server-rendered PHP, plain markup, parsed with regular expressions for the
 // same reason the GFS reader is. Anything it cannot make sense of comes back as
 // no stage, which the caller treats as nothing learned.
 
@@ -39,6 +50,15 @@ export function palletwaysStatusUrl(id: string): string {
 /** Where the full details are, for the consignment and its delivery postcode. */
 export function palletwaysDetailsUrl(id: string, postcode: string): string {
   return `${ORIGIN}/tt2.php?dc_syscon=${encodeURIComponent(id.trim())}&postcode=${encodeURIComponent(postcode.trim())}`
+}
+
+/** The rebuilt site's way in to the full details: their own postcode form,
+ *  posted. The answer is a 303 to index.php with an access token, which a
+ *  following fetch turns into the page itself. The postcode travels in the
+ *  body, never in an address. */
+export function palletwaysUnlockRequest(id: string, postcode: string): { url: string; body: string } {
+  const body = new URLSearchParams({ dc_syscon: id.trim(), postcode: postcode.trim() }).toString()
+  return { url: `${ORIGIN}/index.php`, body }
 }
 
 /** What the details page and its pictures expect to have been asked from:
@@ -63,11 +83,59 @@ export function parsePalletwaysDate(value: string): string | null {
   return `${m[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
-/** The status row, by its header names rather than its column positions:
- *  the two pages they serve order the same columns differently. */
-export function parsePalletwaysStatus(
-  html: string,
-): { status: string; dueDate: string | null; dueTime: string | null } | null {
+/** Which of their four card colours the rebuilt page wears. Anything else (or
+ *  no modifier) is a consignment simply on its way. */
+export type PalletwaysTone = 'delivered' | 'out' | 'held' | 'problem'
+
+export type PalletwaysStatus = {
+  status: string
+  dueDate: string | null
+  dueTime: string | null
+  /** The rebuilt page's card colour; null on the old table. */
+  tone: PalletwaysTone | null
+  /** When it was done, wall-clock 'YYYY-MM-DDTHH:MM:00', off a delivered card. */
+  doneAt: string | null
+  /** "Signed by Hannah" off a delivered card - the full details only. */
+  signedBy: string | null
+}
+
+/** The status, off whichever of their page shapes this is. */
+export function parsePalletwaysStatus(html: string): PalletwaysStatus | null {
+  return parseStatusTable(html) ?? parseStatusCard(html)
+}
+
+/** The rebuilt page's status card.
+ *
+ *  Delivered, the line under the heading is when, and on the full details who
+ *  signed: "26/11/2026, 10:12 · Signed by Hannah". Before that, nobody has seen
+ *  the line on a live pallet yet; a date on it is taken as the day due only
+ *  when the line says "due", so a "last updated" stamp can never become a
+ *  delivery window. */
+function parseStatusCard(html: string): PalletwaysStatus | null {
+  const heading = /<h1[^>]*class=["'][^"']*\bstatus__title\b[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i.exec(html)
+  const status = heading ? textOf(heading[1] ?? '') : ''
+  if (!status) return null
+
+  const modifier = /class=["'][^"']*\bstatus--(delivered|out|held|problem)\b/i.exec(html)?.[1]?.toLowerCase()
+  const tone = (modifier ?? null) as PalletwaysTone | null
+
+  const whenHtml = /<p[^>]*class=["'][^"']*\bstatus__when\b[^"']*["'][^>]*>([\s\S]*?)<\/p>/i.exec(html)?.[1] ?? ''
+  const when = textOf(whenHtml).replace(/&middot;|&#183;/g, '·')
+  const stamp = /(\d{1,2}\/\d{1,2}\/\d{4})(?:,?\s*(?:-\s*)?(\d{2}:\d{2}))?/.exec(when)
+  const day = stamp ? parsePalletwaysDate(stamp[1] ?? '') : null
+  const time = stamp?.[2] && HHMM.test(stamp[2]) ? stamp[2] : null
+
+  if (tone === 'delivered') {
+    const signedBy = /signed by\s+(.+?)\s*$/i.exec(when)?.[1]?.trim() || null
+    return { status, dueDate: null, dueTime: null, tone, doneAt: day && time ? `${day}T${time}:00` : null, signedBy }
+  }
+  const due = /\bdue\b/i.test(when)
+  return { status, dueDate: due ? day : null, dueTime: due ? time : null, tone, doneAt: null, signedBy: null }
+}
+
+/** The old status row, by its header names rather than its column positions:
+ *  the two pages they served ordered the same columns differently. */
+function parseStatusTable(html: string): PalletwaysStatus | null {
   let header: string[] | null = null
   for (const row of html.matchAll(ROW)) {
     const cells: string[] = []
@@ -85,9 +153,35 @@ export function parsePalletwaysStatus(
     // 'Currently Due' on the basic table, 'Currently Due By' on the full page
     // with a time after it ('12/11/2026 - 17:00').
     const [day = '', time = ''] = at(/^currently due/i).split(/\s+-\s+/)
-    return { status, dueDate: parsePalletwaysDate(day), dueTime: HHMM.test(time.trim()) ? time.trim() : null }
+    return {
+      status,
+      dueDate: parsePalletwaysDate(day),
+      dueTime: HHMM.test(time.trim()) ? time.trim() : null,
+      tone: null,
+      doneAt: null,
+      signedBy: null,
+    }
   }
   return null
+}
+
+/** The rebuilt page's journey timeline, newest first, as their own words.
+ *  The time is read off the text they show ('26/11/2026<br>10:12'), not the
+ *  datetime attribute, whose offset would make it something other than the
+ *  courier's wall clock - see TrackingEvent.at. */
+function timelineEvents(html: string): TrackingEvent[] {
+  const events: TrackingEvent[] = []
+  for (const item of html.matchAll(/<li[^>]*class=["'][^"']*\btimeline__item\b[^"']*["'][^>]*>([\s\S]*?)<\/li>/gi)) {
+    const body = item[1] ?? ''
+    const title = textOf(/class=["'][^"']*\btimeline__title\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i.exec(body)?.[1] ?? '')
+    const place = textOf(/class=["'][^"']*\btimeline__place\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i.exec(body)?.[1] ?? '')
+    const shown = textOf(/<time[^>]*>([\s\S]*?)<\/time>/i.exec(body)?.[1] ?? '')
+    const m = /^(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{2}:\d{2})$/.exec(shown)
+    const at = m ? noteAt(m[1] ?? '', m[2] ?? '') : null
+    if (!title || !at) continue
+    events.push({ at, location: place, text: title })
+  }
+  return events
 }
 
 /**
@@ -97,9 +191,12 @@ export function parsePalletwaysStatus(
  * prints one (the full details do), else at `dueBy` (their service's cut-off
  * from the courier's settings, 'HH:MM'), and starting at midnight, which every surface words as "by 5pm".
  * With no dueBy it is the whole day, which reads as the day alone. The stage
- * is their status in their own words; which of those mean "on a lorry today"
- * or "delivered" is the owner's setting, as for every courier who reports
- * nothing but words.
+ * is their status in their own words; on the old table, which of those mean
+ * "on a lorry today" or "delivered" is the owner's setting, as for every
+ * courier who reports nothing but words. The rebuilt page's card colour says
+ * delivered, or out, outright, and that wins over the words (an owner's list
+ * written for "JOB COMPLETE" would never match "Delivered"); held and problem
+ * are left to the words, since neither is a delivery or a van.
  */
 export function readPalletwaysStatus(html: string, timezone: string, dueBy: string): TrackingReading {
   const row = parsePalletwaysStatus(html)
@@ -107,11 +204,17 @@ export function readPalletwaysStatus(html: string, timezone: string, dueBy: stri
   const end = row.dueTime ?? (HHMM.test(dueBy.trim()) ? dueBy.trim() : '23:59')
   const windowFrom = row.dueDate ? courierInstant(`${row.dueDate}T00:00:00`, timezone) : null
   const windowTo = row.dueDate ? courierInstant(`${row.dueDate}T${end}:00`, timezone) : null
+  const delivered = row.tone === 'delivered'
   return {
     ...EMPTY_READING,
     stage: row.status,
+    events: timelineEvents(html),
     windowFrom: windowFrom && windowTo ? windowFrom : null,
     windowTo: windowFrom && windowTo ? windowTo : null,
+    delivered: delivered ? true : null,
+    outForDelivery: row.tone === 'out' ? true : null,
+    receivedBy: delivered ? row.signedBy : null,
+    receivedAt: delivered && row.doneAt ? courierInstant(row.doneAt, timezone) : null,
   }
 }
 
@@ -130,8 +233,19 @@ export type PalletwaysDetails = TrackingReading & {
  *  holds the picture links), and the date and time columns. */
 type NoteRow = { type: string; commentsHtml: string; date: string; time: string }
 
+/** Their notes table: `id="tbl_notes"` on the old details page, `class="notes"`
+ *  on the rebuilt one. */
+const NOTES_TABLE = /<table[^>]*(?:id=['"]tbl_notes['"]|class=['"]notes['"])[^>]*>([\s\S]*?)<\/table>/i
+
+/** Whether this page is the full details - the history and the proof - rather
+ *  than the open status alone, which the rebuilt site serves to a request it
+ *  will not unlock, at the same address. */
+export function palletwaysPageHasHistory(html: string): boolean {
+  return NOTES_TABLE.test(html)
+}
+
 function noteRows(html: string): NoteRow[] {
-  const table = /<table[^>]*id=['"]tbl_notes['"][^>]*>([\s\S]*?)<\/table>/i.exec(html)?.[1]
+  const table = NOTES_TABLE.exec(html)?.[1]
   if (!table) return []
   const rows: NoteRow[] = []
   for (const row of table.matchAll(ROW)) {
@@ -232,7 +346,18 @@ export function readPalletwaysDetails(html: string, timezone: string, dueBy: str
   const etaTo = eta && etaFrom ? courierInstant(`${eta.date}T${eta.to}:00`, timezone) : null
   const window = etaFrom && etaTo ? { windowFrom: etaFrom, windowTo: etaTo } : {}
 
-  return { ...base, ...window, events, receivedBy, receivedAt, photo, deliveryNote }
+  // The notes are the fuller history; the rebuilt page's timeline stands in
+  // where there are none. The receipt row's name wins over the card's
+  // "Signed by", which is the same name with no row behind it.
+  return {
+    ...base,
+    ...window,
+    events: events.length > 0 ? events : base.events,
+    receivedBy: receivedBy ?? base.receivedBy,
+    receivedAt: receivedBy !== null ? receivedAt : base.receivedAt,
+    photo,
+    deliveryNote,
+  }
 }
 
 /**
